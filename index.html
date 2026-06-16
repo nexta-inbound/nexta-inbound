@@ -3,33 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Portal de Cadências — Logística Inbound</title>
+<title>Programação Logística Inbound - Nexta</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #0F1923;
-    --surface: #162030;
-    --panel: #1A2C42;
-    --border: #243650;
-    --accent: #00B4D8;
-    --accent-dim: rgba(0,180,216,0.12);
-    --accent2: #F0A500;
-    --accent2-dim: rgba(240,165,0,0.12);
-    --success: #2ECC71;
-    --success-dim: rgba(46,204,113,0.12);
-    --danger: #E74C3C;
-    --danger-dim: rgba(231,76,60,0.12);
-    --text: #E8EDF2;
-    --text-dim: #7A96B0;
-    --text-muted: #4A6580;
+    --pet-green: #8DC830;
+    --pet-green-dk: #6FA51F;
+    --pet-green-bg: rgba(141,200,48,0.14);
+    --pet-green-mid: #A9D44A;
+    --pet-yellow: #F97316;
+    --pet-yellow-dk: #EA6B0A;
+    --pet-blue: #2255CC;
+    --pet-blue-bg: #EEF3FF;
+    --pet-purple: #7C3AED;
+    --pet-navy: #111A0A;
+    --pet-navy-mid: #1C2E10;
+
+    --bg: #111B15;
+    --surface: #1A2A20;
+    --panel: #223528;
+    --panel-soft: #17251B;
+    --border: #314A32;
+    --border-dk: #5E7F3D;
+    --accent: var(--pet-green);
+    --accent-hover: var(--pet-green-dk);
+    --accent-dim: var(--pet-green-bg);
+    --accent2: var(--pet-yellow);
+    --accent2-dim: rgba(249,115,22,0.16);
+    --success: #36D16B;
+    --success-dim: rgba(54,209,107,0.14);
+    --danger: #FF6B5F;
+    --danger-dim: rgba(255,107,95,0.14);
+    --text: #F4F8EE;
+    --text-dim: #BFD4A8;
+    --text-muted: #7FA069;
+    --shadow: 0 1px 3px rgba(0,0,0,0.24), 0 2px 12px rgba(0,0,0,0.16);
+    --shadow-md: 0 6px 28px rgba(0,0,0,0.26);
+    --shadow-lg: 0 10px 44px rgba(0,0,0,0.36);
+    --font: 'Barlow', sans-serif;
+    --font-cond: 'Barlow Condensed', sans-serif;
   }
 
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     background: var(--bg);
+    background-image: radial-gradient(ellipse at 60% 0%, rgba(141,200,48,0.10) 0%, transparent 58%);
     color: var(--text);
     min-height: 100vh;
     font-size: 14px;
@@ -37,36 +58,80 @@
 
   /* ── HEADER ── */
   header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--pet-navy) 0%, var(--pet-navy-mid) 55%, #243A16 100%);
+    border-bottom: 3px solid #EEFE7A;
     padding: 0 32px;
     display: flex;
     align-items: center;
     gap: 24px;
-    height: 60px;
+    min-height: 64px;
+    box-shadow: var(--shadow-md);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 82% 50%, rgba(238,254,122,0.14) 0%, transparent 62%);
+    pointer-events: none;
+  }
+  header > * { position: relative; z-index: 1; }
+  header .filter-select {
+    background: rgba(238,254,122,0.10);
+    border-color: rgba(238,254,122,0.48) !important;
+    color: #EEFE7A !important;
+  }
+  header .semana-selector .btn-reset {
+    border-color: rgba(238,254,122,0.48) !important;
+    color: #EEFE7A !important;
+  }
+  header .save-indicator .btn-reset {
+    border-color: rgba(255,255,255,0.18) !important;
+    color: rgba(255,255,255,0.56) !important;
   }
   .logo {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 15px;
+    font-family: var(--font-cond);
+    font-size: 16px;
     font-weight: 700;
-    letter-spacing: 0.5px;
-    color: var(--accent);
+    letter-spacing: 0.08em;
+    color: #EEFE7A;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     white-space: nowrap;
+    text-transform: uppercase;
   }
-  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
-  .header-sub { font-size: 12px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 20px; }
-  .save-indicator {
+  .nexta-logo-svg {
+    height: 25px;
+    width: auto;
+    display: block;
+    color: #EEFE7A;
+    filter: drop-shadow(0 1px 6px rgba(238,254,122,0.38));
+  }
+  .logo-title {
+    color: #EEFE7A;
+    line-height: 1;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: #EEFE7A; box-shadow: 0 0 12px rgba(238,254,122,0.65); display: inline-block; }
+  .header-sub { font-size: 12px; color: rgba(255,255,255,0.56); border-left: 1px solid rgba(255,255,255,0.16); padding-left: 20px; }
+  .semana-selector {
     margin-left: auto;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .save-indicator {
     display: flex; align-items: center; gap: 10px;
+    margin-left: 16px; padding-left: 16px;
+    border-left: 1px solid rgba(255,255,255,0.16);
   }
   .save-status {
     font-size: 11px; color: var(--text-muted);
     display: flex; align-items: center; gap: 5px;
     transition: color 0.3s;
   }
+  header .save-status { color: rgba(255,255,255,0.56); }
+  header .save-status.saved { color: #22C55E; }
+  header .save-status.saving { color: var(--accent2); }
   .save-status.saved { color: var(--success); }
   .save-status.saving { color: var(--accent2); }
   .save-dot {
@@ -75,13 +140,13 @@
   }
   .btn-reset {
     background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.56);
     font-size: 11px;
     padding: 5px 10px;
     border-radius: 6px;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     transition: all 0.2s;
   }
   .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
@@ -94,6 +159,7 @@
     display: flex;
     align-items: center;
     gap: 0;
+    box-shadow: var(--shadow);
   }
   .pipe-step {
     display: flex;
@@ -122,15 +188,16 @@
     font-size: 12px;
     flex-shrink: 0;
     transition: all 0.3s;
+    background: var(--surface);
   }
   .pipe-step.active .pipe-icon { border-color: var(--accent); background: var(--accent-dim); }
   .pipe-step.done .pipe-icon { border-color: var(--success); background: var(--success-dim); }
   .pipe-step.cancel .pipe-icon { border-color: var(--danger); background: var(--danger-dim); }
-  .pipe-label { font-size: 10px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+  .pipe-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .pipe-step.active .pipe-label { color: var(--accent); }
   .pipe-step.done .pipe-label { color: var(--success); }
   .pipe-step.cancel .pipe-label { color: var(--danger); }
-  .pipe-count { font-size: 16px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--text); }
+  .pipe-count { font-size: 17px; font-family: var(--font-cond); font-weight: 700; color: var(--text); }
   .pipe-step.active .pipe-count { color: var(--accent); }
   .pipe-step.done .pipe-count { color: var(--success); }
   .pipe-step.cancel .pipe-count { color: var(--danger); }
@@ -138,26 +205,33 @@
   /* ── TABS ── */
   .tabs-bar {
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
     padding: 0 32px;
     display: flex;
     gap: 0;
   }
   .tab {
     padding: 14px 20px;
+    font-family: var(--font-cond);
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--text-muted);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     transition: all 0.2s;
     white-space: nowrap;
   }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text-dim); background: var(--bg); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: linear-gradient(to bottom, transparent 60%, var(--accent-dim)); }
 
   /* ── MAIN ── */
-  .main { padding: 28px 32px; max-width: 1400px; }
+  .main {
+    padding: 28px 32px;
+    width: 100%;
+    max-width: none;
+  }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
 
@@ -167,14 +241,15 @@
     margin-bottom: 20px;
   }
   .section-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 16px; font-weight: 600;
+    font-family: var(--font-cond);
+    font-size: 20px; font-weight: 700;
+    letter-spacing: 0.02em;
   }
   .section-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
   /* ── UPLOAD ZONE ── */
   .upload-zone {
-    border: 2px dashed var(--border);
+    border: 2px dashed var(--border-dk);
     border-radius: 12px;
     padding: 48px 32px;
     text-align: center;
@@ -182,10 +257,12 @@
     transition: all 0.25s;
     background: var(--surface);
     margin-bottom: 24px;
+    box-shadow: var(--shadow);
   }
   .upload-zone:hover, .upload-zone.drag-over {
     border-color: var(--accent);
     background: var(--accent-dim);
+    box-shadow: var(--shadow-md);
   }
   .upload-icon { font-size: 40px; margin-bottom: 12px; }
   .upload-text { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
@@ -204,21 +281,22 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 16px;
+    box-shadow: var(--shadow);
   }
-  .config-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .config-label { font-family: var(--font-cond); font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
   .config-input {
     width: 100%;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     border-radius: 6px;
     color: var(--text);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     font-size: 13px;
     padding: 8px 10px;
     outline: none;
-    transition: border 0.2s;
+    transition: border 0.2s, box-shadow 0.2s, background 0.2s;
   }
-  .config-input:focus { border-color: var(--accent); }
+  .config-input:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(141,200,48,0.14); }
 
   /* ── PREVIEW TABLE ── */
   .table-wrap {
@@ -226,6 +304,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     overflow: hidden;
+    box-shadow: var(--shadow);
   }
   .table-toolbar {
     padding: 14px 18px;
@@ -233,7 +312,7 @@
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px;
   }
-  .table-title { font-size: 13px; font-weight: 600; }
+  .table-title { font-family: var(--font-cond); font-size: 15px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
   .badge {
     display: inline-flex; align-items: center;
     padding: 3px 10px; border-radius: 20px;
@@ -245,13 +324,20 @@
   .badge-danger { background: var(--danger-dim); color: var(--danger); }
 
   table { width: 100%; border-collapse: collapse; }
+  #previewTable th { font-size: 13px; }
+  #previewTable td { font-size: 14px; }
+  #previewTable .product-tag {
+    font-size: 12px;
+    padding: 3px 10px;
+  }
   th {
-    background: var(--panel);
+    background: var(--panel-soft);
     padding: 10px 14px;
     text-align: left;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
@@ -263,12 +349,12 @@
   td {
     padding: 10px 14px;
     font-size: 12px;
-    border-bottom: 1px solid rgba(36,54,80,0.6);
+    border-bottom: 1px solid rgba(191,212,168,0.16);
     vertical-align: middle;
     white-space: nowrap;
   }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(0,180,216,0.04); }
+  tr:hover td { background: rgba(141,200,48,0.08); }
 
   .product-tag {
     display: inline-block;
@@ -277,32 +363,41 @@
     font-size: 11px;
     font-weight: 500;
   }
-  .prod-diesel { background: rgba(0,180,216,0.15); color: var(--accent); }
-  .prod-biodiesel { background: rgba(46,204,113,0.15); color: var(--success); }
-  .prod-hidratado { background: rgba(240,165,0,0.15); color: var(--accent2); }
-  .prod-anidro { background: rgba(155,89,182,0.15); color: #C39BD3; }
+  .prod-diesel { background: rgba(34,85,204,0.18); color: #8DB0FF; border: 1px solid rgba(141,176,255,0.32); }
+  .prod-biodiesel { background: rgba(54,209,107,0.16); color: #5DF08B; border: 1px solid rgba(93,240,139,0.30); }
+  .prod-hidratado { background: rgba(249,115,22,0.18); color: #FFAE6A; border: 1px solid rgba(255,174,106,0.32); }
+  .prod-anidro { background: rgba(124,58,237,0.20); color: #D0B4FF; border: 1px solid rgba(208,180,255,0.30); }
 
   /* ── BUTTONS ── */
   .btn {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 7px;
-    font-family: 'Inter', sans-serif;
-    font-size: 13px; font-weight: 500;
-    cursor: pointer; border: none; transition: all 0.2s;
+    font-family: var(--font-cond);
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer; border: 1.5px solid transparent; transition: all 0.2s;
   }
-  .btn-primary { background: var(--accent); color: #0F1923; }
-  .btn-primary:hover { background: #00C8F0; }
-  .btn-secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-success { background: var(--success); color: #0F1923; }
-  .btn-success:hover { background: #27AE60; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%); color: #111B15; border-color: var(--accent-hover); box-shadow: 0 2px 8px rgba(141,200,48,0.22); }
+  .btn-primary:hover { background: linear-gradient(135deg, #A1DE42 0%, var(--accent) 100%); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(141,200,48,0.32); }
+  .btn-secondary { background: var(--surface); color: var(--text-dim); border: 1.5px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .btn-success { background: linear-gradient(135deg, var(--success) 0%, #15803D 100%); color: #fff; border-color: #15803D; }
+  .btn-success:hover { background: linear-gradient(135deg, #22C55E 0%, var(--success) 100%); transform: translateY(-1px); }
   .btn-sm { padding: 5px 10px; font-size: 11px; }
   .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
   .btn-danger:hover { background: var(--danger); color: white; }
 
   /* ── STATUS CHIPS ── */
-  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; }
-  .status::before { content:''; width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .status::before { content:''; width:7px; height:7px; border-radius:50%; flex-shrink:0; }
   .status-backlog { color: var(--text-muted); }
   .status-backlog::before { background: var(--text-muted); }
   .status-ofertado { color: var(--accent2); }
@@ -318,7 +413,7 @@
   .modal-overlay {
     display: none;
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.7);
+    background: rgba(17,26,10,0.58);
     z-index: 100;
     align-items: center; justify-content: center;
   }
@@ -330,11 +425,12 @@
     padding: 28px;
     width: 480px;
     max-width: 95vw;
+    box-shadow: var(--shadow-lg);
   }
-  .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .modal-title { font-family: var(--font-cond); font-size: 20px; font-weight: 700; margin-bottom: 6px; }
   .modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
   .modal-field { margin-bottom: 16px; }
-  .modal-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .modal-label { font-family: var(--font-cond); font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
   .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
   .info-row { display: flex; gap: 20px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
@@ -346,8 +442,8 @@
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 10px; }
   .stats-row:last-of-type { margin-bottom: 24px; }
   .kpi-group-label {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.7px; text-transform: uppercase;
-    color: var(--text-muted); margin-bottom: 7px; margin-top: 4px; padding-left: 2px;
+    font-family: var(--font-cond); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 7px; margin-top: 4px; padding-left: 2px;
   }
   .stat-card {
     background: var(--surface);
@@ -355,13 +451,14 @@
     border-radius: 10px;
     padding: 14px 16px;
     transition: border-color 0.2s;
+    box-shadow: var(--shadow);
   }
-  .stat-card.c-danger { border-color: rgba(231,76,60,0.25); }
-  .stat-card.c-danger.has-alert { border-color: rgba(231,76,60,0.55); background: rgba(231,76,60,0.04); }
-  .stat-card.c-warn.has-alert { border-color: rgba(243,156,18,0.55); background: rgba(243,156,18,0.04); }
-  .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .stat-card.c-danger { border-color: rgba(255,107,95,0.30); }
+  .stat-card.c-danger.has-alert { border-color: rgba(255,107,95,0.58); background: rgba(255,107,95,0.08); }
+  .stat-card.c-warn.has-alert { border-color: rgba(249,115,22,0.58); background: rgba(249,115,22,0.08); }
+  .stat-label { font-family: var(--font-cond); font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
   .stat-sub  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
-  .stat-val { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; }
+  .stat-val { font-family: var(--font-cond); font-size: 28px; font-weight: 700; }
   .stat-card.c-accent  .stat-val { color: var(--accent); }
   .stat-card.c-warn    .stat-val { color: var(--accent2); }
   .stat-card.c-success .stat-val { color: var(--success); }
@@ -378,8 +475,9 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 24px;
+    box-shadow: var(--shadow);
   }
-  .export-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .export-card-title { font-family: var(--font-cond); font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .export-card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6; }
   .field-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
   .field-item {
@@ -405,16 +503,16 @@
     margin-bottom: 16px;
     border: 1px solid;
   }
-  .alert-info { background: var(--accent-dim); border-color: rgba(0,180,216,0.3); color: var(--accent); }
-  .alert-warn { background: var(--accent2-dim); border-color: rgba(240,165,0,0.3); color: var(--accent2); }
+  .alert-info { background: var(--accent-dim); border-color: rgba(141,200,48,0.32); color: #B6EA55; }
+  .alert-warn { background: var(--accent2-dim); border-color: rgba(249,115,22,0.34); color: #FFAE6A; }
 
   .filter-row { display: flex; gap: 10px; align-items: center; }
   .filter-select {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     border-radius: 6px;
     color: var(--text);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     font-size: 12px;
     padding: 7px 10px;
     outline: none;
@@ -425,7 +523,7 @@
   .filter-bar {
     padding: 10px 18px;
     border-bottom: 1px solid var(--border);
-    background: rgba(26,44,66,0.6);
+    background: var(--panel-soft);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -434,30 +532,27 @@
   .filter-row-dates { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
   .filter-input {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     border-radius: 6px;
     color: var(--text);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     font-size: 12px;
     padding: 6px 10px;
     outline: none;
     transition: border 0.2s;
   }
-  .filter-input:focus { border-color: var(--accent); }
+  .filter-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(141,200,48,0.12); }
   .filter-input::placeholder { color: var(--text-muted); }
   .filter-input.fi-wide { width: 240px; }
-  .filter-input.fi-date {
-    width: 120px;
-    color-scheme: dark;
-  }
+  .filter-input.fi-date { width: 120px; color-scheme: light; }
   .filter-sep { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
   .placa-input {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     border-radius: 6px;
     color: var(--text);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
     font-size: 12px;
     padding: 5px 6px;
     width: 82px;
@@ -475,17 +570,17 @@
   /* sticky action column */
   th.col-acao {
     position: sticky; right: 0; z-index: 2;
-    background: var(--panel);
-    box-shadow: -3px 0 6px rgba(0,0,0,0.35);
+    background: var(--panel-soft);
+    box-shadow: -3px 0 8px rgba(17,26,10,0.10);
     width: 72px; min-width: 72px;
   }
   td.col-acao {
     position: sticky; right: 0; z-index: 1;
     background: var(--surface);
-    box-shadow: -3px 0 6px rgba(0,0,0,0.35);
+    box-shadow: -3px 0 8px rgba(17,26,10,0.10);
     width: 72px; min-width: 72px;
   }
-  tr:hover td.col-acao { background: #1e2e40; }
+  tr:hover td.col-acao { background: #1E3024; }
 
   /* truncate long text cells */
   .cell-truncate {
@@ -495,7 +590,7 @@
     white-space: nowrap;
   }
   .cell-truncate-sm {
-    max-width: 110px;
+    max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -507,6 +602,63 @@
     white-space: nowrap;
   }
 
+  .cell-id-viagem {
+    font-family: var(--font-cond);
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .cell-pedido-mis {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cell-preview-id {
+    font-family: var(--font-cond);
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .cell-periodo {
+    white-space: nowrap;
+    line-height: 1.65;
+    width: 92px;
+  }
+  .date-start {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .date-end {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .cell-volume {
+    font-family: var(--font-cond);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .cell-caminhoes .badge {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .preview-actions {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+  }
+  .preview-actions .btn {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  .preview-actions-note {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
   .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip {
     padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600;
@@ -514,15 +666,306 @@
     cursor: pointer; border: 1px solid var(--border); transition: all 0.15s;
   }
   .chip.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
-  tr.row-selected td { background: rgba(0,180,216,0.07); }
-  tr.row-selected td.col-acao { background: #1a2e44 !important; }
-  tr:hover.row-selected td.col-acao { background: #1e3348 !important; }
+  tr.row-selected td { background: rgba(141,200,48,0.12); }
+  tr.row-selected td.col-acao { background: #213923 !important; }
+  tr:hover.row-selected td.col-acao { background: #264229 !important; }
+
+  /* ── LOGIN ── */
+  #login-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: linear-gradient(135deg, var(--pet-navy) 0%, #0A1405 50%, #152310 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #login-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(238,254,122,0.14) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 70%, rgba(238,254,122,0.06) 0%, transparent 45%);
+  }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    position: relative;
+    z-index: 1;
+    background: var(--surface);
+    border: 1px solid rgba(141,200,48,0.22);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.50), 0 0 0 1px rgba(255,255,255,0.06);
+    padding: 36px 40px;
+  }
+  .login-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 28px;
+    color: #EEFE7A;
+  }
+  .login-nexta-logo {
+    height: 30px;
+    width: auto;
+    display: block;
+    filter: drop-shadow(0 1px 8px rgba(238,254,122,0.36));
+  }
+  .login-brand {
+    font-family: var(--font-cond);
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+  .login-sub-brand {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .login-title {
+    font-family: var(--font-cond);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 5px;
+  }
+  .login-desc {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+  .login-field { margin-bottom: 15px; }
+  .login-field label {
+    display: block;
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .login-field input {
+    width: 100%;
+    padding: 11px 13px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    font-family: var(--font);
+    font-size: 15px;
+    background: var(--panel);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  }
+  .login-field input:focus {
+    border-color: var(--accent);
+    background: var(--surface);
+    box-shadow: 0 0 0 3px rgba(141,200,48,0.14);
+  }
+  .login-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    cursor: pointer;
+    margin-top: 6px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    color: #111B15;
+    border-radius: 7px;
+    font-family: var(--font-cond);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.18s;
+    box-shadow: 0 4px 16px rgba(141,200,48,0.30);
+  }
+  .login-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(141,200,48,0.42);
+  }
+  .login-error {
+    background: var(--danger-dim);
+    border: 1px solid rgba(255,107,95,0.40);
+    border-radius: 7px;
+    color: var(--danger);
+    font-size: 13px;
+    padding: 9px 12px;
+    margin-top: 12px;
+    display: none;
+  }
+  .login-error.visible { display: block; }
+  .login-admin-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgba(17,26,10,0.72);
+    backdrop-filter: blur(3px);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-admin-modal.open { display: flex; }
+  .login-admin-panel {
+    width: 100%;
+    max-width: 520px;
+    max-height: 92vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid rgba(141,200,48,0.22);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+    padding: 28px 32px;
+  }
+  .login-admin-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .login-admin-title {
+    font-family: var(--font-cond);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .login-admin-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px 6px;
+  }
+  .login-admin-subtitle {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .login-admin-users {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .login-admin-user {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel-soft);
+  }
+  .login-admin-user strong {
+    display: block;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .login-admin-user span {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .login-admin-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .login-admin-row input {
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    outline: none;
+  }
+  .login-admin-row input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(141,200,48,0.12);
+  }
+  .login-admin-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .login-admin-info {
+    min-height: 18px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+  }
+  .login-admin-separator {
+    border: none;
+    border-top: 1px dashed var(--border);
+    margin: 18px 0;
+  }
+  .header-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 4px 10px 4px 6px;
+    backdrop-filter: blur(4px);
+  }
+  .header-user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #111B15;
+    font-family: var(--font-cond);
+  }
+  .header-user-name {
+    font-size: 12px;
+    color: rgba(255,255,255,0.86);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .header-logout {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.46);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 0 2px 4px;
+    transition: color 0.15s;
+    line-height: 1;
+  }
+  .header-logout:hover { color: rgba(255,255,255,0.90); }
 </style>
 
 <!-- ── FIREBASE ── -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, get, onValue, remove }
+  import { getDatabase, ref, set, get, onValue, remove, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   // ══════════════════════════════════════════════════
@@ -543,20 +986,58 @@
 
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
-    salvar: async (payload) => {
-      await set(ref(db, 'sessao'), payload);
+    salvar: async (key, payload) => {
+      await set(ref(db, 'sessoes/' + key), payload);
     },
-    carregar: async () => {
-      const snap = await get(ref(db, 'sessao'));
+    carregar: async (key) => {
+      const snap = await get(ref(db, 'sessoes/' + key));
       return snap.exists() ? snap.val() : null;
     },
-    limpar: async () => {
-      await remove(ref(db, 'sessao'));
+    listarSemanas: async () => {
+      const snap = await get(ref(db, 'sessoes'));
+      if (!snap.exists()) return [];
+      return Object.keys(snap.val()).sort().reverse();
     },
-    ouvirMudancas: (callback) => {
-      onValue(ref(db, 'sessao'), (snap) => {
+    limpar: async (key) => {
+      await remove(ref(db, 'sessoes/' + key));
+    },
+    ouvirMudancas: (key, callback) => {
+      return onValue(ref(db, 'sessoes/' + key), (snap) => {
         if (snap.exists()) callback(snap.val());
       });
+    },
+    carregarUsuarios: async () => {
+      const snap = await get(ref(db, 'usuarios'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarUsuarios: async (usuarios) => {
+      await set(ref(db, 'usuarios'), usuarios);
+    },
+    salvarComViagensUnicas: async (key, payload, viagensBase, prefixo = 'NXT') => {
+      const sessoesRef = ref(db, 'sessoes');
+      const result = await runTransaction(sessoesRef, sessoes => {
+        sessoes = sessoes || {};
+        const re = new RegExp('^' + prefixo + '-(\\d+)$');
+        let maiorSeq = 0;
+
+        Object.entries(sessoes).forEach(([sessaoKey, sessao]) => {
+          if (sessaoKey === key) return;
+          (sessao?.viagens || []).forEach(v => {
+            const m = String(v?.idViagem || '').match(re);
+            if (m) maiorSeq = Math.max(maiorSeq, parseInt(m[1], 10) || 0);
+          });
+        });
+
+        const viagensComId = viagensBase.map((v, idx) => ({
+          ...v,
+          idViagem: `${prefixo}-${String(maiorSeq + idx + 1).padStart(6, '0')}`
+        }));
+
+        sessoes[key] = { ...payload, viagens: viagensComId };
+        return sessoes;
+      });
+      if (!result.committed) throw new Error('Gravação das viagens não confirmada.');
+      return result.snapshot.val()?.[key] || { ...payload, viagens: viagensBase };
     }
   };
 
@@ -566,15 +1047,91 @@
 </head>
 <body>
 
+<!-- LOGIN -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg class="login-nexta-logo" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+        <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+      </svg>
+      <div class="login-sub-brand">Programação semanal inbound</div>
+    </div>
+
+    <div class="login-title">Acesso ao sistema</div>
+    <div class="login-desc">Insira suas credenciais para continuar.</div>
+
+    <div class="login-field">
+      <label>Login / E-mail</label>
+      <input id="login-usuario" type="text" placeholder="seu.login" autocomplete="username"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-senha').focus()">
+    </div>
+    <div class="login-field">
+      <label>Senha</label>
+      <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')fazerLogin()">
+    </div>
+    <button class="login-btn" onclick="fazerLogin()">Entrar</button>
+    <div class="login-error" id="login-erro"></div>
+  </div>
+</div>
+
+<!-- MODAL ADMIN: Usuários -->
+<div class="login-admin-modal" id="adminModal">
+  <div class="login-admin-panel">
+    <div class="login-admin-head">
+      <div class="login-admin-title">Gerenciar Usuários</div>
+      <button class="login-admin-close" onclick="fecharAdminModal()" title="Fechar">✕</button>
+    </div>
+
+    <div class="login-admin-subtitle">Usuários cadastrados no Firebase</div>
+    <div class="login-admin-users" id="adminUsersList"></div>
+
+    <hr class="login-admin-separator">
+
+    <div class="login-admin-subtitle">Adicionar usuário</div>
+    <div class="login-admin-row">
+      <input id="admin-new-login" placeholder="login ou e-mail" autocomplete="off">
+      <input id="admin-new-senha" type="password" placeholder="senha" autocomplete="off">
+    </div>
+    <div class="login-admin-row" style="grid-template-columns:1fr auto">
+      <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
+        <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
+      </label>
+    </div>
+    <div class="login-admin-actions">
+      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Adicionar</button>
+      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar</button>
+    </div>
+    <div class="login-admin-info" id="adminInfo"></div>
+  </div>
+</div>
+
 <header>
-  <div class="logo"><span class="logo-dot"></span> NEXTA · Portal de Cadências</div>
+  <div class="logo">
+    <svg class="nexta-logo-svg" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+      <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+    </svg>
+    <span class="logo-title">Programação Inbound</span>
+  </div>
   <div class="header-sub">Logística Inbound — Programação Semanal</div>
+  <div class="semana-selector" id="semanaSelectorWrap" style="display:none">
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semana:</span>
+    <select class="filter-select" id="semanaSelect" onchange="trocarSemana(this.value)" style="font-size:12px;font-weight:600;color:var(--accent);border-color:var(--accent)"></select>
+    <button class="btn-reset" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
+  </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
       <div class="save-dot"></div>
       <span id="saveText">Sem sessão salva</span>
     </div>
     <button class="btn-reset" onclick="limparSessao()" title="Apagar sessão salva e começar do zero">🗑 Limpar sessão</button>
+  </div>
+  <div class="header-user" id="headerUser" style="display:none">
+    <div class="header-user-avatar" id="headerUserAvatar">?</div>
+    <span class="header-user-name" id="headerUserName">Usuário</span>
+    <button class="header-logout" id="btnAdmin" onclick="abrirAdminModal()" title="Gerenciar usuários" style="display:none">⚙</button>
+    <button class="header-logout" onclick="fazerLogout()" title="Sair">✕</button>
   </div>
 </header>
 
@@ -656,27 +1213,10 @@
     <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
   </div>
 
-  <div class="alert alert-info">
-    💡 Sem arquivo? Use os <strong>dados de exemplo</strong> abaixo para explorar o protótipo.
-    <button class="btn btn-primary btn-sm" style="margin-left:12px" onclick="loadSampleData()">Carregar Dados de Exemplo</button>
-  </div>
-
   <div class="config-row">
     <div class="config-card">
       <div class="config-label">Capacidade padrão por caminhão (m³)</div>
       <input type="number" class="config-input" id="capCaminhao" value="60">
-    </div>
-    <div class="config-card">
-      <div class="config-label">Prefixo de ID das viagens</div>
-      <input type="text" class="config-input" id="prefixoId" value="VGM">
-    </div>
-    <div class="config-card">
-      <div class="config-label">Semana de referência</div>
-      <input type="text" class="config-input" id="semanaRef" value="S25/2026">
-    </div>
-    <div class="config-card">
-      <div class="config-label">Empresa</div>
-      <input type="text" class="config-input" id="empresa" value="NEXTA">
     </div>
   </div>
 
@@ -838,7 +1378,7 @@
           <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center;margin-left:2px">✕ Limpar</button>
         </div>
       </div>
-      <div id="bulkBar" style="display:none;padding:8px 18px;border-bottom:1px solid var(--border);background:rgba(0,180,216,0.07);flex-wrap:wrap;gap:10px;align-items:center">
+      <div id="bulkBar" style="display:none;padding:8px 18px;border-bottom:1px solid var(--border);background:rgba(141,200,48,0.12);flex-wrap:wrap;gap:10px;align-items:center">
         <span id="bulk-count" style="font-size:12px;font-weight:600;color:var(--accent)">0 selecionadas</span>
         <span class="filter-sep">Status:</span>
         <select class="filter-select" id="bulk-status" style="padding:5px 10px">
@@ -1095,6 +1635,208 @@
 </div>
 
 <script>
+// ── AUTENTICAÇÃO ──
+// Usuário semente para o primeiro acesso. Depois, o admin gerencia a lista em /usuarios no Firebase.
+// Hashes SHA-256, seguindo o padrão do roteirizador outbound.
+const USUARIOS_CONFIG = [
+  { login: 'matheus', senhaHash: 'e17f4767a0e2d2d46ec691de2e7a02cf55c6d5c40981367e9b27f9bba88f5b19', nome: 'Matheus Piva Sanches', admin: true },
+];
+
+const AUTH_STORAGE_KEY = 'nexta_inbound_auth_usuario';
+let _usuariosAtivos = [...USUARIOS_CONFIG];
+let _authUsuarioAtual = null;
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function normalizarUsuarios(raw) {
+  const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
+  return arr
+    .filter(u => u && u.login && u.senhaHash)
+    .map(u => ({
+      login: String(u.login).trim().toLowerCase(),
+      senhaHash: String(u.senhaHash),
+      nome: String(u.nome || u.login).trim(),
+      admin: !!u.admin,
+    }));
+}
+
+async function carregarUsuariosFirebase(mostrarFeedback = false) {
+  const info = document.getElementById('adminInfo');
+  if (!window._fb?.carregarUsuarios) {
+    if (mostrarFeedback && info) info.textContent = 'Firebase ainda não está pronto.';
+    return _usuariosAtivos;
+  }
+  try {
+    const raw = await window._fb.carregarUsuarios();
+    const usuarios = normalizarUsuarios(raw);
+    if (usuarios.length) {
+      _usuariosAtivos = usuarios;
+      if (mostrarFeedback && info) info.textContent = `${usuarios.length} usuário(s) carregado(s) do Firebase.`;
+    } else {
+      _usuariosAtivos = [...USUARIOS_CONFIG];
+      await salvarUsuariosFirebase();
+      if (mostrarFeedback && info) info.textContent = 'Usuários iniciais enviados ao Firebase.';
+    }
+    renderAdminUsuarios();
+    validarSessaoAtual();
+  } catch (e) {
+    if (mostrarFeedback && info) info.textContent = 'Erro ao carregar usuários: ' + e.message;
+  }
+  return _usuariosAtivos;
+}
+
+async function salvarUsuariosFirebase() {
+  if (!window._fb?.salvarUsuarios) return false;
+  await window._fb.salvarUsuarios(_usuariosAtivos);
+  return true;
+}
+
+async function fazerLogin() {
+  const login = document.getElementById('login-usuario').value.trim().toLowerCase();
+  const senha = document.getElementById('login-senha').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.classList.remove('visible');
+
+  if (!login || !senha) {
+    erroEl.textContent = 'Preencha o login e a senha.';
+    erroEl.classList.add('visible');
+    return;
+  }
+
+  try {
+    if (window._fb?.carregarUsuarios) await carregarUsuariosFirebase();
+    const hash = await sha256(senha);
+    const usuario = _usuariosAtivos.find(u => u.login === login && u.senhaHash === hash);
+    if (!usuario) {
+      erroEl.textContent = 'Usuário ou senha incorretos.';
+      erroEl.classList.add('visible');
+      document.getElementById('login-senha').value = '';
+      document.getElementById('login-senha').focus();
+      return;
+    }
+    const sessao = { login: usuario.login, nome: usuario.nome || usuario.login, admin: !!usuario.admin };
+    sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
+    aplicarSessaoUsuario(sessao);
+  } catch (e) {
+    erroEl.textContent = 'Erro ao autenticar: ' + e.message;
+    erroEl.classList.add('visible');
+  }
+}
+
+function aplicarSessaoUsuario(usuario) {
+  _authUsuarioAtual = usuario;
+  document.getElementById('login-overlay').style.display = 'none';
+  const nome = usuario.nome || usuario.login;
+  const iniciais = nome.split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?';
+  document.getElementById('headerUser').style.display = 'flex';
+  document.getElementById('headerUserAvatar').textContent = iniciais;
+  document.getElementById('headerUserName').textContent = nome;
+  document.getElementById('btnAdmin').style.display = usuario.admin ? '' : 'none';
+}
+
+function fazerLogout() {
+  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  _authUsuarioAtual = null;
+  document.getElementById('headerUser').style.display = 'none';
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('login-usuario').value = '';
+  document.getElementById('login-senha').value = '';
+  document.getElementById('login-erro').classList.remove('visible');
+  document.getElementById('login-usuario').focus();
+}
+
+function restaurarSessaoUsuario() {
+  const sessao = sessionStorage.getItem(AUTH_STORAGE_KEY);
+  if (!sessao) return;
+  try {
+    const usuario = JSON.parse(sessao);
+    aplicarSessaoUsuario(usuario);
+  } catch(e) {
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+}
+
+function validarSessaoAtual() {
+  if (!_authUsuarioAtual) return;
+  const usuario = _usuariosAtivos.find(u => u.login === _authUsuarioAtual.login);
+  if (!usuario) {
+    fazerLogout();
+    return;
+  }
+  aplicarSessaoUsuario({ login: usuario.login, nome: usuario.nome || usuario.login, admin: !!usuario.admin });
+}
+
+function abrirAdminModal() {
+  if (!_authUsuarioAtual?.admin) return;
+  document.getElementById('adminModal').classList.add('open');
+  document.getElementById('adminInfo').textContent = '';
+  renderAdminUsuarios();
+}
+
+function fecharAdminModal() {
+  document.getElementById('adminModal').classList.remove('open');
+}
+
+function renderAdminUsuarios() {
+  const list = document.getElementById('adminUsersList');
+  if (!list) return;
+  if (!_usuariosAtivos.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhum usuário cadastrado.</div>';
+    return;
+  }
+  list.innerHTML = _usuariosAtivos.map(u => `
+    <div class="login-admin-user">
+      <div>
+        <strong>${esc(u.nome || u.login)}${u.admin ? ' <span class="badge badge-accent">admin</span>' : ''}</strong>
+        <span>${esc(u.login)}</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.login)}')" ${u.login === _authUsuarioAtual?.login ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
+    </div>
+  `).join('');
+}
+
+async function adminAdicionarUsuario() {
+  if (!_authUsuarioAtual?.admin) return;
+  const info = document.getElementById('adminInfo');
+  const login = document.getElementById('admin-new-login').value.trim().toLowerCase();
+  const senha = document.getElementById('admin-new-senha').value;
+  const nome = document.getElementById('admin-new-nome').value.trim();
+  const admin = document.getElementById('admin-new-admin').checked;
+  if (!login || !senha) {
+    info.textContent = 'Preencha o login e a senha.';
+    return;
+  }
+  if (_usuariosAtivos.some(u => u.login === login)) {
+    info.textContent = `Login "${login}" já existe.`;
+    return;
+  }
+  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin });
+  const salvo = await salvarUsuariosFirebase();
+  document.getElementById('admin-new-login').value = '';
+  document.getElementById('admin-new-senha').value = '';
+  document.getElementById('admin-new-nome').value = '';
+  document.getElementById('admin-new-admin').checked = false;
+  renderAdminUsuarios();
+  info.textContent = salvo
+    ? `Usuário "${login}" salvo no Firebase.`
+    : `Usuário "${login}" criado nesta sessão. Recarregue quando o Firebase estiver pronto para salvar no banco.`;
+}
+
+async function adminRemoverUsuario(login) {
+  if (!_authUsuarioAtual?.admin) return;
+  if (login === _authUsuarioAtual.login) return;
+  if (!confirm(`Remover o usuário "${login}"?`)) return;
+  _usuariosAtivos = _usuariosAtivos.filter(u => u.login !== login);
+  const salvo = await salvarUsuariosFirebase();
+  renderAdminUsuarios();
+  document.getElementById('adminInfo').textContent = salvo
+    ? `Usuário "${login}" removido do Firebase.`
+    : `Usuário "${login}" removido nesta sessão. Firebase ainda não está pronto.`;
+}
+
 // ── MULTISELECT ──
 class MultiSelect {
   constructor(containerId, placeholder, onChange) {
@@ -1159,10 +1901,10 @@ class MultiSelect {
       div.style.cssText = 'padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;transition:background 0.1s';
       div.innerHTML = `
         <span style="width:14px;height:14px;border:1.5px solid ${checked?'var(--accent)':'var(--border)'};border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${checked?'var(--accent)':'transparent'}">
-          ${checked?'<span style="color:#0F1923;font-size:9px;font-weight:800">✓</span>':''}
+          ${checked?'<span style="color:#1A2A0D;font-size:9px;font-weight:800">✓</span>':''}
         </span>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(opt)}">${esc(opt)}</span>`;
-      div.addEventListener('mouseenter', () => div.style.background = 'rgba(0,180,216,0.08)');
+      div.addEventListener('mouseenter', () => div.style.background = 'rgba(141,200,48,0.12)');
       div.addEventListener('mouseleave', () => div.style.background = '');
       div.addEventListener('click', e => { e.stopPropagation(); this._toggle(opt); });
       wrap.appendChild(div);
@@ -1190,7 +1932,7 @@ function editarGrupo(idxs) {
     sec.style.cssText = `padding:14px 0;${i < idxs.length - 1 ? 'border-bottom:1px solid var(--border)' : ''}`;
     sec.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">
-        Pedido ${i+1} — <span style="color:var(--accent);font-family:'Space Grotesk',sans-serif">${esc(c.id)}</span>
+        Pedido ${i+1} — <span style="color:var(--accent);font-family:var(--font-cond)">${esc(c.id)}</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div><div class="modal-label">ID Pedido</div><input class="config-input" id="ge-id-${i}" value="${esc(c.id)}"></div>
@@ -1294,6 +2036,8 @@ function aplicarEmLote() {
 // ── STATE ──
 let cadencias = [];
 let viagens = [];
+let semanaAtiva = null;
+window._fbUnsub = null;
 let activeFilter = 'todos';
 let activeTab = 0;
 let editingIdx = null;
@@ -1310,9 +2054,6 @@ function salvarSessao(silencioso = false) {
     viagens,
     config: {
       capCaminhao: document.getElementById('capCaminhao').value,
-      prefixoId: document.getElementById('prefixoId').value,
-      semanaRef: document.getElementById('semanaRef').value,
-      empresa: document.getElementById('empresa').value,
     },
     savedAt: new Date().toISOString()
   };
@@ -1322,8 +2063,9 @@ function salvarSessao(silencioso = false) {
     if (!silencioso) mostrarStatus('saved', 'Salvo localmente');
     return;
   }
+  if (!semanaAtiva) return;
   mostrarStatus('saving', 'Salvando...');
-  window._fb.salvar(payload)
+  window._fb.salvar(semanaAtiva, payload)
     .then(() => {
       if (!silencioso) mostrarStatusSalvo();
       else mostrarStatusSalvo();
@@ -1337,9 +2079,6 @@ function aplicarPayload(payload) {
   viagens   = payload.viagens   || [];
   if (payload.config) {
     document.getElementById('capCaminhao').value = payload.config.capCaminhao || 60;
-    document.getElementById('prefixoId').value   = payload.config.prefixoId   || 'VGM';
-    document.getElementById('semanaRef').value   = payload.config.semanaRef   || 'S25/2026';
-    document.getElementById('empresa').value     = payload.config.empresa     || 'NEXTA';
   }
   const dt = payload.savedAt ? new Date(payload.savedAt) : null;
   const label = dt ? formatRelativo(dt) : 'anteriormente';
@@ -1353,21 +2092,25 @@ function carregarSessao() {
 }
 
 function limparSessao() {
-  if (!confirm('Tem certeza? Isso apagará a sessão no Firebase e todos os dados atuais.')) return;
-  const limpar = () => {
+  if (!semanaAtiva) return;
+  if (!confirm('Tem certeza? Isso apagará esta semana permanentemente.')) return;
+  const executar = () => {
+    semanaAtiva = null;
     cadencias = [];
     viagens = [];
     document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('semanaSelectorWrap').style.display = 'none';
     updatePipeline();
     renderViagensTable();
     switchTab(0);
-    mostrarStatus('', 'Sessão apagada');
+    mostrarStatus('', 'Semana apagada');
+    carregarListaSemanas();
   };
   if (window._fb) {
-    window._fb.limpar().then(limpar).catch(limpar);
+    window._fb.limpar(semanaAtiva).then(executar).catch(executar);
   } else {
     localStorage.removeItem(STORAGE_KEY);
-    limpar();
+    executar();
   }
 }
 
@@ -1512,26 +2255,26 @@ function renderPreview() {
       : `${esc(g.ids[0])} <span class="badge badge-accent" title="${esc(g.ids.join(', '))}">+${g.ids.length - 1}</span>`;
 
     const acoesHtml = g.originalIdxs.length === 1
-      ? `<div style="display:flex;gap:5px">
+      ? `<div class="preview-actions">
            <button class="btn btn-secondary btn-sm" onclick="editarLinha(${gi},${g.originalIdxs[0]})">✏ Editar</button>
            <button class="btn btn-danger btn-sm" onclick="excluirLinha(${g.originalIdxs[0]})">✕</button>
          </div>`
-      : `<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">
+      : `<div class="preview-actions" style="flex-direction:column;align-items:flex-start;gap:4px">
            <button class="btn btn-secondary btn-sm" onclick="editarGrupo([${g.originalIdxs.join(',')}])">✏ Editar</button>
-           <span style="font-size:9px;color:var(--text-muted)">${g.ids.length} pedidos agrupados</span>
+           <span class="preview-actions-note">${g.ids.length} pedidos agrupados</span>
          </div>`;
 
     tr.innerHTML = `
-      <td class="cell-truncate-xs" style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent)" title="${esc(g.ids.join(', '))}">${idDisplay}</td>
+      <td class="cell-truncate-xs cell-preview-id" title="${esc(g.ids.join(', '))}">${idDisplay}</td>
       <td>${prodTag(g.produto)}</td>
       <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : ''))}">${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}</td>
       <td class="cell-truncate" title="${esc(g.destino)}">${esc(g.destino)}</td>
-      <td style="white-space:nowrap;line-height:1.7;width:80px">
-        <div style="font-size:10px;color:var(--text-muted)">↑ ${fmtShort(g.dtCarreg)}</div>
-        <div style="font-size:11px;font-weight:600">↓ ${fmtShort(g.dtDesc)}</div>
+      <td class="cell-periodo">
+        <div class="date-start">↑ ${fmtShort(g.dtCarreg)}</div>
+        <div class="date-end">↓ ${fmtShort(g.dtDesc)}</div>
       </td>
-      <td style="font-family:'Space Grotesk',sans-serif">${g.volume}</td>
-      <td><span class="badge badge-warn">÷ ${n}</span></td>
+      <td class="cell-volume">${g.volume}</td>
+      <td class="cell-caminhoes"><span class="badge badge-warn">÷ ${n}</span></td>
       <td>${acoesHtml}</td>
     `;
     tbody.appendChild(tr);
@@ -1641,41 +2384,74 @@ function prodTag(p) {
 }
 
 // ── GERAR VIAGENS ──
-function gerarViagens() {
+const PREFIXO_VIAGEM = 'NXT';
+
+async function gerarViagens() {
+  if (!cadencias.length) return alert('Importe uma cadência antes de gerar viagens.');
   const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
-  const pref = document.getElementById('prefixoId').value || 'VGM';
-  viagens = [];
-  let seq = 1;
+  const grupos = agruparCadencias(cadencias);
+  const totalViagens = grupos.reduce((total, g) => total + Math.ceil(g.volume / cap), 0);
+  if (!totalViagens) return alert('Nenhuma viagem para gerar.');
 
-  agruparCadencias(cadencias).forEach(g => {
-    const n = Math.ceil(g.volume / cap);
-    const volPorViagem = +(g.volume / n).toFixed(1);
-    const cadOrigem = g.ids.join(' / ');
-    for (let i = 1; i <= n; i++) {
-      viagens.push({
-        idViagem: `${pref}-${String(seq).padStart(4,'0')}`,
-        idCadencia: cadOrigem + (n > 1 ? `-V${i}` : ''),
-        cadenciaOrigem: cadOrigem,
-        produto: g.produto,
-        origem: g.origem,
-        base: g.base || '',
-        destino: g.destino,
-        dtCarreg: g.dtCarreg,
-        dtDesc: g.dtDesc,
-        volume: volPorViagem,
-        status: 'Backlog',
-        transportador: '',
-        placa: '',
-        obs: ''
-      });
-      seq++;
+  const btn = document.querySelector('button[onclick="gerarViagens()"]');
+  const oldText = btn?.textContent;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Gerando IDs...';
+  }
+
+  try {
+    if (!semanaAtiva) throw new Error('Crie ou selecione uma semana antes de gerar viagens.');
+    if (!window._fb?.salvarComViagensUnicas) throw new Error('Firebase indisponível para gerar IDs únicos.');
+
+    const novasViagens = [];
+
+    grupos.forEach(g => {
+      const n = Math.ceil(g.volume / cap);
+      const volPorViagem = +(g.volume / n).toFixed(1);
+      const cadOrigem = g.ids.join(' / ');
+      for (let i = 1; i <= n; i++) {
+        novasViagens.push({
+          idCadencia: cadOrigem + (n > 1 ? `-V${i}` : ''),
+          cadenciaOrigem: cadOrigem,
+          produto: g.produto,
+          origem: g.origem,
+          base: g.base || '',
+          destino: g.destino,
+          dtCarreg: g.dtCarreg,
+          dtDesc: g.dtDesc,
+          volume: volPorViagem,
+          status: 'Backlog',
+          transportador: '',
+          placa: '',
+          obs: ''
+        });
+      }
+    });
+
+    mostrarStatus('saving', 'Gravando viagens com IDs únicos...');
+    const payload = {
+      cadencias,
+      viagens: [],
+      config: {
+        capCaminhao: document.getElementById('capCaminhao').value,
+      },
+      savedAt: new Date().toISOString()
+    };
+    const salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, novasViagens, PREFIXO_VIAGEM);
+    aplicarPayload(salvo);
+
+    updatePipeline();
+    mostrarStatusSalvo();
+    switchTab(1);
+  } catch (e) {
+    alert('Não foi possível reservar IDs únicos para as viagens: ' + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = oldText || '⚡ Quebrar em Viagens';
     }
-  });
-
-  updatePipeline();
-  salvarSessao(true);
-  mostrarStatusSalvo();
-  switchTab(1);
+  }
 }
 
 // ── KPI CARDS ──
@@ -1798,14 +2574,14 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent);font-weight:600;white-space:nowrap">${v.idViagem}</td>
-        <td class="cell-truncate-sm" style="font-size:10px;color:var(--text-muted)" title="${esc(v.cadenciaOrigem)}">${esc(v.cadenciaOrigem)}</td>
+        <td class="cell-id-viagem">${v.idViagem}</td>
+        <td class="cell-truncate-sm cell-pedido-mis" title="${esc(v.cadenciaOrigem)}">${esc(v.cadenciaOrigem)}</td>
         <td>${prodTag(v.produto)}</td>
         <td class="cell-truncate" title="${esc(origemDisplay)}">${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
         <td class="cell-truncate" title="${esc(v.destino)}">${esc(v.destino)}</td>
-        <td style="white-space:nowrap;line-height:1.7;width:80px">
-          <div style="font-size:10px;color:var(--text-muted)">↑ ${fmtShort(v.dtCarreg)}</div>
-          <div style="font-size:11px;font-weight:600">↓ ${fmtShort(v.dtDesc)}</div>
+        <td class="cell-periodo">
+          <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
+          <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
         </td>
         <td>${v.volume}</td>
         <td><span class="status ${statusClass}">${v.status}</span></td>
@@ -1983,7 +2759,7 @@ function renderExport() {
   prontas.forEach(v => {
     tbody.innerHTML += `
       <tr>
-        <td style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent);font-weight:600">${v.idViagem}</td>
+        <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
         <td>${prodTag(v.produto)}</td>
         <td>${v.origem}${v.base ? `<span style="color:var(--text-muted)"> (${v.base})</span>` : ''}</td>
@@ -2129,9 +2905,164 @@ document.getElementById('modalNovaCad').addEventListener('click', function(e) {
 document.getElementById('modalGrupo').addEventListener('click', function(e) {
   if (e.target === this) fecharModalGrupo();
 });
+document.getElementById('adminModal').addEventListener('click', function(e) {
+  if (e.target === this) fecharAdminModal();
+});
 
 // ── INIT: restaurar sessão ao abrir ──
+
+// ── HISTÓRICO DE SEMANAS ──
+function formatarKeyParaLabel(key) {
+  try {
+    const [ini, fim] = key.split('_');
+    const [ay, am, ad] = ini.split('-');
+    const [by, bm, bd] = fim.split('-');
+    return ad+'/'+am+(ay!==by?'/'+ay:'')+' a '+bd+'/'+bm+'/'+by;
+  } catch(e) { return key; }
+}
+
+function gerarKeySemana(inicio, fim) {
+  const toISO = (d) => { const [dd,mm,yyyy]=d.split('/'); return yyyy+'-'+mm+'-'+dd; };
+  return toISO(inicio)+'_'+toISO(fim);
+}
+
+async function carregarListaSemanas() {
+  if (!window._fb) return;
+  const semanas = await window._fb.listarSemanas();
+  const sel = document.getElementById('semanaSelect');
+  sel.innerHTML = '';
+  semanas.forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = formatarKeyParaLabel(key);
+    if (key === semanaAtiva) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  const wrap = document.getElementById('semanaSelectorWrap');
+  wrap.style.display = semanas.length > 0 ? 'flex' : 'none';
+}
+
+function trocarSemana(key) {
+  if (!key || key === semanaAtiva) return;
+  semanaAtiva = key;
+  if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
+  window._fb.carregar(key).then(payload => {
+    if (payload) {
+      aplicarPayload(payload);
+      if (cadencias.length > 0) renderPreview();
+      updatePipeline();
+      if (viagens.length > 0) switchTab(1); else switchTab(0);
+    }
+  });
+  configurarListenerSemana(key);
+  mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(key));
+}
+
+function configurarListenerSemana(key) {
+  if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
+  let primeira = true;
+  window._fbUnsub = window._fb.ouvirMudancas(key, (payload) => {
+    if (primeira) { primeira = false; return; }
+    aplicarPayload(payload);
+    if (activeTab === 0 && cadencias.length > 0) renderPreview();
+    if (activeTab === 1) renderViagensTable();
+    if (activeTab === 2) renderExport();
+    updatePipeline();
+    mostrarStatus('saved', '🔄 Atualizado por outro usuário');
+  });
+}
+
+function novaSemana() {
+  const hoje = new Date();
+  const fmt = (d) => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+  const fd = new Date(hoje); fd.setDate(hoje.getDate()+6);
+  const overlay = document.createElement('div');
+  overlay.id = 'novaSemanaOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:420px;max-width:95vw">
+      <div style="font-family:var(--font-cond);font-size:20px;font-weight:700;margin-bottom:4px">Nova Semana de Cadência</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Defina o período — pode ser segunda a sexta, segunda a domingo, etc.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Início</div>
+          <input id="ns-ini" value="${fmt(hoje)}" placeholder="DD/MM/AAAA"
+            style="width:100%;background:var(--panel);border:1.5px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 10px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Fim</div>
+          <input id="ns-fim" value="${fmt(fd)}" placeholder="DD/MM/AAAA"
+            style="width:100%;background:var(--panel);border:1.5px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 10px;outline:none;box-sizing:border-box">
+        </div>
+      </div>
+      <div id="ns-erro" style="font-size:12px;color:var(--danger);min-height:18px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('novaSemanaOverlay')?.remove()"
+          style="background:var(--surface);border:1.5px solid var(--border);border-radius:7px;color:var(--text-dim);font-family:var(--font-cond);font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:8px 16px;cursor:pointer">
+          Cancelar
+        </button>
+        <button onclick="confirmarNovaSemana()"
+          style="background:linear-gradient(135deg,var(--accent),var(--accent-hover));border:none;border-radius:7px;color:#fff;font-family:var(--font-cond);font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:8px 16px;cursor:pointer">
+          Criar semana
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) document.getElementById('novaSemanaOverlay')?.remove(); });
+}
+
+function confirmarNovaSemana() {
+  const ini = document.getElementById('ns-ini').value.trim();
+  const fim = document.getElementById('ns-fim').value.trim();
+  const erro = document.getElementById('ns-erro');
+  const re = /^\d{2}\/\d{2}\/\d{4}$/;
+  if (!re.test(ini) || !re.test(fim)) {
+    erro.textContent = 'Use o formato DD/MM/AAAA em ambos os campos.'; return;
+  }
+  const key = gerarKeySemana(ini, fim);
+  cadencias = []; viagens = []; semanaAtiva = key;
+  document.getElementById('previewSection').style.display = 'none';
+  updatePipeline(); renderViagensTable(); switchTab(0);
+  salvarSessao(true);
+  setTimeout(() => {
+    carregarListaSemanas().then(() => {
+      document.getElementById('semanaSelect').value = key;
+      configurarListenerSemana(key);
+    });
+  }, 600);
+  document.getElementById('novaSemanaOverlay')?.remove();
+  mostrarStatus('saved', 'Semana criada: '+formatarKeyParaLabel(key));
+}
+
+window.addEventListener('firebase-ready', async () => {
+  await carregarUsuariosFirebase();
+  restaurarSessaoUsuario();
+
+  const semanas = await window._fb.listarSemanas();
+  if (semanas.length === 0) {
+    mostrarStatus('', 'Pronto — crie uma nova semana para começar');
+    setTimeout(novaSemana, 300);
+    return;
+  }
+  semanaAtiva = semanas[0];
+  await carregarListaSemanas();
+  const payload = await window._fb.carregar(semanaAtiva);
+  if (payload) {
+    aplicarPayload(payload);
+    if (cadencias.length > 0) renderPreview();
+    updatePipeline();
+    if (viagens.length > 0) switchTab(1);
+  }
+  mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
+  configurarListenerSemana(semanaAtiva);
+});
+
 window.addEventListener('DOMContentLoaded', () => {
+  restaurarSessaoUsuario();
+  if (!sessionStorage.getItem(AUTH_STORAGE_KEY)) {
+    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
+  }
+
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
   msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
@@ -2140,15 +3071,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
-  const restaurou = carregarSessao();
-  if (restaurou) {
-    if (cadencias.length > 0) renderPreview();
-    updatePipeline();
-    if (viagens.length > 0) {
-      // vai direto para viagens se já foram geradas
-      switchTab(1);
-    }
-  }
+  mostrarStatus('saving', 'Conectando ao Firebase...');
 });
 </script>
 </body>
