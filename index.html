@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal de Cadências — Logística Inbound</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0F1923;
+    --surface: #162030;
+    --panel: #1A2C42;
+    --border: #243650;
+    --accent: #00B4D8;
+    --accent-dim: rgba(0,180,216,0.12);
+    --accent2: #F0A500;
+    --accent2-dim: rgba(240,165,0,0.12);
+    --success: #2ECC71;
+    --success-dim: rgba(46,204,113,0.12);
+    --danger: #E74C3C;
+    --danger-dim: rgba(231,76,60,0.12);
+    --text: #E8EDF2;
+    --text-dim: #7A96B0;
+    --text-muted: #4A6580;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 60px;
+  }
+  .logo {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .header-sub { font-size: 12px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 20px; }
+  .save-indicator {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .save-status {
+    font-size: 11px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 5px;
+    transition: color 0.3s;
+  }
+  .save-status.saved { color: var(--success); }
+  .save-status.saving { color: var(--accent2); }
+  .save-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; flex-shrink: 0;
+  }
+  .btn-reset {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.2s;
+  }
+  .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── PIPELINE TRACKER ── */
+  .pipeline {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .pipe-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    position: relative;
+  }
+  .pipe-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 80px;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 1px;
+    background: var(--border);
+  }
+  .pipe-step.active::after { background: var(--accent); }
+  .pipe-step.done::after { background: var(--success); }
+  .pipe-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .pipe-step.active .pipe-icon { border-color: var(--accent); background: var(--accent-dim); }
+  .pipe-step.done .pipe-icon { border-color: var(--success); background: var(--success-dim); }
+  .pipe-step.cancel .pipe-icon { border-color: var(--danger); background: var(--danger-dim); }
+  .pipe-label { font-size: 10px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+  .pipe-step.active .pipe-label { color: var(--accent); }
+  .pipe-step.done .pipe-label { color: var(--success); }
+  .pipe-step.cancel .pipe-label { color: var(--danger); }
+  .pipe-count { font-size: 16px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--text); }
+  .pipe-step.active .pipe-count { color: var(--accent); }
+  .pipe-step.done .pipe-count { color: var(--success); }
+  .pipe-step.cancel .pipe-count { color: var(--danger); }
+
+  /* ── TABS ── */
+  .tabs-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    gap: 0;
+  }
+  .tab {
+    padding: 14px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── MAIN ── */
+  .main { padding: 28px 32px; max-width: 1400px; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── SECTION HEADERS ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px; font-weight: 600;
+  }
+  .section-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: var(--surface);
+    margin-bottom: 24px;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-text { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  .upload-hint { font-size: 12px; color: var(--text-muted); }
+  #fileInput { display: none; }
+
+  /* ── CONFIG PANEL ── */
+  .config-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .config-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .config-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .config-input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .config-input:focus { border-color: var(--accent); }
+
+  /* ── PREVIEW TABLE ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .table-toolbar {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .table-title { font-size: 13px; font-weight: 600; }
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+  .badge-warn { background: var(--accent2-dim); color: var(--accent2); }
+  .badge-success { background: var(--success-dim); color: var(--success); }
+  .badge-danger { background: var(--danger-dim); color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: var(--panel);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  td {
+    padding: 10px 14px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(36,54,80,0.6);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(0,180,216,0.04); }
+
+  .product-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .prod-diesel { background: rgba(0,180,216,0.15); color: var(--accent); }
+  .prod-biodiesel { background: rgba(46,204,113,0.15); color: var(--success); }
+  .prod-hidratado { background: rgba(240,165,0,0.15); color: var(--accent2); }
+  .prod-anidro { background: rgba(155,89,182,0.15); color: #C39BD3; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 7px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #0F1923; }
+  .btn-primary:hover { background: #00C8F0; }
+  .btn-secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-success { background: var(--success); color: #0F1923; }
+  .btn-success:hover { background: #27AE60; }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
+  .btn-danger:hover { background: var(--danger); color: white; }
+
+  /* ── STATUS CHIPS ── */
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; }
+  .status::before { content:''; width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .status-backlog { color: var(--text-muted); }
+  .status-backlog::before { background: var(--text-muted); }
+  .status-ofertado { color: var(--accent2); }
+  .status-ofertado::before { background: var(--accent2); }
+  .status-aceito { color: var(--success); }
+  .status-aceito::before { background: var(--success); }
+  .status-placa { color: var(--accent); }
+  .status-placa::before { background: var(--accent); }
+  .status-cancelado { color: var(--danger); }
+  .status-cancelado::before { background: var(--danger); }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    width: 480px;
+    max-width: 95vw;
+  }
+  .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+  .modal-field { margin-bottom: 16px; }
+  .modal-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+  .info-row { display: flex; gap: 20px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .info-item { flex: 1; }
+  .info-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 3px; }
+  .info-val { font-size: 13px; font-weight: 500; }
+
+  /* ── STAT CARDS ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 10px; }
+  .stats-row:last-of-type { margin-bottom: 24px; }
+  .kpi-group-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.7px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 7px; margin-top: 4px; padding-left: 2px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color 0.2s;
+  }
+  .stat-card.c-danger { border-color: rgba(231,76,60,0.25); }
+  .stat-card.c-danger.has-alert { border-color: rgba(231,76,60,0.55); background: rgba(231,76,60,0.04); }
+  .stat-card.c-warn.has-alert { border-color: rgba(243,156,18,0.55); background: rgba(243,156,18,0.04); }
+  .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .stat-sub  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+  .stat-val { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; }
+  .stat-card.c-accent  .stat-val { color: var(--accent); }
+  .stat-card.c-warn    .stat-val { color: var(--accent2); }
+  .stat-card.c-success .stat-val { color: var(--success); }
+  .stat-card.c-muted   .stat-val { color: var(--text-muted); }
+  .stat-card.c-danger  .stat-val { color: var(--danger); }
+
+  /* ── EXPORT PANEL ── */
+  .export-panel {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    margin-top: 20px;
+  }
+  .export-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .export-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .export-card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6; }
+  .field-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  .field-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-dim);
+  }
+  .field-item::before { content:'→'; color: var(--accent); font-size: 11px; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center; padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-text { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-dim); }
+  .empty-sub { font-size: 12px; }
+
+  /* ── ALERT ── */
+  .alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-bottom: 16px;
+    border: 1px solid;
+  }
+  .alert-info { background: var(--accent-dim); border-color: rgba(0,180,216,0.3); color: var(--accent); }
+  .alert-warn { background: var(--accent2-dim); border-color: rgba(240,165,0,0.3); color: var(--accent2); }
+
+  .filter-row { display: flex; gap: 10px; align-items: center; }
+  .filter-select {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+
+  /* filter bar */
+  .filter-bar {
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(26,44,66,0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .filter-row-dates { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  .filter-input {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .filter-input:focus { border-color: var(--accent); }
+  .filter-input::placeholder { color: var(--text-muted); }
+  .filter-input.fi-wide { width: 240px; }
+  .filter-input.fi-date {
+    width: 120px;
+    color-scheme: dark;
+  }
+  .filter-sep { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+  .placa-input {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    padding: 5px 6px;
+    width: 82px;
+    outline: none;
+    text-transform: uppercase;
+  }
+  .placa-input:focus { border-color: var(--success); }
+  .placa-input::placeholder { color: var(--text-muted); text-transform: none; }
+
+  .scrollable { max-height: 420px; overflow-y: auto; overflow-x: auto; }
+  .scrollable::-webkit-scrollbar { width: 5px; height: 5px; }
+  .scrollable::-webkit-scrollbar-track { background: transparent; }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* sticky action column */
+  th.col-acao {
+    position: sticky; right: 0; z-index: 2;
+    background: var(--panel);
+    box-shadow: -3px 0 6px rgba(0,0,0,0.35);
+    width: 72px; min-width: 72px;
+  }
+  td.col-acao {
+    position: sticky; right: 0; z-index: 1;
+    background: var(--surface);
+    box-shadow: -3px 0 6px rgba(0,0,0,0.35);
+    width: 72px; min-width: 72px;
+  }
+  tr:hover td.col-acao { background: #1e2e40; }
+
+  /* truncate long text cells */
+  .cell-truncate {
+    max-width: 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-truncate-sm {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-truncate-xs {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600;
+    background: var(--panel); color: var(--text-muted);
+    cursor: pointer; border: 1px solid var(--border); transition: all 0.15s;
+  }
+  .chip.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+  tr.row-selected td { background: rgba(0,180,216,0.07); }
+  tr.row-selected td.col-acao { background: #1a2e44 !important; }
+  tr:hover.row-selected td.col-acao { background: #1e3348 !important; }
+</style>
+
+<!-- ── FIREBASE ── -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, set, get, onValue, remove }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  // ══════════════════════════════════════════════════
+  //  🔧 COLE AQUI SUA CONFIG DO FIREBASE (passo 3)
+  // ══════════════════════════════════════════════════
+  const firebaseConfig = {
+    apiKey:            "AIzaSyDdW1Gy963iDU7MObkbx22CieF13OKx7zA",
+    authDomain:        "nexta-inbound.firebaseapp.com",
+    databaseURL:       "https://nexta-inbound-default-rtdb.firebaseio.com",
+    projectId:         "nexta-inbound",
+    storageBucket:     "nexta-inbound.firebasestorage.app",
+    messagingSenderId: "831509614212",
+    appId:             "1:831509614212:web:4ae82f7c624f754ed83cd1"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  // Expõe funções ao escopo global para o resto do HTML
+  window._fb = {
+    salvar: async (payload) => {
+      await set(ref(db, 'sessao'), payload);
+    },
+    carregar: async () => {
+      const snap = await get(ref(db, 'sessao'));
+      return snap.exists() ? snap.val() : null;
+    },
+    limpar: async () => {
+      await remove(ref(db, 'sessao'));
+    },
+    ouvirMudancas: (callback) => {
+      onValue(ref(db, 'sessao'), (snap) => {
+        if (snap.exists()) callback(snap.val());
+      });
+    }
+  };
+
+  // Sinaliza que o Firebase está pronto
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="logo-dot"></span> NEXTA · Portal de Cadências</div>
+  <div class="header-sub">Logística Inbound — Programação Semanal</div>
+  <div class="save-indicator">
+    <div class="save-status" id="saveStatus">
+      <div class="save-dot"></div>
+      <span id="saveText">Sem sessão salva</span>
+    </div>
+    <button class="btn-reset" onclick="limparSessao()" title="Apagar sessão salva e começar do zero">🗑 Limpar sessão</button>
+  </div>
+</header>
+
+<!-- PIPELINE -->
+<div class="pipeline" id="pipeline">
+  <div class="pipe-step" id="pipe-1">
+    <div class="pipe-icon">📥</div>
+    <div>
+      <div class="pipe-count" id="cnt-cadencias">0</div>
+      <div class="pipe-label">Cadências</div>
+    </div>
+  </div>
+  <div class="pipe-step" id="pipe-2">
+    <div class="pipe-icon">🚛</div>
+    <div>
+      <div class="pipe-count" id="cnt-viagens">0</div>
+      <div class="pipe-label">Viagens</div>
+    </div>
+  </div>
+  <div class="pipe-step" id="pipe-3">
+    <div class="pipe-icon">📋</div>
+    <div>
+      <div class="pipe-count" id="cnt-backlog">0</div>
+      <div class="pipe-label">Backlog</div>
+    </div>
+  </div>
+  <div class="pipe-step" id="pipe-4">
+    <div class="pipe-icon">📤</div>
+    <div>
+      <div class="pipe-count" id="cnt-ofertadas">0</div>
+      <div class="pipe-label">Ofertado</div>
+    </div>
+  </div>
+  <div class="pipe-step" id="pipe-5">
+    <div class="pipe-icon">🤝</div>
+    <div>
+      <div class="pipe-count" id="cnt-aceitas">0</div>
+      <div class="pipe-label">Aceito</div>
+    </div>
+  </div>
+  <div class="pipe-step" id="pipe-6">
+    <div class="pipe-icon">🚗</div>
+    <div>
+      <div class="pipe-count" id="cnt-monitoramento">0</div>
+      <div class="pipe-label">Placa Enviada</div>
+    </div>
+  </div>
+  <div class="pipe-step cancel" id="pipe-7">
+    <div class="pipe-icon">✕</div>
+    <div>
+      <div class="pipe-count" id="cnt-canceladas">0</div>
+      <div class="pipe-label">Cancelado</div>
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-bar">
+  <div class="tab active" onclick="switchTab(0)">① Importar Cadência</div>
+  <div class="tab" onclick="switchTab(1)">② Gerir Viagens</div>
+  <div class="tab" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
+</div>
+
+<div class="main">
+
+<!-- ===== TAB 1: IMPORTAR ===== -->
+<div class="tab-content active" id="tab-0">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Importar Cadência Semanal</div>
+      <div class="section-sub">Faça upload do Excel exportado do sistema de abastecimento</div>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📂</div>
+    <div class="upload-text">Arraste o Excel aqui ou clique para selecionar</div>
+    <div class="upload-hint">Suporta .xlsx exportado do sistema · Colunas: Id, Data de Carregamento, Data de Descarga, Produto, Origem, Base de Atendimento, Destino, Planejado</div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  </div>
+
+  <div class="alert alert-info">
+    💡 Sem arquivo? Use os <strong>dados de exemplo</strong> abaixo para explorar o protótipo.
+    <button class="btn btn-primary btn-sm" style="margin-left:12px" onclick="loadSampleData()">Carregar Dados de Exemplo</button>
+  </div>
+
+  <div class="config-row">
+    <div class="config-card">
+      <div class="config-label">Capacidade padrão por caminhão (m³)</div>
+      <input type="number" class="config-input" id="capCaminhao" value="60">
+    </div>
+    <div class="config-card">
+      <div class="config-label">Prefixo de ID das viagens</div>
+      <input type="text" class="config-input" id="prefixoId" value="VGM">
+    </div>
+    <div class="config-card">
+      <div class="config-label">Semana de referência</div>
+      <input type="text" class="config-input" id="semanaRef" value="S25/2026">
+    </div>
+    <div class="config-card">
+      <div class="config-label">Empresa</div>
+      <input type="text" class="config-input" id="empresa" value="NEXTA">
+    </div>
+  </div>
+
+  <div id="previewSection" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Preview da Cadência</span>
+          <span class="badge badge-accent" id="badge-linhas">0 linhas</span>
+          <span class="badge badge-warn" id="badge-viagens-prev">0 viagens a gerar</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="abrirModalNovaCadencia()">＋ Inserir Linha</button>
+          <button class="btn btn-primary" onclick="gerarViagens()">⚡ Quebrar em Viagens</button>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fCadBusca"
+            placeholder="🔍  Pedido MIS, origem, destino..."
+            oninput="renderPreview()">
+          <div id="ms-cProduto"></div>
+          <div id="ms-cOrigem"></div>
+          <div id="ms-cDestino"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
+            <div style="display:flex;gap:5px;align-items:center">
+              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
+              <input type="date" class="filter-input fi-date" id="fCadCarrDe" onchange="renderPreview()" title="Carregamento De">
+              <span class="filter-sep">—</span>
+              <input type="date" class="filter-input fi-date" id="fCadCarrAte" onchange="renderPreview()" title="Carregamento Até">
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↓</span>
+              <input type="date" class="filter-input fi-date" id="fCadDtDe" onchange="renderPreview()" title="Descarga De">
+              <span class="filter-sep">—</span>
+              <input type="date" class="filter-input fi-date" id="fCadDtAte" onchange="renderPreview()" title="Descarga Até">
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosCad()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table id="previewTable">
+          <thead>
+            <tr>
+              <th>Pedido MIS</th>
+              <th>Produto</th>
+              <th>Origem</th>
+              <th>Base Destino</th>
+              <th>Período (Carreg → Desc)</th>
+              <th>Vol (m³)</th>
+              <th>Cam.</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 2: VIAGENS ===== -->
+<div class="tab-content" id="tab-1">
+  <div id="viagensEmpty" class="empty-state">
+    <div class="empty-icon">🚛</div>
+    <div class="empty-text">Nenhuma viagem gerada ainda</div>
+    <div class="empty-sub">Importe uma cadência e clique em "Quebrar em Viagens"</div>
+  </div>
+
+  <div id="viagensContent" style="display:none">
+    <div class="kpi-group-label">⚡ Alertas Operacionais <span id="kpi-filter-badge" style="display:none;font-size:9px;color:var(--accent);background:var(--accent-dim);padding:1px 7px;border-radius:8px;margin-left:6px;letter-spacing:0">filtrado</span></div>
+    <div class="stats-row" id="kpi-alertas">
+      <div class="stat-card c-danger" id="kpi-urgentes">
+        <div class="stat-label">🚨 Urgentes (≤ 2 dias)</div>
+        <div class="stat-val" id="sv-urgentes">0</div>
+        <div class="stat-sub">Carregamento próximo sem placa</div>
+      </div>
+      <div class="stat-card c-warn" id="kpi-semtransp">
+        <div class="stat-label">⚠️ Sem Transportador</div>
+        <div class="stat-val" id="sv-semtransp">0</div>
+        <div class="stat-sub">Backlog ou Ofertado sem alocação</div>
+      </div>
+      <div class="stat-card c-danger" id="kpi-atrasadas">
+        <div class="stat-label">⏰ Atrasadas</div>
+        <div class="stat-val" id="sv-atrasadas">0</div>
+        <div class="stat-sub">Dt carreg. vencida, não confirmada</div>
+      </div>
+      <div class="stat-card c-warn" id="kpi-aguardando">
+        <div class="stat-label">📋 Aguardando Aceite</div>
+        <div class="stat-val" id="sv-aguardando">0</div>
+        <div class="stat-sub">Ofertadas sem confirmação</div>
+      </div>
+    </div>
+    <div class="kpi-group-label">📊 Volumes</div>
+    <div class="stats-row">
+      <div class="stat-card c-muted">
+        <div class="stat-label">📦 Volume Pendente</div>
+        <div class="stat-val" id="sv-vol-pendente">0</div>
+        <div class="stat-sub">m³ em Backlog</div>
+      </div>
+      <div class="stat-card c-accent">
+        <div class="stat-label">🤝 Em Negociação</div>
+        <div class="stat-val" id="sv-vol-negoc">0</div>
+        <div class="stat-sub">m³ Ofertado + Aceito</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-label">✅ Volume Confirmado</div>
+        <div class="stat-val" id="sv-vol-conf">0</div>
+        <div class="stat-sub">m³ com Placa Enviada</div>
+      </div>
+      <div class="stat-card c-accent">
+        <div class="stat-label">📈 Taxa de Alocação</div>
+        <div class="stat-val" id="sv-taxa">0%</div>
+        <div class="stat-sub">Viagens fora do Backlog</div>
+      </div>
+    </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="table-title">Programação de Viagens</span>
+          <div class="chip-group" id="filterChips">
+            <div class="chip active" onclick="filterViagens('todos',this)">Todos</div>
+            <div class="chip" onclick="filterViagens('Backlog',this)">Backlog</div>
+            <div class="chip" onclick="filterViagens('Ofertado',this)">Ofertadas</div>
+            <div class="chip" onclick="filterViagens('Aceito',this)">Aceitas</div>
+            <div class="chip" onclick="filterViagens('Placa Enviada',this)">Placa Enviada</div>
+            <div class="chip" onclick="filterViagens('Cancelado',this)">Canceladas</div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fBusca"
+            placeholder="🔍  ID viagem, Pedido MIS, placa..."
+            oninput="renderViagensTable()">
+          <div id="ms-vProduto"></div>
+          <div id="ms-vOrigem"></div>
+          <div id="ms-vDestino"></div>
+          <input type="text" class="filter-input" id="fTransp"
+            placeholder="🚚 Transportador..." style="width:150px"
+            oninput="renderViagensTable()">
+          <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
+            <div style="display:flex;gap:5px;align-items:center">
+              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
+              <input type="date" class="filter-input fi-date" id="fCarrDe" onchange="renderViagensTable()" title="Carregamento De">
+              <span class="filter-sep">—</span>
+              <input type="date" class="filter-input fi-date" id="fCarrAte" onchange="renderViagensTable()" title="Carregamento Até">
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↓</span>
+              <input type="date" class="filter-input fi-date" id="fDtDe" onchange="renderViagensTable()" title="Descarga De">
+              <span class="filter-sep">—</span>
+              <input type="date" class="filter-input fi-date" id="fDtAte" onchange="renderViagensTable()" title="Descarga Até">
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div id="bulkBar" style="display:none;padding:8px 18px;border-bottom:1px solid var(--border);background:rgba(0,180,216,0.07);flex-wrap:wrap;gap:10px;align-items:center">
+        <span id="bulk-count" style="font-size:12px;font-weight:600;color:var(--accent)">0 selecionadas</span>
+        <span class="filter-sep">Status:</span>
+        <select class="filter-select" id="bulk-status" style="padding:5px 10px">
+          <option value="">Manter atual</option>
+          <option value="Backlog">Backlog</option>
+          <option value="Ofertado">Ofertado</option>
+          <option value="Aceito">Aceito</option>
+          <option value="Placa Enviada">Placa Enviada</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+        <span class="filter-sep">Transportador:</span>
+        <input type="text" class="filter-input" id="bulk-transp" placeholder="Nome da transportadora..." style="width:190px">
+        <button class="btn btn-primary btn-sm" onclick="aplicarEmLote()">✓ Aplicar</button>
+        <button class="btn btn-secondary btn-sm" onclick="limparSelecao()">✕ Desmarcar tudo</button>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px;padding:10px 8px;text-align:center">
+                <input type="checkbox" id="chk-all" onclick="toggleSelectAll(this.checked)"
+                  style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
+              </th>
+              <th>ID Viagem</th>
+              <th>Pedido MIS</th>
+              <th>Produto</th>
+              <th>Origem</th>
+              <th>Destino</th>
+              <th>Período</th>
+              <th>Vol (m³)</th>
+              <th>Status</th>
+              <th>Transportador</th>
+              <th>Placa</th>
+              <th class="col-acao">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="viagensBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 3: EXPORTAR ===== -->
+<div class="tab-content" id="tab-2">
+  <div id="exportEmpty" class="empty-state">
+    <div class="empty-icon">📤</div>
+    <div class="empty-text">Nada pronto para exportar ainda</div>
+    <div class="empty-sub">Registre as placas das viagens aceitas na aba "Gerir Viagens"</div>
+  </div>
+
+  <div id="exportContent" style="display:none">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Exportar para o Sistema de Monitoramento</div>
+        <div class="section-sub">Viagens com placa confirmada prontas para importação</div>
+      </div>
+    </div>
+
+    <div class="export-panel">
+      <div class="export-card">
+        <div class="export-card-title">📋 Arquivo de Importação</div>
+        <div class="export-card-desc">Gera um CSV com as viagens prontas, no formato esperado pelo sistema de monitoramento.</div>
+        <div class="field-list">
+          <div class="field-item">ID Viagem (chave de rastreio)</div>
+          <div class="field-item">Placa do Veículo</div>
+          <div class="field-item">Produto e Volumes</div>
+          <div class="field-item">Origem e Destino</div>
+          <div class="field-item">Datas de Carregamento e Descarga</div>
+          <div class="field-item">ID da Cadência de Origem</div>
+        </div>
+        <button class="btn btn-success" onclick="exportarCSV()">⬇ Baixar CSV para Monitoramento</button>
+      </div>
+
+      <div class="export-card">
+        <div class="export-card-title">📊 Relatório da Semana</div>
+        <div class="export-card-desc">Relatório gerencial com resumo de status da programação para acompanhamento.</div>
+        <div class="field-list">
+          <div class="field-item">Total planejado vs. confirmado</div>
+          <div class="field-item">Volume por produto</div>
+          <div class="field-item">Viagens pendentes de resposta</div>
+          <div class="field-item">Taxa de confirmação por transportador</div>
+        </div>
+        <button class="btn btn-secondary" onclick="exportarRelatorio()">⬇ Baixar Relatório CSV</button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span class="table-title">Viagens prontas para importação</span>
+          <span class="badge badge-success" id="badge-prontas">0 viagens</span>
+        </div>
+        <div class="scrollable">
+          <table>
+            <thead>
+              <tr>
+                <th>ID Viagem</th>
+                <th>Placa</th>
+                <th>Produto</th>
+                <th>Origem</th>
+                <th>Destino</th>
+                <th>Dt Descarga</th>
+                <th>Volume</th>
+                <th>Transportador</th>
+              </tr>
+            </thead>
+            <tbody id="exportBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- MODAL: Nova Cadência -->
+<div class="modal-overlay" id="modalNovaCad">
+  <div class="modal">
+    <div class="modal-title">Inserir Linha de Cadência</div>
+    <div class="modal-sub">Adicione manualmente uma nova linha à cadência atual</div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Pedido MIS *</div>
+        <input type="text" class="config-input" id="nc-id" placeholder="45.000000.10">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Produto *</div>
+        <input type="text" class="config-input" id="nc-produto" placeholder="Diesel A S10">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Origem</div>
+        <input type="text" class="config-input" id="nc-origem" placeholder="RAIZEN">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Base de Atendimento</div>
+        <input type="text" class="config-input" id="nc-base" placeholder="IGARAPAVA">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Destino / Base *</div>
+      <input type="text" class="config-input" id="nc-destino" placeholder="CIDADE - NEXTA BASE">
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Dt Carregamento</div>
+        <input type="text" class="config-input" id="nc-dtcarreg" placeholder="DD/MM/AAAA ou -">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Dt Descarga *</div>
+        <input type="text" class="config-input" id="nc-dtdesc" placeholder="DD/MM/AAAA">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Volume (m³) *</div>
+      <input type="number" class="config-input" id="nc-volume" placeholder="60" min="1">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalNovaCad()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovaCadencia()">＋ Adicionar Linha</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Gerir Viagem -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title">Gerenciar Viagem</div>
+    <div class="modal-sub" id="modal-id-label">—</div>
+
+    <div class="info-row">
+      <div class="info-item">
+        <div class="info-lbl">Produto</div>
+        <div class="info-val" id="m-produto">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">Volume</div>
+        <div class="info-val" id="m-volume">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">Dt Carregamento</div>
+        <div class="info-val" id="m-dtcarreg">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">Dt Descarga</div>
+        <div class="info-val" id="m-dtdesc">—</div>
+      </div>
+    </div>
+    <div class="info-row" style="margin-bottom:16px">
+      <div class="info-item">
+        <div class="info-lbl">Origem</div>
+        <div class="info-val" id="m-origem">—</div>
+      </div>
+      <div class="info-item" style="flex:2">
+        <div class="info-lbl">Destino</div>
+        <div class="info-val" id="m-destino">—</div>
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Transportador</div>
+        <input type="text" class="config-input" id="m-transportador" placeholder="Nome da transportadora">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Status</div>
+        <select class="config-input" id="m-status">
+          <option value="Backlog">Backlog</option>
+          <option value="Ofertado">Ofertado</option>
+          <option value="Aceito">Aceito</option>
+          <option value="Placa Enviada">Placa Enviada</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Placa do Veículo</div>
+      <input type="text" class="config-input" id="m-placa" placeholder="ABC1D23" maxlength="8">
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Observações</div>
+      <input type="text" class="config-input" id="m-obs" placeholder="Observações opcionais">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarViagem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar Grupo de Cadências -->
+<div class="modal-overlay" id="modalGrupo">
+  <div class="modal" style="width:620px;max-width:97vw;max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-title">Editar Pedidos Agrupados</div>
+    <div class="modal-sub" id="grupo-sub">—</div>
+    <div id="grupo-records" style="overflow-y:auto;flex:1;padding-right:4px"></div>
+    <div class="modal-actions" style="padding-top:16px;border-top:1px solid var(--border);margin-top:8px">
+      <button class="btn btn-secondary" onclick="fecharModalGrupo()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarGrupo()">Salvar Todos</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── MULTISELECT ──
+class MultiSelect {
+  constructor(containerId, placeholder, onChange) {
+    this.el       = document.getElementById(containerId);
+    this.ph       = placeholder;
+    this.onChange = onChange;
+    this.selected = new Set();
+    this.options  = [];
+    this._build();
+    document.addEventListener('click', e => { if (!this.el.contains(e.target)) this._closePanel(); });
+  }
+  setOptions(opts) {
+    this.options = opts;
+    this.selected = new Set([...this.selected].filter(v => opts.includes(v)));
+    this._renderPanel();
+    this._renderLabel();
+  }
+  getSelected() { return [...this.selected]; }
+  clear() { this.selected.clear(); this._renderPanel(); this._renderLabel(); }
+  _toggle(v) {
+    this.selected.has(v) ? this.selected.delete(v) : this.selected.add(v);
+    this._renderPanel(); this._renderLabel(); this.onChange();
+  }
+  _closePanel() { this._panel.style.display = 'none'; }
+  _build() {
+    this.el.style.position = 'relative';
+    this.el.innerHTML = `
+      <div class="ms-trigger filter-select" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:148px;user-select:none">
+        <span class="ms-lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.ph}</span>
+        <span style="font-size:8px;color:var(--text-muted);flex-shrink:0">▼</span>
+      </div>
+      <div class="ms-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:220px;max-width:340px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:200;box-shadow:0 8px 28px rgba(0,0,0,0.5);max-height:260px;overflow-y:auto">
+        <div class="ms-opts"></div>
+      </div>`;
+    this._panel = this.el.querySelector('.ms-panel');
+    this._label = this.el.querySelector('.ms-lbl');
+    this.el.querySelector('.ms-trigger').addEventListener('click', e => {
+      e.stopPropagation();
+      const open = this._panel.style.display === 'block';
+      document.querySelectorAll('.ms-panel').forEach(p => p.style.display = 'none');
+      this._panel.style.display = open ? 'none' : 'block';
+    });
+  }
+  _renderLabel() {
+    if (this.selected.size === 0) {
+      this._label.textContent = this.ph; this._label.style.color = '';
+    } else {
+      this._label.textContent = this.selected.size === 1 ? [...this.selected][0] : `${this.selected.size} selecionados`;
+      this._label.style.color = 'var(--accent)';
+    }
+  }
+  _renderPanel() {
+    const wrap = this.el.querySelector('.ms-opts');
+    wrap.innerHTML = '';
+    if (this.options.length === 0) {
+      wrap.innerHTML = '<div style="padding:12px 14px;font-size:11px;color:var(--text-muted)">Sem opções</div>';
+      return;
+    }
+    this.options.forEach(opt => {
+      const checked = this.selected.has(opt);
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;transition:background 0.1s';
+      div.innerHTML = `
+        <span style="width:14px;height:14px;border:1.5px solid ${checked?'var(--accent)':'var(--border)'};border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${checked?'var(--accent)':'transparent'}">
+          ${checked?'<span style="color:#0F1923;font-size:9px;font-weight:800">✓</span>':''}
+        </span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(opt)}">${esc(opt)}</span>`;
+      div.addEventListener('mouseenter', () => div.style.background = 'rgba(0,180,216,0.08)');
+      div.addEventListener('mouseleave', () => div.style.background = '');
+      div.addEventListener('click', e => { e.stopPropagation(); this._toggle(opt); });
+      wrap.appendChild(div);
+    });
+  }
+}
+
+// ── MULTISELECT INSTANCES (initialized after DOM ready) ──
+let msVProduto, msVOrigem, msVDestino;
+let msCProduto, msCOrigem, msCDestino;
+
+// ── MODAL GRUPO ──
+let editingGrupoIdxs = [];
+
+function editarGrupo(idxs) {
+  editingGrupoIdxs = idxs;
+  document.getElementById('grupo-sub').textContent =
+    `${idxs.length} pedidos com mesma rota/período — edite individualmente e salve todos de uma vez`;
+
+  const container = document.getElementById('grupo-records');
+  container.innerHTML = '';
+  idxs.forEach((idx, i) => {
+    const c = cadencias[idx];
+    const sec = document.createElement('div');
+    sec.style.cssText = `padding:14px 0;${i < idxs.length - 1 ? 'border-bottom:1px solid var(--border)' : ''}`;
+    sec.innerHTML = `
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">
+        Pedido ${i+1} — <span style="color:var(--accent);font-family:'Space Grotesk',sans-serif">${esc(c.id)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><div class="modal-label">ID Pedido</div><input class="config-input" id="ge-id-${i}" value="${esc(c.id)}"></div>
+        <div><div class="modal-label">Produto</div><input class="config-input" id="ge-produto-${i}" value="${esc(c.produto)}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><div class="modal-label">Origem</div><input class="config-input" id="ge-origem-${i}" value="${esc(c.origem)}"></div>
+        <div><div class="modal-label">Base de Atendimento</div><input class="config-input" id="ge-base-${i}" value="${esc(c.base||'')}"></div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="modal-label">Destino</div>
+        <input class="config-input" id="ge-destino-${i}" value="${esc(c.destino)}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><div class="modal-label">Dt Carregamento</div><input class="config-input" id="ge-dtcarreg-${i}" value="${esc(c.dtCarreg||'-')}"></div>
+        <div><div class="modal-label">Dt Descarga</div><input class="config-input" id="ge-dtdesc-${i}" value="${esc(c.dtDesc)}"></div>
+        <div><div class="modal-label">Volume (m³)</div><input class="config-input" type="number" id="ge-volume-${i}" value="${c.volume}"></div>
+      </div>`;
+    container.appendChild(sec);
+  });
+  document.getElementById('modalGrupo').classList.add('open');
+}
+
+function fecharModalGrupo() {
+  document.getElementById('modalGrupo').classList.remove('open');
+  editingGrupoIdxs = [];
+}
+
+function salvarGrupo() {
+  editingGrupoIdxs.forEach((idx, i) => {
+    cadencias[idx].id       = document.getElementById(`ge-id-${i}`).value.trim();
+    cadencias[idx].produto  = document.getElementById(`ge-produto-${i}`).value.trim();
+    cadencias[idx].origem   = document.getElementById(`ge-origem-${i}`).value.trim();
+    cadencias[idx].base     = document.getElementById(`ge-base-${i}`).value.trim();
+    cadencias[idx].destino  = document.getElementById(`ge-destino-${i}`).value.trim();
+    cadencias[idx].dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
+    cadencias[idx].dtDesc   = document.getElementById(`ge-dtdesc-${i}`).value.trim();
+    cadencias[idx].volume   = parseFloat(document.getElementById(`ge-volume-${i}`).value) || 0;
+  });
+  fecharModalGrupo();
+  renderPreview();
+  agendarAutosave();
+}
+
+// ── SELEÇÃO EM LOTE ──
+function toggleSelectViagem(realIdx, checked) {
+  if (checked) selectedViagens.add(realIdx);
+  else selectedViagens.delete(realIdx);
+  atualizarBulkBar();
+  const chkAll = document.getElementById('chk-all');
+  if (chkAll) {
+    const allSel = currentFilteredIdxs.length > 0 && currentFilteredIdxs.every(i => selectedViagens.has(i));
+    const someSel = currentFilteredIdxs.some(i => selectedViagens.has(i));
+    chkAll.checked = allSel;
+    chkAll.indeterminate = someSel && !allSel;
+  }
+}
+
+function toggleSelectAll(checked) {
+  if (checked) currentFilteredIdxs.forEach(i => selectedViagens.add(i));
+  else currentFilteredIdxs.forEach(i => selectedViagens.delete(i));
+  atualizarBulkBar();
+  renderViagensTable();
+}
+
+function atualizarBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  if (!bar) return;
+  const count = selectedViagens.size;
+  if (count > 0) {
+    bar.style.display = 'flex';
+    document.getElementById('bulk-count').textContent =
+      `${count} viagem${count !== 1 ? 'ns' : ''} selecionada${count !== 1 ? 's' : ''}`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function limparSelecao() {
+  selectedViagens.clear();
+  renderViagensTable();
+}
+
+function aplicarEmLote() {
+  const status = document.getElementById('bulk-status').value;
+  const transp = document.getElementById('bulk-transp').value.trim();
+  if (!status && !transp) { alert('Preencha ao menos o status ou o transportador para aplicar em lote.'); return; }
+  if (!selectedViagens.size) return;
+  selectedViagens.forEach(idx => {
+    if (status) viagens[idx].status = status;
+    if (transp) viagens[idx].transportador = transp;
+  });
+  selectedViagens.clear();
+  document.getElementById('bulk-status').value = '';
+  document.getElementById('bulk-transp').value = '';
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+// ── STATE ──
+let cadencias = [];
+let viagens = [];
+let activeFilter = 'todos';
+let activeTab = 0;
+let editingIdx = null;
+let autosaveTimer = null;
+let selectedViagens = new Set();
+let currentFilteredIdxs = [];
+
+const STORAGE_KEY = 'nexta_cadencia_sessao';
+
+// ── PERSISTÊNCIA ──
+function salvarSessao(silencioso = false) {
+  const payload = {
+    cadencias,
+    viagens,
+    config: {
+      capCaminhao: document.getElementById('capCaminhao').value,
+      prefixoId: document.getElementById('prefixoId').value,
+      semanaRef: document.getElementById('semanaRef').value,
+      empresa: document.getElementById('empresa').value,
+    },
+    savedAt: new Date().toISOString()
+  };
+  if (!window._fb) {
+    // fallback localStorage enquanto Firebase não carrega
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch(e) {}
+    if (!silencioso) mostrarStatus('saved', 'Salvo localmente');
+    return;
+  }
+  mostrarStatus('saving', 'Salvando...');
+  window._fb.salvar(payload)
+    .then(() => {
+      if (!silencioso) mostrarStatusSalvo();
+      else mostrarStatusSalvo();
+    })
+    .catch(() => mostrarStatus('saving', 'Erro ao salvar'));
+}
+
+function aplicarPayload(payload) {
+  if (!payload) return false;
+  cadencias = payload.cadencias || [];
+  viagens   = payload.viagens   || [];
+  if (payload.config) {
+    document.getElementById('capCaminhao').value = payload.config.capCaminhao || 60;
+    document.getElementById('prefixoId').value   = payload.config.prefixoId   || 'VGM';
+    document.getElementById('semanaRef').value   = payload.config.semanaRef   || 'S25/2026';
+    document.getElementById('empresa').value     = payload.config.empresa     || 'NEXTA';
+  }
+  const dt = payload.savedAt ? new Date(payload.savedAt) : null;
+  const label = dt ? formatRelativo(dt) : 'anteriormente';
+  mostrarStatus('saved', `Sincronizado · ${label}`);
+  return true;
+}
+
+function carregarSessao() {
+  // Firebase async — retorna false aqui, carga real acontece em firebase-ready
+  return false;
+}
+
+function limparSessao() {
+  if (!confirm('Tem certeza? Isso apagará a sessão no Firebase e todos os dados atuais.')) return;
+  const limpar = () => {
+    cadencias = [];
+    viagens = [];
+    document.getElementById('previewSection').style.display = 'none';
+    updatePipeline();
+    renderViagensTable();
+    switchTab(0);
+    mostrarStatus('', 'Sessão apagada');
+  };
+  if (window._fb) {
+    window._fb.limpar().then(limpar).catch(limpar);
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+    limpar();
+  }
+}
+
+function agendarAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    if (cadencias.length > 0 || viagens.length > 0) {
+      mostrarStatus('saving', 'Salvando...');
+      setTimeout(() => salvarSessao(true) || mostrarStatusSalvo(), 300);
+    }
+  }, 1500);
+}
+
+function mostrarStatusSalvo() {
+  const dt = new Date();
+  mostrarStatus('saved', `Salvo automaticamente · ${dt.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}`);
+}
+
+function mostrarStatus(tipo, texto) {
+  const el = document.getElementById('saveStatus');
+  const tx = document.getElementById('saveText');
+  el.className = 'save-status' + (tipo ? ' ' + tipo : '');
+  tx.textContent = texto;
+}
+
+function formatRelativo(dt) {
+  const diff = Math.round((Date.now() - dt.getTime()) / 60000);
+  if (diff < 1) return 'agora mesmo';
+  if (diff < 60) return `há ${diff} min`;
+  const h = Math.round(diff / 60);
+  if (h < 24) return `há ${h}h`;
+  return dt.toLocaleDateString('pt-BR');
+}
+
+// ── TABS ──
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', j===i));
+  document.querySelectorAll('.tab-content').forEach((c,j) => c.classList.toggle('active', j===i));
+  activeTab = i;
+  if (i === 1) renderViagensTable();
+  if (i === 2) renderExport();
+}
+
+// ── SAMPLE DATA ──
+function loadSampleData() {
+  cadencias = [
+    { id:'45.175444.10', dtCarreg:'13/06/2026', dtDesc:'15/06/2026', produto:'Diesel A S10', origem:'SIM DISTRIBUIDORA', destino:'PAULINIA - NEXTA TORRAO', volume:300 },
+    { id:'45.174773.20', dtCarreg:'20/06/2026', dtDesc:'22/06/2026', produto:'Anidro', origem:'BP', destino:'BETIM - NEXTA RBZ', volume:120 },
+    { id:'45.174749.20', dtCarreg:'17/06/2026', dtDesc:'22/06/2026', produto:'Biodiesel B100', origem:'COFCO', destino:'BETIM - NEXTA RBZ', volume:120 },
+    { id:'45.174751.20', dtCarreg:'12/06/2026', dtDesc:'16/06/2026', produto:'Biodiesel B100', origem:'BE8', destino:'BETIM - NEXTA RBZ', volume:120 },
+    { id:'45.174779.20', dtCarreg:'12/06/2026', dtDesc:'15/06/2026', produto:'Hidratado', origem:'RAIZEN', destino:'BETIM - NEXTA RBZ', volume:120 },
+    { id:'45.174779.20', dtCarreg:'15/06/2026', dtDesc:'17/06/2026', produto:'Hidratado', origem:'RAIZEN', destino:'BETIM - NEXTA RBZ', volume:120 },
+    { id:'45.177316.10', dtCarreg:'-', dtDesc:'16/06/2026', produto:'Hidratado', origem:'VALE DO VERDAO', destino:'SEN CANEDO - NEXTA TESCAN', volume:120 },
+    { id:'45.177954.10', dtCarreg:'12/06/2026', dtDesc:'15/06/2026', produto:'Anidro', origem:'RZ ARARAQUARA', destino:'DUQUE - NEXTA VIBRA', volume:120 },
+    { id:'45.177954.10', dtCarreg:'17/06/2026', dtDesc:'19/06/2026', produto:'Anidro', origem:'RZ ARARAQUARA', destino:'DUQUE - NEXTA VIBRA', volume:120 },
+    { id:'45.172277.10', dtCarreg:'16/06/2026', dtDesc:'18/06/2026', produto:'Hidratado', origem:'RZ ARARAQUARA', destino:'DUQUE - NEXTA VIBRA', volume:120 },
+    { id:'45.174737.30', dtCarreg:'15/06/2026', dtDesc:'16/06/2026', produto:'Anidro', origem:'EVO STO ANTONIO', destino:'PAULINIA - NEXTA TORRAO', volume:100 },
+  ];
+  renderPreview();
+  agendarAutosave();
+}
+
+function agruparCadencias(arr) {
+  const mapa = new Map();
+  arr.forEach((c, originalIdx) => {
+    const key = [c.produto, c.origem, c.base||'', c.destino, c.dtCarreg, c.dtDesc].join('||');
+    if (mapa.has(key)) {
+      const g = mapa.get(key);
+      g.volume = +(g.volume + c.volume).toFixed(1);
+      g.ids.push(c.id);
+      g.originalIdxs.push(originalIdx);
+    } else {
+      mapa.set(key, { ...c, ids: [c.id], originalIdxs: [originalIdx] });
+    }
+  });
+  return Array.from(mapa.values());
+}
+
+function renderPreview() {
+  const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
+
+  // populate multiselect options (always from full dataset)
+  msCProduto?.setOptions([...new Set(cadencias.map(c => c.produto).filter(Boolean))].sort());
+  msCOrigem?.setOptions([...new Set(cadencias.map(c => c.origem + (c.base ? ` (${c.base})` : '')).filter(Boolean))].sort());
+  msCDestino?.setOptions([...new Set(cadencias.map(c => c.destino).filter(Boolean))].sort());
+
+  const cadBusca    = (document.getElementById('fCadBusca')?.value  || '').toLowerCase().trim();
+  const cadCarrDe   = document.getElementById('fCadCarrDe')?.value  || '';
+  const cadCarrAte  = document.getElementById('fCadCarrAte')?.value || '';
+  const cadDtDe     = document.getElementById('fCadDtDe')?.value    || '';
+  const cadDtAte    = document.getElementById('fCadDtAte')?.value   || '';
+  const cSelProds   = new Set(msCProduto?.getSelected()  || []);
+  const cSelOrigens = new Set(msCOrigem?.getSelected()   || []);
+  const cSelDests   = new Set(msCDestino?.getSelected()  || []);
+
+  const cadFiltradas = cadencias.filter(c => {
+    if (cSelProds.size   && !cSelProds.has(c.produto))   return false;
+    if (cSelOrigens.size && !cSelOrigens.has(c.origem + (c.base ? ` (${c.base})` : ''))) return false;
+    if (cSelDests.size   && !cSelDests.has(c.destino))   return false;
+    if (cadBusca) {
+      const hay = [c.id, c.origem, c.base, c.destino].join(' ').toLowerCase();
+      if (!hay.includes(cadBusca)) return false;
+    }
+    if (cadCarrDe || cadCarrAte) {
+      const vc = parseDMY(c.dtCarreg);
+      if (vc) {
+        if (cadCarrDe  && vc < new Date(cadCarrDe))               return false;
+        if (cadCarrAte && vc > new Date(cadCarrAte + 'T23:59'))   return false;
+      }
+    }
+    if (cadDtDe || cadDtAte) {
+      const vd = parseDMY(c.dtDesc);
+      if (vd) {
+        if (cadDtDe  && vd < new Date(cadDtDe))              return false;
+        if (cadDtAte && vd > new Date(cadDtAte + 'T23:59'))  return false;
+      }
+    }
+    return true;
+  });
+
+  const agrupadas = agruparCadencias(cadFiltradas);
+
+  let totalViagensCount = 0;
+  agrupadas.forEach(g => { totalViagensCount += Math.ceil(g.volume / cap); });
+
+  const mostrando = cadFiltradas.length < cadencias.length
+    ? `${cadFiltradas.length} de ${cadencias.length} linhas`
+    : `${cadencias.length} linhas`;
+  document.getElementById('badge-linhas').textContent = mostrando;
+  document.getElementById('badge-viagens-prev').textContent = totalViagensCount + ' viagens a gerar';
+  document.getElementById('cnt-cadencias').textContent = cadencias.length;
+
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+  agrupadas.forEach((g, gi) => {
+    const n = Math.ceil(g.volume / cap);
+    const tr = document.createElement('tr');
+    tr.id = `cad-row-${gi}`;
+
+    const idDisplay = g.ids.length === 1
+      ? esc(g.ids[0])
+      : `${esc(g.ids[0])} <span class="badge badge-accent" title="${esc(g.ids.join(', '))}">+${g.ids.length - 1}</span>`;
+
+    const acoesHtml = g.originalIdxs.length === 1
+      ? `<div style="display:flex;gap:5px">
+           <button class="btn btn-secondary btn-sm" onclick="editarLinha(${gi},${g.originalIdxs[0]})">✏ Editar</button>
+           <button class="btn btn-danger btn-sm" onclick="excluirLinha(${g.originalIdxs[0]})">✕</button>
+         </div>`
+      : `<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">
+           <button class="btn btn-secondary btn-sm" onclick="editarGrupo([${g.originalIdxs.join(',')}])">✏ Editar</button>
+           <span style="font-size:9px;color:var(--text-muted)">${g.ids.length} pedidos agrupados</span>
+         </div>`;
+
+    tr.innerHTML = `
+      <td class="cell-truncate-xs" style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent)" title="${esc(g.ids.join(', '))}">${idDisplay}</td>
+      <td>${prodTag(g.produto)}</td>
+      <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : ''))}">${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}</td>
+      <td class="cell-truncate" title="${esc(g.destino)}">${esc(g.destino)}</td>
+      <td style="white-space:nowrap;line-height:1.7;width:80px">
+        <div style="font-size:10px;color:var(--text-muted)">↑ ${fmtShort(g.dtCarreg)}</div>
+        <div style="font-size:11px;font-weight:600">↓ ${fmtShort(g.dtDesc)}</div>
+      </td>
+      <td style="font-family:'Space Grotesk',sans-serif">${g.volume}</td>
+      <td><span class="badge badge-warn">÷ ${n}</span></td>
+      <td>${acoesHtml}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('previewSection').style.display = 'block';
+}
+
+// ── EDIÇÃO INLINE DE CADÊNCIAS ──
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function editarLinha(gi, idx) {
+  const c = cadencias[idx];
+  const tr = document.getElementById(`cad-row-${gi}`);
+  const inp = (id, val, width, type='text') =>
+    `<input class="config-input" id="${id}" value="${esc(String(val||''))}" type="${type}" style="width:${width};padding:5px 8px;font-size:11px;min-width:unset">`;
+  tr.innerHTML = `
+    <td>${inp(`ei-id-${gi}`, c.id, '110px')}</td>
+    <td>${inp(`ei-produto-${gi}`, c.produto, '110px')}</td>
+    <td style="vertical-align:top">
+      ${inp(`ei-origem-${gi}`, c.origem, '130px')}
+      <input class="config-input" id="ei-base-${gi}" value="${esc(c.base||'')}" placeholder="Base atend." style="width:130px;padding:5px 8px;font-size:11px;min-width:unset;margin-top:4px;color:var(--text-muted)">
+    </td>
+    <td>${inp(`ei-destino-${gi}`, c.destino, '150px')}</td>
+    <td style="vertical-align:top">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">↑ Carreg</div>
+      ${inp(`ei-dtcarreg-${gi}`, c.dtCarreg, '94px')}
+      <div style="font-size:10px;color:var(--text-muted);margin:4px 0 3px">↓ Desc</div>
+      ${inp(`ei-dtdesc-${gi}`, c.dtDesc, '94px')}
+    </td>
+    <td>${inp(`ei-volume-${gi}`, c.volume, '65px', 'number')}</td>
+    <td>—</td>
+    <td>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-success btn-sm" onclick="salvarLinha(${gi},${idx})">✓</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderPreview()">✕</button>
+      </div>
+    </td>
+  `;
+  document.getElementById(`ei-id-${gi}`).focus();
+}
+
+function salvarLinha(gi, idx) {
+  cadencias[idx].id       = document.getElementById(`ei-id-${gi}`).value.trim();
+  cadencias[idx].produto  = document.getElementById(`ei-produto-${gi}`).value.trim();
+  cadencias[idx].origem   = document.getElementById(`ei-origem-${gi}`).value.trim();
+  cadencias[idx].base     = document.getElementById(`ei-base-${gi}`).value.trim();
+  cadencias[idx].destino  = document.getElementById(`ei-destino-${gi}`).value.trim();
+  cadencias[idx].dtCarreg = document.getElementById(`ei-dtcarreg-${gi}`).value.trim() || '-';
+  cadencias[idx].dtDesc   = document.getElementById(`ei-dtdesc-${gi}`).value.trim();
+  cadencias[idx].volume   = parseFloat(document.getElementById(`ei-volume-${gi}`).value) || 0;
+  renderPreview();
+  agendarAutosave();
+}
+
+function excluirLinha(idx) {
+  if (!confirm('Remover esta linha da cadência?')) return;
+  cadencias.splice(idx, 1);
+  renderPreview();
+  agendarAutosave();
+}
+
+// ── MODAL NOVA CADÊNCIA ──
+function abrirModalNovaCadencia() {
+  ['nc-id','nc-produto','nc-origem','nc-base','nc-destino','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('modalNovaCad').classList.add('open');
+  setTimeout(() => document.getElementById('nc-id').focus(), 100);
+}
+
+function fecharModalNovaCad() {
+  document.getElementById('modalNovaCad').classList.remove('open');
+}
+
+function salvarNovaCadencia() {
+  const id      = document.getElementById('nc-id').value.trim();
+  const produto = document.getElementById('nc-produto').value.trim();
+  const origem  = document.getElementById('nc-origem').value.trim();
+  const destino = document.getElementById('nc-destino').value.trim();
+  const dtDesc  = document.getElementById('nc-dtdesc').value.trim();
+  const volume  = parseFloat(document.getElementById('nc-volume').value) || 0;
+  if (!id || !produto || !destino || !dtDesc || !volume) {
+    alert('Preencha os campos obrigatórios: ID, Produto, Destino, Dt Descarga e Volume.');
+    return;
+  }
+  cadencias.push({
+    id,
+    dtCarreg: document.getElementById('nc-dtcarreg').value.trim() || '-',
+    dtDesc,
+    produto,
+    origem,
+    base: document.getElementById('nc-base').value.trim(),
+    destino,
+    volume,
+  });
+  fecharModalNovaCad();
+  renderPreview();
+  agendarAutosave();
+}
+
+function prodTag(p) {
+  const cls = p.includes('Diesel') ? 'prod-diesel' : p.includes('Biodiesel') ? 'prod-biodiesel' : p.includes('Hidratado') ? 'prod-hidratado' : 'prod-anidro';
+  return `<span class="product-tag ${cls}">${p}</span>`;
+}
+
+// ── GERAR VIAGENS ──
+function gerarViagens() {
+  const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
+  const pref = document.getElementById('prefixoId').value || 'VGM';
+  viagens = [];
+  let seq = 1;
+
+  agruparCadencias(cadencias).forEach(g => {
+    const n = Math.ceil(g.volume / cap);
+    const volPorViagem = +(g.volume / n).toFixed(1);
+    const cadOrigem = g.ids.join(' / ');
+    for (let i = 1; i <= n; i++) {
+      viagens.push({
+        idViagem: `${pref}-${String(seq).padStart(4,'0')}`,
+        idCadencia: cadOrigem + (n > 1 ? `-V${i}` : ''),
+        cadenciaOrigem: cadOrigem,
+        produto: g.produto,
+        origem: g.origem,
+        base: g.base || '',
+        destino: g.destino,
+        dtCarreg: g.dtCarreg,
+        dtDesc: g.dtDesc,
+        volume: volPorViagem,
+        status: 'Backlog',
+        transportador: '',
+        placa: '',
+        obs: ''
+      });
+      seq++;
+    }
+  });
+
+  updatePipeline();
+  salvarSessao(true);
+  mostrarStatusSalvo();
+  switchTab(1);
+}
+
+// ── KPI CARDS ──
+function updateKPIs(list) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const em2dias = new Date(hoje); em2dias.setDate(hoje.getDate() + 2);
+
+  const ativas = list.filter(v => v.status !== 'Cancelado');
+
+  const urgentes  = ativas.filter(v => {
+    const d = parseDMY(v.dtCarreg);
+    return d && d <= em2dias && !v.placa && v.status !== 'Placa Enviada';
+  }).length;
+  const semTransp = ativas.filter(v =>
+    ['Backlog','Ofertado'].includes(v.status) && !v.transportador
+  ).length;
+  const atrasadas = ativas.filter(v => {
+    const d = parseDMY(v.dtCarreg);
+    return d && d < hoje && v.status !== 'Placa Enviada';
+  }).length;
+  const aguardando = list.filter(v => v.status === 'Ofertado').length;
+
+  const volPendente = ativas.filter(v => v.status === 'Backlog').reduce((s,v) => s + (v.volume||0), 0);
+  const volNegoc    = ativas.filter(v => ['Ofertado','Aceito'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
+  const volConf     = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
+  const taxa        = list.length ? Math.round((list.filter(v => v.status !== 'Backlog').length / list.length) * 100) : 0;
+
+  const fmt = n => Number.isInteger(n)
+    ? n.toLocaleString('pt-BR')
+    : n.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1});
+
+  document.getElementById('sv-urgentes').textContent   = urgentes;
+  document.getElementById('sv-semtransp').textContent  = semTransp;
+  document.getElementById('sv-atrasadas').textContent  = atrasadas;
+  document.getElementById('sv-aguardando').textContent = aguardando;
+  document.getElementById('sv-vol-pendente').textContent = fmt(volPendente);
+  document.getElementById('sv-vol-negoc').textContent    = fmt(volNegoc);
+  document.getElementById('sv-vol-conf').textContent     = fmt(volConf);
+  document.getElementById('sv-taxa').textContent         = taxa + '%';
+
+  document.getElementById('kpi-urgentes').classList.toggle('has-alert', urgentes > 0);
+  document.getElementById('kpi-semtransp').classList.toggle('has-alert', semTransp > 0);
+  document.getElementById('kpi-atrasadas').classList.toggle('has-alert', atrasadas > 0);
+  document.getElementById('kpi-aguardando').classList.toggle('has-alert', aguardando > 0);
+
+  const badge = document.getElementById('kpi-filter-badge');
+  if (badge) badge.style.display = list.length < viagens.length ? 'inline' : 'none';
+}
+
+// ── VIAGENS TABLE ──
+function renderViagensTable() {
+  const isEmpty = viagens.length === 0;
+  document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  // populate multiselect options (always from full dataset)
+  msVProduto?.setOptions([...new Set(viagens.map(v => v.produto).filter(Boolean))].sort());
+  msVOrigem?.setOptions([...new Set(viagens.map(v => v.origem + (v.base ? ` (${v.base})` : '')).filter(Boolean))].sort());
+  msVDestino?.setOptions([...new Set(viagens.map(v => v.destino).filter(Boolean))].sort());
+
+  const busca      = (document.getElementById('fBusca')?.value  || '').toLowerCase().trim();
+  const fTransp    = (document.getElementById('fTransp')?.value || '').toLowerCase().trim();
+  const fCarrDe    = document.getElementById('fCarrDe')?.value  || '';
+  const fCarrAte   = document.getElementById('fCarrAte')?.value || '';
+  const fDtDe      = document.getElementById('fDtDe')?.value    || '';
+  const fDtAte     = document.getElementById('fDtAte')?.value   || '';
+  const selProds   = new Set(msVProduto?.getSelected()  || []);
+  const selOrigens = new Set(msVOrigem?.getSelected()   || []);
+  const selDests   = new Set(msVDestino?.getSelected()  || []);
+
+  let filtered = viagens.filter(v => {
+    if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
+    if (selProds.size   && !selProds.has(v.produto))   return false;
+    if (selOrigens.size && !selOrigens.has(v.origem + (v.base ? ` (${v.base})` : ''))) return false;
+    if (selDests.size   && !selDests.has(v.destino))   return false;
+    if (fTransp && !(v.transportador || '').toLowerCase().includes(fTransp)) return false;
+    if (busca) {
+      const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
+      if (!hay.includes(busca)) return false;
+    }
+    if (fCarrDe || fCarrAte) {
+      const vc = parseDMY(v.dtCarreg);
+      if (vc) {
+        if (fCarrDe  && vc < new Date(fCarrDe))               return false;
+        if (fCarrAte && vc > new Date(fCarrAte + 'T23:59'))   return false;
+      }
+    }
+    if (fDtDe || fDtAte) {
+      const vd = parseDMY(v.dtDesc);
+      if (vd) {
+        if (fDtDe && vd < new Date(fDtDe))              return false;
+        if (fDtAte && vd > new Date(fDtAte + 'T23:59')) return false;
+      }
+    }
+    return true;
+  });
+
+  currentFilteredIdxs = filtered.map(v => viagens.indexOf(v));
+  updateKPIs(filtered);
+  updatePipeline(filtered);
+  const tbody = document.getElementById('viagensBody');
+  tbody.innerHTML = '';
+  filtered.forEach((v) => {
+    const realIdx = viagens.indexOf(v);
+    const isSelected = selectedViagens.has(realIdx);
+    const statusClass = {
+      'Backlog':       'status-backlog',
+      'Ofertado':      'status-ofertado',
+      'Aceito':        'status-aceito',
+      'Placa Enviada': 'status-placa',
+      'Cancelado':     'status-cancelado',
+    }[v.status] || 'status-backlog';
+
+    const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
+    tbody.innerHTML += `
+      <tr class="${isSelected ? 'row-selected' : ''}">
+        <td style="padding:10px 8px;width:36px;text-align:center">
+          <input type="checkbox" ${isSelected ? 'checked' : ''}
+            onclick="toggleSelectViagem(${realIdx}, this.checked)"
+            style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
+        </td>
+        <td style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent);font-weight:600;white-space:nowrap">${v.idViagem}</td>
+        <td class="cell-truncate-sm" style="font-size:10px;color:var(--text-muted)" title="${esc(v.cadenciaOrigem)}">${esc(v.cadenciaOrigem)}</td>
+        <td>${prodTag(v.produto)}</td>
+        <td class="cell-truncate" title="${esc(origemDisplay)}">${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
+        <td class="cell-truncate" title="${esc(v.destino)}">${esc(v.destino)}</td>
+        <td style="white-space:nowrap;line-height:1.7;width:80px">
+          <div style="font-size:10px;color:var(--text-muted)">↑ ${fmtShort(v.dtCarreg)}</div>
+          <div style="font-size:11px;font-weight:600">↓ ${fmtShort(v.dtDesc)}</div>
+        </td>
+        <td>${v.volume}</td>
+        <td><span class="status ${statusClass}">${v.status}</span></td>
+        <td class="cell-truncate" title="${esc(v.transportador)}">${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td style="padding-right:12px"><input class="placa-input" value="${esc(v.placa||'')}" placeholder="AAA0A000"
+          onblur="salvarPlacaInline(${realIdx}, this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+          maxlength="8"></td>
+        <td class="col-acao"><button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})">✏️</button></td>
+      </tr>
+    `;
+  });
+
+  const chkAll = document.getElementById('chk-all');
+  if (chkAll) {
+    const allSel = currentFilteredIdxs.length > 0 && currentFilteredIdxs.every(i => selectedViagens.has(i));
+    const someSel = currentFilteredIdxs.some(i => selectedViagens.has(i));
+    chkAll.checked = allSel;
+    chkAll.indeterminate = someSel && !allSel;
+  }
+  atualizarBulkBar();
+}
+
+function parseDMY(s) {
+  if (!s || s === '-') return null;
+  const p = s.split('/');
+  if (p.length !== 3) return null;
+  return new Date(+p[2], +p[1] - 1, +p[0]);
+}
+
+function fmtShort(s) {
+  if (!s || s === '-') return '—';
+  const p = s.split('/');
+  return p.length >= 2 ? `${p[0]}/${p[1]}` : s;
+}
+
+function limparFiltrosCad() {
+  ['fCadBusca','fCadCarrDe','fCadCarrAte','fCadDtDe','fCadDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  msCProduto?.clear(); msCOrigem?.clear(); msCDestino?.clear();
+  renderPreview();
+}
+
+function limparFiltros() {
+  ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear();
+  activeFilter = 'todos';
+  document.querySelectorAll('#filterChips .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  renderViagensTable();
+}
+
+function filterViagens(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderViagensTable();
+}
+
+// ── MODAL ──
+function openModal(idx) {
+  editingIdx = idx;
+  const v = viagens[idx];
+  document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
+  document.getElementById('m-produto').textContent = v.produto;
+  document.getElementById('m-volume').textContent = v.volume + ' m³';
+  document.getElementById('m-dtcarreg').textContent = v.dtCarreg && v.dtCarreg !== '-' ? v.dtCarreg : '—';
+  document.getElementById('m-dtdesc').textContent = v.dtDesc;
+  document.getElementById('m-origem').textContent = v.origem;
+  document.getElementById('m-destino').textContent = v.destino;
+  document.getElementById('m-transportador').value = v.transportador || '';
+  document.getElementById('m-status').value = v.status || 'Pendente';
+  document.getElementById('m-placa').value = v.placa || '';
+  document.getElementById('m-obs').value = v.obs || '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  editingIdx = null;
+}
+
+function salvarPlacaInline(realIdx, value) {
+  const placa = value.toUpperCase().trim();
+  const v = viagens[realIdx];
+  if (v.placa === placa) return;
+  v.placa = placa;
+  if (placa && v.status === 'Aceito') {
+    v.status = 'Placa Enviada';
+  } else if (!placa && v.status === 'Placa Enviada') {
+    v.status = 'Aceito';
+  }
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+function salvarViagem() {
+  if (editingIdx === null) return;
+  viagens[editingIdx].transportador = document.getElementById('m-transportador').value;
+  viagens[editingIdx].status = document.getElementById('m-status').value;
+  viagens[editingIdx].placa = document.getElementById('m-placa').value.toUpperCase();
+  viagens[editingIdx].obs = document.getElementById('m-obs').value;
+  closeModal();
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+// ── PIPELINE UPDATE ──
+function updatePipeline(list) {
+  list = list || viagens;
+  const isFiltered = list.length < viagens.length;
+
+  // Cadências e Viagens: sempre totais globais
+  document.getElementById('cnt-cadencias').textContent = cadencias.length;
+  document.getElementById('cnt-viagens').textContent   = viagens.length;
+
+  // Status: refletem a lista recebida (filtrada ou total)
+  const cntBacklog   = list.filter(v => v.status === 'Backlog').length;
+  const cntOfertado  = list.filter(v => v.status === 'Ofertado').length;
+  const cntAceito    = list.filter(v => v.status === 'Aceito').length;
+  const cntPlaca     = list.filter(v => v.status === 'Placa Enviada').length;
+  const cntCancelado = list.filter(v => v.status === 'Cancelado').length;
+
+  document.getElementById('cnt-backlog').textContent       = cntBacklog;
+  document.getElementById('cnt-ofertadas').textContent     = cntOfertado;
+  document.getElementById('cnt-aceitas').textContent       = cntAceito;
+  document.getElementById('cnt-monitoramento').textContent = cntPlaca;
+  document.getElementById('cnt-canceladas').textContent    = cntCancelado;
+
+  // Tint visual nos labels de status quando filtrado
+  ['pipe-3','pipe-4','pipe-5','pipe-6'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.opacity = isFiltered ? '1' : '1';
+  });
+
+  // reset (pipe-7 = cancel mantém classe própria)
+  ['pipe-1','pipe-2','pipe-3','pipe-4','pipe-5','pipe-6'].forEach(s =>
+    document.getElementById(s).classList.remove('active','done')
+  );
+
+  if (cadencias.length > 0)
+    document.getElementById('pipe-1').classList.add(viagens.length > 0 ? 'done' : 'active');
+  if (viagens.length > 0)
+    document.getElementById('pipe-2').classList.add('done');
+  if (cntBacklog > 0)   document.getElementById('pipe-3').classList.add('active');
+  if (cntOfertado > 0)  document.getElementById('pipe-4').classList.add('active');
+  if (cntAceito > 0)    document.getElementById('pipe-5').classList.add('active');
+  if (cntPlaca > 0)     document.getElementById('pipe-6').classList.add('active');
+
+  // Badge "filtrado" no pipeline
+  let pipeBadge = document.getElementById('pipe-filter-badge');
+  if (!pipeBadge) {
+    pipeBadge = document.createElement('span');
+    pipeBadge.id = 'pipe-filter-badge';
+    pipeBadge.style.cssText = 'font-size:9px;color:var(--accent);background:var(--accent-dim);padding:1px 7px;border-radius:8px;margin-left:10px;letter-spacing:0;font-weight:600';
+    pipeBadge.textContent = 'filtrado';
+    const pipe2 = document.getElementById('pipe-2');
+    pipe2?.parentNode?.insertBefore(pipeBadge, pipe2.nextSibling);
+  }
+  pipeBadge.style.display = isFiltered ? 'inline' : 'none';
+}
+
+// ── EXPORT ──
+function renderExport() {
+  const prontas = viagens.filter(v => v.status === 'Placa Enviada' && v.placa);
+  const isEmpty = prontas.length === 0;
+  document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  document.getElementById('badge-prontas').textContent = prontas.length + ' viagens';
+
+  const tbody = document.getElementById('exportBody');
+  tbody.innerHTML = '';
+  prontas.forEach(v => {
+    tbody.innerHTML += `
+      <tr>
+        <td style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--accent);font-weight:600">${v.idViagem}</td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
+        <td>${prodTag(v.produto)}</td>
+        <td>${v.origem}${v.base ? `<span style="color:var(--text-muted)"> (${v.base})</span>` : ''}</td>
+        <td>${v.destino}</td>
+        <td><strong>${v.dtDesc}</strong></td>
+        <td>${v.volume} m³</td>
+        <td>${v.transportador}</td>
+      </tr>
+    `;
+  });
+}
+
+function exportarCSV() {
+  const prontas = viagens.filter(v => v.status === 'Placa Enviada' && v.placa);
+  if (!prontas.length) return alert('Nenhuma viagem com placa confirmada.');
+  const headers = ['ID_VIAGEM','CADENCIA_ORIGEM','PLACA','PRODUTO','ORIGEM','DESTINO','DT_CARREGAMENTO','DT_DESCARGA','VOLUME_M3','TRANSPORTADOR','OBSERVACAO'];
+  const rows = prontas.map(v => [v.idViagem, v.cadenciaOrigem, v.placa, v.produto, v.origem, v.destino, v.dtCarreg, v.dtDesc, v.volume, v.transportador, v.obs]);
+  downloadCSV('importacao_monitoramento.csv', [headers, ...rows]);
+}
+
+function exportarRelatorio() {
+  const headers = ['ID_VIAGEM','CADENCIA_ORIGEM','PRODUTO','ORIGEM','DESTINO','DT_DESCARGA','VOLUME_M3','STATUS','TRANSPORTADOR','PLACA'];
+  const rows = viagens.map(v => [v.idViagem, v.cadenciaOrigem, v.produto, v.origem, v.destino, v.dtDesc, v.volume, v.status, v.transportador, v.placa]);
+  downloadCSV('relatorio_semana.csv', [headers, ...rows]);
+}
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// ── FILE UPLOAD via SheetJS ──
+function processarArquivo(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+
+      // Pega a primeira aba
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      // Converte para array de arrays (sem header automático)
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Encontra a linha de cabeçalho (procura pela linha que tem "Id" na primeira coluna)
+      let headerIdx = -1;
+      for (let i = 0; i < rows.length; i++) {
+        const first = String(rows[i][0] || '').trim();
+        if (first === 'Id') { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        alert('Não foi possível encontrar o cabeçalho da planilha.\nVerifique se a coluna "Id" existe.');
+        return;
+      }
+
+      const headers = rows[headerIdx].map(h => String(h).trim());
+      const col = (nome) => headers.indexOf(nome);
+
+      const idxId        = col('Id');
+      const idxDtCarreg  = col('Data de Carregamento');
+      const idxDtDesc    = col('Data de Descarga');
+      const idxProduto   = col('Produto');
+      const idxOrigem    = col('Origem');
+      const idxBase      = col('Base de Atendimento');
+      const idxDestino   = col('Destino');
+      const idxPlanejado = col('Planejado');
+
+      cadencias = [];
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const id = String(r[idxId] || '').trim();
+        if (!id) continue; // linha vazia
+
+        // Datas podem vir como número serial do Excel ou string
+        const parseDateCell = (v) => {
+          if (!v || v === '-') return '-';
+          if (typeof v === 'number') {
+            // serial do Excel → JS Date
+            const d = XLSX.SSF.parse_date_code(v);
+            return `${String(d.d).padStart(2,'0')}/${String(d.m).padStart(2,'0')}/${d.y}`;
+          }
+          return String(v).trim();
+        };
+
+        cadencias.push({
+          id,
+          dtCarreg: parseDateCell(r[idxDtCarreg]),
+          dtDesc:   parseDateCell(r[idxDtDesc]),
+          produto:  String(r[idxProduto]  || '').trim(),
+          origem:   String(r[idxOrigem]   || '').trim(),
+          base:     String(r[idxBase]     || '').trim(),
+          destino:  String(r[idxDestino]  || '').trim(),
+          volume:   parseFloat(r[idxPlanejado]) || 0,
+        });
+      }
+
+      if (cadencias.length === 0) {
+        alert('Nenhuma linha de dados encontrada na planilha.');
+        return;
+      }
+
+      renderPreview();
+      agendarAutosave();
+
+      // Feedback visual na zona de upload
+      document.getElementById('uploadZone').innerHTML = `
+        <div class="upload-icon">✅</div>
+        <div class="upload-text" style="color:var(--success)">${file.name}</div>
+        <div class="upload-hint">${cadencias.length} linhas importadas com sucesso · <span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="document.getElementById('fileInput').click()">Trocar arquivo</span></div>
+      `;
+    } catch(err) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  processarArquivo(e.target.files[0]);
+});
+
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processarArquivo(file);
+});
+
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+document.getElementById('modalNovaCad').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalNovaCad();
+});
+document.getElementById('modalGrupo').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalGrupo();
+});
+
+// ── INIT: restaurar sessão ao abrir ──
+window.addEventListener('DOMContentLoaded', () => {
+  // initialize multiselects
+  msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
+  msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
+  msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
+  msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
+  msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
+  msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
+
+  const restaurou = carregarSessao();
+  if (restaurou) {
+    if (cadencias.length > 0) renderPreview();
+    updatePipeline();
+    if (viagens.length > 0) {
+      // vai direto para viagens se já foram geradas
+      switchTab(1);
+    }
+  }
+});
+</script>
+</body>
+</html>
