@@ -1028,10 +1028,33 @@
           });
         });
 
-        const viagensComId = viagensBase.map((v, idx) => ({
-          ...v,
-          idViagem: `${prefixo}-${String(maiorSeq + idx + 1).padStart(6, '0')}`
-        }));
+        const usados = new Set();
+        Object.entries(sessoes).forEach(([sessaoKey, sessao]) => {
+          if (sessaoKey === key) return;
+          (sessao?.viagens || []).forEach(v => {
+            if (v?.idViagem) usados.add(String(v.idViagem));
+          });
+        });
+
+        viagensBase.forEach(v => {
+          const m = String(v?.idViagem || '').match(re);
+          if (m) maiorSeq = Math.max(maiorSeq, parseInt(m[1], 10) || 0);
+        });
+
+        const viagensComId = viagensBase.map(v => {
+          const atual = String(v?.idViagem || '').trim();
+          if (atual && !usados.has(atual)) {
+            usados.add(atual);
+            return v;
+          }
+          let novoId;
+          do {
+            maiorSeq++;
+            novoId = `${prefixo}-${String(maiorSeq).padStart(6, '0')}`;
+          } while (usados.has(novoId));
+          usados.add(novoId);
+          return { ...v, idViagem: novoId };
+        });
 
         sessoes[key] = { ...payload, viagens: viagensComId };
         return sessoes;
@@ -2176,14 +2199,15 @@ function loadSampleData() {
 function agruparCadencias(arr) {
   const mapa = new Map();
   arr.forEach((c, originalIdx) => {
+    const realIdx = Number.isInteger(c._originalIdx) ? c._originalIdx : originalIdx;
     const key = [c.produto, c.origem, c.base||'', c.destino, c.dtCarreg, c.dtDesc].join('||');
     if (mapa.has(key)) {
       const g = mapa.get(key);
       g.volume = +(g.volume + c.volume).toFixed(1);
       g.ids.push(c.id);
-      g.originalIdxs.push(originalIdx);
+      g.originalIdxs.push(realIdx);
     } else {
-      mapa.set(key, { ...c, ids: [c.id], originalIdxs: [originalIdx] });
+      mapa.set(key, { ...c, ids: [c.id], originalIdxs: [realIdx] });
     }
   });
   return Array.from(mapa.values());
@@ -2206,7 +2230,7 @@ function renderPreview() {
   const cSelOrigens = new Set(msCOrigem?.getSelected()   || []);
   const cSelDests   = new Set(msCDestino?.getSelected()  || []);
 
-  const cadFiltradas = cadencias.filter(c => {
+  const cadFiltradas = cadencias.map((c, idx) => ({ ...c, _originalIdx: idx })).filter(c => {
     if (cSelProds.size   && !cSelProds.has(c.produto))   return false;
     if (cSelOrigens.size && !cSelOrigens.has(c.origem + (c.base ? ` (${c.base})` : ''))) return false;
     if (cSelDests.size   && !cSelDests.has(c.destino))   return false;
@@ -2332,6 +2356,11 @@ function salvarLinha(gi, idx) {
 }
 
 function excluirLinha(idx) {
+  if (!Number.isInteger(idx) || idx < 0 || idx >= cadencias.length) {
+    alert('Não foi possível localizar esta linha na cadência atual. Atualize o preview e tente novamente.');
+    renderPreview();
+    return;
+  }
   if (!confirm('Remover esta linha da cadência?')) return;
   cadencias.splice(idx, 1);
   renderPreview();
@@ -2386,6 +2415,113 @@ function prodTag(p) {
 // ── GERAR VIAGENS ──
 const PREFIXO_VIAGEM = 'NXT';
 
+function assinaturaGrupoViagem(v) {
+  return [
+    v.produto || '',
+    v.origem || '',
+    v.base || '',
+    v.destino || '',
+    v.dtCarreg || '',
+    v.dtDesc || ''
+  ].join('||');
+}
+
+function viagemTemProgramacao(v) {
+  return (v.status && v.status !== 'Backlog') || v.transportador || v.placa || v.obs;
+}
+
+function ordenarViagensDoGrupo(a, b) {
+  const seq = v => {
+    const m = String(v.idCadencia || '').match(/-V(\d+)$/);
+    if (m) return parseInt(m[1], 10);
+    const n = String(v.idViagem || '').match(/(\d+)$/);
+    return n ? parseInt(n[1], 10) : 0;
+  };
+  return seq(a) - seq(b);
+}
+
+function reconciliarViagensComCadencias(grupos, cap) {
+  const existentesPorGrupo = new Map();
+  viagens.forEach(v => {
+    const key = assinaturaGrupoViagem(v);
+    if (!existentesPorGrupo.has(key)) existentesPorGrupo.set(key, []);
+    existentesPorGrupo.get(key).push(v);
+  });
+  existentesPorGrupo.forEach(lista => lista.sort(ordenarViagensDoGrupo));
+
+  const novasViagens = [];
+  const gruposAtuais = new Set();
+  const resumo = { mantidas: 0, criadas: 0, removidas: 0, preservadasComProgramacao: 0 };
+
+  grupos.forEach(g => {
+    const key = assinaturaGrupoViagem(g);
+    gruposAtuais.add(key);
+    const existentes = existentesPorGrupo.get(key) || [];
+    const n = Math.ceil(g.volume / cap);
+    const volPorViagem = +(g.volume / n).toFixed(1);
+    const cadOrigem = g.ids.join(' / ');
+
+    for (let i = 1; i <= n; i++) {
+      const anterior = existentes[i - 1];
+      const baseViagem = {
+        idCadencia: cadOrigem + (n > 1 ? `-V${i}` : ''),
+        cadenciaOrigem: cadOrigem,
+        produto: g.produto,
+        origem: g.origem,
+        base: g.base || '',
+        destino: g.destino,
+        dtCarreg: g.dtCarreg,
+        dtDesc: g.dtDesc,
+        volume: volPorViagem,
+      };
+
+      if (anterior) {
+        novasViagens.push({
+          ...anterior,
+          ...baseViagem,
+          status: anterior.status || 'Backlog',
+          transportador: anterior.transportador || '',
+          placa: anterior.placa || '',
+          obs: anterior.obs || '',
+        });
+        resumo.mantidas++;
+      } else {
+        novasViagens.push({
+          ...baseViagem,
+          status: 'Backlog',
+          transportador: '',
+          placa: '',
+          obs: ''
+        });
+        resumo.criadas++;
+      }
+    }
+
+    existentes.slice(n).forEach(v => {
+      if (viagemTemProgramacao(v)) {
+        novasViagens.push(v);
+        resumo.preservadasComProgramacao++;
+      } else {
+        resumo.removidas++;
+      }
+    });
+  });
+
+  existentesPorGrupo.forEach((lista, key) => {
+    if (gruposAtuais.has(key)) return;
+    lista.forEach(v => {
+      if (viagemTemProgramacao(v)) {
+        novasViagens.push(v);
+        resumo.preservadasComProgramacao++;
+      } else {
+        resumo.removidas++;
+      }
+    });
+  });
+
+  return { viagens: novasViagens, resumo };
+}
+
 async function gerarViagens() {
   if (!cadencias.length) return alert('Importe uma cadência antes de gerar viagens.');
   const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
@@ -2397,37 +2533,13 @@ async function gerarViagens() {
   const oldText = btn?.textContent;
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Gerando IDs...';
+    btn.textContent = 'Conciliando viagens...';
   }
 
   try {
     if (!semanaAtiva) throw new Error('Crie ou selecione uma semana antes de gerar viagens.');
     if (!window._fb?.salvarComViagensUnicas) throw new Error('Firebase indisponível para gerar IDs únicos.');
-
-    const novasViagens = [];
-
-    grupos.forEach(g => {
-      const n = Math.ceil(g.volume / cap);
-      const volPorViagem = +(g.volume / n).toFixed(1);
-      const cadOrigem = g.ids.join(' / ');
-      for (let i = 1; i <= n; i++) {
-        novasViagens.push({
-          idCadencia: cadOrigem + (n > 1 ? `-V${i}` : ''),
-          cadenciaOrigem: cadOrigem,
-          produto: g.produto,
-          origem: g.origem,
-          base: g.base || '',
-          destino: g.destino,
-          dtCarreg: g.dtCarreg,
-          dtDesc: g.dtDesc,
-          volume: volPorViagem,
-          status: 'Backlog',
-          transportador: '',
-          placa: '',
-          obs: ''
-        });
-      }
-    });
+    const conciliacao = reconciliarViagensComCadencias(grupos, cap);
 
     mostrarStatus('saving', 'Gravando viagens com IDs únicos...');
     const payload = {
@@ -2438,14 +2550,18 @@ async function gerarViagens() {
       },
       savedAt: new Date().toISOString()
     };
-    const salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, novasViagens, PREFIXO_VIAGEM);
+    const salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, conciliacao.viagens, PREFIXO_VIAGEM);
     aplicarPayload(salvo);
+    selectedViagens.clear();
 
     updatePipeline();
     mostrarStatusSalvo();
+    if (conciliacao.resumo.preservadasComProgramacao > 0) {
+      mostrarStatus('saved', `Viagens atualizadas · ${conciliacao.resumo.criadas} novas · ${conciliacao.resumo.preservadasComProgramacao} programadas preservadas`);
+    }
     switchTab(1);
   } catch (e) {
-    alert('Não foi possível reservar IDs únicos para as viagens: ' + e.message);
+    alert('Não foi possível atualizar as viagens: ' + e.message);
   } finally {
     if (btn) {
       btn.disabled = false;
