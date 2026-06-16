@@ -1061,6 +1061,13 @@
       });
       if (!result.committed) throw new Error('Gravação das viagens não confirmada.');
       return result.snapshot.val()?.[key] || { ...payload, viagens: viagensBase };
+    },
+    carregarTransportadores: async () => {
+      const snap = await get(ref(db, 'transportadores'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarTransportadores: async (lista) => {
+      await set(ref(db, 'transportadores'), lista);
     }
   };
 
@@ -1216,6 +1223,7 @@
   <div class="tab active" onclick="switchTab(0)">① Importar Cadência</div>
   <div class="tab" onclick="switchTab(1)">② Gerir Viagens</div>
   <div class="tab" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
+  <div class="tab" onclick="switchTab(3)">④ Transportadores</div>
 </div>
 
 <div class="main">
@@ -1232,7 +1240,7 @@
   <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
     <div class="upload-icon">📂</div>
     <div class="upload-text">Arraste o Excel aqui ou clique para selecionar</div>
-    <div class="upload-hint">Suporta .xlsx exportado do sistema · Colunas: Id, Data de Carregamento, Data de Descarga, Produto, Origem, Base de Atendimento, Destino, Planejado</div>
+    <div class="upload-hint">Suporta .xlsx exportado do sistema · Colunas: Id, Data de Carregamento, Data de Descarga, Produto, Origem, Base de Atendimento, CNPJ Origem, Destino, CNPJ Destino, Planejado</div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
   </div>
 
@@ -1413,7 +1421,9 @@
           <option value="Cancelado">Cancelado</option>
         </select>
         <span class="filter-sep">Transportador:</span>
-        <input type="text" class="filter-input" id="bulk-transp" placeholder="Nome da transportadora..." style="width:190px">
+        <select class="filter-select" id="bulk-transp" style="width:190px">
+          <option value="">Transportador...</option>
+        </select>
         <button class="btn btn-primary btn-sm" onclick="aplicarEmLote()">✓ Aplicar</button>
         <button class="btn btn-secondary btn-sm" onclick="limparSelecao()">✕ Desmarcar tudo</button>
       </div>
@@ -1517,6 +1527,56 @@
   </div>
 </div>
 
+<!-- ===== TAB 4: TRANSPORTADORES ===== -->
+<div class="tab-content" id="tab-3">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Cadastro de Transportadores</div>
+      <div class="section-sub">Gerencie os transportadores utilizados nas programações</div>
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalTransportador(null)">＋ Novo Transportador</button>
+  </div>
+
+  <div id="transpEmpty" class="empty-state">
+    <div class="empty-icon">🚚</div>
+    <div class="empty-text">Nenhum transportador cadastrado</div>
+    <div class="empty-sub">Clique em "+ Novo Transportador" para cadastrar o primeiro</div>
+  </div>
+
+  <div id="transpContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Transportadores</span>
+          <span class="badge badge-accent" id="badge-transps">0 cadastrados</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fTranspBusca"
+            placeholder="🔍  Código SAP, razão social, nome fantasia, CNPJ..."
+            oninput="renderTransportadoresTable()">
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosTransp()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th>Código SAP</th>
+              <th>Razão Social</th>
+              <th>Nome Fantasia</th>
+              <th>CNPJ</th>
+              <th style="width:88px;min-width:88px;text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="transpBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- MODAL: Nova Cadência -->
@@ -1544,6 +1604,19 @@
       <div class="modal-field">
         <div class="modal-label">Base de Atendimento</div>
         <input type="text" class="config-input" id="nc-base" placeholder="IGARAPAVA">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">CNPJ Origem</div>
+        <input type="text" class="config-input" id="nc-cnpjOrigem" placeholder="00.000.000/0000-00" maxlength="18"
+          oninput="this.value = mascaraCNPJ(this.value)">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CNPJ Destino</div>
+        <input type="text" class="config-input" id="nc-cnpjDestino" placeholder="00.000.000/0000-00" maxlength="18"
+          oninput="this.value = mascaraCNPJ(this.value)">
       </div>
     </div>
 
@@ -1613,7 +1686,9 @@
     <div class="modal-row">
       <div class="modal-field">
         <div class="modal-label">Transportador</div>
-        <input type="text" class="config-input" id="m-transportador" placeholder="Nome da transportadora">
+        <select class="config-input" id="m-transportador">
+          <option value="">— Não alocado —</option>
+        </select>
       </div>
       <div class="modal-field">
         <div class="modal-label">Status</div>
@@ -1627,9 +1702,34 @@
       </div>
     </div>
 
-    <div class="modal-field">
-      <div class="modal-label">Placa do Veículo</div>
-      <input type="text" class="config-input" id="m-placa" placeholder="ABC1D23" maxlength="8">
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Placa do Cavalo</div>
+        <input type="text" class="config-input" id="m-placa" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Placa Carreta 1</div>
+        <input type="text" class="config-input" id="m-placaCarreta1" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Placa Carreta 2</div>
+        <input type="text" class="config-input" id="m-placaCarreta2" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field" style="flex:2">
+        <div class="modal-label">Nome do Motorista</div>
+        <input type="text" class="config-input" id="m-nomeMotorista" placeholder="Nome completo">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CPF do Motorista</div>
+        <input type="text" class="config-input" id="m-cpfMotorista" placeholder="000.000.000-00" maxlength="14"
+          oninput="this.value = mascaraCPF(this.value)">
+      </div>
     </div>
 
     <div class="modal-field">
@@ -1639,7 +1739,43 @@
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-secondary" onclick="gerarOrdemRetirada(editingIdx)" style="gap:6px">📄 Ordem PDF</button>
       <button class="btn btn-primary" onclick="salvarViagem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Transportador -->
+<div class="modal-overlay" id="modalTransportador">
+  <div class="modal">
+    <div class="modal-title" id="transp-modal-title">Novo Transportador</div>
+    <div class="modal-sub">Preencha os dados do transportador</div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Código SAP *</div>
+        <input type="text" class="config-input" id="transp-codsap" placeholder="1000001">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CNPJ</div>
+        <input type="text" class="config-input" id="transp-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+          oninput="this.value = mascaraCNPJ(this.value)">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Razão Social *</div>
+      <input type="text" class="config-input" id="transp-razao" placeholder="TRANSPORTES EXEMPLO LTDA">
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Nome Fantasia</div>
+      <input type="text" class="config-input" id="transp-fantasia" placeholder="Exemplo Transportes">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalTransportador()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarTransportador()">Salvar</button>
     </div>
   </div>
 </div>
@@ -1953,21 +2089,24 @@ function editarGrupo(idxs) {
     const c = cadencias[idx];
     const sec = document.createElement('div');
     sec.style.cssText = `padding:14px 0;${i < idxs.length - 1 ? 'border-bottom:1px solid var(--border)' : ''}`;
+    const roField = (label, val, sub) =>
+      `<div>
+        <div class="modal-label">${label}</div>
+        <div style="padding:8px 10px;background:var(--surface);border-radius:6px;font-size:13px;color:var(--text-primary)">
+          ${esc(val||'—')}${sub ? `<span style="color:var(--text-muted);font-size:11px"> · ${esc(sub)}</span>` : ''}
+        </div>
+      </div>`;
     sec.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">
         Pedido ${i+1} — <span style="color:var(--accent);font-family:var(--font-cond)">${esc(c.id)}</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div><div class="modal-label">ID Pedido</div><input class="config-input" id="ge-id-${i}" value="${esc(c.id)}"></div>
-        <div><div class="modal-label">Produto</div><input class="config-input" id="ge-produto-${i}" value="${esc(c.produto)}"></div>
+        ${roField('ID Pedido', c.id)}
+        ${roField('Produto', c.produto)}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div><div class="modal-label">Origem</div><input class="config-input" id="ge-origem-${i}" value="${esc(c.origem)}"></div>
-        <div><div class="modal-label">Base de Atendimento</div><input class="config-input" id="ge-base-${i}" value="${esc(c.base||'')}"></div>
-      </div>
-      <div style="margin-bottom:10px">
-        <div class="modal-label">Destino</div>
-        <input class="config-input" id="ge-destino-${i}" value="${esc(c.destino)}">
+        ${roField('Origem', c.origem, c.base)}
+        ${roField('Destino', c.destino)}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div><div class="modal-label">Dt Carregamento</div><input class="config-input" id="ge-dtcarreg-${i}" value="${esc(c.dtCarreg||'-')}"></div>
@@ -1986,11 +2125,6 @@ function fecharModalGrupo() {
 
 function salvarGrupo() {
   editingGrupoIdxs.forEach((idx, i) => {
-    cadencias[idx].id       = document.getElementById(`ge-id-${i}`).value.trim();
-    cadencias[idx].produto  = document.getElementById(`ge-produto-${i}`).value.trim();
-    cadencias[idx].origem   = document.getElementById(`ge-origem-${i}`).value.trim();
-    cadencias[idx].base     = document.getElementById(`ge-base-${i}`).value.trim();
-    cadencias[idx].destino  = document.getElementById(`ge-destino-${i}`).value.trim();
     cadencias[idx].dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
     cadencias[idx].dtDesc   = document.getElementById(`ge-dtdesc-${i}`).value.trim();
     cadencias[idx].volume   = parseFloat(document.getElementById(`ge-volume-${i}`).value) || 0;
@@ -2067,6 +2201,8 @@ let editingIdx = null;
 let autosaveTimer = null;
 let selectedViagens = new Set();
 let currentFilteredIdxs = [];
+let transportadores = [];
+let editingTranspIdx = null;
 
 const STORAGE_KEY = 'nexta_cadencia_sessao';
 
@@ -2175,6 +2311,7 @@ function switchTab(i) {
   activeTab = i;
   if (i === 1) renderViagensTable();
   if (i === 2) renderExport();
+  if (i === 3) renderTransportadoresTable();
 }
 
 // ── SAMPLE DATA ──
@@ -2322,8 +2459,14 @@ function renderPreview() {
     tr.innerHTML = `
       <td class="cell-truncate-xs cell-preview-id" title="${esc(g.ids.join(', '))}">${idDisplay}</td>
       <td>${prodTag(g.produto)}</td>
-      <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : ''))}">${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}</td>
-      <td class="cell-truncate" title="${esc(g.destino)}">${esc(g.destino)}</td>
+      <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : '') + (g.cnpjOrigem ? ' · ' + g.cnpjOrigem : ''))}">
+        ${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}
+        ${g.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(g.cnpjOrigem)}</span>` : ''}
+      </td>
+      <td class="cell-truncate" title="${esc(g.destino + (g.cnpjDestino ? ' · ' + g.cnpjDestino : ''))}">
+        ${esc(g.destino)}
+        ${g.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(g.cnpjDestino)}</span>` : ''}
+      </td>
       <td class="cell-periodo">
         <div class="date-start">↑ ${fmtShort(g.dtCarreg)}</div>
         <div class="date-end">↓ ${fmtShort(g.dtDesc)}</div>
@@ -2347,14 +2490,13 @@ function editarLinha(gi, idx) {
   const tr = document.getElementById(`cad-row-${gi}`);
   const inp = (id, val, width, type='text') =>
     `<input class="config-input" id="${id}" value="${esc(String(val||''))}" type="${type}" style="width:${width};padding:5px 8px;font-size:11px;min-width:unset">`;
+  const ro = (val, sub) =>
+    `<span style="font-size:11px">${esc(String(val||'—'))}</span>${sub ? `<br><span style="font-size:10px;color:var(--text-muted)">${esc(sub)}</span>` : ''}`;
   tr.innerHTML = `
-    <td>${inp(`ei-id-${gi}`, c.id, '110px')}</td>
-    <td>${inp(`ei-produto-${gi}`, c.produto, '110px')}</td>
-    <td style="vertical-align:top">
-      ${inp(`ei-origem-${gi}`, c.origem, '130px')}
-      <input class="config-input" id="ei-base-${gi}" value="${esc(c.base||'')}" placeholder="Base atend." style="width:130px;padding:5px 8px;font-size:11px;min-width:unset;margin-top:4px;color:var(--text-muted)">
-    </td>
-    <td>${inp(`ei-destino-${gi}`, c.destino, '150px')}</td>
+    <td>${ro(c.id)}</td>
+    <td>${ro(c.produto)}</td>
+    <td style="vertical-align:middle">${ro(c.origem, c.base)}</td>
+    <td style="vertical-align:middle">${ro(c.destino)}</td>
     <td style="vertical-align:top">
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">↑ Carreg</div>
       ${inp(`ei-dtcarreg-${gi}`, c.dtCarreg, '94px')}
@@ -2370,15 +2512,10 @@ function editarLinha(gi, idx) {
       </div>
     </td>
   `;
-  document.getElementById(`ei-id-${gi}`).focus();
+  document.getElementById(`ei-dtcarreg-${gi}`).focus();
 }
 
 function salvarLinha(gi, idx) {
-  cadencias[idx].id       = document.getElementById(`ei-id-${gi}`).value.trim();
-  cadencias[idx].produto  = document.getElementById(`ei-produto-${gi}`).value.trim();
-  cadencias[idx].origem   = document.getElementById(`ei-origem-${gi}`).value.trim();
-  cadencias[idx].base     = document.getElementById(`ei-base-${gi}`).value.trim();
-  cadencias[idx].destino  = document.getElementById(`ei-destino-${gi}`).value.trim();
   cadencias[idx].dtCarreg = document.getElementById(`ei-dtcarreg-${gi}`).value.trim() || '-';
   cadencias[idx].dtDesc   = document.getElementById(`ei-dtdesc-${gi}`).value.trim();
   cadencias[idx].volume   = parseFloat(document.getElementById(`ei-volume-${gi}`).value) || 0;
@@ -2400,7 +2537,7 @@ function excluirLinha(idx) {
 
 // ── MODAL NOVA CADÊNCIA ──
 function abrirModalNovaCadencia() {
-  ['nc-id','nc-produto','nc-origem','nc-base','nc-destino','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
+  ['nc-id','nc-produto','nc-origem','nc-base','nc-cnpjOrigem','nc-cnpjDestino','nc-destino','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -2425,12 +2562,14 @@ function salvarNovaCadencia() {
   }
   cadencias.push({
     id,
-    dtCarreg: document.getElementById('nc-dtcarreg').value.trim() || '-',
+    dtCarreg:    document.getElementById('nc-dtcarreg').value.trim() || '-',
     dtDesc,
     produto,
     origem,
-    base: document.getElementById('nc-base').value.trim(),
+    base:        document.getElementById('nc-base').value.trim(),
+    cnpjOrigem:  document.getElementById('nc-cnpjOrigem').value.trim(),
     destino,
+    cnpjDestino: document.getElementById('nc-cnpjDestino').value.trim(),
     volume,
   });
   fecharModalNovaCad();
@@ -2500,7 +2639,9 @@ function reconciliarViagensComCadencias(grupos, cap) {
         produto: g.produto,
         origem: g.origem,
         base: g.base || '',
+        cnpjOrigem:  g.cnpjOrigem  || '',
         destino: g.destino,
+        cnpjDestino: g.cnpjDestino || '',
         dtCarreg: g.dtCarreg,
         dtDesc: g.dtDesc,
         volume: volPorViagem,
@@ -2746,8 +2887,14 @@ function renderViagensTable() {
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td class="cell-truncate-sm cell-pedido-mis" title="${esc(v.cadenciaOrigem)}">${esc(v.cadenciaOrigem)}</td>
         <td>${prodTag(v.produto)}</td>
-        <td class="cell-truncate" title="${esc(origemDisplay)}">${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
-        <td class="cell-truncate" title="${esc(v.destino)}">${esc(v.destino)}</td>
+        <td class="cell-truncate" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
+          ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
+          ${v.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjOrigem)}</span>` : ''}
+        </td>
+        <td class="cell-truncate" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
+          ${esc(v.destino)}
+          ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}
+        </td>
         <td class="cell-periodo">
           <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
           <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
@@ -2759,7 +2906,10 @@ function renderViagensTable() {
           onblur="salvarPlacaInline(${realIdx}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
           maxlength="8"></td>
-        <td class="col-acao"><button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})">✏️</button></td>
+        <td class="col-acao" style="display:flex;gap:4px">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+        </td>
       </tr>
     `;
   });
@@ -2771,6 +2921,7 @@ function renderViagensTable() {
     chkAll.checked = allSel;
     chkAll.indeterminate = someSel && !allSel;
   }
+  popularSelectTransportadores('bulk-transp');
   atualizarBulkBar();
 }
 
@@ -2801,6 +2952,164 @@ function limparFiltros() {
   renderViagensTable();
 }
 
+// ── TRANSPORTADORES ──
+function mascaraCPF(v) {
+  v = v.replace(/\D/g, '').substring(0, 11);
+  if (v.length > 9) return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  if (v.length > 6) return v.replace(/^(\d{3})(\d{3})(\d+)$/, '$1.$2.$3');
+  if (v.length > 3) return v.replace(/^(\d{3})(\d+)$/, '$1.$2');
+  return v;
+}
+
+function mascaraCNPJ(v) {
+  v = v.replace(/\D/g, '').substring(0, 14);
+  if (v.length > 12) return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (v.length > 8)  return v.replace(/^(\d{2})(\d{3})(\d{3})(\d+)$/, '$1.$2.$3/$4');
+  if (v.length > 5)  return v.replace(/^(\d{2})(\d{3})(\d+)$/, '$1.$2.$3');
+  if (v.length > 2)  return v.replace(/^(\d{2})(\d+)$/, '$1.$2');
+  return v;
+}
+
+async function carregarTransportadoresFirebase() {
+  if (!window._fb?.carregarTransportadores) return;
+  try {
+    const raw = await window._fb.carregarTransportadores();
+    if (raw !== null && raw !== undefined) {
+      transportadores = (Array.isArray(raw) ? raw : Object.values(raw)).filter(Boolean);
+    }
+  } catch (e) { console.error('Erro ao carregar transportadores:', e); }
+}
+
+async function persistirTransportadores() {
+  if (!window._fb?.salvarTransportadores) return;
+  try {
+    await window._fb.salvarTransportadores(transportadores);
+  } catch (e) { console.error('Erro ao salvar transportadores:', e); }
+}
+
+function renderTransportadoresTable() {
+  const busca = (document.getElementById('fTranspBusca')?.value || '').toLowerCase().trim();
+  const filtered = transportadores.filter(t =>
+    !busca || [t.codSap, t.razaoSocial, t.nomeFantasia, t.cnpj].join(' ').toLowerCase().includes(busca)
+  );
+
+  const isEmpty = transportadores.length === 0;
+  document.getElementById('transpEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('transpContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) { popularSelectTransportadores('bulk-transp'); return; }
+
+  document.getElementById('badge-transps').textContent =
+    filtered.length < transportadores.length
+      ? `${filtered.length} de ${transportadores.length} cadastrados`
+      : `${transportadores.length} cadastrado${transportadores.length !== 1 ? 's' : ''}`;
+
+  const tbody = document.getElementById('transpBody');
+  tbody.innerHTML = '';
+  filtered.forEach(t => {
+    const realIdx = transportadores.indexOf(t);
+    tbody.innerHTML += `
+      <tr>
+        <td style="font-family:var(--font-cond);font-size:14px;font-weight:700;color:var(--accent)">${esc(t.codSap)}</td>
+        <td class="cell-truncate">${esc(t.razaoSocial)}</td>
+        <td class="cell-truncate">${esc(t.nomeFantasia || '—')}</td>
+        <td style="font-family:monospace;font-size:12px;color:var(--text-dim)">${esc(t.cnpj || '—')}</td>
+        <td style="text-align:center">
+          <div style="display:flex;gap:4px;justify-content:center">
+            <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalTransportador(${realIdx})">✏️</button>
+            <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerTransportador(${realIdx})">✕</button>
+          </div>
+        </td>
+      </tr>`;
+  });
+  popularSelectTransportadores('bulk-transp');
+}
+
+function abrirModalTransportador(idx) {
+  editingTranspIdx = idx;
+  const isNovo = idx === null || idx === undefined;
+  document.getElementById('transp-modal-title').textContent = isNovo ? 'Novo Transportador' : 'Editar Transportador';
+  if (isNovo) {
+    ['transp-codsap','transp-razao','transp-fantasia','transp-cnpj'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  } else {
+    const t = transportadores[idx];
+    document.getElementById('transp-codsap').value   = t.codSap || '';
+    document.getElementById('transp-razao').value    = t.razaoSocial || '';
+    document.getElementById('transp-fantasia').value = t.nomeFantasia || '';
+    document.getElementById('transp-cnpj').value     = t.cnpj || '';
+  }
+  document.getElementById('modalTransportador').classList.add('open');
+  setTimeout(() => document.getElementById('transp-codsap').focus(), 100);
+}
+
+function fecharModalTransportador() {
+  document.getElementById('modalTransportador').classList.remove('open');
+  editingTranspIdx = null;
+}
+
+async function salvarTransportador() {
+  const codSap      = document.getElementById('transp-codsap').value.trim();
+  const razaoSocial = document.getElementById('transp-razao').value.trim();
+  const nomeFantasia = document.getElementById('transp-fantasia').value.trim();
+  const cnpj        = document.getElementById('transp-cnpj').value.trim();
+  if (!codSap || !razaoSocial) {
+    alert('Preencha os campos obrigatórios: Código SAP e Razão Social.');
+    return;
+  }
+  const isNovo = editingTranspIdx === null || editingTranspIdx === undefined;
+  const duplicado = transportadores.findIndex((t, i) => t.codSap === codSap && i !== editingTranspIdx);
+  if (duplicado !== -1) {
+    alert(`Código SAP "${codSap}" já está cadastrado para "${transportadores[duplicado].razaoSocial}".`);
+    return;
+  }
+  const registro = { codSap, razaoSocial, nomeFantasia, cnpj };
+  if (isNovo) transportadores.push(registro);
+  else transportadores[editingTranspIdx] = registro;
+  fecharModalTransportador();
+  renderTransportadoresTable();
+  await persistirTransportadores();
+}
+
+async function removerTransportador(idx) {
+  if (!confirm(`Remover "${transportadores[idx].razaoSocial}" do cadastro?`)) return;
+  transportadores.splice(idx, 1);
+  renderTransportadoresTable();
+  await persistirTransportadores();
+}
+
+function limparFiltrosTransp() {
+  const el = document.getElementById('fTranspBusca');
+  if (el) el.value = '';
+  renderTransportadoresTable();
+}
+
+function popularSelectTransportadores(selectId, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  const emptyLabel = selectId === 'bulk-transp' ? 'Transportador...' : '— Não alocado —';
+  sel.innerHTML = `<option value="">${emptyLabel}</option>`;
+  transportadores.forEach(t => {
+    const nome = t.nomeFantasia || t.razaoSocial;
+    const opt = document.createElement('option');
+    opt.value = nome;
+    opt.textContent = t.nomeFantasia
+      ? `${t.nomeFantasia}  ·  ${t.codSap}`
+      : `${t.razaoSocial}  ·  ${t.codSap}`;
+    sel.appendChild(opt);
+  });
+  sel.value = current || '';
+  // Compatibilidade retroativa: transportador digitado manualmente que não consta no cadastro
+  if (current && sel.value !== current) {
+    const opt = document.createElement('option');
+    opt.value = current;
+    opt.textContent = `${current}  (não cadastrado)`;
+    sel.insertBefore(opt, sel.children[1] || null);
+    sel.value = current;
+  }
+}
+
 function filterViagens(f, el) {
   activeFilter = f;
   document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
@@ -2819,10 +3128,14 @@ function openModal(idx) {
   document.getElementById('m-dtdesc').textContent = v.dtDesc;
   document.getElementById('m-origem').textContent = v.origem;
   document.getElementById('m-destino').textContent = v.destino;
-  document.getElementById('m-transportador').value = v.transportador || '';
-  document.getElementById('m-status').value = v.status || 'Pendente';
-  document.getElementById('m-placa').value = v.placa || '';
-  document.getElementById('m-obs').value = v.obs || '';
+  popularSelectTransportadores('m-transportador', v.transportador || '');
+  document.getElementById('m-status').value         = v.status || 'Pendente';
+  document.getElementById('m-placa').value          = v.placa || '';
+  document.getElementById('m-placaCarreta1').value  = v.placaCarreta1 || '';
+  document.getElementById('m-placaCarreta2').value  = v.placaCarreta2 || '';
+  document.getElementById('m-nomeMotorista').value  = v.nomeMotorista || '';
+  document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
+  document.getElementById('m-obs').value            = v.obs || '';
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -2848,14 +3161,167 @@ function salvarPlacaInline(realIdx, value) {
 
 function salvarViagem() {
   if (editingIdx === null) return;
-  viagens[editingIdx].transportador = document.getElementById('m-transportador').value;
-  viagens[editingIdx].status = document.getElementById('m-status').value;
-  viagens[editingIdx].placa = document.getElementById('m-placa').value.toUpperCase();
-  viagens[editingIdx].obs = document.getElementById('m-obs').value;
+  viagens[editingIdx].transportador  = document.getElementById('m-transportador').value;
+  viagens[editingIdx].status         = document.getElementById('m-status').value;
+  viagens[editingIdx].placa          = document.getElementById('m-placa').value.toUpperCase();
+  viagens[editingIdx].placaCarreta1  = document.getElementById('m-placaCarreta1').value.toUpperCase();
+  viagens[editingIdx].placaCarreta2  = document.getElementById('m-placaCarreta2').value.toUpperCase();
+  viagens[editingIdx].nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
+  viagens[editingIdx].cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
+  viagens[editingIdx].obs            = document.getElementById('m-obs').value;
   closeModal();
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
+}
+
+// ── ORDEM DE CARREGAMENTO (PDF) ──
+function gerarOrdemRetirada(idx) {
+  if (idx === null || idx === undefined) return;
+  const v = viagens[idx];
+  if (!v) return;
+
+  const transpObj  = transportadores.find(t => (t.nomeFantasia || t.razaoSocial) === v.transportador);
+  const transpRazao = transpObj ? (transpObj.razaoSocial || v.transportador || '—') : (v.transportador || '—');
+  const transpCnpj  = transpObj?.cnpj || '—';
+
+  const localCarreg  = [v.origem, v.base].filter(Boolean).join(' - ') || '—';
+  const cidadeDest   = v.destino ? v.destino.split(' - ')[0].trim() : '—';
+  const dtCarreg     = (v.dtCarreg && v.dtCarreg !== '-') ? v.dtCarreg : '—';
+  const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ordem de Carregamento — ${e(v.idViagem)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color:#000;padding:16px}
+.doc{width:620px;margin:0 auto;border:2px solid #000}
+.r{display:flex;border-bottom:1px solid #000}
+.r:last-child{border-bottom:none}
+.c{padding:6px 10px}
+.lbl{background:#d0d0d0;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:.3px}
+.val{background:#fff}
+.ctr{text-align:center}
+.f1{flex:1}
+.br{border-right:1px solid #000}
+.hdr{display:flex;align-items:stretch;border-bottom:2px solid #000}
+.hdr-logo{width:100px;display:flex;align-items:center;justify-content:center;background:#1a5c38;color:#fff;font-size:18px;font-weight:900;letter-spacing:1px;font-family:Arial,sans-serif}
+.hdr-title{flex:1;text-align:center;font-size:13px;font-weight:bold;padding:14px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.hdr-title small{font-size:9px;font-weight:normal;letter-spacing:.5px;color:#555;text-transform:uppercase}
+.hdr-oc{min-width:80px;display:flex;flex-direction:column}
+.hdr-oc-lbl{padding:4px 14px;font-weight:bold;text-align:center;background:#d0d0d0;font-size:10px;border-bottom:1px solid #000}
+.hdr-oc-val{padding:8px 14px;text-align:center;font-size:13px;font-weight:bold}
+.sec-lbl{flex:1;background:#d0d0d0;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:.5px;padding:5px 10px;text-align:center}
+.sec-val{flex:1;text-align:center;padding:8px 10px;font-size:12px;font-weight:bold}
+.w170{width:170px;flex-shrink:0}
+.obs-box{min-height:60px;padding:8px 10px;font-size:11px;color:#999;font-style:italic}
+.conf-row{display:flex;border-top:1px solid #000}
+.conf-cell{flex:1;padding:8px 14px;text-align:center;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.4px}
+.conf-line{margin-bottom:4px;border-bottom:1px solid #000;height:28px}
+@media print{@page{size:A4;margin:8mm}body{padding:0}.doc{width:100%}}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="hdr">
+    <div class="hdr-logo br">NEXTA</div>
+    <div class="hdr-title br">
+      ORDEM DE CARREGAMENTO
+      <small>Nexta Distribuidora Combustíveis</small>
+    </div>
+    <div class="hdr-oc">
+      <div class="hdr-oc-lbl">OC</div>
+      <div class="hdr-oc-val">${e(v.idViagem)}</div>
+    </div>
+  </div>
+
+  <div class="r"><div class="sec-lbl">LOCAL DE CARREGAMENTO</div></div>
+  <div class="r"><div class="sec-val">${e(localCarreg)}</div></div>
+
+  <div class="r">
+    <div class="c lbl ctr br f1">DATA DE CARREGAMENTO</div>
+    <div class="c lbl ctr br f1">CAVALO</div>
+    <div class="c lbl ctr br f1">CARRETA 1</div>
+    <div class="c lbl ctr f1">CARRETA 2</div>
+  </div>
+  <div class="r">
+    <div class="c val ctr br f1">${e(dtCarreg)}</div>
+    <div class="c val ctr br f1">${e(v.placa || '—')}</div>
+    <div class="c val ctr br f1">${e(v.placaCarreta1 || '—')}</div>
+    <div class="c val ctr f1">${e(v.placaCarreta2 || '—')}</div>
+  </div>
+
+  <div class="r"><div class="sec-lbl">MOTORISTA</div></div>
+  <div class="r"><div class="sec-val">${e(v.nomeMotorista || '—')}</div></div>
+
+  <div class="r">
+    <div class="c lbl br f1">CPF</div>
+    <div class="c lbl br f1">CNH</div>
+    <div class="c lbl f1">RG</div>
+  </div>
+  <div class="r">
+    <div class="c val br f1">${e(v.cpfMotorista || '—')}</div>
+    <div class="c val br f1"></div>
+    <div class="c val f1"></div>
+  </div>
+
+  <div class="r">
+    <div class="c lbl br w170">PRODUTO</div>
+    <div class="c val ctr f1">${e(v.produto)}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">VOLUME</div>
+    <div class="c val ctr f1">${e(String(v.volume))} m³</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">TRANSPORTADORA</div>
+    <div class="c val ctr f1">${e(transpRazao)}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">CNPJ TRANSPORTADOR</div>
+    <div class="c val ctr f1">${e(transpCnpj)}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">DESTINATARIO</div>
+    <div class="c val ctr f1">${e(v.destino || '—')}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">CNPJ DESTINATARIO</div>
+    <div class="c val ctr f1">${e(v.cnpjDestino || '—')}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">CIDADE DESTINATARIO</div>
+    <div class="c val ctr f1">${e(cidadeDest)}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">VALOR DO FRETE (M³)</div>
+    <div class="c val ctr f1"></div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">PEDIDO</div>
+    <div class="c val ctr f1">${e(v.cadenciaOrigem)}</div>
+  </div>
+  <div class="r">
+    <div class="c lbl br w170">ENTREGA :</div>
+    <div class="c val ctr f1">${e(v.dtDesc || '—')}</div>
+  </div>
+
+  <div class="r"><div class="sec-lbl">OBSERVAÇÕES</div></div>
+  <div class="r"><div class="obs-box"></div></div>
+
+</div>
+<script>window.onload=()=>window.print();<\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=700,height=920');
+  if (!win) { alert('Permita popups neste site para gerar o PDF.'); return; }
+  win.document.write(html);
+  win.document.close();
 }
 
 // ── PIPELINE UPDATE ──
@@ -2991,14 +3457,16 @@ function processarArquivo(file) {
       const headers = rows[headerIdx].map(h => String(h).trim());
       const col = (nome) => headers.indexOf(nome);
 
-      const idxId        = col('Id');
-      const idxDtCarreg  = col('Data de Carregamento');
-      const idxDtDesc    = col('Data de Descarga');
-      const idxProduto   = col('Produto');
-      const idxOrigem    = col('Origem');
-      const idxBase      = col('Base de Atendimento');
-      const idxDestino   = col('Destino');
-      const idxPlanejado = col('Planejado');
+      const idxId           = col('Id');
+      const idxDtCarreg     = col('Data de Carregamento');
+      const idxDtDesc       = col('Data de Descarga');
+      const idxProduto      = col('Produto');
+      const idxOrigem       = col('Origem');
+      const idxBase         = col('Base de Atendimento');
+      const idxCnpjOrigem   = col('CNPJ Origem');
+      const idxDestino      = col('Destino');
+      const idxCnpjDestino  = col('CNPJ Destino');
+      const idxPlanejado    = col('Planejado');
 
       cadencias = [];
       for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -3019,13 +3487,15 @@ function processarArquivo(file) {
 
         cadencias.push({
           id,
-          dtCarreg: parseDateCell(r[idxDtCarreg]),
-          dtDesc:   parseDateCell(r[idxDtDesc]),
-          produto:  String(r[idxProduto]  || '').trim(),
-          origem:   String(r[idxOrigem]   || '').trim(),
-          base:     String(r[idxBase]     || '').trim(),
-          destino:  String(r[idxDestino]  || '').trim(),
-          volume:   parseFloat(r[idxPlanejado]) || 0,
+          dtCarreg:    parseDateCell(r[idxDtCarreg]),
+          dtDesc:      parseDateCell(r[idxDtDesc]),
+          produto:     String(r[idxProduto]     || '').trim(),
+          origem:      String(r[idxOrigem]      || '').trim(),
+          base:        String(r[idxBase]        || '').trim(),
+          cnpjOrigem:  idxCnpjOrigem  >= 0 ? String(r[idxCnpjOrigem]  || '').trim() : '',
+          destino:     String(r[idxDestino]     || '').trim(),
+          cnpjDestino: idxCnpjDestino >= 0 ? String(r[idxCnpjDestino] || '').trim() : '',
+          volume:      parseFloat(r[idxPlanejado]) || 0,
         });
       }
 
@@ -3076,6 +3546,9 @@ document.getElementById('modalGrupo').addEventListener('click', function(e) {
 });
 document.getElementById('adminModal').addEventListener('click', function(e) {
   if (e.target === this) fecharAdminModal();
+});
+document.getElementById('modalTransportador').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalTransportador();
 });
 
 // ── INIT: restaurar sessão ao abrir ──
@@ -3205,6 +3678,7 @@ function confirmarNovaSemana() {
 
 window.addEventListener('firebase-ready', async () => {
   await carregarUsuariosFirebase();
+  await carregarTransportadoresFirebase();
   restaurarSessaoUsuario();
 
   const semanas = await window._fb.listarSemanas();
