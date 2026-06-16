@@ -2213,47 +2213,78 @@ function agruparCadencias(arr) {
   return Array.from(mapa.values());
 }
 
+function valorOrigemFiltro(item) {
+  return (item.origem || '') + (item.base ? ` (${item.base})` : '');
+}
+
+function valoresUnicosOrdenados(arr, getter) {
+  return [...new Set(arr.map(getter).filter(Boolean))].sort();
+}
+
+function estadoFiltrosCadencia() {
+  return {
+    busca: (document.getElementById('fCadBusca')?.value || '').toLowerCase().trim(),
+    carrDe: document.getElementById('fCadCarrDe')?.value || '',
+    carrAte: document.getElementById('fCadCarrAte')?.value || '',
+    dtDe: document.getElementById('fCadDtDe')?.value || '',
+    dtAte: document.getElementById('fCadDtAte')?.value || '',
+    produtos: new Set(msCProduto?.getSelected() || []),
+    origens: new Set(msCOrigem?.getSelected() || []),
+    destinos: new Set(msCDestino?.getSelected() || []),
+  };
+}
+
+function passaFiltrosCadencia(c, f, ignorar = '') {
+  if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(c.produto)) return false;
+  if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(c))) return false;
+  if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(c.destino)) return false;
+  if (f.busca) {
+    const hay = [c.id, c.origem, c.base, c.destino].join(' ').toLowerCase();
+    if (!hay.includes(f.busca)) return false;
+  }
+  if (f.carrDe || f.carrAte) {
+    const vc = parseDMY(c.dtCarreg);
+    if (vc) {
+      if (f.carrDe && vc < new Date(f.carrDe)) return false;
+      if (f.carrAte && vc > new Date(f.carrAte + 'T23:59')) return false;
+    }
+  }
+  if (f.dtDe || f.dtAte) {
+    const vd = parseDMY(c.dtDesc);
+    if (vd) {
+      if (f.dtDe && vd < new Date(f.dtDe)) return false;
+      if (f.dtAte && vd > new Date(f.dtAte + 'T23:59')) return false;
+    }
+  }
+  return true;
+}
+
+function atualizarOpcoesFiltrosCadencia(f) {
+  msCProduto?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'produto')),
+    c => c.produto
+  ));
+  msCOrigem?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'origem')),
+    valorOrigemFiltro
+  ));
+  msCDestino?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'destino')),
+    c => c.destino
+  ));
+}
+
 function renderPreview() {
   const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
+  let filtrosCad = estadoFiltrosCadencia();
+  atualizarOpcoesFiltrosCadencia(filtrosCad);
+  filtrosCad = estadoFiltrosCadencia();
+  atualizarOpcoesFiltrosCadencia(filtrosCad);
+  filtrosCad = estadoFiltrosCadencia();
 
-  // populate multiselect options (always from full dataset)
-  msCProduto?.setOptions([...new Set(cadencias.map(c => c.produto).filter(Boolean))].sort());
-  msCOrigem?.setOptions([...new Set(cadencias.map(c => c.origem + (c.base ? ` (${c.base})` : '')).filter(Boolean))].sort());
-  msCDestino?.setOptions([...new Set(cadencias.map(c => c.destino).filter(Boolean))].sort());
-
-  const cadBusca    = (document.getElementById('fCadBusca')?.value  || '').toLowerCase().trim();
-  const cadCarrDe   = document.getElementById('fCadCarrDe')?.value  || '';
-  const cadCarrAte  = document.getElementById('fCadCarrAte')?.value || '';
-  const cadDtDe     = document.getElementById('fCadDtDe')?.value    || '';
-  const cadDtAte    = document.getElementById('fCadDtAte')?.value   || '';
-  const cSelProds   = new Set(msCProduto?.getSelected()  || []);
-  const cSelOrigens = new Set(msCOrigem?.getSelected()   || []);
-  const cSelDests   = new Set(msCDestino?.getSelected()  || []);
-
-  const cadFiltradas = cadencias.map((c, idx) => ({ ...c, _originalIdx: idx })).filter(c => {
-    if (cSelProds.size   && !cSelProds.has(c.produto))   return false;
-    if (cSelOrigens.size && !cSelOrigens.has(c.origem + (c.base ? ` (${c.base})` : ''))) return false;
-    if (cSelDests.size   && !cSelDests.has(c.destino))   return false;
-    if (cadBusca) {
-      const hay = [c.id, c.origem, c.base, c.destino].join(' ').toLowerCase();
-      if (!hay.includes(cadBusca)) return false;
-    }
-    if (cadCarrDe || cadCarrAte) {
-      const vc = parseDMY(c.dtCarreg);
-      if (vc) {
-        if (cadCarrDe  && vc < new Date(cadCarrDe))               return false;
-        if (cadCarrAte && vc > new Date(cadCarrAte + 'T23:59'))   return false;
-      }
-    }
-    if (cadDtDe || cadDtAte) {
-      const vd = parseDMY(c.dtDesc);
-      if (vd) {
-        if (cadDtDe  && vd < new Date(cadDtDe))              return false;
-        if (cadDtAte && vd > new Date(cadDtAte + 'T23:59'))  return false;
-      }
-    }
-    return true;
-  });
+  const cadFiltradas = cadencias
+    .map((c, idx) => ({ ...c, _originalIdx: idx }))
+    .filter(c => passaFiltrosCadencia(c, filtrosCad));
 
   const agrupadas = agruparCadencias(cadFiltradas);
 
@@ -2618,53 +2649,75 @@ function updateKPIs(list) {
 }
 
 // ── VIAGENS TABLE ──
+function estadoFiltrosViagem() {
+  return {
+    busca: (document.getElementById('fBusca')?.value || '').toLowerCase().trim(),
+    transp: (document.getElementById('fTransp')?.value || '').toLowerCase().trim(),
+    carrDe: document.getElementById('fCarrDe')?.value || '',
+    carrAte: document.getElementById('fCarrAte')?.value || '',
+    dtDe: document.getElementById('fDtDe')?.value || '',
+    dtAte: document.getElementById('fDtAte')?.value || '',
+    produtos: new Set(msVProduto?.getSelected() || []),
+    origens: new Set(msVOrigem?.getSelected() || []),
+    destinos: new Set(msVDestino?.getSelected() || []),
+  };
+}
+
+function passaFiltrosViagem(v, f, ignorar = '') {
+  if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
+  if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
+  if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
+  if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
+  if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
+  if (f.busca) {
+    const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
+    if (!hay.includes(f.busca)) return false;
+  }
+  if (f.carrDe || f.carrAte) {
+    const vc = parseDMY(v.dtCarreg);
+    if (vc) {
+      if (f.carrDe && vc < new Date(f.carrDe)) return false;
+      if (f.carrAte && vc > new Date(f.carrAte + 'T23:59')) return false;
+    }
+  }
+  if (f.dtDe || f.dtAte) {
+    const vd = parseDMY(v.dtDesc);
+    if (vd) {
+      if (f.dtDe && vd < new Date(f.dtDe)) return false;
+      if (f.dtAte && vd > new Date(f.dtAte + 'T23:59')) return false;
+    }
+  }
+  return true;
+}
+
+function atualizarOpcoesFiltrosViagem(f) {
+  msVProduto?.setOptions(valoresUnicosOrdenados(
+    viagens.filter(v => passaFiltrosViagem(v, f, 'produto')),
+    v => v.produto
+  ));
+  msVOrigem?.setOptions(valoresUnicosOrdenados(
+    viagens.filter(v => passaFiltrosViagem(v, f, 'origem')),
+    valorOrigemFiltro
+  ));
+  msVDestino?.setOptions(valoresUnicosOrdenados(
+    viagens.filter(v => passaFiltrosViagem(v, f, 'destino')),
+    v => v.destino
+  ));
+}
+
 function renderViagensTable() {
   const isEmpty = viagens.length === 0;
   document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  // populate multiselect options (always from full dataset)
-  msVProduto?.setOptions([...new Set(viagens.map(v => v.produto).filter(Boolean))].sort());
-  msVOrigem?.setOptions([...new Set(viagens.map(v => v.origem + (v.base ? ` (${v.base})` : '')).filter(Boolean))].sort());
-  msVDestino?.setOptions([...new Set(viagens.map(v => v.destino).filter(Boolean))].sort());
+  let filtrosViagem = estadoFiltrosViagem();
+  atualizarOpcoesFiltrosViagem(filtrosViagem);
+  filtrosViagem = estadoFiltrosViagem();
+  atualizarOpcoesFiltrosViagem(filtrosViagem);
+  filtrosViagem = estadoFiltrosViagem();
 
-  const busca      = (document.getElementById('fBusca')?.value  || '').toLowerCase().trim();
-  const fTransp    = (document.getElementById('fTransp')?.value || '').toLowerCase().trim();
-  const fCarrDe    = document.getElementById('fCarrDe')?.value  || '';
-  const fCarrAte   = document.getElementById('fCarrAte')?.value || '';
-  const fDtDe      = document.getElementById('fDtDe')?.value    || '';
-  const fDtAte     = document.getElementById('fDtAte')?.value   || '';
-  const selProds   = new Set(msVProduto?.getSelected()  || []);
-  const selOrigens = new Set(msVOrigem?.getSelected()   || []);
-  const selDests   = new Set(msVDestino?.getSelected()  || []);
-
-  let filtered = viagens.filter(v => {
-    if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
-    if (selProds.size   && !selProds.has(v.produto))   return false;
-    if (selOrigens.size && !selOrigens.has(v.origem + (v.base ? ` (${v.base})` : ''))) return false;
-    if (selDests.size   && !selDests.has(v.destino))   return false;
-    if (fTransp && !(v.transportador || '').toLowerCase().includes(fTransp)) return false;
-    if (busca) {
-      const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
-      if (!hay.includes(busca)) return false;
-    }
-    if (fCarrDe || fCarrAte) {
-      const vc = parseDMY(v.dtCarreg);
-      if (vc) {
-        if (fCarrDe  && vc < new Date(fCarrDe))               return false;
-        if (fCarrAte && vc > new Date(fCarrAte + 'T23:59'))   return false;
-      }
-    }
-    if (fDtDe || fDtAte) {
-      const vd = parseDMY(v.dtDesc);
-      if (vd) {
-        if (fDtDe && vd < new Date(fDtDe))              return false;
-        if (fDtAte && vd > new Date(fDtAte + 'T23:59')) return false;
-      }
-    }
-    return true;
-  });
+  let filtered = viagens.filter(v => passaFiltrosViagem(v, filtrosViagem));
 
   currentFilteredIdxs = filtered.map(v => viagens.indexOf(v));
   updateKPIs(filtered);
