@@ -572,13 +572,17 @@
     position: sticky; right: 0; z-index: 2;
     background: var(--panel-soft);
     box-shadow: -3px 0 8px rgba(17,26,10,0.10);
-    width: 72px; min-width: 72px;
+    width: 84px; min-width: 84px;
   }
   td.col-acao {
     position: sticky; right: 0; z-index: 1;
     background: var(--surface);
     box-shadow: -3px 0 8px rgba(17,26,10,0.10);
-    width: 72px; min-width: 72px;
+    width: 84px; min-width: 84px;
+    vertical-align: middle;
+  }
+  td.col-acao > div {
+    display: flex; align-items: center; gap: 4px;
   }
   tr:hover td.col-acao { background: #1E3024; }
 
@@ -2906,9 +2910,11 @@ function renderViagensTable() {
           onblur="salvarPlacaInline(${realIdx}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
           maxlength="8"></td>
-        <td class="col-acao" style="display:flex;gap:4px">
-          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
-          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+        <td class="col-acao">
+          <div>
+            <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
+            <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+          </div>
         </td>
       </tr>
     `;
