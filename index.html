@@ -193,14 +193,17 @@
   .pipe-step.active .pipe-icon { border-color: var(--accent); background: var(--accent-dim); }
   .pipe-step.done .pipe-icon { border-color: var(--success); background: var(--success-dim); }
   .pipe-step.cancel .pipe-icon { border-color: var(--danger); background: var(--danger-dim); }
+  .pipe-step.recusado .pipe-icon { border-color: var(--pet-purple); background: rgba(124,58,237,0.14); }
   .pipe-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .pipe-step.active .pipe-label { color: var(--accent); }
   .pipe-step.done .pipe-label { color: var(--success); }
   .pipe-step.cancel .pipe-label { color: var(--danger); }
+  .pipe-step.recusado .pipe-label { color: var(--pet-purple); }
   .pipe-count { font-size: 17px; font-family: var(--font-cond); font-weight: 700; color: var(--text); }
   .pipe-step.active .pipe-count { color: var(--accent); }
   .pipe-step.done .pipe-count { color: var(--success); }
   .pipe-step.cancel .pipe-count { color: var(--danger); }
+  .pipe-step.recusado .pipe-count { color: var(--pet-purple); }
 
   /* ── TABS ── */
   .tabs-bar {
@@ -408,6 +411,8 @@
   .status-placa::before { background: var(--accent); }
   .status-cancelado { color: var(--danger); }
   .status-cancelado::before { background: var(--danger); }
+  .status-recusado { color: var(--pet-purple); }
+  .status-recusado::before { background: var(--pet-purple); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -964,6 +969,23 @@
     line-height: 1;
   }
   .header-logout:hover { color: rgba(255,255,255,0.90); }
+
+  /* ── PERFIL TRANSPORTADOR ── */
+  body.transportador-mode #tabBtn0,
+  body.transportador-mode #tabBtn2,
+  body.transportador-mode #tabBtn3,
+  body.transportador-mode #pipeline,
+  body.transportador-mode #btnNovaSemana,
+  body.transportador-mode #btnLimparSessao,
+  body.transportador-mode #bulkBar,
+  body.transportador-mode #wrapImportarRetorno,
+  body.transportador-mode #fTransp,
+  body.transportador-mode #chipBacklog {
+    display: none !important;
+  }
+  body:not(.transportador-mode) #bulkBarTransportador {
+    display: none !important;
+  }
 </style>
 
 <!-- ── FIREBASE ── -->
@@ -1133,11 +1155,51 @@
         <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
       </label>
     </div>
+    <div class="login-admin-row" style="grid-template-columns:1fr 1fr">
+      <select id="admin-new-tipo" class="config-input"
+        onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
+        <option value="staff">Equipe interna</option>
+        <option value="transportador">Transportador</option>
+      </select>
+      <div id="admin-new-transportador-wrap" style="display:none">
+        <select id="admin-new-transportador-nome" class="config-input"></select>
+      </div>
+    </div>
     <div class="login-admin-actions">
       <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Adicionar</button>
       <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar</button>
     </div>
     <div class="login-admin-info" id="adminInfo"></div>
+  </div>
+</div>
+
+<!-- MODAL: Trocar/Redefinir Senha -->
+<div class="modal-overlay" id="modalTrocarSenha" style="z-index:10000">
+  <div class="modal" style="width:420px">
+    <div class="modal-title" id="senha-modal-title">Trocar Senha</div>
+    <div class="modal-sub" id="senha-modal-sub">Informe sua senha atual e a nova senha.</div>
+
+    <div class="modal-field" id="campo-senha-atual">
+      <div class="modal-label">Senha atual</div>
+      <input type="password" class="config-input" id="senha-atual" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')document.getElementById('senha-nova').focus()">
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Nova senha</div>
+      <input type="password" class="config-input" id="senha-nova" autocomplete="new-password"
+        onkeydown="if(event.key==='Enter')document.getElementById('senha-nova-confirma').focus()">
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Confirmar nova senha</div>
+      <input type="password" class="config-input" id="senha-nova-confirma" autocomplete="new-password"
+        onkeydown="if(event.key==='Enter')confirmarTrocarSenha()">
+    </div>
+    <div class="login-admin-info" id="senha-modal-info"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalTrocarSenha()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarTrocarSenha()">Salvar</button>
+    </div>
   </div>
 </div>
 
@@ -1152,18 +1214,19 @@
   <div class="semana-selector" id="semanaSelectorWrap" style="display:none">
     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semana:</span>
     <select class="filter-select" id="semanaSelect" onchange="trocarSemana(this.value)" style="font-size:12px;font-weight:600;color:var(--accent);border-color:var(--accent)"></select>
-    <button class="btn-reset" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
+    <button class="btn-reset" id="btnNovaSemana" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
   </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
       <div class="save-dot"></div>
       <span id="saveText">Sem sessão salva</span>
     </div>
-    <button class="btn-reset" onclick="limparSessao()" title="Apagar sessão salva e começar do zero">🗑 Limpar sessão</button>
+    <button class="btn-reset" id="btnLimparSessao" onclick="limparSessao()" title="Apagar sessão salva e começar do zero">🗑 Limpar sessão</button>
   </div>
   <div class="header-user" id="headerUser" style="display:none">
     <div class="header-user-avatar" id="headerUserAvatar">?</div>
     <span class="header-user-name" id="headerUserName">Usuário</span>
+    <button class="header-logout" onclick="abrirTrocarSenhaModal()" title="Trocar senha">🔑</button>
     <button class="header-logout" id="btnAdmin" onclick="abrirAdminModal()" title="Gerenciar usuários" style="display:none">⚙</button>
     <button class="header-logout" onclick="fazerLogout()" title="Sair">✕</button>
   </div>
@@ -1199,6 +1262,13 @@
       <div class="pipe-label">Ofertado</div>
     </div>
   </div>
+  <div class="pipe-step recusado" id="pipe-recusado">
+    <div class="pipe-icon">🔁</div>
+    <div>
+      <div class="pipe-count" id="cnt-recusadas">0</div>
+      <div class="pipe-label">Recusado</div>
+    </div>
+  </div>
   <div class="pipe-step" id="pipe-5">
     <div class="pipe-icon">🤝</div>
     <div>
@@ -1224,10 +1294,10 @@
 
 <!-- TABS -->
 <div class="tabs-bar">
-  <div class="tab active" onclick="switchTab(0)">① Importar Cadência</div>
-  <div class="tab" onclick="switchTab(1)">② Gerir Viagens</div>
-  <div class="tab" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
-  <div class="tab" onclick="switchTab(3)">④ Transportadores</div>
+  <div class="tab active" id="tabBtn0" onclick="switchTab(0)">① Importar Cadência</div>
+  <div class="tab" id="tabBtn1" onclick="switchTab(1)">② Gerir Viagens</div>
+  <div class="tab" id="tabBtn2" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
+  <div class="tab" id="tabBtn3" onclick="switchTab(3)">④ Transportadores</div>
 </div>
 
 <div class="main">
@@ -1331,9 +1401,9 @@
         <div class="stat-sub">Carregamento próximo sem placa</div>
       </div>
       <div class="stat-card c-warn" id="kpi-semtransp">
-        <div class="stat-label">⚠️ Sem Transportador</div>
+        <div class="stat-label" id="lbl-semtransp">⚠️ Sem Transportador</div>
         <div class="stat-val" id="sv-semtransp">0</div>
-        <div class="stat-sub">Backlog ou Ofertado sem alocação</div>
+        <div class="stat-sub" id="sub-semtransp">Backlog, Recusado ou Ofertado sem alocação</div>
       </div>
       <div class="stat-card c-danger" id="kpi-atrasadas">
         <div class="stat-label">⏰ Atrasadas</div>
@@ -1349,9 +1419,9 @@
     <div class="kpi-group-label">📊 Volumes</div>
     <div class="stats-row">
       <div class="stat-card c-muted">
-        <div class="stat-label">📦 Volume Pendente</div>
+        <div class="stat-label" id="lbl-vol-pendente">📦 Volume Pendente</div>
         <div class="stat-val" id="sv-vol-pendente">0</div>
-        <div class="stat-sub">m³ em Backlog</div>
+        <div class="stat-sub" id="sub-vol-pendente">m³ em Backlog/Recusado</div>
       </div>
       <div class="stat-card c-accent">
         <div class="stat-label">🤝 Em Negociação</div>
@@ -1364,9 +1434,9 @@
         <div class="stat-sub">m³ com Placa Enviada</div>
       </div>
       <div class="stat-card c-accent">
-        <div class="stat-label">📈 Taxa de Alocação</div>
+        <div class="stat-label" id="lbl-taxa">📈 Taxa de Alocação</div>
         <div class="stat-val" id="sv-taxa">0%</div>
-        <div class="stat-sub">Viagens fora do Backlog</div>
+        <div class="stat-sub" id="sub-taxa">Viagens fora do Backlog/Recusado</div>
       </div>
     </div>
     </div>
@@ -1376,15 +1446,16 @@
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span class="table-title">Programação de Viagens</span>
           <div class="chip-group" id="filterChips">
-            <div class="chip active" onclick="filterViagens('todos',this)">Todos</div>
-            <div class="chip" onclick="filterViagens('Backlog',this)">Backlog</div>
+            <div class="chip active" id="chipTodos" onclick="filterViagens('todos',this)">Todos</div>
+            <div class="chip" id="chipBacklog" onclick="filterViagens('Backlog',this)">Backlog</div>
             <div class="chip" onclick="filterViagens('Ofertado',this)">Ofertadas</div>
+            <div class="chip" onclick="filterViagens('Recusado',this)">Recusadas</div>
             <div class="chip" onclick="filterViagens('Aceito',this)">Aceitas</div>
             <div class="chip" onclick="filterViagens('Placa Enviada',this)">Placa Enviada</div>
             <div class="chip" onclick="filterViagens('Cancelado',this)">Canceladas</div>
           </div>
         </div>
-        <div>
+        <div id="wrapImportarRetorno">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInputRetorno').click()" title="Importa uma planilha de oferta preenchida pelo transportador (Aceita?, Placa, Motorista...)">📥 Importar Retorno de Oferta</button>
           <input type="file" id="fileInputRetorno" accept=".xlsx,.xls,.csv" style="display:none">
         </div>
@@ -1424,24 +1495,37 @@
           <option value="">Manter atual</option>
           <option value="Backlog">Backlog</option>
           <option value="Ofertado">Ofertado</option>
+          <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
           <option value="Placa Enviada">Placa Enviada</option>
           <option value="Cancelado">Cancelado</option>
         </select>
         <span class="filter-sep">Transportador:</span>
-        <select class="filter-select" id="bulk-transp" style="width:190px">
-          <option value="">Transportador...</option>
+        <select class="filter-select" id="bulk-transp" style="width:190px" onchange="popularSelectCnpjsTransportador('bulk-transp-cnpj', this.value, '')">
+          <option value="">Manter atual</option>
+          <option value="__sem_alocacao__">— Não alocado —</option>
+        </select>
+        <select class="filter-select" id="bulk-transp-cnpj" style="width:170px">
+          <option value="">CNPJ (opcional)...</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="aplicarEmLote()">✓ Aplicar</button>
         <span class="filter-sep" style="opacity:.4">|</span>
         <button class="btn btn-success btn-sm" onclick="enviarOfertaPorEmail()" title="Baixa uma planilha e abre um e-mail por transportador com as viagens selecionadas">✉ Enviar Oferta</button>
         <button class="btn btn-secondary btn-sm" onclick="limparSelecao()">✕ Desmarcar tudo</button>
       </div>
+      <div id="bulkBarTransportador" style="display:none;padding:8px 18px;border-bottom:1px solid var(--border);background:rgba(141,200,48,0.12);flex-wrap:wrap;gap:10px;align-items:center">
+        <span id="bulk-count-transportador" style="font-size:12px;font-weight:600;color:var(--accent)">0 selecionadas</span>
+        <button class="btn btn-success btn-sm" onclick="aceitarOfertasSelecionadasTransportador()">✅ Aceitar selecionadas</button>
+        <button class="btn btn-danger btn-sm" onclick="recusarOfertasSelecionadasTransportador()">❌ Recusar selecionadas</button>
+        <span class="filter-sep" style="opacity:.4">|</span>
+        <span class="filter-sep">Placa, carretas e motorista continuam sendo feitos um a um, abrindo cada viagem.</span>
+        <button class="btn btn-secondary btn-sm" onclick="limparSelecao()" style="margin-left:auto">✕ Desmarcar tudo</button>
+      </div>
       <div class="scrollable">
         <table>
           <thead>
             <tr>
-              <th style="width:36px;padding:10px 8px;text-align:center">
+              <th class="col-checkbox" style="width:36px;padding:10px 8px;text-align:center">
                 <input type="checkbox" id="chk-all" onclick="toggleSelectAll(this.checked)"
                   style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
               </th>
@@ -1573,11 +1657,9 @@
         <table>
           <thead>
             <tr>
-              <th>Código SAP</th>
-              <th>Razão Social</th>
-              <th>Nome Fantasia</th>
+              <th>Apelido</th>
               <th>E-mail</th>
-              <th>CNPJ</th>
+              <th>CNPJs vinculados</th>
               <th style="width:88px;min-width:88px;text-align:center">Ações</th>
             </tr>
           </thead>
@@ -1661,7 +1743,7 @@
 
 <!-- MODAL: Gerir Viagem -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal">
+  <div class="modal" style="width:700px;max-width:96vw">
     <div class="modal-title">Gerenciar Viagem</div>
     <div class="modal-sub" id="modal-id-label">—</div>
 
@@ -1694,10 +1776,16 @@
       </div>
     </div>
 
-    <div class="modal-row">
+    <div class="modal-row" style="grid-template-columns:1.2fr 1.3fr 1fr">
       <div class="modal-field">
         <div class="modal-label">Transportador</div>
-        <select class="config-input" id="m-transportador">
+        <select class="config-input" id="m-transportador" onchange="popularSelectCnpjsTransportador('m-transportador-cnpj', this.value, '')">
+          <option value="">— Não alocado —</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CNPJ que vai atender</div>
+        <select class="config-input" id="m-transportador-cnpj">
           <option value="">— Não alocado —</option>
         </select>
       </div>
@@ -1706,6 +1794,7 @@
         <select class="config-input" id="m-status">
           <option value="Backlog">Backlog</option>
           <option value="Ofertado">Ofertado</option>
+          <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
           <option value="Placa Enviada">Placa Enviada</option>
           <option value="Cancelado">Cancelado</option>
@@ -1713,7 +1802,7 @@
       </div>
     </div>
 
-    <div class="modal-row">
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
       <div class="modal-field">
         <div class="modal-label">Placa do Cavalo</div>
         <input type="text" class="config-input" id="m-placa" placeholder="ABC1D23" maxlength="8"
@@ -1731,8 +1820,8 @@
       </div>
     </div>
 
-    <div class="modal-row">
-      <div class="modal-field" style="flex:2">
+    <div class="modal-row" style="grid-template-columns:1.3fr 1fr 1.4fr">
+      <div class="modal-field">
         <div class="modal-label">Nome do Motorista</div>
         <input type="text" class="config-input" id="m-nomeMotorista" placeholder="Nome completo">
       </div>
@@ -1741,47 +1830,36 @@
         <input type="text" class="config-input" id="m-cpfMotorista" placeholder="000.000.000-00" maxlength="14"
           oninput="this.value = mascaraCPF(this.value)">
       </div>
+      <div class="modal-field">
+        <div class="modal-label">Observações</div>
+        <input type="text" class="config-input" id="m-obs" placeholder="Observações opcionais">
+      </div>
     </div>
 
-    <div class="modal-field">
-      <div class="modal-label">Observações</div>
-      <input type="text" class="config-input" id="m-obs" placeholder="Observações opcionais">
+    <div class="modal-field" id="campo-historico-oferta" style="display:none">
+      <div class="modal-label">📜 Histórico de Ofertas</div>
+      <div id="m-historico" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--panel-soft);font-size:12px"></div>
     </div>
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-secondary" onclick="gerarOrdemRetirada(editingIdx)" style="gap:6px">📄 Ordem PDF</button>
-      <button class="btn btn-primary" onclick="salvarViagem()">Salvar</button>
+      <button class="btn btn-danger" id="btnRecusarOferta" style="display:none" onclick="recusarOfertaTransportador()">❌ Recusar oferta</button>
+      <button class="btn btn-success" id="btnAceitarOferta" style="display:none" onclick="aceitarOfertaTransportador()">✅ Aceitar oferta</button>
+      <button class="btn btn-primary" id="btnSalvarViagem" onclick="salvarViagem()">Salvar</button>
     </div>
   </div>
 </div>
 
 <!-- MODAL: Transportador -->
 <div class="modal-overlay" id="modalTransportador">
-  <div class="modal">
+  <div class="modal" style="width:560px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column">
     <div class="modal-title" id="transp-modal-title">Novo Transportador</div>
-    <div class="modal-sub">Preencha os dados do transportador</div>
+    <div class="modal-sub">Apelido único + um ou mais CNPJs vinculados a ele</div>
 
     <div class="modal-row">
       <div class="modal-field">
-        <div class="modal-label">Código SAP *</div>
-        <input type="text" class="config-input" id="transp-codsap" placeholder="1000001">
-      </div>
-      <div class="modal-field">
-        <div class="modal-label">CNPJ</div>
-        <input type="text" class="config-input" id="transp-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
-          oninput="this.value = mascaraCNPJ(this.value)">
-      </div>
-    </div>
-
-    <div class="modal-field">
-      <div class="modal-label">Razão Social *</div>
-      <input type="text" class="config-input" id="transp-razao" placeholder="TRANSPORTES EXEMPLO LTDA">
-    </div>
-
-    <div class="modal-row">
-      <div class="modal-field">
-        <div class="modal-label">Nome Fantasia</div>
+        <div class="modal-label">Apelido / Nome Fantasia *</div>
         <input type="text" class="config-input" id="transp-fantasia" placeholder="Exemplo Transportes">
       </div>
       <div class="modal-field">
@@ -1789,6 +1867,10 @@
         <input type="email" class="config-input" id="transp-email" multiple placeholder="contato@transp.com.br, financeiro@transp.com.br">
       </div>
     </div>
+
+    <div class="modal-label" style="margin-top:6px">CNPJs vinculados a este apelido *</div>
+    <div id="transp-cnpjs-lista" style="overflow-y:auto;flex:1;margin:8px 0;display:flex;flex-direction:column;gap:8px"></div>
+    <button class="btn btn-secondary btn-sm" onclick="adicionarLinhaCnpj()" style="align-self:flex-start">＋ Adicionar CNPJ</button>
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="fecharModalTransportador()">Cancelar</button>
@@ -1836,7 +1918,50 @@ function normalizarUsuarios(raw) {
       senhaHash: String(u.senhaHash),
       nome: String(u.nome || u.login).trim(),
       admin: !!u.admin,
+      tipo: u.tipo === 'transportador' ? 'transportador' : 'staff',
+      transportadorNome: String(u.transportadorNome || '').trim(),
     }));
+}
+
+function isTransportador() {
+  return _authUsuarioAtual?.tipo === 'transportador';
+}
+
+function nomeTransportadorLogado() {
+  return (_authUsuarioAtual?.transportadorNome || '').trim();
+}
+
+// ── HISTÓRICO DE OFERTAS POR VIAGEM ──
+function registrarHistoricoOferta(v, evento) {
+  if (!Array.isArray(v.historico)) v.historico = [];
+  v.historico.push({
+    data: new Date().toISOString(),
+    transportador: v.transportador || '',
+    cnpj: v.transportadorCnpj || '',
+    evento,
+  });
+}
+
+function formatarHistoricoItem(h) {
+  const dt = new Date(h.data);
+  const dataFmt = isNaN(dt.getTime())
+    ? ''
+    : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', Cancelado: '✕' }[h.evento] || '•';
+  const quem = esc(h.transportador || '—') + (h.cnpj ? ` <span style="color:var(--text-muted);font-family:monospace;font-size:10px">${esc(h.cnpj)}</span>` : '');
+  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} <strong>${esc(h.evento)}</strong> — ${quem} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
+}
+
+function renderHistoricoOferta(v) {
+  const campo = document.getElementById('campo-historico-oferta');
+  const lista = document.getElementById('m-historico');
+  const historico = Array.isArray(v.historico) ? v.historico : [];
+  if (isTransportador() || !historico.length) {
+    campo.style.display = 'none';
+    return;
+  }
+  campo.style.display = '';
+  lista.innerHTML = historico.map(formatarHistoricoItem).join('');
 }
 
 async function carregarUsuariosFirebase(mostrarFeedback = false) {
@@ -1893,7 +2018,13 @@ async function fazerLogin() {
       document.getElementById('login-senha').focus();
       return;
     }
-    const sessao = { login: usuario.login, nome: usuario.nome || usuario.login, admin: !!usuario.admin };
+    const sessao = {
+      login: usuario.login,
+      nome: usuario.nome || usuario.login,
+      admin: !!usuario.admin,
+      tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
+      transportadorNome: usuario.transportadorNome || '',
+    };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
   } catch (e) {
@@ -1911,6 +2042,36 @@ function aplicarSessaoUsuario(usuario) {
   document.getElementById('headerUserAvatar').textContent = iniciais;
   document.getElementById('headerUserName').textContent = nome;
   document.getElementById('btnAdmin').style.display = usuario.admin ? '' : 'none';
+  aplicarRestricoesPorTipo(usuario);
+}
+
+function aplicarRestricoesPorTipo(usuario) {
+  const transportador = usuario?.tipo === 'transportador';
+  document.body.classList.toggle('transportador-mode', transportador);
+  const tabGerir = document.getElementById('tabBtn1');
+  if (tabGerir) tabGerir.textContent = transportador ? '🚚 Minhas Cargas' : '② Gerir Viagens';
+
+  document.getElementById('lbl-semtransp').textContent = transportador ? '🚚 Total de Cargas' : '⚠️ Sem Transportador';
+  document.getElementById('sub-semtransp').textContent = transportador ? 'Alocadas a você nesta semana' : 'Backlog, Recusado ou Ofertado sem alocação';
+  document.getElementById('kpi-semtransp').classList.toggle('c-warn', !transportador);
+  document.getElementById('kpi-semtransp').classList.toggle('c-muted', transportador);
+
+  document.getElementById('lbl-vol-pendente').textContent = transportador ? '📦 Volume Total' : '📦 Volume Pendente';
+  document.getElementById('sub-vol-pendente').textContent = transportador ? 'm³ alocados a você (exceto Cancelado)' : 'm³ em Backlog/Recusado';
+
+  document.getElementById('lbl-taxa').textContent = transportador ? '✅ Taxa de Aceite' : '📈 Taxa de Alocação';
+  document.getElementById('sub-taxa').textContent = transportador ? 'Aceitas / ofertadas a você' : 'Viagens fora do Backlog/Recusado';
+
+  selectedViagens.clear();
+  atualizarBulkBar();
+
+  if (transportador && activeFilter === 'Backlog') {
+    activeFilter = 'todos';
+    document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
+    document.getElementById('chipTodos')?.classList.add('active');
+  }
+
+  if (transportador) switchTab(1);
 }
 
 function fazerLogout() {
@@ -1942,13 +2103,20 @@ function validarSessaoAtual() {
     fazerLogout();
     return;
   }
-  aplicarSessaoUsuario({ login: usuario.login, nome: usuario.nome || usuario.login, admin: !!usuario.admin });
+  aplicarSessaoUsuario({
+    login: usuario.login,
+    nome: usuario.nome || usuario.login,
+    admin: !!usuario.admin,
+    tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
+    transportadorNome: usuario.transportadorNome || '',
+  });
 }
 
 function abrirAdminModal() {
   if (!_authUsuarioAtual?.admin) return;
   document.getElementById('adminModal').classList.add('open');
   document.getElementById('adminInfo').textContent = '';
+  popularSelectTransportadores('admin-new-transportador-nome', '');
   renderAdminUsuarios();
 }
 
@@ -1963,15 +2131,27 @@ function renderAdminUsuarios() {
     list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhum usuário cadastrado.</div>';
     return;
   }
-  list.innerHTML = _usuariosAtivos.map(u => `
+  list.innerHTML = _usuariosAtivos.map(u => {
+    let badge = u.admin ? ' <span class="badge badge-accent">admin</span>' : '';
+    if (u.tipo === 'transportador') {
+      const vinculado = transportadores.some(t => t.nomeFantasia === u.transportadorNome);
+      badge = vinculado
+        ? ` <span class="badge badge-accent">🚚 ${esc(u.transportadorNome)}</span>`
+        : ` <span class="badge badge-danger">⚠ vínculo "${esc(u.transportadorNome)}" não encontrado</span>`;
+    }
+    return `
     <div class="login-admin-user">
       <div>
-        <strong>${esc(u.nome || u.login)}${u.admin ? ' <span class="badge badge-accent">admin</span>' : ''}</strong>
+        <strong>${esc(u.nome || u.login)}${badge}</strong>
         <span>${esc(u.login)}</span>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.login)}')" ${u.login === _authUsuarioAtual?.login ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-secondary btn-sm" onclick="abrirRedefinirSenhaModal('${esc(u.login)}')">Redefinir senha</button>
+        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.login)}')" ${u.login === _authUsuarioAtual?.login ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
+      </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function adminAdicionarUsuario() {
@@ -1980,21 +2160,31 @@ async function adminAdicionarUsuario() {
   const login = document.getElementById('admin-new-login').value.trim().toLowerCase();
   const senha = document.getElementById('admin-new-senha').value;
   const nome = document.getElementById('admin-new-nome').value.trim();
-  const admin = document.getElementById('admin-new-admin').checked;
+  const tipo = document.getElementById('admin-new-tipo').value === 'transportador' ? 'transportador' : 'staff';
+  const transportadorNome = tipo === 'transportador'
+    ? document.getElementById('admin-new-transportador-nome').value.trim()
+    : '';
+  const admin = tipo === 'staff' && document.getElementById('admin-new-admin').checked;
   if (!login || !senha) {
     info.textContent = 'Preencha o login e a senha.';
+    return;
+  }
+  if (tipo === 'transportador' && !transportadorNome) {
+    info.textContent = 'Selecione o transportador vinculado a este login.';
     return;
   }
   if (_usuariosAtivos.some(u => u.login === login)) {
     info.textContent = `Login "${login}" já existe.`;
     return;
   }
-  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin });
+  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin, tipo, transportadorNome });
   const salvo = await salvarUsuariosFirebase();
   document.getElementById('admin-new-login').value = '';
   document.getElementById('admin-new-senha').value = '';
   document.getElementById('admin-new-nome').value = '';
   document.getElementById('admin-new-admin').checked = false;
+  document.getElementById('admin-new-tipo').value = 'staff';
+  document.getElementById('admin-new-transportador-wrap').style.display = 'none';
   renderAdminUsuarios();
   info.textContent = salvo
     ? `Usuário "${login}" salvo no Firebase.`
@@ -2011,6 +2201,93 @@ async function adminRemoverUsuario(login) {
   document.getElementById('adminInfo').textContent = salvo
     ? `Usuário "${login}" removido do Firebase.`
     : `Usuário "${login}" removido nesta sessão. Firebase ainda não está pronto.`;
+}
+
+// ── TROCAR / REDEFINIR SENHA ──
+let _trocarSenhaContexto = null; // { modo: 'self'|'admin', login }
+
+function _resetCamposSenha() {
+  document.getElementById('senha-atual').value = '';
+  document.getElementById('senha-nova').value = '';
+  document.getElementById('senha-nova-confirma').value = '';
+  document.getElementById('senha-modal-info').textContent = '';
+}
+
+function abrirTrocarSenhaModal() {
+  if (!_authUsuarioAtual) return;
+  _trocarSenhaContexto = { modo: 'self', login: _authUsuarioAtual.login };
+  document.getElementById('senha-modal-title').textContent = 'Trocar Senha';
+  document.getElementById('senha-modal-sub').textContent = 'Informe sua senha atual e a nova senha.';
+  document.getElementById('campo-senha-atual').style.display = '';
+  _resetCamposSenha();
+  document.getElementById('modalTrocarSenha').classList.add('open');
+  document.getElementById('senha-atual').focus();
+}
+
+function abrirRedefinirSenhaModal(login) {
+  if (!_authUsuarioAtual?.admin) return;
+  const usuario = _usuariosAtivos.find(u => u.login === login);
+  if (!usuario) return;
+  _trocarSenhaContexto = { modo: 'admin', login: usuario.login };
+  document.getElementById('senha-modal-title').textContent = 'Redefinir Senha';
+  document.getElementById('senha-modal-sub').textContent = `Defina uma nova senha para "${usuario.nome || usuario.login}". A senha atual não é necessária.`;
+  document.getElementById('campo-senha-atual').style.display = 'none';
+  _resetCamposSenha();
+  document.getElementById('modalTrocarSenha').classList.add('open');
+  document.getElementById('senha-nova').focus();
+}
+
+function fecharModalTrocarSenha() {
+  document.getElementById('modalTrocarSenha').classList.remove('open');
+  _trocarSenhaContexto = null;
+}
+
+async function confirmarTrocarSenha() {
+  const info = document.getElementById('senha-modal-info');
+  const contexto = _trocarSenhaContexto;
+  if (!contexto) return;
+
+  const nova = document.getElementById('senha-nova').value;
+  const confirma = document.getElementById('senha-nova-confirma').value;
+  if (!nova || nova.length < 4) {
+    info.textContent = 'A nova senha deve ter pelo menos 4 caracteres.';
+    return;
+  }
+  if (nova !== confirma) {
+    info.textContent = 'A confirmação não corresponde à nova senha.';
+    return;
+  }
+
+  const usuario = _usuariosAtivos.find(u => u.login === contexto.login);
+  if (!usuario) {
+    info.textContent = 'Usuário não encontrado.';
+    return;
+  }
+
+  if (contexto.modo === 'self') {
+    const atual = document.getElementById('senha-atual').value;
+    if (!atual) {
+      info.textContent = 'Informe a senha atual.';
+      return;
+    }
+    if (await sha256(atual) !== usuario.senhaHash) {
+      info.textContent = 'Senha atual incorreta.';
+      return;
+    }
+  } else if (!_authUsuarioAtual?.admin) {
+    return;
+  }
+
+  usuario.senhaHash = await sha256(nova);
+  const salvo = await salvarUsuariosFirebase();
+  info.textContent = salvo
+    ? 'Senha atualizada com sucesso.'
+    : 'Senha atualizada nesta sessão. Firebase ainda não está pronto.';
+
+  setTimeout(() => {
+    fecharModalTrocarSenha();
+    if (contexto.modo === 'admin') renderAdminUsuarios();
+  }, 900);
 }
 
 // ── MULTISELECT ──
@@ -2173,12 +2450,13 @@ function toggleSelectAll(checked) {
 }
 
 function atualizarBulkBar() {
-  const bar = document.getElementById('bulkBar');
+  const transportador = isTransportador();
+  const bar = document.getElementById(transportador ? 'bulkBarTransportador' : 'bulkBar');
   if (!bar) return;
   const count = selectedViagens.size;
   if (count > 0) {
     bar.style.display = 'flex';
-    document.getElementById('bulk-count').textContent =
+    document.getElementById(transportador ? 'bulk-count-transportador' : 'bulk-count').textContent =
       `${count} ${pluralViagem(count)} selecionada${count !== 1 ? 's' : ''}`;
   } else {
     bar.style.display = 'none';
@@ -2192,16 +2470,31 @@ function limparSelecao() {
 
 function aplicarEmLote() {
   const status = document.getElementById('bulk-status').value;
-  const transp = document.getElementById('bulk-transp').value.trim();
-  if (!status && !transp) { alert('Preencha ao menos o status ou o transportador para aplicar em lote.'); return; }
+  const transpRaw = document.getElementById('bulk-transp').value.trim();
+  const transpCnpj = document.getElementById('bulk-transp-cnpj').value.trim();
+  const removerAlocacao = transpRaw === '__sem_alocacao__';
+  const transp = removerAlocacao ? '' : transpRaw;
+  if (!status && !transpRaw) { alert('Preencha ao menos o status ou o transportador para aplicar em lote.'); return; }
   if (!selectedViagens.size) return;
   selectedViagens.forEach(idx => {
-    if (status) viagens[idx].status = status;
-    if (transp) viagens[idx].transportador = transp;
+    const v = viagens[idx];
+    const statusAnterior = v.status;
+    if (removerAlocacao) {
+      v.transportador = '';
+      v.transportadorCnpj = '';
+    } else if (transp) {
+      v.transportador = transp;
+      v.transportadorCnpj = transpCnpj; // troca de apelido invalida o CNPJ anterior; fica vazio se não escolhido aqui
+    }
+    if (status) v.status = status;
+    if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
+      registrarHistoricoOferta(v, status);
+    }
   });
   selectedViagens.clear();
   document.getElementById('bulk-status').value = '';
   document.getElementById('bulk-transp').value = '';
+  document.getElementById('bulk-transp-cnpj').value = '';
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
@@ -2219,7 +2512,13 @@ function agruparPorTransportador(lista) {
 }
 
 function buscarTransportadorPorNome(nome) {
-  return transportadores.find(t => (t.nomeFantasia || t.razaoSocial) === nome);
+  return transportadores.find(t => t.nomeFantasia === nome);
+}
+
+function buscarCnpjEntry(nomeApelido, cnpj) {
+  const t = buscarTransportadorPorNome(nomeApelido);
+  if (!t || !t.cnpjs.length) return null;
+  return t.cnpjs.find(c => c.cnpj === cnpj) || t.cnpjs[0];
 }
 
 function slugify(s) {
@@ -2276,10 +2575,11 @@ function estiloLinhaOferta(par) {
   return estilo;
 }
 
-function gerarPlanilhaOferta(grupoViagens, nomeArquivo, nomeTransportador, cnpjTransportador) {
+function gerarPlanilhaOferta(grupoViagens, nomeArquivo, nomeTransportador) {
   const headers = ['ID Viagem','Transportadora','Pedido MIS','Produto','Origem','Destino','Período','Volume (m³)','Aceita? (Sim/Não)','Placa','Placa Carreta 1','Placa Carreta 2','Nome Motorista','CPF Motorista'];
-  const transportadoraTexto = nomeTransportador + (cnpjTransportador ? `\n${cnpjTransportador}` : '');
   const rows = grupoViagens.map(v => {
+    const cnpjEntry = buscarCnpjEntry(nomeTransportador, v.transportadorCnpj);
+    const transportadoraTexto = nomeTransportador + (cnpjEntry?.cnpj ? `\n${cnpjEntry.cnpj}` : '');
     const origem  = v.origem + (v.base ? ` (${v.base})` : '') + (v.cnpjOrigem ? `\n${v.cnpjOrigem}` : '');
     const destino = v.destino + (v.cnpjDestino ? `\n${v.cnpjDestino}` : '');
     const periodo = (v.dtCarreg && v.dtCarreg !== '-') ? `${v.dtCarreg} → ${v.dtDesc}` : v.dtDesc;
@@ -2360,7 +2660,7 @@ function enviarOfertaPorEmail() {
     if (!email) semEmail.push(nomeTransportador);
 
     const nomeArquivo = `oferta_${slugify(nomeTransportador)}_${dataArquivo}.xlsx`;
-    gerarPlanilhaOferta(grupoViagens, nomeArquivo, nomeTransportador, cadastro?.cnpj);
+    gerarPlanilhaOferta(grupoViagens, nomeArquivo, nomeTransportador);
 
     const periodo = periodoGrupoOferta(grupoViagens);
     const assunto = `Nexta Distribuidora Combustíveis | Oferta de Cadência Transporte — ${nomeTransportador} — ${grupoViagens.length} ${pluralViagem(grupoViagens.length)}${periodo ? ' (' + periodo + ')' : ''}`;
@@ -2426,8 +2726,10 @@ function processarRetornoOferta(file) {
         const [nomeLinhaTransp, cnpjLinhaTransp] = campoTexto(r, 'transportador', false).split(/\r?\n/).map(s => s.trim());
         let transportadorPlanilha = nomeLinhaTransp || '';
         if (cnpjLinhaTransp) {
-          const porCnpj = transportadores.find(t => t.cnpj === cnpjLinhaTransp);
-          if (porCnpj) transportadorPlanilha = porCnpj.nomeFantasia || porCnpj.razaoSocial;
+          for (const t of transportadores) {
+            const entry = t.cnpjs.find(c => c.cnpj === cnpjLinhaTransp);
+            if (entry) { transportadorPlanilha = t.nomeFantasia; v.transportadorCnpj = entry.cnpj; break; }
+          }
         }
         if (transportadorPlanilha && transportadorPlanilha !== v.transportador) {
           v.transportador = transportadorPlanilha;
@@ -2436,7 +2738,8 @@ function processarRetornoOferta(file) {
         const aceita = campoTexto(r, 'aceita', false).toLowerCase();
 
         if (aceita.startsWith('n')) {
-          v.status = 'Backlog';
+          registrarHistoricoOferta(v, 'Recusado');
+          v.status = 'Recusado';
           v.transportador = '';
           v.placa = '';
           v.placaCarreta1 = '';
@@ -2460,6 +2763,7 @@ function processarRetornoOferta(file) {
 
         if (aceita.startsWith('s')) {
           v.status = v.placa ? 'Placa Enviada' : 'Aceito';
+          registrarHistoricoOferta(v, v.status);
         }
 
         atualizadas++;
@@ -2597,6 +2901,7 @@ function formatRelativo(dt) {
 
 // ── TABS ──
 function switchTab(i) {
+  if (isTransportador() && i !== 1) i = 1;
   document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', j===i));
   document.querySelectorAll('.tab-content').forEach((c,j) => c.classList.toggle('active', j===i));
   activeTab = i;
@@ -3039,45 +3344,61 @@ function updateKPIs(list) {
   const em2dias = new Date(hoje); em2dias.setDate(hoje.getDate() + 2);
 
   const ativas = list.filter(v => v.status !== 'Cancelado');
+  const transportador = isTransportador();
 
   const urgentes  = ativas.filter(v => {
     const d = parseDMY(v.dtCarreg);
     return d && d <= em2dias && !v.placa && v.status !== 'Placa Enviada';
   }).length;
-  const semTransp = ativas.filter(v =>
-    ['Backlog','Ofertado'].includes(v.status) && !v.transportador
-  ).length;
   const atrasadas = ativas.filter(v => {
     const d = parseDMY(v.dtCarreg);
     return d && d < hoje && v.status !== 'Placa Enviada';
   }).length;
   const aguardando = list.filter(v => v.status === 'Ofertado').length;
 
-  const volPendente = ativas.filter(v => v.status === 'Backlog').reduce((s,v) => s + (v.volume||0), 0);
-  const volNegoc    = ativas.filter(v => ['Ofertado','Aceito'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
-  const volConf     = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
-  const taxa        = list.length ? Math.round((list.filter(v => v.status !== 'Backlog').length / list.length) * 100) : 0;
+  const volNegoc = ativas.filter(v => ['Ofertado','Aceito'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
+  const volConf  = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
 
   const fmt = n => Number.isInteger(n)
     ? n.toLocaleString('pt-BR')
     : n.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1});
 
+  // Terceiro card de alerta e os dois cards de "volume/taxa" mudam de sentido para o transportador:
+  // sem ele alocado a si próprio, "Sem Transportador"/"Volume Pendente"/"Taxa de Alocação" ficam sempre zero/irrelevantes.
+  let cardExtraAlerta, volPrincipal, taxa;
+  if (transportador) {
+    cardExtraAlerta = ativas.length;
+    volPrincipal = ativas.reduce((s,v) => s + (v.volume||0), 0);
+    const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada'].includes(v.status)).length;
+    const respondidas  = list.filter(v => ['Aceito','Placa Enviada'].includes(v.status)).length;
+    taxa = consideradas ? Math.round((respondidas / consideradas) * 100) : 0;
+  } else {
+    cardExtraAlerta = ativas.filter(v => ['Backlog','Ofertado','Recusado'].includes(v.status) && !v.transportador).length;
+    volPrincipal = ativas.filter(v => ['Backlog','Recusado'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
+    taxa = list.length ? Math.round((list.filter(v => !['Backlog','Recusado'].includes(v.status)).length / list.length) * 100) : 0;
+  }
+
   document.getElementById('sv-urgentes').textContent   = urgentes;
-  document.getElementById('sv-semtransp').textContent  = semTransp;
+  document.getElementById('sv-semtransp').textContent  = cardExtraAlerta;
   document.getElementById('sv-atrasadas').textContent  = atrasadas;
   document.getElementById('sv-aguardando').textContent = aguardando;
-  document.getElementById('sv-vol-pendente').textContent = fmt(volPendente);
+  document.getElementById('sv-vol-pendente').textContent = fmt(volPrincipal);
   document.getElementById('sv-vol-negoc').textContent    = fmt(volNegoc);
   document.getElementById('sv-vol-conf').textContent     = fmt(volConf);
   document.getElementById('sv-taxa').textContent         = taxa + '%';
 
   document.getElementById('kpi-urgentes').classList.toggle('has-alert', urgentes > 0);
-  document.getElementById('kpi-semtransp').classList.toggle('has-alert', semTransp > 0);
+  document.getElementById('kpi-semtransp').classList.toggle('has-alert', !transportador && cardExtraAlerta > 0);
   document.getElementById('kpi-atrasadas').classList.toggle('has-alert', atrasadas > 0);
   document.getElementById('kpi-aguardando').classList.toggle('has-alert', aguardando > 0);
 
   const badge = document.getElementById('kpi-filter-badge');
-  if (badge) badge.style.display = list.length < viagens.length ? 'inline' : 'none';
+  if (badge) {
+    const totalEscopo = transportador
+      ? viagens.filter(v => (v.transportador || '').trim() === nomeTransportadorLogado()).length
+      : viagens.length;
+    badge.style.display = list.length < totalEscopo ? 'inline' : 'none';
+  }
 }
 
 // ── VIAGENS TABLE ──
@@ -3096,6 +3417,8 @@ function estadoFiltrosViagem() {
 }
 
 function passaFiltrosViagem(v, f, ignorar = '') {
+  if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
+  if (isTransportador() && v.status === 'Backlog') return false;
   if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
@@ -3162,6 +3485,7 @@ function renderViagensTable() {
     const statusClass = {
       'Backlog':       'status-backlog',
       'Ofertado':      'status-ofertado',
+      'Recusado':      'status-recusado',
       'Aceito':        'status-aceito',
       'Placa Enviada': 'status-placa',
       'Cancelado':     'status-cancelado',
@@ -3170,7 +3494,7 @@ function renderViagensTable() {
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
     tbody.innerHTML += `
       <tr class="${isSelected ? 'row-selected' : ''}">
-        <td style="padding:10px 8px;width:36px;text-align:center">
+        <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
           <input type="checkbox" ${isSelected ? 'checked' : ''}
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
@@ -3196,11 +3520,20 @@ function renderViagensTable() {
         <td style="padding-right:12px"><input class="placa-input" value="${esc(v.placa||'')}" placeholder="AAA0A000"
           onblur="salvarPlacaInline(${realIdx}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
+          ${isTransportador() && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
           maxlength="8"></td>
         <td class="col-acao">
           <div>
-            <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
-            <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+            ${isTransportador() && v.status === 'Ofertado' ? `
+              <button class="btn btn-success btn-sm" style="padding:4px 8px;font-size:11px" onclick="aceitarOfertaTransportador(${realIdx})" title="Aceitar oferta">✅</button>
+              <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="recusarOfertaTransportador(${realIdx})" title="Recusar oferta">❌</button>
+            ` : isTransportador() && v.status === 'Aceito' ? `
+              <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
+              <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="recusarOfertaTransportador(${realIdx})" title="Recusar oferta">❌</button>
+            ` : `
+              <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
+              <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+            `}
           </div>
         </td>
       </tr>
@@ -3263,12 +3596,23 @@ function mascaraCNPJ(v) {
   return v;
 }
 
+function normalizarTransportador(t) {
+  if (Array.isArray(t.cnpjs)) {
+    return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', cnpjs: t.cnpjs };
+  }
+  // Compatibilidade com cadastro antigo (1 CNPJ direto no registro, sem lista `cnpjs`)
+  const cnpjs = (t.codSap || t.razaoSocial || t.cnpj)
+    ? [{ codSap: t.codSap || '', razaoSocial: t.razaoSocial || '', cnpj: t.cnpj || '' }]
+    : [];
+  return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', cnpjs };
+}
+
 async function carregarTransportadoresFirebase() {
   if (!window._fb?.carregarTransportadores) return;
   try {
     const raw = await window._fb.carregarTransportadores();
     if (raw !== null && raw !== undefined) {
-      transportadores = (Array.isArray(raw) ? raw : Object.values(raw)).filter(Boolean);
+      transportadores = (Array.isArray(raw) ? raw : Object.values(raw)).filter(Boolean).map(normalizarTransportador);
     }
   } catch (e) { console.error('Erro ao carregar transportadores:', e); }
 }
@@ -3283,7 +3627,8 @@ async function persistirTransportadores() {
 function renderTransportadoresTable() {
   const busca = (document.getElementById('fTranspBusca')?.value || '').toLowerCase().trim();
   const filtered = transportadores.filter(t =>
-    !busca || [t.codSap, t.razaoSocial, t.nomeFantasia, t.cnpj, t.email].join(' ').toLowerCase().includes(busca)
+    !busca || [t.nomeFantasia, t.email, ...t.cnpjs.flatMap(c => [c.codSap, c.razaoSocial, c.cnpj])]
+      .join(' ').toLowerCase().includes(busca)
   );
 
   const isEmpty = transportadores.length === 0;
@@ -3300,13 +3645,14 @@ function renderTransportadoresTable() {
   tbody.innerHTML = '';
   filtered.forEach(t => {
     const realIdx = transportadores.indexOf(t);
+    const cnpjsHtml = t.cnpjs.length
+      ? t.cnpjs.map(c => `<div>${esc(c.codSap)} · ${esc(c.razaoSocial)}${c.cnpj ? ` · <span style="font-family:monospace">${esc(c.cnpj)}</span>` : ''}</div>`).join('')
+      : '<span style="color:var(--text-muted)">—</span>';
     tbody.innerHTML += `
       <tr>
-        <td style="font-family:var(--font-cond);font-size:14px;font-weight:700;color:var(--accent)">${esc(t.codSap)}</td>
-        <td class="cell-truncate">${esc(t.razaoSocial)}</td>
-        <td class="cell-truncate">${esc(t.nomeFantasia || '—')}</td>
+        <td class="cell-truncate" style="font-family:var(--font-cond);font-size:14px;font-weight:700;color:var(--accent)">${esc(t.nomeFantasia)}</td>
         <td class="cell-truncate" style="color:var(--text-dim)">${esc(t.email || '—')}</td>
-        <td style="font-family:monospace;font-size:12px;color:var(--text-dim)">${esc(t.cnpj || '—')}</td>
+        <td style="font-size:11px;line-height:1.7">${cnpjsHtml}</td>
         <td style="text-align:center">
           <div style="display:flex;gap:4px;justify-content:center">
             <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalTransportador(${realIdx})">✏️</button>
@@ -3318,24 +3664,53 @@ function renderTransportadoresTable() {
   popularSelectTransportadores('bulk-transp');
 }
 
+let _transpCnpjsEdicao = [];
+
+function renderCnpjsEdicao() {
+  const wrap = document.getElementById('transp-cnpjs-lista');
+  if (!_transpCnpjsEdicao.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhum CNPJ adicionado ainda.</div>';
+    return;
+  }
+  wrap.innerHTML = _transpCnpjsEdicao.map((c, i) => `
+    <div class="modal-row" style="grid-template-columns:110px 1fr 170px 32px;gap:8px;align-items:center;margin-bottom:0">
+      <input class="config-input" placeholder="Cód. SAP *" value="${esc(c.codSap)}" oninput="_transpCnpjsEdicao[${i}].codSap = this.value">
+      <input class="config-input" placeholder="Razão Social *" value="${esc(c.razaoSocial)}" oninput="_transpCnpjsEdicao[${i}].razaoSocial = this.value">
+      <input class="config-input" placeholder="00.000.000/0000-00" maxlength="18" value="${esc(c.cnpj)}"
+        oninput="this.value = mascaraCNPJ(this.value); _transpCnpjsEdicao[${i}].cnpj = this.value">
+      <button class="btn btn-danger btn-sm" style="padding:6px" onclick="removerLinhaCnpj(${i})" title="Remover CNPJ">✕</button>
+    </div>
+  `).join('');
+}
+
+function adicionarLinhaCnpj() {
+  _transpCnpjsEdicao.push({ codSap: '', razaoSocial: '', cnpj: '' });
+  renderCnpjsEdicao();
+}
+
+function removerLinhaCnpj(i) {
+  _transpCnpjsEdicao.splice(i, 1);
+  renderCnpjsEdicao();
+}
+
 function abrirModalTransportador(idx) {
   editingTranspIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('transp-modal-title').textContent = isNovo ? 'Novo Transportador' : 'Editar Transportador';
   if (isNovo) {
-    ['transp-codsap','transp-razao','transp-fantasia','transp-cnpj','transp-email'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
-    });
+    document.getElementById('transp-fantasia').value = '';
+    document.getElementById('transp-email').value = '';
+    _transpCnpjsEdicao = [{ codSap: '', razaoSocial: '', cnpj: '' }];
   } else {
     const t = transportadores[idx];
-    document.getElementById('transp-codsap').value   = t.codSap || '';
-    document.getElementById('transp-razao').value    = t.razaoSocial || '';
     document.getElementById('transp-fantasia').value = t.nomeFantasia || '';
-    document.getElementById('transp-cnpj').value     = t.cnpj || '';
-    document.getElementById('transp-email').value    = t.email || '';
+    document.getElementById('transp-email').value = t.email || '';
+    _transpCnpjsEdicao = t.cnpjs.map(c => ({ ...c }));
+    if (!_transpCnpjsEdicao.length) _transpCnpjsEdicao.push({ codSap: '', razaoSocial: '', cnpj: '' });
   }
+  renderCnpjsEdicao();
   document.getElementById('modalTransportador').classList.add('open');
-  setTimeout(() => document.getElementById('transp-codsap').focus(), 100);
+  setTimeout(() => document.getElementById('transp-fantasia').focus(), 100);
 }
 
 function fecharModalTransportador() {
@@ -3353,22 +3728,63 @@ function normalizarEmails(str) {
 }
 
 async function salvarTransportador() {
-  const codSap      = document.getElementById('transp-codsap').value.trim();
-  const razaoSocial = document.getElementById('transp-razao').value.trim();
   const nomeFantasia = document.getElementById('transp-fantasia').value.trim();
-  const cnpj        = document.getElementById('transp-cnpj').value.trim();
-  const email       = normalizarEmails(document.getElementById('transp-email').value);
-  if (!codSap || !razaoSocial) {
-    alert('Preencha os campos obrigatórios: Código SAP e Razão Social.');
+  const email = normalizarEmails(document.getElementById('transp-email').value);
+  if (!nomeFantasia) {
+    alert('Preencha o apelido / nome fantasia do transportador.');
     return;
   }
+  const cnpjsPreenchidos = _transpCnpjsEdicao
+    .map(c => ({ codSap: c.codSap.trim(), razaoSocial: c.razaoSocial.trim(), cnpj: c.cnpj.trim() }))
+    .filter(c => c.codSap || c.razaoSocial || c.cnpj);
+  if (!cnpjsPreenchidos.length) {
+    alert('Adicione ao menos um CNPJ (com Código SAP e Razão Social) para este transportador.');
+    return;
+  }
+  const incompleto = cnpjsPreenchidos.find(c => !c.codSap || !c.razaoSocial);
+  if (incompleto) {
+    alert('Cada CNPJ precisa de Código SAP e Razão Social preenchidos.');
+    return;
+  }
+
   const isNovo = editingTranspIdx === null || editingTranspIdx === undefined;
-  const duplicado = transportadores.findIndex((t, i) => t.codSap === codSap && i !== editingTranspIdx);
-  if (duplicado !== -1) {
-    alert(`Código SAP "${codSap}" já está cadastrado para "${transportadores[duplicado].razaoSocial}".`);
+
+  const duplicadoApelido = transportadores.findIndex((t, i) =>
+    i !== editingTranspIdx && t.nomeFantasia.toLowerCase() === nomeFantasia.toLowerCase());
+  if (duplicadoApelido !== -1) {
+    alert(`O apelido "${nomeFantasia}" já está cadastrado.`);
     return;
   }
-  const registro = { codSap, razaoSocial, nomeFantasia, cnpj, email };
+
+  for (const c of cnpjsPreenchidos) {
+    const dupSap = transportadores.findIndex((t, i) =>
+      i !== editingTranspIdx && t.cnpjs.some(x => x.codSap === c.codSap));
+    if (dupSap !== -1) {
+      alert(`Código SAP "${c.codSap}" já está cadastrado para "${transportadores[dupSap].nomeFantasia}".`);
+      return;
+    }
+  }
+
+  const nomeAntigo = !isNovo ? transportadores[editingTranspIdx].nomeFantasia : '';
+  if (nomeAntigo && nomeFantasia !== nomeAntigo) {
+    const viagensAfetadas = viagens.filter(v => v.transportador === nomeAntigo).length;
+    const usuariosAfetados = _usuariosAtivos.filter(u => u.tipo === 'transportador' && u.transportadorNome === nomeAntigo).length;
+    if (viagensAfetadas || usuariosAfetados) {
+      const confirma = confirm(
+        `O nome deste transportador mudou de "${nomeAntigo}" para "${nomeFantasia}".\n\n` +
+        `${viagensAfetadas} viagem(ns) da semana atual e ${usuariosAfetados} login(s) de transportador apontam para o nome antigo.\n\n` +
+        `Atualizar todos para o novo nome agora? (Recomendado — sem isso, esses logins de transportador deixam de ver suas cargas.)`
+      );
+      if (confirma) {
+        viagens.forEach(v => { if (v.transportador === nomeAntigo) v.transportador = nomeFantasia; });
+        _usuariosAtivos.forEach(u => { if (u.tipo === 'transportador' && u.transportadorNome === nomeAntigo) u.transportadorNome = nomeFantasia; });
+        if (usuariosAfetados) await salvarUsuariosFirebase();
+        if (viagensAfetadas) agendarAutosave();
+      }
+    }
+  }
+
+  const registro = { nomeFantasia, email, cnpjs: cnpjsPreenchidos };
   if (isNovo) transportadores.push(registro);
   else transportadores[editingTranspIdx] = registro;
   fecharModalTransportador();
@@ -3377,7 +3793,8 @@ async function salvarTransportador() {
 }
 
 async function removerTransportador(idx) {
-  if (!confirm(`Remover "${transportadores[idx].razaoSocial}" do cadastro?`)) return;
+  const t = transportadores[idx];
+  if (!confirm(`Remover "${t.nomeFantasia}" do cadastro (e os ${t.cnpjs.length} CNPJ(s) vinculados a ele)?`)) return;
   transportadores.splice(idx, 1);
   renderTransportadoresTable();
   await persistirTransportadores();
@@ -3393,15 +3810,19 @@ function popularSelectTransportadores(selectId, valorAtual) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   const current = valorAtual !== undefined ? valorAtual : sel.value;
-  const emptyLabel = selectId === 'bulk-transp' ? 'Transportador...' : '— Não alocado —';
+  const emptyLabel = selectId === 'bulk-transp'
+    ? 'Manter atual'
+    : selectId === 'admin-new-transportador-nome'
+      ? 'Selecione o transportador...'
+      : '— Não alocado —';
   sel.innerHTML = `<option value="">${emptyLabel}</option>`;
+  if (selectId === 'bulk-transp') {
+    sel.innerHTML += `<option value="__sem_alocacao__">— Não alocado —</option>`;
+  }
   transportadores.forEach(t => {
-    const nome = t.nomeFantasia || t.razaoSocial;
     const opt = document.createElement('option');
-    opt.value = nome;
-    opt.textContent = t.nomeFantasia
-      ? `${t.nomeFantasia}  ·  ${t.codSap}`
-      : `${t.razaoSocial}  ·  ${t.codSap}`;
+    opt.value = t.nomeFantasia;
+    opt.textContent = `${t.nomeFantasia}  ·  ${t.cnpjs.length} CNPJ${t.cnpjs.length !== 1 ? 's' : ''}`;
     sel.appendChild(opt);
   });
   sel.value = current || '';
@@ -3412,6 +3833,27 @@ function popularSelectTransportadores(selectId, valorAtual) {
     opt.textContent = `${current}  (não cadastrado)`;
     sel.insertBefore(opt, sel.children[1] || null);
     sel.value = current;
+  }
+}
+
+function popularSelectCnpjsTransportador(selectId, nomeApelido, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  const t = buscarTransportadorPorNome(nomeApelido);
+  const cnpjs = t?.cnpjs || [];
+  sel.innerHTML = `<option value="">${cnpjs.length ? 'Selecione o CNPJ...' : 'Nenhum CNPJ cadastrado'}</option>`;
+  cnpjs.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.cnpj;
+    opt.textContent = `${c.razaoSocial} · ${c.cnpj || c.codSap}`;
+    sel.appendChild(opt);
+  });
+  sel.disabled = !cnpjs.length;
+  if (cnpjs.length === 1) {
+    sel.selectedIndex = 1; // único CNPJ cadastrado — seleciona automaticamente, nada a decidir
+  } else {
+    sel.value = cnpjs.some(c => c.cnpj === current) ? current : '';
   }
 }
 
@@ -3431,9 +3873,10 @@ function openModal(idx) {
   document.getElementById('m-volume').textContent = v.volume + ' m³';
   document.getElementById('m-dtcarreg').textContent = v.dtCarreg && v.dtCarreg !== '-' ? v.dtCarreg : '—';
   document.getElementById('m-dtdesc').textContent = v.dtDesc;
-  document.getElementById('m-origem').textContent = v.origem;
+  document.getElementById('m-origem').innerHTML = esc(v.origem) + (v.base ? ` <span style="color:var(--text-muted)">(${esc(v.base)})</span>` : '');
   document.getElementById('m-destino').textContent = v.destino;
   popularSelectTransportadores('m-transportador', v.transportador || '');
+  popularSelectCnpjsTransportador('m-transportador-cnpj', v.transportador || '', v.transportadorCnpj || '');
   document.getElementById('m-status').value         = v.status || 'Pendente';
   document.getElementById('m-placa').value          = v.placa || '';
   document.getElementById('m-placaCarreta1').value  = v.placaCarreta1 || '';
@@ -3442,11 +3885,102 @@ function openModal(idx) {
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
   document.getElementById('modalOverlay').classList.add('open');
+  renderHistoricoOferta(v);
+  ajustarModalParaTipoUsuario(v);
+}
+
+function ajustarModalParaTipoUsuario(v) {
+  const transportador = isTransportador();
+  document.getElementById('m-transportador').disabled = transportador;
+  document.getElementById('m-status').disabled = transportador;
+
+  const podeEditarPlaca = !transportador || ['Aceito', 'Placa Enviada'].includes(v.status);
+  ['m-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-nomeMotorista', 'm-cpfMotorista', 'm-obs']
+    .forEach(id => { document.getElementById(id).disabled = !podeEditarPlaca; });
+
+  const podeAceitar = transportador && v.status === 'Ofertado';
+  const podeRecusar = transportador && ['Ofertado', 'Aceito'].includes(v.status);
+  document.getElementById('btnAceitarOferta').style.display = podeAceitar ? '' : 'none';
+  document.getElementById('btnRecusarOferta').style.display = podeRecusar ? '' : 'none';
+  document.getElementById('btnSalvarViagem').style.display = (transportador && !podeEditarPlaca) ? 'none' : '';
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   editingIdx = null;
+}
+
+function _aplicarAceiteViagem(v) {
+  v.status = 'Aceito';
+  registrarHistoricoOferta(v, 'Aceito');
+}
+
+function _aplicarRecusaViagem(v) {
+  registrarHistoricoOferta(v, 'Recusado');
+  v.status = 'Recusado';
+  v.transportador = '';
+  v.transportadorCnpj = '';
+  v.placa = '';
+  v.placaCarreta1 = '';
+  v.placaCarreta2 = '';
+  v.nomeMotorista = '';
+  v.cpfMotorista = '';
+}
+
+function aceitarOfertaTransportador(idx) {
+  const i = idx !== undefined ? idx : editingIdx;
+  if (i === null || i === undefined) return;
+  _aplicarAceiteViagem(viagens[i]);
+  if (editingIdx === i) closeModal();
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+function recusarOfertaTransportador(idx) {
+  const i = idx !== undefined ? idx : editingIdx;
+  if (i === null || i === undefined) return;
+  if (!confirm('Recusar esta oferta? A viagem sairá de sua lista e voltará para o time interno reatribuir.')) return;
+  _aplicarRecusaViagem(viagens[i]);
+  if (editingIdx === i) closeModal();
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+function aceitarOfertasSelecionadasTransportador() {
+  if (!selectedViagens.size) return;
+  const idxs = [...selectedViagens];
+  const elegiveis = idxs.filter(i => viagens[i]?.status === 'Ofertado');
+  if (!elegiveis.length) {
+    alert('Nenhuma das viagens selecionadas está com status "Ofertado" para aceitar.');
+    return;
+  }
+  const ignoradas = idxs.length - elegiveis.length;
+  elegiveis.forEach(i => _aplicarAceiteViagem(viagens[i]));
+  selectedViagens.clear();
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+  mostrarStatus('saved', `${elegiveis.length} oferta(s) aceita(s)${ignoradas ? ` · ${ignoradas} ignorada(s) (status diferente de Ofertado)` : ''}`);
+}
+
+function recusarOfertasSelecionadasTransportador() {
+  if (!selectedViagens.size) return;
+  const idxs = [...selectedViagens];
+  const elegiveis = idxs.filter(i => ['Ofertado','Aceito'].includes(viagens[i]?.status));
+  if (!elegiveis.length) {
+    alert('Nenhuma das viagens selecionadas pode ser recusada (apenas Ofertado ou Aceito).');
+    return;
+  }
+  const ignoradas = idxs.length - elegiveis.length;
+  if (!confirm(`Recusar ${elegiveis.length} oferta(s) selecionada(s)? Elas voltarão para o time interno reatribuir.${ignoradas ? `\n\n${ignoradas} viagem(ns) selecionada(s) será(ão) ignorada(s) (status não permite recusa).` : ''}`)) return;
+  elegiveis.forEach(i => _aplicarRecusaViagem(viagens[i]));
+  selectedViagens.clear();
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+  mostrarStatus('saved', `${elegiveis.length} oferta(s) recusada(s)`);
 }
 
 function salvarPlacaInline(realIdx, value) {
@@ -3456,8 +3990,10 @@ function salvarPlacaInline(realIdx, value) {
   v.placa = placa;
   if (placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
+    registrarHistoricoOferta(v, 'Placa Enviada');
   } else if (!placa && v.status === 'Placa Enviada') {
     v.status = 'Aceito';
+    registrarHistoricoOferta(v, 'Aceito');
   }
   updatePipeline();
   agendarAutosave();
@@ -3466,7 +4002,18 @@ function salvarPlacaInline(realIdx, value) {
 
 function salvarViagem() {
   if (editingIdx === null) return;
-  viagens[editingIdx].transportador  = document.getElementById('m-transportador').value;
+  const statusAnterior = viagens[editingIdx].status;
+  const novoTransportador = document.getElementById('m-transportador').value;
+  const novoCnpj = document.getElementById('m-transportador-cnpj').value;
+  if (novoTransportador) {
+    const t = buscarTransportadorPorNome(novoTransportador);
+    if (t && t.cnpjs.length && !novoCnpj) {
+      alert('Selecione o CNPJ que vai atender esta viagem antes de salvar.');
+      return;
+    }
+  }
+  viagens[editingIdx].transportador     = novoTransportador;
+  viagens[editingIdx].transportadorCnpj = novoTransportador ? novoCnpj : '';
   viagens[editingIdx].status         = document.getElementById('m-status').value;
   viagens[editingIdx].placa          = document.getElementById('m-placa').value.toUpperCase();
   viagens[editingIdx].placaCarreta1  = document.getElementById('m-placaCarreta1').value.toUpperCase();
@@ -3474,6 +4021,13 @@ function salvarViagem() {
   viagens[editingIdx].nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
   viagens[editingIdx].cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   viagens[editingIdx].obs            = document.getElementById('m-obs').value;
+  if (viagens[editingIdx].placa && viagens[editingIdx].status === 'Aceito') {
+    viagens[editingIdx].status = 'Placa Enviada';
+  }
+  if (viagens[editingIdx].status !== statusAnterior
+    && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(viagens[editingIdx].status)) {
+    registrarHistoricoOferta(viagens[editingIdx], viagens[editingIdx].status);
+  }
   closeModal();
   updatePipeline();
   agendarAutosave();
@@ -3486,9 +4040,9 @@ function gerarOrdemRetirada(idx) {
   const v = viagens[idx];
   if (!v) return;
 
-  const transpObj  = transportadores.find(t => (t.nomeFantasia || t.razaoSocial) === v.transportador);
-  const transpRazao = transpObj ? (transpObj.razaoSocial || v.transportador || '—') : (v.transportador || '—');
-  const transpCnpj  = transpObj?.cnpj || '—';
+  const cnpjEntry   = buscarCnpjEntry(v.transportador, v.transportadorCnpj);
+  const transpRazao = cnpjEntry?.razaoSocial || v.transportador || '—';
+  const transpCnpj  = cnpjEntry?.cnpj || '—';
 
   const localCarreg  = [v.origem, v.base].filter(Boolean).join(' - ') || '—';
   const cidadeDest   = v.destino ? v.destino.split(' - ')[0].trim() : '—';
@@ -3641,12 +4195,14 @@ function updatePipeline(list) {
   // Status: refletem a lista recebida (filtrada ou total)
   const cntBacklog   = list.filter(v => v.status === 'Backlog').length;
   const cntOfertado  = list.filter(v => v.status === 'Ofertado').length;
+  const cntRecusado  = list.filter(v => v.status === 'Recusado').length;
   const cntAceito    = list.filter(v => v.status === 'Aceito').length;
   const cntPlaca     = list.filter(v => v.status === 'Placa Enviada').length;
   const cntCancelado = list.filter(v => v.status === 'Cancelado').length;
 
   document.getElementById('cnt-backlog').textContent       = cntBacklog;
   document.getElementById('cnt-ofertadas').textContent     = cntOfertado;
+  document.getElementById('cnt-recusadas').textContent     = cntRecusado;
   document.getElementById('cnt-aceitas').textContent       = cntAceito;
   document.getElementById('cnt-monitoramento').textContent = cntPlaca;
   document.getElementById('cnt-canceladas').textContent    = cntCancelado;
@@ -3860,6 +4416,9 @@ document.getElementById('adminModal').addEventListener('click', function(e) {
 document.getElementById('modalTransportador').addEventListener('click', function(e) {
   if (e.target === this) fecharModalTransportador();
 });
+document.getElementById('modalTrocarSenha').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalTrocarSenha();
+});
 
 // ── INIT: restaurar sessão ao abrir ──
 
@@ -3916,6 +4475,7 @@ function configurarListenerSemana(key) {
   window._fbUnsub = window._fb.ouvirMudancas(key, (payload) => {
     if (primeira) { primeira = false; return; }
     aplicarPayload(payload);
+    if (editingIdx !== null) closeModal();
     if (activeTab === 0 && cadencias.length > 0) renderPreview();
     if (activeTab === 1) renderViagensTable();
     if (activeTab === 2) renderExport();
