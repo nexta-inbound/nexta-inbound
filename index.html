@@ -635,6 +635,11 @@
     line-height: 1.65;
     width: 92px;
   }
+  th.col-data-desejada, th.col-data-programacao {
+    white-space: normal;
+    max-width: 96px;
+    line-height: 1.3;
+  }
   .date-start {
     font-size: 12px;
     color: var(--text-muted);
@@ -980,7 +985,8 @@
   body.transportador-mode #bulkBar,
   body.transportador-mode #wrapImportarRetorno,
   body.transportador-mode #fTransp,
-  body.transportador-mode #chipBacklog {
+  body.transportador-mode #chipBacklog,
+  body.transportador-mode .col-data-desejada {
     display: none !important;
   }
   body:not(.transportador-mode) #bulkBarTransportador {
@@ -1534,7 +1540,8 @@
               <th>Produto</th>
               <th>Origem</th>
               <th>Destino</th>
-              <th>Período</th>
+              <th class="col-data-desejada">Data Desejada Abastecimento</th>
+              <th class="col-data-programacao">Data Programação</th>
               <th>Vol (m³)</th>
               <th>Status</th>
               <th>Transportador</th>
@@ -1747,6 +1754,10 @@
     <div class="modal-title">Gerenciar Viagem</div>
     <div class="modal-sub" id="modal-id-label">—</div>
 
+    <div class="alert alert-warn" id="alertaProgramacaoBanner" style="display:none">
+      ⚠ A programação desta viagem foi alterada após o aceite. Confira as novas datas de carregamento/descarga.
+    </div>
+
     <div class="info-row">
       <div class="info-item">
         <div class="info-lbl">Produto</div>
@@ -1839,6 +1850,11 @@
     <div class="modal-field" id="campo-historico-oferta" style="display:none">
       <div class="modal-label">📜 Histórico de Ofertas</div>
       <div id="m-historico" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--panel-soft);font-size:12px"></div>
+    </div>
+
+    <div class="modal-field" id="campo-historico-programacao" style="display:none">
+      <div class="modal-label">📅 Histórico de Ajustes de Programação</div>
+      <div id="m-historico-programacao" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--panel-soft);font-size:12px"></div>
     </div>
 
     <div class="modal-actions">
@@ -1962,6 +1978,27 @@ function renderHistoricoOferta(v) {
   }
   campo.style.display = '';
   lista.innerHTML = historico.map(formatarHistoricoItem).join('');
+}
+
+// ── HISTÓRICO DE AJUSTES DE PROGRAMAÇÃO (separado do histórico de ofertas) ──
+function formatarHistoricoProgramacaoItem(h) {
+  const dt = new Date(h.data);
+  const dataFmt = isNaN(dt.getTime())
+    ? ''
+    : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">📅 ${esc(h.evento)} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
+}
+
+function renderHistoricoProgramacao(v) {
+  const campo = document.getElementById('campo-historico-programacao');
+  const lista = document.getElementById('m-historico-programacao');
+  const historico = Array.isArray(v.historicoProgramacao) ? v.historicoProgramacao : [];
+  if (isTransportador() || !historico.length) {
+    campo.style.display = 'none';
+    return;
+  }
+  campo.style.display = '';
+  lista.innerHTML = historico.map(formatarHistoricoProgramacaoItem).join('');
 }
 
 async function carregarUsuariosFirebase(mostrarFeedback = false) {
@@ -3247,6 +3284,8 @@ function reconciliarViagensComCadencias(grupos, cap) {
         novasViagens.push({
           ...anterior,
           ...baseViagem,
+          dtCarregProg: anterior.dtCarregProg || g.dtCarreg,
+          dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           status: anterior.status || 'Backlog',
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
@@ -3256,6 +3295,8 @@ function reconciliarViagensComCadencias(grupos, cap) {
       } else {
         novasViagens.push({
           ...baseViagem,
+          dtCarregProg: g.dtCarreg,
+          dtDescProg: g.dtDesc,
           status: 'Backlog',
           transportador: '',
           placa: '',
@@ -3492,6 +3533,8 @@ function renderViagensTable() {
     }[v.status] || 'status-backlog';
 
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
+    const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
+    const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
     tbody.innerHTML += `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -3510,9 +3553,28 @@ function renderViagensTable() {
           ${esc(v.destino)}
           ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}
         </td>
-        <td class="cell-periodo">
+        <td class="cell-periodo col-data-desejada">
           <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
           <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
+        </td>
+        <td class="cell-periodo">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="filter-sep" style="font-size:10px">↑</span>
+            <input class="placa-input" style="width:54px;text-transform:none;font-family:var(--font-cond)"
+              value="${progCarreg === '-' ? '' : esc(fmtShort(progCarreg))}" placeholder="DD/MM" maxlength="5"
+              onblur="salvarDataProgramacaoInline(${realIdx}, 'carreg', this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              ${isTransportador() ? 'disabled' : ''}>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+            <span class="filter-sep" style="font-size:10px">↓</span>
+            <input class="placa-input" style="width:54px;text-transform:none;font-family:var(--font-cond)"
+              value="${progDesc === '-' ? '' : esc(fmtShort(progDesc))}" placeholder="DD/MM" maxlength="5"
+              onblur="salvarDataProgramacaoInline(${realIdx}, 'desc', this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              ${isTransportador() ? 'disabled' : ''}>
+          </div>
+          ${v.alertaProgramacao ? `<span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px" title="Data alterada após o aceite">⚠ Alterada</span>` : ''}
         </td>
         <td>${v.volume}</td>
         <td><span class="status ${statusClass}">${v.status}</span></td>
@@ -3885,7 +3947,9 @@ function openModal(idx) {
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
   document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('alertaProgramacaoBanner').style.display = v.alertaProgramacao ? '' : 'none';
   renderHistoricoOferta(v);
+  renderHistoricoProgramacao(v);
   ajustarModalParaTipoUsuario(v);
 }
 
@@ -3906,6 +3970,11 @@ function ajustarModalParaTipoUsuario(v) {
 }
 
 function closeModal() {
+  if (isTransportador() && editingIdx !== null && viagens[editingIdx]?.alertaProgramacao) {
+    viagens[editingIdx].alertaProgramacao = false;
+    agendarAutosave();
+    renderViagensTable();
+  }
   document.getElementById('modalOverlay').classList.remove('open');
   editingIdx = null;
 }
@@ -3996,6 +4065,41 @@ function salvarPlacaInline(realIdx, value) {
     registrarHistoricoOferta(v, 'Aceito');
   }
   updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
+  const v = viagens[realIdx];
+  const campo = tipo === 'carreg' ? 'dtCarregProg' : 'dtDescProg';
+  const desejado = tipo === 'carreg' ? v.dtCarreg : v.dtDesc;
+  const anterior = v[campo] || desejado || '-';
+  const valor = valorInput.trim();
+
+  let novo;
+  if (!valor) {
+    novo = '-';
+  } else {
+    const partes = valor.split('/');
+    const ano = (anterior !== '-' ? anterior : desejado || '').split('/')[2] || String(new Date().getFullYear());
+    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : valor;
+    if (!parseDMY(novo)) {
+      alert('Data inválida. Use o formato DD/MM.');
+      renderViagensTable();
+      return;
+    }
+  }
+  if (novo === anterior) return;
+  v[campo] = novo;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Data de ${tipo === 'carreg' ? 'Carregamento' : 'Descarga'} ajustada: ${anterior === '-' ? '—' : anterior} → ${novo === '-' ? '—' : novo}`,
+  });
+  if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+    v.alertaProgramacao = true;
+  }
   agendarAutosave();
   renderViagensTable();
 }
