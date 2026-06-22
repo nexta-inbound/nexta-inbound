@@ -1129,14 +1129,7 @@
     }
   };
 
-  // Só dispara firebase-ready após Firebase Auth confirmar token
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user } }));
-    } else {
-      window.dispatchEvent(new CustomEvent('firebase-auth-logout', {}));
-    }
-  });
+  // Firebase pronto — disparo controlado pelo fazerLogin
 </script>
 </head>
 <body>
@@ -2087,8 +2080,9 @@ async function fazerLogin() {
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
-    // Dispara carregamento do Firebase após login bem-sucedido
-    window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user: cred.user } }));
+    // Aguarda token ser propagado antes de acessar o banco
+    await cred.user.getIdToken(true);
+    await iniciarFirebase();
   } catch (e) {
     const msgs = {
       'auth/user-not-found': 'E-mail não encontrado.',
@@ -4686,34 +4680,13 @@ function confirmarNovaSemana() {
   mostrarStatus('saved', 'Semana criada: '+formatarKeyParaLabel(key));
 }
 
-window.addEventListener('firebase-auth-logout', () => {
-  if (_authUsuarioAtual) fazerLogout();
-});
-
-window.addEventListener('firebase-ready', async (e) => {
-  // Se não há sessão local, cria a partir do Firebase Auth user
-  if (!sessionStorage.getItem(AUTH_STORAGE_KEY) && e.detail?.user) {
-    const uid = e.detail.user.uid;
-    const perfil = await window._fb.carregarPerfil(uid).catch(() => null);
-    const sessao = {
-      login: e.detail.user.email, uid,
-      nome: perfil?.nome || e.detail.user.email,
-      admin: !!perfil?.admin,
-      tipo: perfil?.tipo === 'transportador' ? 'transportador' : 'staff',
-      transportadorNome: perfil?.transportadorNome || '',
-    };
-    sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
-    aplicarSessaoUsuario(sessao);
-  } else {
-    restaurarSessaoUsuario();
-  }
-
-  // Só prossegue se houver usuário autenticado na sessão
+async function iniciarFirebase() {
   if (!_authUsuarioAtual) return;
-
-  await carregarUsuariosFirebase().catch(() => {});
-  await carregarTransportadoresFirebase().catch(() => {});
-
+  mostrarStatus('saving', 'Carregando dados...');
+  try {
+await carregarUsuariosFirebase();
+  await carregarTransportadoresFirebase();
+  
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
     mostrarStatus('', 'Pronto — crie uma nova semana para começar');
@@ -4731,7 +4704,11 @@ window.addEventListener('firebase-ready', async (e) => {
   }
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
-});
+  } catch(err) {
+    mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
+    console.error('iniciarFirebase error:', err);
+  }
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
@@ -4747,7 +4724,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
-  mostrarStatus('saving', 'Conectando ao Firebase...');
+  mostrarStatus('', '');
 });
 </script>
 </body>
