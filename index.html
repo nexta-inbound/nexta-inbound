@@ -1129,8 +1129,16 @@
     }
   };
 
-  // Sinaliza que o Firebase está pronto
-  window.dispatchEvent(new Event('firebase-ready'));
+  // Aguarda Firebase Auth confirmar token antes de liberar acesso ao banco
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      window._fbReady = true;
+      window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user } }));
+    } else {
+      window._fbReady = false;
+      window.dispatchEvent(new CustomEvent('firebase-auth-change', { detail: { user: null } }));
+    }
+  });
 </script>
 </head>
 <body>
@@ -4678,15 +4686,18 @@ function confirmarNovaSemana() {
   mostrarStatus('saved', 'Semana criada: '+formatarKeyParaLabel(key));
 }
 
+window.addEventListener('firebase-auth-change', (e) => {
+  if (!e.detail?.user && _authUsuarioAtual) fazerLogout();
+});
+
 window.addEventListener('firebase-ready', async (e) => {
-  // Se não há sessão no sessionStorage mas temos user do Firebase Auth, cria sessão
+  // Se não há sessão no sessionStorage, cria a partir do user do Firebase Auth
   if (!sessionStorage.getItem(AUTH_STORAGE_KEY) && e.detail?.user) {
     const uid = e.detail.user.uid;
     const perfil = await window._fb.carregarPerfil(uid);
     const sessao = {
-      login: e.detail.user.email,
-      uid,
-      nome: perfil?.nome || e.detail.user.displayName || e.detail.user.email,
+      login: e.detail.user.email, uid,
+      nome: perfil?.nome || e.detail.user.email,
       admin: !!perfil?.admin,
       tipo: perfil?.tipo === 'transportador' ? 'transportador' : 'staff',
       transportadorNome: perfil?.transportadorNome || '',
@@ -4715,13 +4726,6 @@ window.addEventListener('firebase-ready', async (e) => {
   }
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
-});
-
-window.addEventListener('firebase-auth-change', (e) => {
-  if (!e.detail?.user && _authUsuarioAtual) {
-    // Firebase confirmou logout — limpa sessão
-    fazerLogout();
-  }
 });
 
 window.addEventListener('DOMContentLoaded', () => {
