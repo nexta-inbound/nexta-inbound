@@ -999,7 +999,8 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, get, onValue, remove, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+    updatePassword, EmailAuthProvider, reauthenticateWithCredential }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ══════════════════════════════════════════════════
@@ -1110,6 +1111,20 @@
     },
     logout: async () => {
       await signOut(auth);
+    },
+    alterarSenha: async (senhaAtual, novaSenha) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado.');
+      // Reautentica antes de trocar senha (requisito do Firebase)
+      const cred = EmailAuthProvider.credential(user.email, senhaAtual);
+      await reauthenticateWithCredential(user, cred);
+      await updatePassword(user, novaSenha);
+    },
+    alterarSenhaAdmin: async (novaSenha) => {
+      // Admin troca sem precisar da senha atual (já está autenticado)
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado.');
+      await updatePassword(user, novaSenha);
     },
     onAuthChange: (callback) => {
       onAuthStateChanged(auth, callback);
@@ -2315,45 +2330,52 @@ async function confirmarTrocarSenha() {
 
   const nova = document.getElementById('senha-nova').value;
   const confirma = document.getElementById('senha-nova-confirma').value;
-  if (!nova || nova.length < 4) {
-    info.textContent = 'A nova senha deve ter pelo menos 4 caracteres.';
+  if (!nova || nova.length < 6) {
+    info.textContent = 'A nova senha deve ter pelo menos 6 caracteres.';
+    info.style.color = 'var(--danger, #e74c3c)';
     return;
   }
   if (nova !== confirma) {
     info.textContent = 'A confirmação não corresponde à nova senha.';
+    info.style.color = 'var(--danger, #e74c3c)';
     return;
   }
 
-  const usuario = _usuariosAtivos.find(u => u.login === contexto.login);
-  if (!usuario) {
-    info.textContent = 'Usuário não encontrado.';
-    return;
-  }
+  const btnSalvar = document.querySelector('#modalTrocarSenha .btn-primary, #modalTrocarSenha button[onclick*="confirmar"]');
+  if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = 'Salvando...'; }
+  info.textContent = '';
 
-  if (contexto.modo === 'self') {
-    const atual = document.getElementById('senha-atual').value;
-    if (!atual) {
-      info.textContent = 'Informe a senha atual.';
-      return;
+  try {
+    if (contexto.modo === 'self') {
+      const atual = document.getElementById('senha-atual').value;
+      if (!atual) {
+        info.textContent = 'Informe a senha atual.';
+        info.style.color = 'var(--danger, #e74c3c)';
+        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = 'Salvar'; }
+        return;
+      }
+      await window._fb.alterarSenha(atual, nova);
+    } else {
+      // Admin redefinindo — usa updatePassword direto
+      await window._fb.alterarSenhaAdmin(nova);
     }
-    if (await sha256(atual) !== usuario.senhaHash) {
-      info.textContent = 'Senha atual incorreta.';
-      return;
-    }
-  } else if (!_authUsuarioAtual?.admin) {
-    return;
+    info.textContent = '✓ Senha atualizada com sucesso!';
+    info.style.color = 'var(--success, #2ecc71)';
+    setTimeout(() => {
+      fecharModalTrocarSenha();
+    }, 1200);
+  } catch(e) {
+    const msgs = {
+      'auth/wrong-password': 'Senha atual incorreta.',
+      'auth/invalid-credential': 'Senha atual incorreta.',
+      'auth/weak-password': 'Nova senha muito fraca. Use pelo menos 6 caracteres.',
+      'auth/requires-recent-login': 'Sessão expirada. Faça logout e login novamente.',
+      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
+    };
+    info.textContent = msgs[e.code] || 'Erro: ' + e.message;
+    info.style.color = 'var(--danger, #e74c3c)';
+    if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = 'Salvar'; }
   }
-
-  usuario.senhaHash = await sha256(nova);
-  const salvo = await salvarUsuariosFirebase();
-  info.textContent = salvo
-    ? 'Senha atualizada com sucesso.'
-    : 'Senha atualizada nesta sessão. Firebase ainda não está pronto.';
-
-  setTimeout(() => {
-    fecharModalTrocarSenha();
-    if (contexto.modo === 'admin') renderAdminUsuarios();
-  }, 900);
 }
 
 // ── MULTISELECT ──
