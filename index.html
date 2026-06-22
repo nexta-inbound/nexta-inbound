@@ -2080,8 +2080,7 @@ async function fazerLogin() {
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
-    // Aguarda token ser propagado antes de acessar o banco
-    await cred.user.getIdToken(true);
+    if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Entrar'; }
     await iniciarFirebase();
   } catch (e) {
     const msgs = {
@@ -4684,7 +4683,6 @@ async function iniciarFirebase() {
   if (!_authUsuarioAtual) return;
   mostrarStatus('saving', 'Carregando dados...');
   try {
-await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
   
   const semanas = await window._fb.listarSemanas();
