@@ -999,6 +999,8 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, get, onValue, remove, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ══════════════════════════════════════════════════
   //  🔧 COLE AQUI SUA CONFIG DO FIREBASE (passo 3)
@@ -1013,8 +1015,9 @@
     appId:             "1:831509614212:web:4ae82f7c624f754ed83cd1"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app);
 
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
@@ -1100,6 +1103,29 @@
     },
     salvarTransportadores: async (lista) => {
       await set(ref(db, 'transportadores'), lista);
+    },
+    // ── Firebase Authentication ──
+    login: async (email, senha) => {
+      return await signInWithEmailAndPassword(auth, email, senha);
+    },
+    logout: async () => {
+      await signOut(auth);
+    },
+    onAuthChange: (callback) => {
+      onAuthStateChanged(auth, callback);
+    },
+    currentUser: () => auth.currentUser,
+    // Busca perfil do usuário no Realtime Database
+    carregarPerfil: async (uid) => {
+      const snap = await get(ref(db, 'perfis/' + uid));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarPerfil: async (uid, perfil) => {
+      await set(ref(db, 'perfis/' + uid), perfil);
+    },
+    listarPerfis: async () => {
+      const snap = await get(ref(db, 'perfis'));
+      return snap.exists() ? snap.val() : {};
     }
   };
 
@@ -1123,8 +1149,8 @@
     <div class="login-desc">Insira suas credenciais para continuar.</div>
 
     <div class="login-field">
-      <label>Login / E-mail</label>
-      <input id="login-usuario" type="text" placeholder="seu.login" autocomplete="username"
+      <label>E-mail</label>
+      <input id="login-usuario" type="text" placeholder="seu@email.com" type="email" autocomplete="username"
         onkeydown="if(event.key==='Enter')document.getElementById('login-senha').focus()">
     </div>
     <div class="login-field">
@@ -1910,20 +1936,13 @@
 
 <script>
 // ── AUTENTICAÇÃO ──
-// Usuário semente para o primeiro acesso. Depois, o admin gerencia a lista em /usuarios no Firebase.
-// Hashes SHA-256, seguindo o padrão do roteirizador outbound.
-const USUARIOS_CONFIG = [
-  { login: 'matheus', senhaHash: 'e17f4767a0e2d2d46ec691de2e7a02cf55c6d5c40981367e9b27f9bba88f5b19', nome: 'Matheus Piva Sanches', admin: true },
-];
+// Gerenciada pelo Firebase Authentication.
+// Usuários criados no Firebase Console → Authentication → Users
+// Perfis (nome, admin, tipo) armazenados em Realtime Database → /perfis/{uid}
 
 const AUTH_STORAGE_KEY = 'nexta_inbound_auth_usuario';
-let _usuariosAtivos = [...USUARIOS_CONFIG];
+let _usuariosAtivos = []; // mantido para compatibilidade com adminAdicionarUsuario
 let _authUsuarioAtual = null;
-
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
 
 function normalizarUsuarios(raw) {
   const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
@@ -2033,40 +2052,46 @@ async function salvarUsuariosFirebase() {
 }
 
 async function fazerLogin() {
-  const login = document.getElementById('login-usuario').value.trim().toLowerCase();
+  const email = document.getElementById('login-usuario').value.trim().toLowerCase();
   const senha = document.getElementById('login-senha').value;
   const erroEl = document.getElementById('login-erro');
+  const btnLogin = document.querySelector('#login-overlay button[onclick*="fazerLogin"]');
   erroEl.classList.remove('visible');
 
-  if (!login || !senha) {
-    erroEl.textContent = 'Preencha o login e a senha.';
+  if (!email || !senha) {
+    erroEl.textContent = 'Preencha o e-mail e a senha.';
     erroEl.classList.add('visible');
     return;
   }
 
+  if (btnLogin) { btnLogin.disabled = true; btnLogin.textContent = 'Entrando...'; }
+
   try {
-    if (window._fb?.carregarUsuarios) await carregarUsuariosFirebase();
-    const hash = await sha256(senha);
-    const usuario = _usuariosAtivos.find(u => u.login === login && u.senhaHash === hash);
-    if (!usuario) {
-      erroEl.textContent = 'Usuário ou senha incorretos.';
-      erroEl.classList.add('visible');
-      document.getElementById('login-senha').value = '';
-      document.getElementById('login-senha').focus();
-      return;
-    }
+    const cred = await window._fb.login(email, senha);
+    const uid = cred.user.uid;
+    // Busca perfil no Realtime Database
+    const perfil = await window._fb.carregarPerfil(uid);
     const sessao = {
-      login: usuario.login,
-      nome: usuario.nome || usuario.login,
-      admin: !!usuario.admin,
-      tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
-      transportadorNome: usuario.transportadorNome || '',
+      login: email,
+      uid,
+      nome: perfil?.nome || cred.user.displayName || email,
+      admin: !!perfil?.admin,
+      tipo: perfil?.tipo === 'transportador' ? 'transportador' : 'staff',
+      transportadorNome: perfil?.transportadorNome || '',
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
   } catch (e) {
-    erroEl.textContent = 'Erro ao autenticar: ' + e.message;
+    const msgs = {
+      'auth/user-not-found': 'E-mail não encontrado.',
+      'auth/wrong-password': 'Senha incorreta.',
+      'auth/invalid-email': 'E-mail inválido.',
+      'auth/invalid-credential': 'E-mail ou senha incorretos.',
+      'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
+    };
+    erroEl.textContent = msgs[e.code] || 'Erro ao autenticar: ' + e.message;
     erroEl.classList.add('visible');
+    if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Entrar'; }
   }
 }
 
@@ -2114,6 +2139,7 @@ function aplicarRestricoesPorTipo(usuario) {
 function fazerLogout() {
   sessionStorage.removeItem(AUTH_STORAGE_KEY);
   _authUsuarioAtual = null;
+  if (window._fb?.logout) window._fb.logout().catch(() => {});
   document.getElementById('headerUser').style.display = 'none';
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('login-usuario').value = '';
@@ -2198,6 +2224,8 @@ async function adminAdicionarUsuario() {
   const senha = document.getElementById('admin-new-senha').value;
   const nome = document.getElementById('admin-new-nome').value.trim();
   const tipo = document.getElementById('admin-new-tipo').value === 'transportador' ? 'transportador' : 'staff';
+  // Nota: com Firebase Auth, a criação de usuário requer o Admin SDK (backend).
+  // Por isso exibimos instruções para criar no Firebase Console.
   const transportadorNome = tipo === 'transportador'
     ? document.getElementById('admin-new-transportador-nome').value.trim()
     : '';
