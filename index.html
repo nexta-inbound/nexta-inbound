@@ -1190,30 +1190,39 @@
 
     <hr class="login-admin-separator">
 
-    <div class="login-admin-subtitle">Adicionar usuário</div>
-    <div class="login-admin-row">
-      <input id="admin-new-login" placeholder="login ou e-mail" autocomplete="off">
-      <input id="admin-new-senha" type="password" placeholder="senha" autocomplete="off">
+    <div class="login-admin-subtitle">Adicionar novo usuário</div>
+
+    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:var(--text-dim);line-height:1.7">
+      <strong style="color:var(--accent);display:block;margin-bottom:4px">① Crie o acesso no Firebase Console</strong>
+      Acesse <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a>
+      → <strong>Authentication → Users → Adicionar usuário</strong><br>
+      Informe o e-mail e uma senha provisória. Copie o <strong>UID</strong> gerado.
     </div>
-    <div class="login-admin-row" style="grid-template-columns:1fr auto">
-      <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
-        <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
-      </label>
-    </div>
-    <div class="login-admin-row" style="grid-template-columns:1fr 1fr">
-      <select id="admin-new-tipo" class="config-input"
-        onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
-        <option value="staff">Equipe interna</option>
-        <option value="transportador">Transportador</option>
-      </select>
-      <div id="admin-new-transportador-wrap" style="display:none">
-        <select id="admin-new-transportador-nome" class="config-input"></select>
+
+    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+      <strong style="color:var(--accent);font-size:12px;display:block;margin-bottom:10px">② Cadastre o perfil aqui</strong>
+      <div class="login-admin-row">
+        <input id="admin-new-uid" placeholder="UID (cole aqui)" autocomplete="off" style="font-family:monospace;font-size:11px">
+        <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
+      </div>
+      <div class="login-admin-row" style="grid-template-columns:1fr 1fr auto">
+        <select id="admin-new-tipo" class="config-input"
+          onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
+          <option value="staff">Equipe interna</option>
+          <option value="transportador">Transportador</option>
+        </select>
+        <div id="admin-new-transportador-wrap" style="display:none">
+          <select id="admin-new-transportador-nome" class="config-input"></select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
+          <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
+        </label>
       </div>
     </div>
+
     <div class="login-admin-actions">
-      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Adicionar</button>
-      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar</button>
+      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Cadastrar perfil</button>
+      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar lista</button>
     </div>
     <div class="login-admin-info" id="adminInfo"></div>
   </div>
