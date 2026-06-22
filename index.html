@@ -2036,23 +2036,20 @@ function renderHistoricoProgramacao(v) {
 
 async function carregarUsuariosFirebase(mostrarFeedback = false) {
   const info = document.getElementById('adminInfo');
-  if (!window._fb?.listarPerfis) {
+  if (!window._fb?.carregarUsuarios) {
     if (mostrarFeedback && info) info.textContent = 'Firebase ainda não está pronto.';
     return _usuariosAtivos;
   }
   try {
-    const perfis = await window._fb.listarPerfis();
-    const lista = Object.entries(perfis || {}).map(([uid, p]) => ({
-      login: p.email || uid,
-      uid,
-      nome: p.nome || p.email || uid,
-      admin: !!p.admin,
-      tipo: p.tipo || 'staff',
-      transportadorNome: p.transportadorNome || '',
-    }));
-    if (lista.length) {
-      _usuariosAtivos = lista;
-      if (mostrarFeedback && info) info.textContent = `${lista.length} usuário(s) carregado(s).`;
+    const raw = await window._fb.carregarUsuarios();
+    const usuarios = normalizarUsuarios(raw);
+    if (usuarios.length) {
+      _usuariosAtivos = usuarios;
+      if (mostrarFeedback && info) info.textContent = `${usuarios.length} usuário(s) carregado(s) do Firebase.`;
+    } else {
+      _usuariosAtivos = [...USUARIOS_CONFIG];
+      await salvarUsuariosFirebase();
+      if (mostrarFeedback && info) info.textContent = 'Usuários iniciais enviados ao Firebase.';
     }
     renderAdminUsuarios();
     validarSessaoAtual();
@@ -2088,10 +2085,6 @@ async function fazerLogin() {
     const uid = cred.user.uid;
     // Busca perfil no Realtime Database
     const perfil = await window._fb.carregarPerfil(uid);
-    // Garante que o email fica salvo no perfil para a lista de usuários
-    if (perfil && !perfil.email) {
-      await window._fb.salvarPerfil(uid, { ...perfil, email });
-    }
     const sessao = {
       login: email,
       uid,
@@ -2203,8 +2196,6 @@ function abrirAdminModal() {
   document.getElementById('adminModal').classList.add('open');
   document.getElementById('adminInfo').textContent = '';
   popularSelectTransportadores('admin-new-transportador-nome', '');
-  // Recarrega lista de usuários ao abrir
-  carregarUsuariosFirebase(false);
   renderAdminUsuarios();
 }
 
@@ -2245,40 +2236,53 @@ function renderAdminUsuarios() {
 async function adminAdicionarUsuario() {
   if (!_authUsuarioAtual?.admin) return;
   const info = document.getElementById('adminInfo');
-  const login = document.getElementById('admin-new-login').value.trim().toLowerCase();
-  const senha = document.getElementById('admin-new-senha').value;
+  info.textContent = '';
+  info.style.color = '';
+
+  const uid  = document.getElementById('admin-new-uid').value.trim();
   const nome = document.getElementById('admin-new-nome').value.trim();
   const tipo = document.getElementById('admin-new-tipo').value === 'transportador' ? 'transportador' : 'staff';
-  // Nota: com Firebase Auth, a criação de usuário requer o Admin SDK (backend).
-  // Por isso exibimos instruções para criar no Firebase Console.
   const transportadorNome = tipo === 'transportador'
     ? document.getElementById('admin-new-transportador-nome').value.trim()
     : '';
   const admin = tipo === 'staff' && document.getElementById('admin-new-admin').checked;
-  if (!login || !senha) {
-    info.textContent = 'Preencha o login e a senha.';
+
+  if (!uid) {
+    info.textContent = 'Cole o UID do usuário criado no Firebase Console.';
+    info.style.color = 'var(--danger)';
+    return;
+  }
+  if (!nome) {
+    info.textContent = 'Informe o nome completo.';
+    info.style.color = 'var(--danger)';
     return;
   }
   if (tipo === 'transportador' && !transportadorNome) {
-    info.textContent = 'Selecione o transportador vinculado a este login.';
+    info.textContent = 'Selecione o transportador vinculado.';
+    info.style.color = 'var(--danger)';
     return;
   }
-  if (_usuariosAtivos.some(u => u.login === login)) {
-    info.textContent = `Login "${login}" já existe.`;
-    return;
+
+  try {
+    const perfil = { nome, admin, tipo, transportadorNome };
+    await window._fb.salvarPerfil(uid, perfil);
+    // Atualiza lista local
+    _usuariosAtivos.push({ login: uid, uid, nome, admin, tipo, transportadorNome });
+    renderAdminUsuarios();
+    // Limpa campos
+    document.getElementById('admin-new-uid').value = '';
+    document.getElementById('admin-new-nome').value = '';
+    document.getElementById('admin-new-admin').checked = false;
+    document.getElementById('admin-new-tipo').value = 'staff';
+    document.getElementById('admin-new-transportador-wrap').style.display = 'none';
+    info.textContent = `✓ Perfil de "${nome}" cadastrado com sucesso!`;
+    info.style.color = 'var(--success)';
+    // Recarrega lista do Firebase para pegar dados atualizados
+    setTimeout(() => carregarUsuariosFirebase(false), 500);
+  } catch(e) {
+    info.textContent = 'Erro ao salvar perfil: ' + e.message;
+    info.style.color = 'var(--danger)';
   }
-  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin, tipo, transportadorNome });
-  const salvo = await salvarUsuariosFirebase();
-  document.getElementById('admin-new-login').value = '';
-  document.getElementById('admin-new-senha').value = '';
-  document.getElementById('admin-new-nome').value = '';
-  document.getElementById('admin-new-admin').checked = false;
-  document.getElementById('admin-new-tipo').value = 'staff';
-  document.getElementById('admin-new-transportador-wrap').style.display = 'none';
-  renderAdminUsuarios();
-  info.textContent = salvo
-    ? `Usuário "${login}" salvo no Firebase.`
-    : `Usuário "${login}" criado nesta sessão. Recarregue quando o Firebase estiver pronto para salvar no banco.`;
 }
 
 async function adminRemoverUsuario(login) {
@@ -4741,9 +4745,6 @@ async function iniciarFirebase() {
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
-  if (!sessionStorage.getItem(AUTH_STORAGE_KEY)) {
-    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
-  }
 
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
@@ -4753,7 +4754,24 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
-  mostrarStatus('', '');
+  if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
+    // Usuário já logado (F5 ou volta à aba) — recarrega dados do Firebase
+    mostrarStatus('saving', 'Reconectando...');
+    // Aguarda Firebase módulo inicializar antes de chamar iniciarFirebase
+    const tentarReconectar = (tentativas = 0) => {
+      if (window._fb) {
+        iniciarFirebase();
+      } else if (tentativas < 20) {
+        setTimeout(() => tentarReconectar(tentativas + 1), 200);
+      } else {
+        mostrarStatus('saving', 'Erro ao reconectar. Recarregue a página.');
+      }
+    };
+    tentarReconectar();
+  } else {
+    mostrarStatus('', '');
+    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
+  }
 });
 </script>
 </body>
