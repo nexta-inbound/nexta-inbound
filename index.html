@@ -1129,14 +1129,12 @@
     }
   };
 
-  // Aguarda Firebase Auth confirmar token antes de liberar acesso ao banco
+  // Só dispara firebase-ready após Firebase Auth confirmar token
   onAuthStateChanged(auth, (user) => {
     if (user) {
-      window._fbReady = true;
       window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user } }));
     } else {
-      window._fbReady = false;
-      window.dispatchEvent(new CustomEvent('firebase-auth-change', { detail: { user: null } }));
+      window.dispatchEvent(new CustomEvent('firebase-auth-logout', {}));
     }
   });
 </script>
@@ -2089,6 +2087,8 @@ async function fazerLogin() {
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
+    // Dispara carregamento do Firebase após login bem-sucedido
+    window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user: cred.user } }));
   } catch (e) {
     const msgs = {
       'auth/user-not-found': 'E-mail não encontrado.',
@@ -4686,15 +4686,15 @@ function confirmarNovaSemana() {
   mostrarStatus('saved', 'Semana criada: '+formatarKeyParaLabel(key));
 }
 
-window.addEventListener('firebase-auth-change', (e) => {
-  if (!e.detail?.user && _authUsuarioAtual) fazerLogout();
+window.addEventListener('firebase-auth-logout', () => {
+  if (_authUsuarioAtual) fazerLogout();
 });
 
 window.addEventListener('firebase-ready', async (e) => {
-  // Se não há sessão no sessionStorage, cria a partir do user do Firebase Auth
+  // Se não há sessão local, cria a partir do Firebase Auth user
   if (!sessionStorage.getItem(AUTH_STORAGE_KEY) && e.detail?.user) {
     const uid = e.detail.user.uid;
-    const perfil = await window._fb.carregarPerfil(uid);
+    const perfil = await window._fb.carregarPerfil(uid).catch(() => null);
     const sessao = {
       login: e.detail.user.email, uid,
       nome: perfil?.nome || e.detail.user.email,
@@ -4704,10 +4704,15 @@ window.addEventListener('firebase-ready', async (e) => {
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
+  } else {
+    restaurarSessaoUsuario();
   }
 
-  await carregarUsuariosFirebase();
-  await carregarTransportadoresFirebase();
+  // Só prossegue se houver usuário autenticado na sessão
+  if (!_authUsuarioAtual) return;
+
+  await carregarUsuariosFirebase().catch(() => {});
+  await carregarTransportadoresFirebase().catch(() => {});
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
