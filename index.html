@@ -999,8 +999,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, get, onValue, remove, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-    updatePassword, EmailAuthProvider, reauthenticateWithCredential }
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ══════════════════════════════════════════════════
@@ -1112,20 +1111,6 @@
     logout: async () => {
       await signOut(auth);
     },
-    alterarSenha: async (senhaAtual, novaSenha) => {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado.');
-      // Reautentica antes de trocar senha (requisito do Firebase)
-      const cred = EmailAuthProvider.credential(user.email, senhaAtual);
-      await reauthenticateWithCredential(user, cred);
-      await updatePassword(user, novaSenha);
-    },
-    alterarSenhaAdmin: async (novaSenha) => {
-      // Admin troca sem precisar da senha atual (já está autenticado)
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado.');
-      await updatePassword(user, novaSenha);
-    },
     onAuthChange: (callback) => {
       onAuthStateChanged(auth, callback);
     },
@@ -1190,39 +1175,30 @@
 
     <hr class="login-admin-separator">
 
-    <div class="login-admin-subtitle">Adicionar novo usuário</div>
-
-    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:var(--text-dim);line-height:1.7">
-      <strong style="color:var(--accent);display:block;margin-bottom:4px">① Crie o acesso no Firebase Console</strong>
-      Acesse <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a>
-      → <strong>Authentication → Users → Adicionar usuário</strong><br>
-      Informe o e-mail e uma senha provisória. Copie o <strong>UID</strong> gerado.
+    <div class="login-admin-subtitle">Adicionar usuário</div>
+    <div class="login-admin-row">
+      <input id="admin-new-login" placeholder="login ou e-mail" autocomplete="off">
+      <input id="admin-new-senha" type="password" placeholder="senha" autocomplete="off">
     </div>
-
-    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
-      <strong style="color:var(--accent);font-size:12px;display:block;margin-bottom:10px">② Cadastre o perfil aqui</strong>
-      <div class="login-admin-row">
-        <input id="admin-new-uid" placeholder="UID (cole aqui)" autocomplete="off" style="font-family:monospace;font-size:11px">
-        <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
-      </div>
-      <div class="login-admin-row" style="grid-template-columns:1fr 1fr auto">
-        <select id="admin-new-tipo" class="config-input"
-          onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
-          <option value="staff">Equipe interna</option>
-          <option value="transportador">Transportador</option>
-        </select>
-        <div id="admin-new-transportador-wrap" style="display:none">
-          <select id="admin-new-transportador-nome" class="config-input"></select>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
-          <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
-        </label>
+    <div class="login-admin-row" style="grid-template-columns:1fr auto">
+      <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
+        <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
+      </label>
+    </div>
+    <div class="login-admin-row" style="grid-template-columns:1fr 1fr">
+      <select id="admin-new-tipo" class="config-input"
+        onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
+        <option value="staff">Equipe interna</option>
+        <option value="transportador">Transportador</option>
+      </select>
+      <div id="admin-new-transportador-wrap" style="display:none">
+        <select id="admin-new-transportador-nome" class="config-input"></select>
       </div>
     </div>
-
     <div class="login-admin-actions">
-      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Cadastrar perfil</button>
-      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar lista</button>
+      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Adicionar</button>
+      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar</button>
     </div>
     <div class="login-admin-info" id="adminInfo"></div>
   </div>
@@ -1303,11 +1279,11 @@
       <div class="pipe-label">Viagens</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-3">
+  <div class="pipe-step" id="pipe-3" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado">
     <div class="pipe-icon">📋</div>
     <div>
       <div class="pipe-count" id="cnt-backlog">0</div>
-      <div class="pipe-label">Backlog</div>
+      <div class="pipe-label">Sem Transportador</div>
     </div>
   </div>
   <div class="pipe-step" id="pipe-4">
@@ -1317,7 +1293,7 @@
       <div class="pipe-label">Ofertado</div>
     </div>
   </div>
-  <div class="pipe-step recusado" id="pipe-recusado">
+  <div class="pipe-step recusado" id="pipe-recusado" title="Recusada pelo transportador — volta ao pool de Sem Transportador (já contada no estágio anterior)">
     <div class="pipe-icon">🔁</div>
     <div>
       <div class="pipe-count" id="cnt-recusadas">0</div>
@@ -1450,25 +1426,25 @@
   <div id="viagensContent" style="display:none">
     <div class="kpi-group-label">⚡ Alertas Operacionais <span id="kpi-filter-badge" style="display:none;font-size:9px;color:var(--accent);background:var(--accent-dim);padding:1px 7px;border-radius:8px;margin-left:6px;letter-spacing:0">filtrado</span></div>
     <div class="stats-row" id="kpi-alertas">
-      <div class="stat-card c-danger" id="kpi-urgentes">
-        <div class="stat-label">🚨 Urgentes (≤ 2 dias)</div>
-        <div class="stat-val" id="sv-urgentes">0</div>
-        <div class="stat-sub">Carregamento próximo sem placa</div>
+      <div class="stat-card c-danger" id="kpi-backlog">
+        <div class="stat-label">🔴 Backlog (vencido)</div>
+        <div class="stat-val" id="sv-backlog">0</div>
+        <div class="stat-sub" id="sub-backlog">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-warn" id="kpi-semtransp">
-        <div class="stat-label" id="lbl-semtransp">⚠️ Sem Transportador</div>
-        <div class="stat-val" id="sv-semtransp">0</div>
-        <div class="stat-sub" id="sub-semtransp">Backlog, Recusado ou Ofertado sem alocação</div>
+      <div class="stat-card c-warn" id="kpi-critico">
+        <div class="stat-label">🟠 Crítico (hoje)</div>
+        <div class="stat-val" id="sv-critico">0</div>
+        <div class="stat-sub" id="sub-critico">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-danger" id="kpi-atrasadas">
-        <div class="stat-label">⏰ Atrasadas</div>
-        <div class="stat-val" id="sv-atrasadas">0</div>
-        <div class="stat-sub">Dt carreg. vencida, não confirmada</div>
+      <div class="stat-card c-accent" id="kpi-alerta">
+        <div class="stat-label">🟡 Alerta (D+1 / D+2)</div>
+        <div class="stat-val" id="sv-alerta">0</div>
+        <div class="stat-sub" id="sub-alerta">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-warn" id="kpi-aguardando">
-        <div class="stat-label">📋 Aguardando Aceite</div>
-        <div class="stat-val" id="sv-aguardando">0</div>
-        <div class="stat-sub">Ofertadas sem confirmação</div>
+      <div class="stat-card c-success" id="kpi-atencao">
+        <div class="stat-label">🟢 Atenção (D+3 ou mais)</div>
+        <div class="stat-val" id="sv-atencao">0</div>
+        <div class="stat-sub" id="sub-atencao">0 sem aceite de transportador</div>
       </div>
     </div>
     <div class="kpi-group-label">📊 Volumes</div>
@@ -1476,7 +1452,7 @@
       <div class="stat-card c-muted">
         <div class="stat-label" id="lbl-vol-pendente">📦 Volume Pendente</div>
         <div class="stat-val" id="sv-vol-pendente">0</div>
-        <div class="stat-sub" id="sub-vol-pendente">m³ em Backlog/Recusado</div>
+        <div class="stat-sub" id="sub-vol-pendente">m³ no pool Sem Transportador (Backlog + Recusado)</div>
       </div>
       <div class="stat-card c-accent">
         <div class="stat-label">🤝 Em Negociação</div>
@@ -1491,7 +1467,7 @@
       <div class="stat-card c-accent">
         <div class="stat-label" id="lbl-taxa">📈 Taxa de Alocação</div>
         <div class="stat-val" id="sv-taxa">0%</div>
-        <div class="stat-sub" id="sub-taxa">Viagens fora do Backlog/Recusado</div>
+        <div class="stat-sub" id="sub-taxa">Viagens fora do pool Sem Transportador</div>
       </div>
     </div>
     </div>
@@ -2045,23 +2021,20 @@ function renderHistoricoProgramacao(v) {
 
 async function carregarUsuariosFirebase(mostrarFeedback = false) {
   const info = document.getElementById('adminInfo');
-  if (!window._fb?.listarPerfis) {
+  if (!window._fb?.carregarUsuarios) {
     if (mostrarFeedback && info) info.textContent = 'Firebase ainda não está pronto.';
     return _usuariosAtivos;
   }
   try {
-    const perfis = await window._fb.listarPerfis();
-    const lista = Object.entries(perfis || {}).map(([uid, p]) => ({
-      login: p.email || uid,
-      uid,
-      nome: p.nome || p.email || uid,
-      admin: !!p.admin,
-      tipo: p.tipo || 'staff',
-      transportadorNome: p.transportadorNome || '',
-    }));
-    if (lista.length) {
-      _usuariosAtivos = lista;
-      if (mostrarFeedback && info) info.textContent = `${lista.length} usuário(s) carregado(s).`;
+    const raw = await window._fb.carregarUsuarios();
+    const usuarios = normalizarUsuarios(raw);
+    if (usuarios.length) {
+      _usuariosAtivos = usuarios;
+      if (mostrarFeedback && info) info.textContent = `${usuarios.length} usuário(s) carregado(s) do Firebase.`;
+    } else {
+      _usuariosAtivos = [...USUARIOS_CONFIG];
+      await salvarUsuariosFirebase();
+      if (mostrarFeedback && info) info.textContent = 'Usuários iniciais enviados ao Firebase.';
     }
     renderAdminUsuarios();
     validarSessaoAtual();
@@ -2107,7 +2080,8 @@ async function fazerLogin() {
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
     aplicarSessaoUsuario(sessao);
-    if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Entrar'; }
+    // Aguarda token ser propagado antes de acessar o banco
+    await cred.user.getIdToken(true);
     await iniciarFirebase();
   } catch (e) {
     const msgs = {
@@ -2141,16 +2115,11 @@ function aplicarRestricoesPorTipo(usuario) {
   const tabGerir = document.getElementById('tabBtn1');
   if (tabGerir) tabGerir.textContent = transportador ? '🚚 Minhas Cargas' : '② Gerir Viagens';
 
-  document.getElementById('lbl-semtransp').textContent = transportador ? '🚚 Total de Cargas' : '⚠️ Sem Transportador';
-  document.getElementById('sub-semtransp').textContent = transportador ? 'Alocadas a você nesta semana' : 'Backlog, Recusado ou Ofertado sem alocação';
-  document.getElementById('kpi-semtransp').classList.toggle('c-warn', !transportador);
-  document.getElementById('kpi-semtransp').classList.toggle('c-muted', transportador);
-
   document.getElementById('lbl-vol-pendente').textContent = transportador ? '📦 Volume Total' : '📦 Volume Pendente';
-  document.getElementById('sub-vol-pendente').textContent = transportador ? 'm³ alocados a você (exceto Cancelado)' : 'm³ em Backlog/Recusado';
+  document.getElementById('sub-vol-pendente').textContent = transportador ? 'm³ alocados a você (exceto Cancelado)' : 'm³ no pool Sem Transportador (Backlog + Recusado)';
 
   document.getElementById('lbl-taxa').textContent = transportador ? '✅ Taxa de Aceite' : '📈 Taxa de Alocação';
-  document.getElementById('sub-taxa').textContent = transportador ? 'Aceitas / ofertadas a você' : 'Viagens fora do Backlog/Recusado';
+  document.getElementById('sub-taxa').textContent = transportador ? 'Aceitas / ofertadas a você' : 'Viagens fora do pool Sem Transportador';
 
   selectedViagens.clear();
   atualizarBulkBar();
@@ -2208,7 +2177,6 @@ function abrirAdminModal() {
   document.getElementById('adminModal').classList.add('open');
   document.getElementById('adminInfo').textContent = '';
   popularSelectTransportadores('admin-new-transportador-nome', '');
-  carregarUsuariosFirebase(false);
   renderAdminUsuarios();
 }
 
@@ -2249,53 +2217,40 @@ function renderAdminUsuarios() {
 async function adminAdicionarUsuario() {
   if (!_authUsuarioAtual?.admin) return;
   const info = document.getElementById('adminInfo');
-  info.textContent = '';
-  info.style.color = '';
-
-  const uid  = document.getElementById('admin-new-uid').value.trim();
+  const login = document.getElementById('admin-new-login').value.trim().toLowerCase();
+  const senha = document.getElementById('admin-new-senha').value;
   const nome = document.getElementById('admin-new-nome').value.trim();
   const tipo = document.getElementById('admin-new-tipo').value === 'transportador' ? 'transportador' : 'staff';
+  // Nota: com Firebase Auth, a criação de usuário requer o Admin SDK (backend).
+  // Por isso exibimos instruções para criar no Firebase Console.
   const transportadorNome = tipo === 'transportador'
     ? document.getElementById('admin-new-transportador-nome').value.trim()
     : '';
   const admin = tipo === 'staff' && document.getElementById('admin-new-admin').checked;
-
-  if (!uid) {
-    info.textContent = 'Cole o UID do usuário criado no Firebase Console.';
-    info.style.color = 'var(--danger)';
-    return;
-  }
-  if (!nome) {
-    info.textContent = 'Informe o nome completo.';
-    info.style.color = 'var(--danger)';
+  if (!login || !senha) {
+    info.textContent = 'Preencha o login e a senha.';
     return;
   }
   if (tipo === 'transportador' && !transportadorNome) {
-    info.textContent = 'Selecione o transportador vinculado.';
-    info.style.color = 'var(--danger)';
+    info.textContent = 'Selecione o transportador vinculado a este login.';
     return;
   }
-
-  try {
-    const perfil = { nome, admin, tipo, transportadorNome };
-    await window._fb.salvarPerfil(uid, perfil);
-    // Atualiza lista local
-    _usuariosAtivos.push({ login: uid, uid, nome, admin, tipo, transportadorNome });
-    renderAdminUsuarios();
-    // Limpa campos
-    document.getElementById('admin-new-uid').value = '';
-    document.getElementById('admin-new-nome').value = '';
-    document.getElementById('admin-new-admin').checked = false;
-    document.getElementById('admin-new-tipo').value = 'staff';
-    document.getElementById('admin-new-transportador-wrap').style.display = 'none';
-    info.textContent = `✓ Perfil de "${nome}" cadastrado com sucesso!`;
-    info.style.color = 'var(--success)';
-    // Recarrega lista do Firebase para pegar dados atualizados
-    setTimeout(() => carregarUsuariosFirebase(false), 500);
-  } catch(e) {
-    info.textContent = 'Erro ao salvar perfil: ' + e.message;
-    info.style.color = 'var(--danger)';
+  if (_usuariosAtivos.some(u => u.login === login)) {
+    info.textContent = `Login "${login}" já existe.`;
+    return;
   }
+  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin, tipo, transportadorNome });
+  const salvo = await salvarUsuariosFirebase();
+  document.getElementById('admin-new-login').value = '';
+  document.getElementById('admin-new-senha').value = '';
+  document.getElementById('admin-new-nome').value = '';
+  document.getElementById('admin-new-admin').checked = false;
+  document.getElementById('admin-new-tipo').value = 'staff';
+  document.getElementById('admin-new-transportador-wrap').style.display = 'none';
+  renderAdminUsuarios();
+  info.textContent = salvo
+    ? `Usuário "${login}" salvo no Firebase.`
+    : `Usuário "${login}" criado nesta sessão. Recarregue quando o Firebase estiver pronto para salvar no banco.`;
 }
 
 async function adminRemoverUsuario(login) {
@@ -2356,52 +2311,45 @@ async function confirmarTrocarSenha() {
 
   const nova = document.getElementById('senha-nova').value;
   const confirma = document.getElementById('senha-nova-confirma').value;
-  if (!nova || nova.length < 6) {
-    info.textContent = 'A nova senha deve ter pelo menos 6 caracteres.';
-    info.style.color = 'var(--danger, #e74c3c)';
+  if (!nova || nova.length < 4) {
+    info.textContent = 'A nova senha deve ter pelo menos 4 caracteres.';
     return;
   }
   if (nova !== confirma) {
     info.textContent = 'A confirmação não corresponde à nova senha.';
-    info.style.color = 'var(--danger, #e74c3c)';
     return;
   }
 
-  const btnSalvar = document.querySelector('#modalTrocarSenha .btn-primary, #modalTrocarSenha button[onclick*="confirmar"]');
-  if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = 'Salvando...'; }
-  info.textContent = '';
-
-  try {
-    if (contexto.modo === 'self') {
-      const atual = document.getElementById('senha-atual').value;
-      if (!atual) {
-        info.textContent = 'Informe a senha atual.';
-        info.style.color = 'var(--danger, #e74c3c)';
-        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = 'Salvar'; }
-        return;
-      }
-      await window._fb.alterarSenha(atual, nova);
-    } else {
-      // Admin redefinindo — usa updatePassword direto
-      await window._fb.alterarSenhaAdmin(nova);
-    }
-    info.textContent = '✓ Senha atualizada com sucesso!';
-    info.style.color = 'var(--success, #2ecc71)';
-    setTimeout(() => {
-      fecharModalTrocarSenha();
-    }, 1200);
-  } catch(e) {
-    const msgs = {
-      'auth/wrong-password': 'Senha atual incorreta.',
-      'auth/invalid-credential': 'Senha atual incorreta.',
-      'auth/weak-password': 'Nova senha muito fraca. Use pelo menos 6 caracteres.',
-      'auth/requires-recent-login': 'Sessão expirada. Faça logout e login novamente.',
-      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
-    };
-    info.textContent = msgs[e.code] || 'Erro: ' + e.message;
-    info.style.color = 'var(--danger, #e74c3c)';
-    if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = 'Salvar'; }
+  const usuario = _usuariosAtivos.find(u => u.login === contexto.login);
+  if (!usuario) {
+    info.textContent = 'Usuário não encontrado.';
+    return;
   }
+
+  if (contexto.modo === 'self') {
+    const atual = document.getElementById('senha-atual').value;
+    if (!atual) {
+      info.textContent = 'Informe a senha atual.';
+      return;
+    }
+    if (await sha256(atual) !== usuario.senhaHash) {
+      info.textContent = 'Senha atual incorreta.';
+      return;
+    }
+  } else if (!_authUsuarioAtual?.admin) {
+    return;
+  }
+
+  usuario.senhaHash = await sha256(nova);
+  const salvo = await salvarUsuariosFirebase();
+  info.textContent = salvo
+    ? 'Senha atualizada com sucesso.'
+    : 'Senha atualizada nesta sessão. Firebase ainda não está pronto.';
+
+  setTimeout(() => {
+    fecharModalTrocarSenha();
+    if (contexto.modo === 'admin') renderAdminUsuarios();
+  }, 900);
 }
 
 // ── MULTISELECT ──
@@ -3459,20 +3407,27 @@ async function gerarViagens() {
 // ── KPI CARDS ──
 function updateKPIs(list) {
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const em2dias = new Date(hoje); em2dias.setDate(hoje.getDate() + 2);
+  const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
 
   const ativas = list.filter(v => v.status !== 'Cancelado');
   const transportador = isTransportador();
 
-  const urgentes  = ativas.filter(v => {
-    const d = parseDMY(v.dtCarreg);
-    return d && d <= em2dias && !v.placa && v.status !== 'Placa Enviada';
-  }).length;
-  const atrasadas = ativas.filter(v => {
-    const d = parseDMY(v.dtCarreg);
-    return d && d < hoje && v.status !== 'Placa Enviada';
-  }).length;
-  const aguardando = list.filter(v => v.status === 'Ofertado').length;
+  // Escada de severidade por data de carregamento: Backlog (vencido) > Crítico (D0)
+  // > Alerta (D+1/D+2) > Atenção (D+3+). "Placa Enviada" sai do radar (já resolvido);
+  // "sem aceite" = ainda não confirmado pelo transportador (Backlog/Ofertado/Recusado).
+  const pendentes = ativas.filter(v => v.status !== 'Placa Enviada');
+  const SEM_ACEITE = ['Backlog', 'Ofertado', 'Recusado'];
+  const bucketStats = filtroData => {
+    const itens = pendentes.filter(v => {
+      const d = parseDMY(v.dtCarreg);
+      return d && filtroData(d);
+    });
+    return { total: itens.length, semAceite: itens.filter(v => SEM_ACEITE.includes(v.status)).length };
+  };
+  const bBacklog = bucketStats(d => d < hoje);
+  const bCritico = bucketStats(d => d.getTime() === hoje.getTime());
+  const bAlerta  = bucketStats(d => d > hoje && d <= d2);
+  const bAtencao = bucketStats(d => d > d2);
 
   const volNegoc = ativas.filter(v => ['Ofertado','Aceito'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
   const volConf  = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
@@ -3481,34 +3436,33 @@ function updateKPIs(list) {
     ? n.toLocaleString('pt-BR')
     : n.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1});
 
-  // Terceiro card de alerta e os dois cards de "volume/taxa" mudam de sentido para o transportador:
-  // sem ele alocado a si próprio, "Sem Transportador"/"Volume Pendente"/"Taxa de Alocação" ficam sempre zero/irrelevantes.
-  let cardExtraAlerta, volPrincipal, taxa;
+  // Os cards de "volume/taxa" mudam de sentido para o transportador:
+  // sem ele alocado a si próprio, "Volume Pendente"/"Taxa de Alocação" ficam sempre zero/irrelevantes.
+  let volPrincipal, taxa;
   if (transportador) {
-    cardExtraAlerta = ativas.length;
     volPrincipal = ativas.reduce((s,v) => s + (v.volume||0), 0);
     const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada'].includes(v.status)).length;
     const respondidas  = list.filter(v => ['Aceito','Placa Enviada'].includes(v.status)).length;
     taxa = consideradas ? Math.round((respondidas / consideradas) * 100) : 0;
   } else {
-    cardExtraAlerta = ativas.filter(v => ['Backlog','Ofertado','Recusado'].includes(v.status) && !v.transportador).length;
     volPrincipal = ativas.filter(v => ['Backlog','Recusado'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
     taxa = list.length ? Math.round((list.filter(v => !['Backlog','Recusado'].includes(v.status)).length / list.length) * 100) : 0;
   }
 
-  document.getElementById('sv-urgentes').textContent   = urgentes;
-  document.getElementById('sv-semtransp').textContent  = cardExtraAlerta;
-  document.getElementById('sv-atrasadas').textContent  = atrasadas;
-  document.getElementById('sv-aguardando').textContent = aguardando;
+  const setBucket = (prefixo, b) => {
+    document.getElementById(`sv-${prefixo}`).textContent = b.total;
+    document.getElementById(`sub-${prefixo}`).textContent = `${b.semAceite} sem aceite de transportador`;
+    document.getElementById(`kpi-${prefixo}`).classList.toggle('has-alert', b.total > 0);
+  };
+  setBucket('backlog', bBacklog);
+  setBucket('critico', bCritico);
+  setBucket('alerta', bAlerta);
+  setBucket('atencao', bAtencao);
+
   document.getElementById('sv-vol-pendente').textContent = fmt(volPrincipal);
   document.getElementById('sv-vol-negoc').textContent    = fmt(volNegoc);
   document.getElementById('sv-vol-conf').textContent     = fmt(volConf);
   document.getElementById('sv-taxa').textContent         = taxa + '%';
-
-  document.getElementById('kpi-urgentes').classList.toggle('has-alert', urgentes > 0);
-  document.getElementById('kpi-semtransp').classList.toggle('has-alert', !transportador && cardExtraAlerta > 0);
-  document.getElementById('kpi-atrasadas').classList.toggle('has-alert', atrasadas > 0);
-  document.getElementById('kpi-aguardando').classList.toggle('has-alert', aguardando > 0);
 
   const badge = document.getElementById('kpi-filter-badge');
   if (badge) {
@@ -4380,8 +4334,10 @@ function updatePipeline(list) {
   const cntAceito    = list.filter(v => v.status === 'Aceito').length;
   const cntPlaca     = list.filter(v => v.status === 'Placa Enviada').length;
   const cntCancelado = list.filter(v => v.status === 'Cancelado').length;
+  // Recusado volta ao pool sem transportador: conta no estágio 3 além do próprio estágio de recusa
+  const cntSemTransportador = cntBacklog + cntRecusado;
 
-  document.getElementById('cnt-backlog').textContent       = cntBacklog;
+  document.getElementById('cnt-backlog').textContent       = cntSemTransportador;
   document.getElementById('cnt-ofertadas').textContent     = cntOfertado;
   document.getElementById('cnt-recusadas').textContent     = cntRecusado;
   document.getElementById('cnt-aceitas').textContent       = cntAceito;
@@ -4403,7 +4359,7 @@ function updatePipeline(list) {
     document.getElementById('pipe-1').classList.add(viagens.length > 0 ? 'done' : 'active');
   if (viagens.length > 0)
     document.getElementById('pipe-2').classList.add('done');
-  if (cntBacklog > 0)   document.getElementById('pipe-3').classList.add('active');
+  if (cntSemTransportador > 0) document.getElementById('pipe-3').classList.add('active');
   if (cntOfertado > 0)  document.getElementById('pipe-4').classList.add('active');
   if (cntAceito > 0)    document.getElementById('pipe-5').classList.add('active');
   if (cntPlaca > 0)     document.getElementById('pipe-6').classList.add('active');
@@ -4731,6 +4687,7 @@ async function iniciarFirebase() {
   if (!_authUsuarioAtual) return;
   mostrarStatus('saving', 'Carregando dados...');
   try {
+await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
   
   const semanas = await window._fb.listarSemanas();
@@ -4758,6 +4715,9 @@ async function iniciarFirebase() {
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
+  if (!sessionStorage.getItem(AUTH_STORAGE_KEY)) {
+    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
+  }
 
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
@@ -4767,24 +4727,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
-  if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
-    // Usuário já logado (F5 ou volta à aba) — recarrega dados do Firebase
-    mostrarStatus('saving', 'Reconectando...');
-    // Aguarda Firebase módulo inicializar antes de chamar iniciarFirebase
-    const tentarReconectar = (tentativas = 0) => {
-      if (window._fb) {
-        iniciarFirebase();
-      } else if (tentativas < 20) {
-        setTimeout(() => tentarReconectar(tentativas + 1), 200);
-      } else {
-        mostrarStatus('saving', 'Erro ao reconectar. Recarregue a página.');
-      }
-    };
-    tentarReconectar();
-  } else {
-    mostrarStatus('', '');
-    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
-  }
+  mostrarStatus('', '');
 });
 </script>
 </body>
