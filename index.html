@@ -470,26 +470,6 @@
   .stat-card.c-muted   .stat-val { color: var(--text-muted); }
   .stat-card.c-danger  .stat-val { color: var(--danger); }
 
-  /* ── EXPORT PANEL ── */
-  .export-panel {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
-    margin-top: 20px;
-  }
-  .export-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: var(--shadow);
-  }
-  .export-card-title { font-family: var(--font-cond); font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  .export-card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6; }
-  .field-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
-  .field-item {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--text-dim);
-  }
-  .field-item::before { content:'→'; color: var(--accent); font-size: 11px; }
 
   /* ── EMPTY STATE ── */
   .empty-state {
@@ -1001,7 +981,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, get, onValue, remove, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ══════════════════════════════════════════════════
@@ -1131,6 +1111,14 @@
       onAuthStateChanged(auth, callback);
     },
     currentUser: () => auth.currentUser,
+    // Reautentica com a senha atual e então define a nova senha
+    trocarSenha: async (email, senhaAtual, novaSenha) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Sessão expirada. Faça login novamente.');
+      const credencial = EmailAuthProvider.credential(email, senhaAtual);
+      await reauthenticateWithCredential(user, credencial);
+      await updatePassword(user, novaSenha);
+    },
     // Busca perfil do usuário no Realtime Database
     carregarPerfil: async (uid) => {
       const snap = await get(ref(db, 'perfis/' + uid));
@@ -1138,6 +1126,9 @@
     },
     salvarPerfil: async (uid, perfil) => {
       await set(ref(db, 'perfis/' + uid), perfil);
+    },
+    removerPerfil: async (uid) => {
+      await remove(ref(db, 'perfis/' + uid));
     },
     listarPerfis: async () => {
       const snap = await get(ref(db, 'perfis'));
@@ -1627,34 +1618,7 @@
         <div class="section-title">Exportar para o Sistema de Monitoramento</div>
         <div class="section-sub">Viagens com placa confirmada prontas para importação</div>
       </div>
-    </div>
-
-    <div class="export-panel">
-      <div class="export-card">
-        <div class="export-card-title">📋 Arquivo de Importação</div>
-        <div class="export-card-desc">Gera um CSV com as viagens prontas, no formato esperado pelo sistema de monitoramento.</div>
-        <div class="field-list">
-          <div class="field-item">ID Viagem (chave de rastreio)</div>
-          <div class="field-item">Placa do Veículo</div>
-          <div class="field-item">Produto e Volumes</div>
-          <div class="field-item">Origem e Destino</div>
-          <div class="field-item">Datas de Carregamento e Descarga</div>
-          <div class="field-item">ID da Cadência de Origem</div>
-        </div>
-        <button class="btn btn-success" onclick="exportarCSV()">⬇ Baixar CSV para Monitoramento</button>
-      </div>
-
-      <div class="export-card">
-        <div class="export-card-title">📊 Relatório da Semana</div>
-        <div class="export-card-desc">Relatório gerencial com resumo de status da programação para acompanhamento.</div>
-        <div class="field-list">
-          <div class="field-item">Total planejado vs. confirmado</div>
-          <div class="field-item">Volume por produto</div>
-          <div class="field-item">Viagens pendentes de resposta</div>
-          <div class="field-item">Taxa de confirmação por transportador</div>
-        </div>
-        <button class="btn btn-secondary" onclick="exportarRelatorio()">⬇ Baixar Relatório CSV</button>
-      </div>
+      <button class="btn btn-success" onclick="exportarHerrlog()" title="Gera o XLSX no modelo do Importador Herrlog (abas Viagens + Eventos de Viagem)">⬇ Exportar Herrlog</button>
     </div>
 
     <div style="margin-top:20px">
@@ -1860,6 +1824,10 @@
       <div class="modal-field">
         <div class="modal-label">Pedido MIS *</div>
         <input type="text" class="config-input" id="nc-id" placeholder="45.000000.10">
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
+          <input type="checkbox" id="nc-provisorio" style="width:14px;height:14px;accent-color:var(--accent)">
+          Pedido Provisório (ainda não tenho o número oficial do MIS)
+        </label>
       </div>
       <div class="modal-field">
         <div class="modal-label">Produto *</div>
@@ -2337,12 +2305,6 @@ async function carregarUsuariosFirebase(mostrarFeedback = false) {
   return _usuariosAtivos;
 }
 
-async function salvarUsuariosFirebase() {
-  if (!window._fb?.salvarUsuarios) return false;
-  await window._fb.salvarUsuarios(_usuariosAtivos);
-  return true;
-}
-
 async function fazerLogin() {
   const email = document.getElementById('login-usuario').value.trim().toLowerCase();
   const senha = document.getElementById('login-senha').value;
@@ -2451,14 +2413,15 @@ function restaurarSessaoUsuario() {
 
 function validarSessaoAtual() {
   if (!_authUsuarioAtual) return;
-  const usuario = _usuariosAtivos.find(u => u.login === _authUsuarioAtual.login);
+  const usuario = _usuariosAtivos.find(u => u.uid === _authUsuarioAtual.uid);
   if (!usuario) {
     fazerLogout();
     return;
   }
   aplicarSessaoUsuario({
-    login: usuario.login,
-    nome: usuario.nome || usuario.login,
+    login: _authUsuarioAtual.login,
+    uid: _authUsuarioAtual.uid,
+    nome: usuario.nome || _authUsuarioAtual.login,
     admin: !!usuario.admin,
     tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
     transportadorNome: usuario.transportadorNome || '',
@@ -2511,12 +2474,11 @@ function renderAdminUsuarios() {
     return `
     <div class="login-admin-user">
       <div>
-        <strong>${esc(u.nome || u.login)}${badge}</strong>
-        <span>${esc(u.login)}</span>
+        <strong>${esc(u.nome || u.uid)}${badge}</strong>
+        <span style="font-family:monospace;font-size:10px">UID: ${esc(u.uid)}</span>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn btn-secondary btn-sm" onclick="abrirRedefinirSenhaModal('${esc(u.login)}')">Redefinir senha</button>
-        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.login)}')" ${u.login === _authUsuarioAtual?.login ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
+        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.uid)}')" ${u.uid === _authUsuarioAtual?.uid ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
       </div>
     </div>
   `;
@@ -2526,57 +2488,65 @@ function renderAdminUsuarios() {
 async function adminAdicionarUsuario() {
   if (!_authUsuarioAtual?.admin) return;
   const info = document.getElementById('adminInfo');
-  const login = document.getElementById('admin-new-login').value.trim().toLowerCase();
-  const senha = document.getElementById('admin-new-senha').value;
+  const uid = document.getElementById('admin-new-uid').value.trim();
   const nome = document.getElementById('admin-new-nome').value.trim();
   const tipo = document.getElementById('admin-new-tipo').value === 'transportador' ? 'transportador' : 'staff';
-  // Nota: com Firebase Auth, a criação de usuário requer o Admin SDK (backend).
-  // Por isso exibimos instruções para criar no Firebase Console.
   const transportadorNome = tipo === 'transportador'
     ? document.getElementById('admin-new-transportador-nome').value.trim()
     : '';
   const admin = tipo === 'staff' && document.getElementById('admin-new-admin').checked;
-  if (!login || !senha) {
-    info.textContent = 'Preencha o login e a senha.';
+  if (!uid || !nome) {
+    info.textContent = 'Preencha o UID e o nome completo.';
     return;
   }
   if (tipo === 'transportador' && !transportadorNome) {
-    info.textContent = 'Selecione o transportador vinculado a este login.';
+    info.textContent = 'Selecione o transportador vinculado a este UID.';
     return;
   }
-  if (_usuariosAtivos.some(u => u.login === login)) {
-    info.textContent = `Login "${login}" já existe.`;
+  if (_usuariosAtivos.some(u => u.uid === uid)) {
+    info.textContent = `Já existe um perfil cadastrado para o UID "${uid}".`;
     return;
   }
-  _usuariosAtivos.push({ login, senhaHash: await sha256(senha), nome: nome || login, admin, tipo, transportadorNome });
-  const salvo = await salvarUsuariosFirebase();
-  document.getElementById('admin-new-login').value = '';
-  document.getElementById('admin-new-senha').value = '';
-  document.getElementById('admin-new-nome').value = '';
-  document.getElementById('admin-new-admin').checked = false;
-  document.getElementById('admin-new-tipo').value = 'staff';
-  document.getElementById('admin-new-transportador-wrap').style.display = 'none';
-  renderAdminUsuarios();
-  info.textContent = salvo
-    ? `Usuário "${login}" salvo no Firebase.`
-    : `Usuário "${login}" criado nesta sessão. Recarregue quando o Firebase estiver pronto para salvar no banco.`;
+  if (!window._fb?.salvarPerfil) {
+    info.textContent = 'Firebase não está pronto. Tente novamente em alguns segundos.';
+    return;
+  }
+  try {
+    await window._fb.salvarPerfil(uid, { nome, admin, tipo, transportadorNome });
+    document.getElementById('admin-new-uid').value = '';
+    document.getElementById('admin-new-nome').value = '';
+    document.getElementById('admin-new-admin').checked = false;
+    document.getElementById('admin-new-tipo').value = 'staff';
+    document.getElementById('admin-new-transportador-wrap').style.display = 'none';
+    await carregarUsuariosFirebase(false);
+    info.textContent = `Perfil de "${nome}" salvo no Firebase.`;
+  } catch (e) {
+    info.textContent = 'Erro ao salvar perfil: ' + e.message;
+    console.error('adminAdicionarUsuario:', e);
+  }
 }
 
-async function adminRemoverUsuario(login) {
+async function adminRemoverUsuario(uid) {
   if (!_authUsuarioAtual?.admin) return;
-  if (login === _authUsuarioAtual.login) return;
-  if (!confirm(`Remover o usuário "${login}"?`)) return;
-  _usuariosAtivos = _usuariosAtivos.filter(u => u.login !== login);
-  const salvo = await salvarUsuariosFirebase();
-  renderAdminUsuarios();
-  document.getElementById('adminInfo').textContent = salvo
-    ? `Usuário "${login}" removido do Firebase.`
-    : `Usuário "${login}" removido nesta sessão. Firebase ainda não está pronto.`;
+  if (uid === _authUsuarioAtual.uid) return;
+  const u = _usuariosAtivos.find(x => x.uid === uid);
+  if (!confirm(`Remover o perfil de "${u?.nome || uid}"?`)) return;
+  const info = document.getElementById('adminInfo');
+  if (!window._fb?.removerPerfil) {
+    info.textContent = 'Firebase não está pronto. Tente novamente em alguns segundos.';
+    return;
+  }
+  try {
+    await window._fb.removerPerfil(uid);
+    await carregarUsuariosFirebase(false);
+    info.textContent = `Perfil de "${u?.nome || uid}" removido do Firebase.`;
+  } catch (e) {
+    info.textContent = 'Erro ao remover perfil: ' + e.message;
+    console.error('adminRemoverUsuario:', e);
+  }
 }
 
-// ── TROCAR / REDEFINIR SENHA ──
-let _trocarSenhaContexto = null; // { modo: 'self'|'admin', login }
-
+// ── TROCAR SENHA (própria conta, via Firebase Auth) ──
 function _resetCamposSenha() {
   document.getElementById('senha-atual').value = '';
   document.getElementById('senha-nova').value = '';
@@ -2586,7 +2556,6 @@ function _resetCamposSenha() {
 
 function abrirTrocarSenhaModal() {
   if (!_authUsuarioAtual) return;
-  _trocarSenhaContexto = { modo: 'self', login: _authUsuarioAtual.login };
   document.getElementById('senha-modal-title').textContent = 'Trocar Senha';
   document.getElementById('senha-modal-sub').textContent = 'Informe sua senha atual e a nova senha.';
   document.getElementById('campo-senha-atual').style.display = '';
@@ -2595,70 +2564,48 @@ function abrirTrocarSenhaModal() {
   document.getElementById('senha-atual').focus();
 }
 
-function abrirRedefinirSenhaModal(login) {
-  if (!_authUsuarioAtual?.admin) return;
-  const usuario = _usuariosAtivos.find(u => u.login === login);
-  if (!usuario) return;
-  _trocarSenhaContexto = { modo: 'admin', login: usuario.login };
-  document.getElementById('senha-modal-title').textContent = 'Redefinir Senha';
-  document.getElementById('senha-modal-sub').textContent = `Defina uma nova senha para "${usuario.nome || usuario.login}". A senha atual não é necessária.`;
-  document.getElementById('campo-senha-atual').style.display = 'none';
-  _resetCamposSenha();
-  document.getElementById('modalTrocarSenha').classList.add('open');
-  document.getElementById('senha-nova').focus();
-}
-
 function fecharModalTrocarSenha() {
   document.getElementById('modalTrocarSenha').classList.remove('open');
-  _trocarSenhaContexto = null;
 }
 
 async function confirmarTrocarSenha() {
   const info = document.getElementById('senha-modal-info');
-  const contexto = _trocarSenhaContexto;
-  if (!contexto) return;
+  if (!_authUsuarioAtual) return;
 
+  const atual = document.getElementById('senha-atual').value;
   const nova = document.getElementById('senha-nova').value;
   const confirma = document.getElementById('senha-nova-confirma').value;
-  if (!nova || nova.length < 4) {
-    info.textContent = 'A nova senha deve ter pelo menos 4 caracteres.';
+  if (!atual) {
+    info.textContent = 'Informe a senha atual.';
+    return;
+  }
+  if (!nova || nova.length < 6) {
+    info.textContent = 'A nova senha deve ter pelo menos 6 caracteres.';
     return;
   }
   if (nova !== confirma) {
     info.textContent = 'A confirmação não corresponde à nova senha.';
     return;
   }
-
-  const usuario = _usuariosAtivos.find(u => u.login === contexto.login);
-  if (!usuario) {
-    info.textContent = 'Usuário não encontrado.';
+  if (!window._fb?.trocarSenha) {
+    info.textContent = 'Firebase não está pronto. Tente novamente em alguns segundos.';
     return;
   }
 
-  if (contexto.modo === 'self') {
-    const atual = document.getElementById('senha-atual').value;
-    if (!atual) {
-      info.textContent = 'Informe a senha atual.';
-      return;
-    }
-    if (await sha256(atual) !== usuario.senhaHash) {
-      info.textContent = 'Senha atual incorreta.';
-      return;
-    }
-  } else if (!_authUsuarioAtual?.admin) {
-    return;
+  info.textContent = 'Atualizando senha...';
+  try {
+    await window._fb.trocarSenha(_authUsuarioAtual.login, atual, nova);
+    info.textContent = 'Senha atualizada com sucesso.';
+    setTimeout(fecharModalTrocarSenha, 900);
+  } catch (e) {
+    const msgs = {
+      'auth/wrong-password': 'Senha atual incorreta.',
+      'auth/invalid-credential': 'Senha atual incorreta.',
+      'auth/weak-password': 'A nova senha é muito fraca.',
+      'auth/requires-recent-login': 'Sessão expirada. Saia e faça login novamente antes de trocar a senha.',
+    };
+    info.textContent = msgs[e.code] || 'Erro ao atualizar senha: ' + e.message;
   }
-
-  usuario.senhaHash = await sha256(nova);
-  const salvo = await salvarUsuariosFirebase();
-  info.textContent = salvo
-    ? 'Senha atualizada com sucesso.'
-    : 'Senha atualizada nesta sessão. Firebase ainda não está pronto.';
-
-  setTimeout(() => {
-    fecharModalTrocarSenha();
-    if (contexto.modo === 'admin') renderAdminUsuarios();
-  }, 900);
 }
 
 // ── MULTISELECT ──
@@ -3315,6 +3262,7 @@ function agruparCadencias(arr) {
       g.volume = +(g.volume + c.volume).toFixed(1);
       g.ids.push(c.id);
       g.originalIdxs.push(realIdx);
+      g.provisorio = g.provisorio || !!c.provisorio;
     } else {
       mapa.set(key, { ...c, ids: [c.id], originalIdxs: [realIdx] });
     }
@@ -3577,6 +3525,7 @@ function abrirModalNovaCadencia() {
     if (el) el.value = '';
   });
   document.getElementById('nc-produto').value = '';
+  document.getElementById('nc-provisorio').checked = false;
   popularSelectOrigemFornecedor('nc-origem', '');
   popularSelectBaseFornecedor('nc-base', '', '');
   popularSelectBaseDestino('nc-destino', '');
@@ -3612,6 +3561,7 @@ function salvarNovaCadencia() {
     destino,
     cnpjDestino: document.getElementById('nc-cnpjDestino').value.trim(),
     volume,
+    provisorio:  document.getElementById('nc-provisorio').checked,
   });
   fecharModalNovaCad();
   renderPreview();
@@ -3686,15 +3636,23 @@ function reconciliarViagensComCadencias(grupos, cap) {
         dtCarreg: g.dtCarreg,
         dtDesc: g.dtDesc,
         volume: volPorViagem,
+        pedidoProvisorio: !!g.provisorio,
       };
 
       if (anterior) {
+        // Uma vez que o pedido provisório é confirmado (flag false), trava cadenciaOrigem/flag
+        // contra sobrescrita por reimportações futuras que ainda contenham o pedido provisório original.
+        const travado = anterior.pedidoProvisorio === false;
         novasViagens.push({
           ...anterior,
           ...baseViagem,
+          cadenciaOrigem: travado ? anterior.cadenciaOrigem : baseViagem.cadenciaOrigem,
+          pedidoProvisorio: travado ? false : baseViagem.pedidoProvisorio,
           volume: anterior.volumeAjustadoManualmente ? anterior.volume : baseViagem.volume,
           dtCarregProg: anterior.dtCarregProg || g.dtCarreg,
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
+          horaCarregProg: anterior.horaCarregProg || '12:00',
+          horaDescProg:   anterior.horaDescProg   || '12:00',
           status: anterior.status || 'Backlog',
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
@@ -3706,6 +3664,8 @@ function reconciliarViagensComCadencias(grupos, cap) {
           ...baseViagem,
           dtCarregProg: g.dtCarreg,
           dtDescProg: g.dtDesc,
+          horaCarregProg: '12:00',
+          horaDescProg: '12:00',
           status: 'Backlog',
           transportador: '',
           placa: '',
@@ -3952,6 +3912,8 @@ function renderViagensTable() {
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
     const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
     const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
+    const horaCarreg = v.horaCarregProg || '12:00';
+    const horaDesc   = v.horaDescProg   || '12:00';
     tbody.innerHTML += `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -3960,7 +3922,14 @@ function renderViagensTable() {
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
         <td class="cell-id-viagem">${v.idViagem}</td>
-        <td class="cell-truncate-sm cell-pedido-mis" title="${esc(v.cadenciaOrigem)}">${esc(v.cadenciaOrigem)}</td>
+        <td class="cell-pedido-mis">
+          <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
+            value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
+            onblur="salvarPedidoMisInline(${realIdx}, this.value)"
+            onkeydown="if(event.key==='Enter')this.blur()"
+            ${(isTransportador() || !v.pedidoProvisorio) ? 'disabled' : ''}>
+          ${v.pedidoProvisorio ? `<span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
+        </td>
         <td>${prodTag(v.produto)}</td>
         <td class="cell-truncate" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
           ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
@@ -3977,16 +3946,16 @@ function renderViagensTable() {
         <td class="cell-periodo">
           <div style="display:flex;align-items:center;gap:4px">
             <span class="filter-sep" style="font-size:10px">↑</span>
-            <input class="placa-input" style="width:54px;text-transform:none;font-family:var(--font-cond)"
-              value="${progCarreg === '-' ? '' : esc(fmtShort(progCarreg))}" placeholder="DD/MM" maxlength="5"
+            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)"
+              value="${progCarreg === '-' ? '' : esc(fmtShort(progCarreg)) + ' ' + esc(horaCarreg)}" placeholder="DD/MM HH:mm" maxlength="11"
               onblur="salvarDataProgramacaoInline(${realIdx}, 'carreg', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
               ${isTransportador() ? 'disabled' : ''}>
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
             <span class="filter-sep" style="font-size:10px">↓</span>
-            <input class="placa-input" style="width:54px;text-transform:none;font-family:var(--font-cond)"
-              value="${progDesc === '-' ? '' : esc(fmtShort(progDesc))}" placeholder="DD/MM" maxlength="5"
+            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)"
+              value="${progDesc === '-' ? '' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}" placeholder="DD/MM HH:mm" maxlength="11"
               onblur="salvarDataProgramacaoInline(${realIdx}, 'desc', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
               ${isTransportador() ? 'disabled' : ''}>
@@ -4853,17 +4822,21 @@ async function salvarTransportador() {
   const nomeAntigo = !isNovo ? transportadores[editingTranspIdx].nomeFantasia : '';
   if (nomeAntigo && nomeFantasia !== nomeAntigo) {
     const viagensAfetadas = viagens.filter(v => v.transportador === nomeAntigo).length;
-    const usuariosAfetados = _usuariosAtivos.filter(u => u.tipo === 'transportador' && u.transportadorNome === nomeAntigo).length;
-    if (viagensAfetadas || usuariosAfetados) {
+    const perfisAfetados = _usuariosAtivos.filter(u => u.tipo === 'transportador' && u.transportadorNome === nomeAntigo);
+    if (viagensAfetadas || perfisAfetados.length) {
       const confirma = confirm(
         `O nome deste transportador mudou de "${nomeAntigo}" para "${nomeFantasia}".\n\n` +
-        `${viagensAfetadas} viagem(ns) da semana atual e ${usuariosAfetados} login(s) de transportador apontam para o nome antigo.\n\n` +
+        `${viagensAfetadas} viagem(ns) da semana atual e ${perfisAfetados.length} login(s) de transportador apontam para o nome antigo.\n\n` +
         `Atualizar todos para o novo nome agora? (Recomendado — sem isso, esses logins de transportador deixam de ver suas cargas.)`
       );
       if (confirma) {
         viagens.forEach(v => { if (v.transportador === nomeAntigo) v.transportador = nomeFantasia; });
-        _usuariosAtivos.forEach(u => { if (u.tipo === 'transportador' && u.transportadorNome === nomeAntigo) u.transportadorNome = nomeFantasia; });
-        if (usuariosAfetados) await salvarUsuariosFirebase();
+        for (const u of perfisAfetados) {
+          u.transportadorNome = nomeFantasia;
+          if (window._fb?.salvarPerfil) {
+            await window._fb.salvarPerfil(u.uid, { nome: u.nome, admin: u.admin, tipo: u.tipo, transportadorNome: u.transportadorNome });
+          }
+        }
         if (viagensAfetadas) agendarAutosave();
       }
     }
@@ -5075,6 +5048,29 @@ function recusarOfertasSelecionadasTransportador() {
   mostrarStatus('saved', `${elegiveis.length} oferta(s) recusada(s)`);
 }
 
+function salvarPedidoMisInline(realIdx, valorInput) {
+  const v = viagens[realIdx];
+  if (!v.pedidoProvisorio) return;
+  const novo = valorInput.trim();
+  const anterior = v.cadenciaOrigem || '';
+  if (!novo) {
+    alert('Informe o número oficial do pedido do MIS.');
+    renderViagensTable();
+    return;
+  }
+  if (novo === anterior) return;
+  v.cadenciaOrigem = novo;
+  v.pedidoProvisorio = false;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Pedido MIS confirmado: ${anterior || '—'} → ${novo}`,
+  });
+  agendarAutosave();
+  renderViagensTable();
+}
+
 function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
   const v = viagens[realIdx];
@@ -5095,30 +5091,46 @@ function salvarPlacaInline(realIdx, value) {
 function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   const v = viagens[realIdx];
   const campo = tipo === 'carreg' ? 'dtCarregProg' : 'dtDescProg';
+  const campoHora = tipo === 'carreg' ? 'horaCarregProg' : 'horaDescProg';
   const desejado = tipo === 'carreg' ? v.dtCarreg : v.dtDesc;
   const anterior = v[campo] || desejado || '-';
+  const horaAnterior = v[campoHora] || '12:00';
   const valor = valorInput.trim();
 
-  let novo;
+  let novo, novaHora;
   if (!valor) {
     novo = '-';
+    novaHora = '12:00';
   } else {
-    const partes = valor.split('/');
+    const [parteData, parteHora] = valor.split(/\s+/);
+    const partes = (parteData || '').split('/');
     const ano = (anterior !== '-' ? anterior : desejado || '').split('/')[2] || String(new Date().getFullYear());
-    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : valor;
+    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : parteData;
     if (!parseDMY(novo)) {
-      alert('Data inválida. Use o formato DD/MM.');
+      alert('Data inválida. Use o formato DD/MM HH:mm.');
       renderViagensTable();
       return;
     }
+    if (parteHora) {
+      const m = parteHora.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m || +m[1] > 23 || +m[2] > 59) {
+        alert('Horário inválido. Use o formato HH:mm (ex: 12:00).');
+        renderViagensTable();
+        return;
+      }
+      novaHora = `${m[1].padStart(2,'0')}:${m[2]}`;
+    } else {
+      novaHora = horaAnterior;
+    }
   }
-  if (novo === anterior) return;
+  if (novo === anterior && novaHora === horaAnterior) return;
   v[campo] = novo;
+  v[campoHora] = novaHora;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
   v.historicoProgramacao.push({
     data: new Date().toISOString(),
     usuario: _authUsuarioAtual?.nome || '',
-    evento: `Data de ${tipo === 'carreg' ? 'Carregamento' : 'Descarga'} ajustada: ${anterior === '-' ? '—' : anterior} → ${novo === '-' ? '—' : novo}`,
+    evento: `Data de ${tipo === 'carreg' ? 'Carregamento' : 'Descarga'} ajustada: ${anterior === '-' ? '—' : anterior + ' ' + horaAnterior} → ${novo === '-' ? '—' : novo + ' ' + novaHora}`,
   });
   if (['Aceito', 'Placa Enviada'].includes(v.status)) {
     v.alertaProgramacao = true;
@@ -5430,26 +5442,97 @@ function renderExport() {
   });
 }
 
-function exportarCSV() {
+// ── EXPORT HERRLOG (modelo Importador Herrlog: abas Viagens + Eventos de Viagem) ──
+function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+
+function buscarFornecedorDaViagem(v) {
+  return fornecedores.find(f => f.origem === v.origem)
+    || (v.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(v.cnpjOrigem)))
+    || null;
+}
+
+function buscarBaseDaViagem(v) {
+  return bases.find(b => b.nomeMis === v.destino)
+    || (v.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(v.cnpjDestino)))
+    || null;
+}
+
+function parseDataHora(dataStr, horaStr) {
+  const d = parseDMY(dataStr);
+  if (!d) return null;
+  const [h, m] = (horaStr || '12:00').split(':').map(Number);
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d;
+}
+
+function exportarHerrlog() {
   const prontas = viagens.filter(v => v.status === 'Placa Enviada' && v.placa);
   if (!prontas.length) return alert('Nenhuma viagem com placa confirmada.');
-  const headers = ['ID_VIAGEM','CADENCIA_ORIGEM','PLACA','PRODUTO','ORIGEM','DESTINO','DT_CARREGAMENTO','DT_DESCARGA','VOLUME_M3','TRANSPORTADOR','OBSERVACAO'];
-  const rows = prontas.map(v => [v.idViagem, v.cadenciaOrigem, v.placa, v.produto, v.origem, v.destino, v.dtCarreg, v.dtDesc, v.volume, v.transportador, v.obs]);
-  downloadCSV('importacao_monitoramento.csv', [headers, ...rows]);
+
+  const provisorias = prontas.filter(v => v.pedidoProvisorio);
+  if (provisorias.length) {
+    const lista = provisorias.map(v => `Viagem ${v.idViagem} — pedido "${v.cadenciaOrigem}"`).join('\n');
+    if (!confirm(`${provisorias.length} viagem(ns) ainda estão com pedido MIS provisório:\n\n${lista}\n\nExportar assim mesmo?`)) return;
+  }
+
+  const resolvidas = prontas.map(v => ({
+    v,
+    fornecedor: buscarFornecedorDaViagem(v),
+    base: buscarBaseDaViagem(v),
+  }));
+
+  const faltantes = [];
+  resolvidas.forEach(({ v, fornecedor, base }) => {
+    if (!fornecedor) faltantes.push(`Viagem ${v.idViagem}: fornecedor "${v.origem}" sem Código SAP cadastrado em Fornecedores`);
+    if (!base) faltantes.push(`Viagem ${v.idViagem}: base "${v.destino}" sem ID Herrlog cadastrado em Bases`);
+  });
+  if (faltantes.length) {
+    alert('Não foi possível gerar a planilha — cadastre os dados faltantes antes de exportar:\n\n' + faltantes.join('\n'));
+    return;
+  }
+
+  const headersViagens = ['Código da Viagem*','Status','Início Previsto*','Placa*','Trailers*','Tipo de atendimento','KM','Produto','Observação','Valor (R$)','Total Planejado (Kg)','Total Carregado (KG)','Peso total (KG)','Prioridade','Ordem de Retirada'];
+  const headersEventos = ['Código da Viagem*','Codigo do Cliente*','Tipo Evento*','Data Planejada*'];
+
+  const linhasViagens = [];
+  const linhasEventos = [];
+
+  resolvidas.forEach(({ v, fornecedor, base }) => {
+    const inicioPrevisto = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg)
+      || parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg);
+    const dataDescarga = parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg) || inicioPrevisto;
+    const trailers = [v.placaCarreta1, v.placaCarreta2].filter(Boolean).join(';');
+    const volumeLitros = (v.volume || 0) * 1000;
+
+    linhasViagens.push([
+      v.idViagem, 'Programado', inicioPrevisto, v.placa, trailers,
+      '', '', v.produto, v.cadenciaOrigem || '', '', volumeLitros, volumeLitros, volumeLitros, '', '',
+    ]);
+
+    linhasEventos.push([v.idViagem, fornecedor.codSap, 'Carregamento', inicioPrevisto]);
+    linhasEventos.push([v.idViagem, base.idHerrlog, 'Descarga', dataDescarga]);
+  });
+
+  const wb = XLSX.utils.book_new();
+
+  const wsViagens = XLSX.utils.aoa_to_sheet([headersViagens, ...linhasViagens]);
+  wsViagens['!cols'] = [{wch:14},{wch:14},{wch:16},{wch:10},{wch:16},{wch:14},{wch:8},{wch:14},{wch:24},{wch:10},{wch:16},{wch:16},{wch:14},{wch:10},{wch:14}];
+  aplicarFormatoData(wsViagens, 2, linhasViagens.length);
+  XLSX.utils.book_append_sheet(wb, wsViagens, 'Viagens');
+
+  const wsEventos = XLSX.utils.aoa_to_sheet([headersEventos, ...linhasEventos]);
+  wsEventos['!cols'] = [{wch:14},{wch:16},{wch:14},{wch:16}];
+  aplicarFormatoData(wsEventos, 3, linhasEventos.length);
+  XLSX.utils.book_append_sheet(wb, wsEventos, 'Eventos de Viagem');
+
+  XLSX.writeFile(wb, `herrlog_importacao_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
-function exportarRelatorio() {
-  const headers = ['ID_VIAGEM','CADENCIA_ORIGEM','PRODUTO','ORIGEM','DESTINO','DT_DESCARGA','VOLUME_M3','STATUS','TRANSPORTADOR','PLACA'];
-  const rows = viagens.map(v => [v.idViagem, v.cadenciaOrigem, v.produto, v.origem, v.destino, v.dtDesc, v.volume, v.status, v.transportador, v.placa]);
-  downloadCSV('relatorio_semana.csv', [headers, ...rows]);
-}
-
-function downloadCSV(filename, rows) {
-  const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+function aplicarFormatoData(ws, colIdx0based, numLinhas) {
+  for (let r = 1; r <= numLinhas; r++) {
+    const addr = XLSX.utils.encode_cell({ r, c: colIdx0based });
+    if (ws[addr]) ws[addr].z = 'dd/mm/yyyy hh:mm';
+  }
 }
 
 // ── FILE UPLOAD via SheetJS ──
