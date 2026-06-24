@@ -969,7 +969,8 @@
   body.transportador-mode #wrapImportarRetorno,
   body.transportador-mode #fTransp,
   body.transportador-mode #chipBacklog,
-  body.transportador-mode .col-data-desejada {
+  body.transportador-mode .col-data-desejada,
+  body.transportador-mode .col-pedido-mis {
     display: none !important;
   }
   body:not(.transportador-mode) #bulkBarTransportador {
@@ -1585,7 +1586,7 @@
                   style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
               </th>
               <th>ID Viagem</th>
-              <th>Pedido MIS</th>
+              <th class="col-pedido-mis">Pedido MIS</th>
               <th>Produto</th>
               <th>Origem</th>
               <th>Destino</th>
@@ -3923,7 +3924,7 @@ function renderViagensTable() {
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
         <td class="cell-id-viagem">${v.idViagem}</td>
-        <td class="cell-pedido-mis">
+        <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
             onblur="salvarPedidoMisInline(${realIdx}, this.value)"
@@ -3975,7 +3976,10 @@ function renderViagensTable() {
           </div>
         </td>
         <td><span class="status ${statusClass}">${v.status}</span></td>
-        <td class="cell-truncate" title="${esc(v.transportador)}">${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td class="cell-truncate" title="${esc(v.transportador)}">
+          ${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}
+          ${isTransportador() && v.transportador ? renderSeletorCnpjTransportador(v, realIdx) : ''}
+        </td>
         <td style="padding-right:12px"><input class="placa-input" value="${esc(v.placa||'')}" placeholder="AAA0A000"
           onblur="salvarPlacaInline(${realIdx}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
@@ -5072,6 +5076,34 @@ function salvarPedidoMisInline(realIdx, valorInput) {
   renderViagensTable();
 }
 
+function renderSeletorCnpjTransportador(v, realIdx) {
+  if (!['Ofertado', 'Aceito', 'Placa Enviada'].includes(v.status)) return '';
+  const t = buscarTransportadorPorNome(v.transportador);
+  const cnpjs = t?.cnpjs || [];
+  if (cnpjs.length < 2) return ''; // 0 ou 1 CNPJ: nada a escolher (já selecionado automaticamente)
+  const opcoes = cnpjs.map(c => `<option value="${esc(c.cnpj)}" ${c.cnpj === v.transportadorCnpj ? 'selected' : ''}>${esc(c.razaoSocial)}</option>`).join('');
+  return `<br><select class="placa-input" style="width:100%;max-width:185px;font-size:10px;text-transform:none;margin-top:3px"
+      onchange="salvarCnpjTransportadorInline(${realIdx}, this.value)" title="CNPJ que vai atender esta viagem — ${esc(v.transportador)}">
+      <option value="">Selecione o CNPJ...</option>
+      ${opcoes}
+    </select>`;
+}
+
+function salvarCnpjTransportadorInline(realIdx, cnpj) {
+  const v = viagens[realIdx];
+  if (v.transportadorCnpj === cnpj) return;
+  const anterior = v.transportadorCnpj || '';
+  v.transportadorCnpj = cnpj;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `CNPJ do transportador ajustado: ${anterior || '—'} → ${cnpj || '—'}`,
+  });
+  agendarAutosave();
+  renderViagensTable();
+}
+
 function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
   const v = viagens[realIdx];
@@ -5575,7 +5607,7 @@ function processarArquivo(file) {
       const idxCnpjDestino  = col('CNPJ Destino');
       const idxPlanejado    = col('Planejado');
 
-      cadencias = [];
+      const linhasArquivo = [];
       for (let i = headerIdx + 1; i < rows.length; i++) {
         const r = rows[i];
         const id = String(r[idxId] || '').trim();
@@ -5592,7 +5624,7 @@ function processarArquivo(file) {
           return String(v).trim();
         };
 
-        cadencias.push({
+        linhasArquivo.push({
           id,
           dtCarreg:    parseDateCell(r[idxDtCarreg]),
           dtDesc:      parseDateCell(r[idxDtDesc]),
@@ -5606,26 +5638,85 @@ function processarArquivo(file) {
         });
       }
 
-      if (cadencias.length === 0) {
+      if (linhasArquivo.length === 0) {
         alert('Nenhuma linha de dados encontrada na planilha.');
         return;
       }
 
-      renderPreview();
-      agendarAutosave();
-
-      // Feedback visual na zona de upload
-      document.getElementById('uploadZone').innerHTML = `
-        <div class="upload-icon">✅</div>
-        <div class="upload-text" style="color:var(--success)">${file.name}</div>
-        <div class="upload-hint">${cadencias.length} linhas importadas com sucesso · <span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="document.getElementById('fileInput').click()">Trocar arquivo</span></div>
-      `;
+      abrirPopupModoImportacaoCadencia(linhasArquivo, file);
     } catch(err) {
       alert('Erro ao ler o arquivo: ' + err.message);
       console.error(err);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Pergunta, a cada upload, se deve somar ao que já existe ou substituir tudo —
+// evita que alguém esqueça de marcar uma opção e apague sem querer o que outra pessoa já subiu.
+function abrirPopupModoImportacaoCadencia(linhasArquivo, file) {
+  const overlay = document.createElement('div');
+  overlay.id = 'popupImportCadOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:440px;max-width:95vw">
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px">Como importar esta planilha?</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">${linhasArquivo.length} linha(s) encontrada(s) em "${file.name}".</div>
+      <button onclick="aplicarImportacaoCadencias(window._linhasImportCad, window._fileImportCad, false)"
+        style="width:100%;text-align:left;background:var(--accent-dim);border:1.5px solid var(--accent);border-radius:8px;color:var(--text);padding:12px 14px;margin-bottom:10px;cursor:pointer;font-family:var(--font)">
+        <div style="font-weight:700;font-size:13px;color:var(--accent)">🔀 Somar às já importadas (recomendado)</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Mantém o que já estava importado; atualiza só os pedidos repetidos.</div>
+      </button>
+      <button onclick="aplicarImportacaoCadencias(window._linhasImportCad, window._fileImportCad, true)"
+        style="width:100%;text-align:left;background:var(--panel);border:1.5px solid var(--border);border-radius:8px;color:var(--text);padding:12px 14px;margin-bottom:14px;cursor:pointer;font-family:var(--font)">
+        <div style="font-weight:700;font-size:13px">🔁 Substituir todas as linhas já importadas</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Use só se este arquivo for o conjunto completo e corrigido da semana.</div>
+      </button>
+      <div style="text-align:right">
+        <button onclick="fecharPopupModoImportacaoCadencia()"
+          style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline">Cancelar</button>
+      </div>
+    </div>`;
+  window._linhasImportCad = linhasArquivo;
+  window._fileImportCad = file;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupModoImportacaoCadencia(); });
+}
+
+function fecharPopupModoImportacaoCadencia() {
+  document.getElementById('popupImportCadOverlay')?.remove();
+  document.getElementById('fileInput').value = '';
+  window._linhasImportCad = null;
+  window._fileImportCad = null;
+}
+
+function aplicarImportacaoCadencias(linhasArquivo, file, substituirTudo) {
+  let novas = 0, atualizadas = 0;
+  if (substituirTudo) {
+    cadencias = linhasArquivo;
+    novas = linhasArquivo.length;
+  } else {
+    linhasArquivo.forEach(nova => {
+      const idx = cadencias.findIndex(c => c.id === nova.id);
+      if (idx !== -1) { cadencias[idx] = nova; atualizadas++; }
+      else { cadencias.push(nova); novas++; }
+    });
+  }
+
+  renderPreview();
+  agendarAutosave();
+
+  // Feedback visual na zona de upload
+  const resumoImport = substituirTudo
+    ? `${linhasArquivo.length} linhas importadas (substituiu as anteriores)`
+    : `${novas} linha(s) nova(s)${atualizadas ? ` · ${atualizadas} atualizada(s)` : ''} · ${cadencias.length} no total`;
+  document.getElementById('uploadZone').innerHTML = `
+    <div class="upload-icon">✅</div>
+    <div class="upload-text" style="color:var(--success)">${file.name}</div>
+    <div class="upload-hint">${resumoImport} · <span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="document.getElementById('fileInput').click()">Trocar arquivo</span></div>
+  `;
+
+  fecharPopupModoImportacaoCadencia();
 }
 
 document.getElementById('fileInput').addEventListener('change', function(e) {
