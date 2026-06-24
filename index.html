@@ -195,16 +195,19 @@
   .pipe-step.done .pipe-icon { border-color: var(--success); background: var(--success-dim); }
   .pipe-step.cancel .pipe-icon { border-color: var(--danger); background: var(--danger-dim); }
   .pipe-step.recusado .pipe-icon { border-color: var(--pet-purple); background: rgba(124,58,237,0.14); }
+  .pipe-step.cif .pipe-icon { border-color: var(--pet-blue); background: rgba(34,85,204,0.14); }
   .pipe-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .pipe-step.active .pipe-label { color: var(--accent); }
   .pipe-step.done .pipe-label { color: var(--success); }
   .pipe-step.cancel .pipe-label { color: var(--danger); }
   .pipe-step.recusado .pipe-label { color: var(--pet-purple); }
+  .pipe-step.cif .pipe-label { color: var(--pet-blue); }
   .pipe-count { font-size: 17px; font-family: var(--font-cond); font-weight: 700; color: var(--text); }
   .pipe-step.active .pipe-count { color: var(--accent); }
   .pipe-step.done .pipe-count { color: var(--success); }
   .pipe-step.cancel .pipe-count { color: var(--danger); }
   .pipe-step.recusado .pipe-count { color: var(--pet-purple); }
+  .pipe-step.cif .pipe-count { color: var(--pet-blue); }
 
   /* ── TABS ── */
   .tabs-bar {
@@ -351,7 +354,7 @@
     z-index: 1;
   }
   td {
-    padding: 10px 14px;
+    padding: 6px 14px;
     font-size: 12px;
     border-bottom: 1px solid rgba(191,212,168,0.16);
     vertical-align: middle;
@@ -414,6 +417,8 @@
   .status-cancelado::before { background: var(--danger); }
   .status-recusado { color: var(--pet-purple); }
   .status-recusado::before { background: var(--pet-purple); }
+  .status-cif { color: var(--pet-blue); }
+  .status-cif::before { background: var(--pet-blue); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -451,6 +456,19 @@
     font-family: var(--font-cond); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--accent); margin-bottom: 7px; margin-top: 4px; padding-left: 2px;
   }
+  .kpi-toggle-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+    padding: 10px 14px; margin-bottom: 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .kpi-toggle-header:hover { border-color: var(--border-dk); }
+  .kpi-toggle-header .kpi-toggle-title {
+    font-family: var(--font-cond); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text);
+  }
+  .kpi-toggle-header .kpi-toggle-icon { color: var(--text-muted); font-size: 12px; transition: transform 0.2s; }
+  .kpi-toggle-header.collapsed .kpi-toggle-icon { transform: rotate(-90deg); }
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -548,7 +566,7 @@
   .placa-input:focus { border-color: var(--success); }
   .placa-input::placeholder { color: var(--text-muted); text-transform: none; }
 
-  .scrollable { max-height: 420px; overflow-y: auto; overflow-x: auto; }
+  .scrollable { max-height: calc(100vh - 300px); min-height: 420px; overflow-y: auto; overflow-x: auto; }
   .scrollable::-webkit-scrollbar { width: 5px; height: 5px; }
   .scrollable::-webkit-scrollbar-track { background: transparent; }
   .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -613,7 +631,7 @@
   }
   .cell-periodo {
     white-space: nowrap;
-    line-height: 1.65;
+    line-height: 1.4;
     width: 92px;
   }
   th.col-data-desejada, th.col-data-programacao {
@@ -969,6 +987,7 @@
   body.transportador-mode #wrapImportarRetorno,
   body.transportador-mode #fTransp,
   body.transportador-mode #chipBacklog,
+  body.transportador-mode #chipCif,
   body.transportador-mode .col-data-desejada,
   body.transportador-mode .col-pedido-mis {
     display: none !important;
@@ -1297,6 +1316,13 @@
       <div class="pipe-label">Viagens</div>
     </div>
   </div>
+  <div class="pipe-step cif" id="pipe-cif" title="Viagens CIF: frota do fornecedor, não passam pelo fluxo de transportador">
+    <div class="pipe-icon">🔷</div>
+    <div>
+      <div class="pipe-count" id="cnt-cif">0</div>
+      <div class="pipe-label">Viagens CIF</div>
+    </div>
+  </div>
   <div class="pipe-step" id="pipe-3" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado">
     <div class="pipe-icon">📋</div>
     <div>
@@ -1395,6 +1421,7 @@
             placeholder="🔍  Pedido MIS, origem, destino..."
             oninput="renderPreview()">
           <div id="ms-cProduto"></div>
+          <div id="ms-cModal"></div>
           <div id="ms-cOrigem"></div>
           <div id="ms-cDestino"></div>
           <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
@@ -1420,6 +1447,7 @@
             <tr>
               <th>Pedido MIS</th>
               <th>Produto</th>
+              <th>Tipo de Frete</th>
               <th>Origem</th>
               <th>Base Destino</th>
               <th>Período (Carreg → Desc)</th>
@@ -1444,6 +1472,11 @@
   </div>
 
   <div id="viagensContent" style="display:none">
+    <div class="kpi-toggle-header" id="kpiToggleHeader" onclick="toggleKpisViagens()">
+      <span class="kpi-toggle-title">📊 Indicadores</span>
+      <span class="kpi-toggle-icon" id="kpiToggleIcon">▾</span>
+    </div>
+    <div id="kpiCardsWrap">
     <div class="kpi-group-label">⚡ Alertas Operacionais <span id="kpi-filter-badge" style="display:none;font-size:9px;color:var(--accent);background:var(--accent-dim);padding:1px 7px;border-radius:8px;margin-left:6px;letter-spacing:0">filtrado</span></div>
     <div class="stats-row" id="kpi-alertas">
       <div class="stat-card c-danger" id="kpi-backlog">
@@ -1496,6 +1529,7 @@
       </div>
     </div>
     </div>
+    </div>
 
     <div class="table-wrap">
       <div class="table-toolbar">
@@ -1508,6 +1542,7 @@
             <div class="chip" onclick="filterViagens('Recusado',this)">Recusadas</div>
             <div class="chip" onclick="filterViagens('Aceito',this)">Aceitas</div>
             <div class="chip" onclick="filterViagens('Placa Enviada',this)">Placa Enviada</div>
+            <div class="chip" id="chipCif" onclick="filterViagens('CIF',this)">CIF</div>
             <div class="chip" onclick="filterViagens('Cancelado',this)">Canceladas</div>
           </div>
         </div>
@@ -1846,6 +1881,14 @@
       </div>
     </div>
 
+    <div class="modal-field">
+      <div class="modal-label">Tipo de Frete *</div>
+      <select class="config-input" id="nc-modal">
+        <option value="FOB">FOB (frota alocada por nós — segue o fluxo normal de transportador)</option>
+        <option value="CIF">CIF (frota do fornecedor — não precisa de transportador)</option>
+      </select>
+    </div>
+
     <div class="modal-row">
       <div class="modal-field">
         <div class="modal-label">Origem</div>
@@ -1965,6 +2008,7 @@
           <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
           <option value="Placa Enviada">Placa Enviada</option>
+          <option value="CIF">CIF</option>
           <option value="Cancelado">Cancelado</option>
         </select>
       </div>
@@ -2687,7 +2731,7 @@ class MultiSelect {
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
 let msVProduto, msVOrigem, msVDestino;
-let msCProduto, msCOrigem, msCDestino;
+let msCProduto, msCModal, msCOrigem, msCDestino;
 
 // ── MODAL GRUPO ──
 let editingGrupoIdxs = [];
@@ -2722,10 +2766,16 @@ function editarGrupo(idxs) {
         ${roField('Origem', c.origem, c.base)}
         ${roField('Destino', c.destino)}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
         <div><div class="modal-label">Dt Carregamento</div><input class="config-input" id="ge-dtcarreg-${i}" value="${esc(c.dtCarreg||'-')}"></div>
         <div><div class="modal-label">Dt Descarga</div><input class="config-input" id="ge-dtdesc-${i}" value="${esc(c.dtDesc)}"></div>
         <div><div class="modal-label">Volume (m³)</div><input class="config-input" type="number" id="ge-volume-${i}" value="${c.volume}"></div>
+        <div><div class="modal-label">Tipo de Frete</div>
+          <select class="config-input" id="ge-modal-${i}">
+            <option value="FOB" ${c.modal !== 'CIF' ? 'selected' : ''}>FOB</option>
+            <option value="CIF" ${c.modal === 'CIF' ? 'selected' : ''}>CIF</option>
+          </select>
+        </div>
       </div>`;
     container.appendChild(sec);
   });
@@ -2742,6 +2792,7 @@ function salvarGrupo() {
     cadencias[idx].dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
     cadencias[idx].dtDesc   = document.getElementById(`ge-dtdesc-${i}`).value.trim();
     cadencias[idx].volume   = parseFloat(document.getElementById(`ge-volume-${i}`).value) || 0;
+    cadencias[idx].modal    = document.getElementById(`ge-modal-${i}`).value === 'CIF' ? 'CIF' : 'FOB';
   });
   fecharModalGrupo();
   renderPreview();
@@ -3222,6 +3273,22 @@ function formatRelativo(dt) {
   return dt.toLocaleDateString('pt-BR');
 }
 
+// ── KPIs RECOLHÍVEIS (mais viagens visíveis sem rolar) ──
+const KPI_COLAPSADOS_KEY = 'nexta_inbound_kpis_colapsados';
+
+function aplicarEstadoKpisViagens() {
+  const colapsado = localStorage.getItem(KPI_COLAPSADOS_KEY) !== 'false'; // recolhido por padrão
+  document.getElementById('kpiCardsWrap').style.display = colapsado ? 'none' : '';
+  document.getElementById('kpiToggleHeader').classList.toggle('collapsed', colapsado);
+  document.getElementById('kpiToggleIcon').textContent = colapsado ? '▸' : '▾';
+}
+
+function toggleKpisViagens() {
+  const colapsadoAtual = document.getElementById('kpiCardsWrap').style.display === 'none';
+  localStorage.setItem(KPI_COLAPSADOS_KEY, colapsadoAtual ? 'false' : 'true');
+  aplicarEstadoKpisViagens();
+}
+
 // ── TABS ──
 function switchTab(i) {
   if (isTransportador() && i !== 1) i = 1;
@@ -3258,7 +3325,7 @@ function agruparCadencias(arr) {
   const mapa = new Map();
   arr.forEach((c, originalIdx) => {
     const realIdx = Number.isInteger(c._originalIdx) ? c._originalIdx : originalIdx;
-    const key = [c.produto, c.origem, c.base||'', c.destino, c.dtCarreg, c.dtDesc].join('||');
+    const key = [c.produto, c.origem, c.base||'', c.destino, c.dtCarreg, c.dtDesc, c.modal||'FOB'].join('||');
     if (mapa.has(key)) {
       const g = mapa.get(key);
       g.volume = +(g.volume + c.volume).toFixed(1);
@@ -3288,6 +3355,7 @@ function estadoFiltrosCadencia() {
     dtDe: document.getElementById('fCadDtDe')?.value || '',
     dtAte: document.getElementById('fCadDtAte')?.value || '',
     produtos: new Set(msCProduto?.getSelected() || []),
+    modais: new Set(msCModal?.getSelected() || []),
     origens: new Set(msCOrigem?.getSelected() || []),
     destinos: new Set(msCDestino?.getSelected() || []),
   };
@@ -3295,6 +3363,7 @@ function estadoFiltrosCadencia() {
 
 function passaFiltrosCadencia(c, f, ignorar = '') {
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(c.produto)) return false;
+  if (ignorar !== 'modal' && f.modais.size && !f.modais.has(c.modal || 'FOB')) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(c))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(c.destino)) return false;
   if (f.busca) {
@@ -3322,6 +3391,10 @@ function atualizarOpcoesFiltrosCadencia(f) {
   msCProduto?.setOptions(valoresUnicosOrdenados(
     cadencias.filter(c => passaFiltrosCadencia(c, f, 'produto')),
     c => c.produto
+  ));
+  msCModal?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'modal')),
+    c => c.modal || 'FOB'
   ));
   msCOrigem?.setOptions(valoresUnicosOrdenados(
     cadencias.filter(c => passaFiltrosCadencia(c, f, 'origem')),
@@ -3381,6 +3454,9 @@ function renderPreview() {
     tr.innerHTML = `
       <td class="cell-truncate-xs cell-preview-id" title="${esc(g.ids.join(', '))}">${idDisplay}</td>
       <td>${prodTag(g.produto)}</td>
+      <td>${g.modal === 'CIF'
+        ? '<span class="badge" style="color:var(--pet-blue);background:rgba(34,85,204,0.14)" title="CIF — frota do fornecedor, não precisa de transportador">CIF</span>'
+        : '<span class="badge badge-accent" title="FOB — segue o fluxo normal de transportador">FOB</span>'}</td>
       <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : '') + (g.cnpjOrigem ? ' · ' + g.cnpjOrigem : ''))}">
         ${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}
         ${g.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(g.cnpjOrigem)}</span>` : ''}
@@ -3414,9 +3490,15 @@ function editarLinha(gi, idx) {
     `<input class="config-input" id="${id}" value="${esc(String(val||''))}" type="${type}" style="width:${width};padding:5px 8px;font-size:11px;min-width:unset">`;
   const ro = (val, sub) =>
     `<span style="font-size:11px">${esc(String(val||'—'))}</span>${sub ? `<br><span style="font-size:10px;color:var(--text-muted)">${esc(sub)}</span>` : ''}`;
+  const selModal = (id, val) => `
+    <select class="config-input" id="${id}" style="padding:5px 8px;font-size:11px;min-width:unset">
+      <option value="FOB" ${val !== 'CIF' ? 'selected' : ''}>FOB</option>
+      <option value="CIF" ${val === 'CIF' ? 'selected' : ''}>CIF</option>
+    </select>`;
   tr.innerHTML = `
     <td>${ro(c.id)}</td>
     <td>${ro(c.produto)}</td>
+    <td>${selModal(`ei-modal-${gi}`, c.modal)}</td>
     <td style="vertical-align:middle">${ro(c.origem, c.base)}</td>
     <td style="vertical-align:middle">${ro(c.destino)}</td>
     <td style="vertical-align:top">
@@ -3441,6 +3523,7 @@ function salvarLinha(gi, idx) {
   cadencias[idx].dtCarreg = document.getElementById(`ei-dtcarreg-${gi}`).value.trim() || '-';
   cadencias[idx].dtDesc   = document.getElementById(`ei-dtdesc-${gi}`).value.trim();
   cadencias[idx].volume   = parseFloat(document.getElementById(`ei-volume-${gi}`).value) || 0;
+  cadencias[idx].modal    = document.getElementById(`ei-modal-${gi}`).value === 'CIF' ? 'CIF' : 'FOB';
   renderPreview();
   agendarAutosave();
 }
@@ -3527,6 +3610,7 @@ function abrirModalNovaCadencia() {
     if (el) el.value = '';
   });
   document.getElementById('nc-produto').value = '';
+  document.getElementById('nc-modal').value = 'FOB';
   document.getElementById('nc-provisorio').checked = false;
   popularSelectOrigemFornecedor('nc-origem', '');
   popularSelectBaseFornecedor('nc-base', '', '');
@@ -3563,6 +3647,7 @@ function salvarNovaCadencia() {
     destino,
     cnpjDestino: document.getElementById('nc-cnpjDestino').value.trim(),
     volume,
+    modal:       document.getElementById('nc-modal').value === 'CIF' ? 'CIF' : 'FOB',
     provisorio:  document.getElementById('nc-provisorio').checked,
   });
   fecharModalNovaCad();
@@ -3585,7 +3670,8 @@ function assinaturaGrupoViagem(v) {
     v.base || '',
     v.destino || '',
     v.dtCarreg || '',
-    v.dtDesc || ''
+    v.dtDesc || '',
+    v.modal || 'FOB'
   ].join('||');
 }
 
@@ -3638,6 +3724,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
         dtCarreg: g.dtCarreg,
         dtDesc: g.dtDesc,
         volume: volPorViagem,
+        modal: g.modal || 'FOB',
         pedidoProvisorio: !!g.provisorio,
       };
 
@@ -3655,7 +3742,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           horaCarregProg: anterior.horaCarregProg || '12:00',
           horaDescProg:   anterior.horaDescProg   || '12:00',
-          status: anterior.status || 'Backlog',
+          status: anterior.status || (baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog'),
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
           obs: anterior.obs || '',
@@ -3668,7 +3755,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
           dtDescProg: g.dtDesc,
           horaCarregProg: '12:00',
           horaDescProg: '12:00',
-          status: 'Backlog',
+          status: baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog',
           transportador: '',
           placa: '',
           obs: ''
@@ -3761,7 +3848,7 @@ function updateKPIs(list) {
   // Escada de severidade por data de carregamento: Backlog (vencido) > Crítico (D0)
   // > Alerta (D+1/D+2) > Atenção (D+3+). "Placa Enviada" sai do radar (já resolvido);
   // "sem aceite" = ainda não confirmado pelo transportador (Backlog/Ofertado/Recusado).
-  const pendentes = ativas.filter(v => v.status !== 'Placa Enviada');
+  const pendentes = ativas.filter(v => !['Placa Enviada', 'CIF'].includes(v.status));
   const SEM_ACEITE = ['Backlog', 'Ofertado', 'Recusado'];
   const bucketStats = filtroData => {
     const itens = pendentes.filter(v => {
@@ -3909,6 +3996,7 @@ function renderViagensTable() {
       'Aceito':        'status-aceito',
       'Placa Enviada': 'status-placa',
       'Cancelado':     'status-cancelado',
+      'CIF':           'status-cif',
     }[v.status] || 'status-backlog';
 
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
@@ -3953,6 +4041,7 @@ function renderViagensTable() {
               onblur="salvarDataProgramacaoInline(${realIdx}, 'carreg', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
               ${isTransportador() ? 'disabled' : ''}>
+            ${v.alertaProgramacao ? `<span style="color:var(--accent2);font-size:13px;cursor:help;flex-shrink:0" title="Data alterada após o aceite — confira com o transportador">⚠</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
             <span class="filter-sep" style="font-size:10px">↓</span>
@@ -3962,7 +4051,6 @@ function renderViagensTable() {
               onkeydown="if(event.key==='Enter')this.blur()"
               ${isTransportador() ? 'disabled' : ''}>
           </div>
-          ${v.alertaProgramacao ? `<span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px" title="Data alterada após o aceite">⚠ Alterada</span>` : ''}
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:4px">
@@ -4029,7 +4117,7 @@ function fmtShort(s) {
 
 function limparFiltrosCad() {
   ['fCadBusca','fCadCarrDe','fCadCarrAte','fCadDtDe','fCadDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msCProduto?.clear(); msCOrigem?.clear(); msCDestino?.clear();
+  msCProduto?.clear(); msCModal?.clear(); msCOrigem?.clear(); msCDestino?.clear();
   renderPreview();
 }
 
@@ -5398,6 +5486,8 @@ function updatePipeline(list) {
   document.getElementById('cnt-viagens').textContent   = viagens.length;
 
   // Status: refletem a lista recebida (filtrada ou total)
+  const cntCif       = list.filter(v => v.status === 'CIF').length;
+  document.getElementById('cnt-cif').textContent = cntCif;
   const cntBacklog   = list.filter(v => v.status === 'Backlog').length;
   const cntOfertado  = list.filter(v => v.status === 'Ofertado').length;
   const cntRecusado  = list.filter(v => v.status === 'Recusado').length;
@@ -5606,6 +5696,7 @@ function processarArquivo(file) {
       const idxDestino      = col('Destino');
       const idxCnpjDestino  = col('CNPJ Destino');
       const idxPlanejado    = col('Planejado');
+      const idxModal        = col('Tipo de Frete');
 
       const linhasArquivo = [];
       for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -5635,6 +5726,7 @@ function processarArquivo(file) {
           destino:     String(r[idxDestino]     || '').trim(),
           cnpjDestino: idxCnpjDestino >= 0 ? String(r[idxCnpjDestino] || '').trim() : '',
           volume:      parseFloat(r[idxPlanejado]) || 0,
+          modal:       (idxModal >= 0 ? String(r[idxModal] || '').trim().toUpperCase() : '') === 'CIF' ? 'CIF' : 'FOB',
         });
       }
 
@@ -5997,12 +6089,14 @@ await carregarUsuariosFirebase();
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
+  aplicarEstadoKpisViagens();
 
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
   msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
+  msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
