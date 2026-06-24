@@ -979,6 +979,8 @@
   body.transportador-mode #tabBtn0,
   body.transportador-mode #tabBtn2,
   body.transportador-mode #tabBtn3,
+  body.transportador-mode #tabBtn4,
+  body.transportador-mode #tabBtn5,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #btnLimparSessao,
@@ -1104,6 +1106,20 @@
     salvarTransportadores: async (lista) => {
       await set(ref(db, 'transportadores'), lista);
     },
+    carregarBases: async () => {
+      const snap = await get(ref(db, 'bases'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarBases: async (lista) => {
+      await set(ref(db, 'bases'), lista);
+    },
+    carregarFornecedores: async () => {
+      const snap = await get(ref(db, 'fornecedores'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarFornecedores: async (lista) => {
+      await set(ref(db, 'fornecedores'), lista);
+    },
     // ── Firebase Authentication ──
     login: async (email, senha) => {
       return await signInWithEmailAndPassword(auth, email, senha);
@@ -1175,30 +1191,39 @@
 
     <hr class="login-admin-separator">
 
-    <div class="login-admin-subtitle">Adicionar usuário</div>
-    <div class="login-admin-row">
-      <input id="admin-new-login" placeholder="login ou e-mail" autocomplete="off">
-      <input id="admin-new-senha" type="password" placeholder="senha" autocomplete="off">
+    <div class="login-admin-subtitle">Adicionar novo usuário</div>
+
+    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:var(--text-dim);line-height:1.7">
+      <strong style="color:var(--accent);display:block;margin-bottom:4px">① Crie o acesso no Firebase Console</strong>
+      Acesse <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a>
+      → <strong>Authentication → Users → Adicionar usuário</strong><br>
+      Informe o e-mail e uma senha provisória. Copie o <strong>UID</strong> gerado.
     </div>
-    <div class="login-admin-row" style="grid-template-columns:1fr auto">
-      <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
-        <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
-      </label>
-    </div>
-    <div class="login-admin-row" style="grid-template-columns:1fr 1fr">
-      <select id="admin-new-tipo" class="config-input"
-        onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
-        <option value="staff">Equipe interna</option>
-        <option value="transportador">Transportador</option>
-      </select>
-      <div id="admin-new-transportador-wrap" style="display:none">
-        <select id="admin-new-transportador-nome" class="config-input"></select>
+
+    <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+      <strong style="color:var(--accent);font-size:12px;display:block;margin-bottom:10px">② Cadastre o perfil aqui</strong>
+      <div class="login-admin-row">
+        <input id="admin-new-uid" placeholder="UID (cole aqui)" autocomplete="off" style="font-family:monospace;font-size:11px">
+        <input id="admin-new-nome" placeholder="nome completo" autocomplete="off">
+      </div>
+      <div class="login-admin-row" style="grid-template-columns:1fr 1fr auto">
+        <select id="admin-new-tipo" class="config-input"
+          onchange="document.getElementById('admin-new-transportador-wrap').style.display = this.value === 'transportador' ? '' : 'none'">
+          <option value="staff">Equipe interna</option>
+          <option value="transportador">Transportador</option>
+        </select>
+        <div id="admin-new-transportador-wrap" style="display:none">
+          <select id="admin-new-transportador-nome" class="config-input"></select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap">
+          <input id="admin-new-admin" type="checkbox" style="accent-color:var(--accent)"> Admin
+        </label>
       </div>
     </div>
+
     <div class="login-admin-actions">
-      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Adicionar</button>
-      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar</button>
+      <button class="btn btn-primary" onclick="adminAdicionarUsuario()">Cadastrar perfil</button>
+      <button class="btn btn-secondary" onclick="carregarUsuariosFirebase(true)">Recarregar lista</button>
     </div>
     <div class="login-admin-info" id="adminInfo"></div>
   </div>
@@ -1329,6 +1354,8 @@
   <div class="tab" id="tabBtn1" onclick="switchTab(1)">② Gerir Viagens</div>
   <div class="tab" id="tabBtn2" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
   <div class="tab" id="tabBtn3" onclick="switchTab(3)">④ Transportadores</div>
+  <div class="tab" id="tabBtn4" onclick="switchTab(4)">⑤ Bases</div>
+  <div class="tab" id="tabBtn5" onclick="switchTab(5)">⑥ Fornecedores</div>
 </div>
 
 <div class="main">
@@ -1448,16 +1475,21 @@
       </div>
     </div>
     <div class="kpi-group-label">📊 Volumes</div>
-    <div class="stats-row">
+    <div class="stats-row" style="grid-template-columns:repeat(5, 1fr)">
       <div class="stat-card c-muted">
         <div class="stat-label" id="lbl-vol-pendente">📦 Volume Pendente</div>
         <div class="stat-val" id="sv-vol-pendente">0</div>
         <div class="stat-sub" id="sub-vol-pendente">m³ no pool Sem Transportador (Backlog + Recusado)</div>
       </div>
       <div class="stat-card c-accent">
-        <div class="stat-label">🤝 Em Negociação</div>
-        <div class="stat-val" id="sv-vol-negoc">0</div>
-        <div class="stat-sub">m³ Ofertado + Aceito</div>
+        <div class="stat-label">📤 Ofertado</div>
+        <div class="stat-val" id="sv-vol-ofertado">0</div>
+        <div class="stat-sub">m³ Ofertado</div>
+      </div>
+      <div class="stat-card c-accent">
+        <div class="stat-label">🤝 Aceito</div>
+        <div class="stat-val" id="sv-vol-aceito">0</div>
+        <div class="stat-sub">m³ Aceito</div>
       </div>
       <div class="stat-card c-success">
         <div class="stat-label">✅ Volume Confirmado</div>
@@ -1702,6 +1734,120 @@
   </div>
 </div>
 
+<!-- ===== TAB 5: BASES ===== -->
+<div class="tab-content" id="tab-4">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Cadastro de Bases</div>
+      <div class="section-sub">Referência de Empresa, Depósito, CNPJ, SAP, MIS e Herrlog por base</div>
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalBase(null)">＋ Nova Base</button>
+  </div>
+
+  <div id="basesEmpty" class="empty-state">
+    <div class="empty-icon">🏭</div>
+    <div class="empty-text">Nenhuma base cadastrada</div>
+    <div class="empty-sub">Clique em "+ Nova Base" para cadastrar a primeira</div>
+  </div>
+
+  <div id="basesContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Bases</span>
+          <span class="badge badge-accent" id="badge-bases">0 cadastradas</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fBasesBusca"
+            placeholder="🔍  Cidade, depósito, nome MIS, CNPJ, regional..."
+            oninput="renderBasesTable()">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fBasesBusca').value=''; renderBasesTable()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th style="white-space:normal">Empresa</th>
+              <th style="white-space:normal">Cidade</th>
+              <th style="white-space:normal">Depósito</th>
+              <th>Estado</th>
+              <th style="white-space:normal">Regional</th>
+              <th style="white-space:normal;min-width:150px">Nome MIS</th>
+              <th style="white-space:normal">Empresa SAP</th>
+              <th style="white-space:normal">Local Exped.</th>
+              <th style="white-space:normal">ID Herrlog</th>
+              <th style="white-space:normal">CNPJ</th>
+              <th style="white-space:normal;min-width:120px">Cidade CNPJ</th>
+              <th style="white-space:normal;min-width:150px">Razão Social</th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="basesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 6: FORNECEDORES ===== -->
+<div class="tab-content" id="tab-5">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Cadastro de Fornecedores</div>
+      <div class="section-sub">Origem, base de atendimento, CNPJ e código SAP usados na importação da cadência</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInputFornecedores').click()" title='Importa planilha .xlsx no modelo "dados origens" · Colunas: Origem, Base de Atendimento, Cidade, UF, CNPJ, Cód. SAP'>📥 Importar Planilha</button>
+      <button class="btn btn-primary" onclick="abrirModalFornecedor(null)">＋ Novo Fornecedor</button>
+    </div>
+  </div>
+  <input type="file" id="fileInputFornecedores" accept=".xlsx,.xls" style="display:none">
+
+  <div id="fornecedoresEmpty" class="empty-state">
+    <div class="empty-icon">🏷️</div>
+    <div class="empty-text">Nenhum fornecedor cadastrado</div>
+    <div class="empty-sub">Importe a planilha acima ou clique em "+ Novo Fornecedor"</div>
+  </div>
+
+  <div id="fornecedoresContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Fornecedores</span>
+          <span class="badge badge-accent" id="badge-fornecedores">0 cadastrados</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fFornecedoresBusca"
+            placeholder="🔍  Origem, base de atendimento, cidade, CNPJ, SAP..."
+            oninput="renderFornecedoresTable()">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fFornecedoresBusca').value=''; renderFornecedoresTable()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th style="white-space:normal">Origem</th>
+              <th style="white-space:normal">Base de Atendimento</th>
+              <th style="white-space:normal">Cidade</th>
+              <th>UF</th>
+              <th style="white-space:normal">CNPJ</th>
+              <th style="white-space:normal">Cód. SAP</th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="fornecedoresBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- MODAL: Nova Cadência -->
@@ -1717,37 +1863,53 @@
       </div>
       <div class="modal-field">
         <div class="modal-label">Produto *</div>
-        <input type="text" class="config-input" id="nc-produto" placeholder="Diesel A S10">
+        <select class="config-input" id="nc-produto">
+          <option value="">Selecione...</option>
+          <option value="Anidro">Anidro</option>
+          <option value="Biodiesel B100">Biodiesel B100</option>
+          <option value="Diesel A S10">Diesel A S10</option>
+          <option value="Diesel A S500">Diesel A S500</option>
+          <option value="Gasolina A">Gasolina A</option>
+          <option value="Gasolina Premium A">Gasolina Premium A</option>
+          <option value="Hidratado">Hidratado</option>
+        </select>
       </div>
     </div>
 
     <div class="modal-row">
       <div class="modal-field">
         <div class="modal-label">Origem</div>
-        <input type="text" class="config-input" id="nc-origem" placeholder="RAIZEN">
+        <select class="config-input" id="nc-origem"
+          onchange="popularSelectBaseFornecedor('nc-base', this.value, ''); atualizarCnpjOrigemNovaCad();">
+          <option value="">Selecione a origem...</option>
+        </select>
       </div>
       <div class="modal-field">
         <div class="modal-label">Base de Atendimento</div>
-        <input type="text" class="config-input" id="nc-base" placeholder="IGARAPAVA">
+        <select class="config-input" id="nc-base" onchange="atualizarCnpjOrigemNovaCad()">
+          <option value="">Selecione a origem primeiro</option>
+        </select>
       </div>
     </div>
 
     <div class="modal-row">
       <div class="modal-field">
         <div class="modal-label">CNPJ Origem</div>
-        <input type="text" class="config-input" id="nc-cnpjOrigem" placeholder="00.000.000/0000-00" maxlength="18"
-          oninput="this.value = mascaraCNPJ(this.value)">
+        <input type="text" class="config-input" id="nc-cnpjOrigem" placeholder="—" readonly
+          style="opacity:0.7;cursor:not-allowed" title="Preenchido automaticamente a partir do Cadastro de Fornecedores">
       </div>
       <div class="modal-field">
         <div class="modal-label">CNPJ Destino</div>
-        <input type="text" class="config-input" id="nc-cnpjDestino" placeholder="00.000.000/0000-00" maxlength="18"
-          oninput="this.value = mascaraCNPJ(this.value)">
+        <input type="text" class="config-input" id="nc-cnpjDestino" placeholder="—" readonly
+          style="opacity:0.7;cursor:not-allowed" title="Preenchido automaticamente a partir do Cadastro de Bases">
       </div>
     </div>
 
     <div class="modal-field">
       <div class="modal-label">Destino / Base *</div>
-      <input type="text" class="config-input" id="nc-destino" placeholder="CIDADE - NEXTA BASE">
+      <select class="config-input" id="nc-destino" onchange="atualizarCnpjDestinoNovaCad()">
+        <option value="">Selecione o destino...</option>
+      </select>
     </div>
 
     <div class="modal-row">
@@ -1920,6 +2082,131 @@
   </div>
 </div>
 
+<!-- MODAL: Base -->
+<div class="modal-overlay" id="modalBase">
+  <div class="modal" style="width:620px;max-width:96vw">
+    <div class="modal-title" id="base-modal-title">Nova Base</div>
+    <div class="modal-sub">Dados de referência da base — usados para consulta de CNPJ, SAP, MIS e Herrlog</div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Empresa *</div>
+        <input type="text" class="config-input" id="base-empresa" placeholder="Nexta">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Cidade *</div>
+        <input type="text" class="config-input" id="base-cidade" placeholder="Betim">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Estado *</div>
+        <input type="text" class="config-input" id="base-estado" placeholder="MG" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Depósito *</div>
+        <input type="text" class="config-input" id="base-deposito" placeholder="RBZ">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Regional *</div>
+        <input type="text" class="config-input" id="base-regional" placeholder="Minas">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Nome MIS *</div>
+      <input type="text" class="config-input" id="base-nomeMis" placeholder="BETIM - NEXTA RBZ">
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Empresa SAP</div>
+        <input type="text" class="config-input" id="base-empresaSap" placeholder="6016">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Local Expedição</div>
+        <input type="text" class="config-input" id="base-localExpedicao" placeholder="74">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">ID Herrlog</div>
+        <input type="text" class="config-input" id="base-idHerrlog" placeholder="6016-74">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">CNPJ</div>
+        <input type="text" class="config-input" id="base-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+          oninput="this.value = mascaraCNPJ(this.value)">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Cidade CNPJ</div>
+        <input type="text" class="config-input" id="base-cidadeCnpj" placeholder="BETIM - MG">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Razão Social</div>
+      <input type="text" class="config-input" id="base-razaoSocial" placeholder="NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalBase()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarBase()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Novo/Editar Fornecedor -->
+<div class="modal-overlay" id="modalFornecedor">
+  <div class="modal" style="width:520px;max-width:96vw">
+    <div class="modal-title" id="fornecedor-modal-title">Novo Fornecedor</div>
+    <div class="modal-sub">Dados de referência do fornecedor — usados na validação da origem na cadência</div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Origem *</div>
+        <input type="text" class="config-input" id="forn-origem" placeholder="RAIZEN">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Base de Atendimento *</div>
+        <input type="text" class="config-input" id="forn-baseAtendimento" placeholder="PAULINIA">
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Cidade *</div>
+        <input type="text" class="config-input" id="forn-cidade" placeholder="PAULINIA">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">UF *</div>
+        <input type="text" class="config-input" id="forn-uf" placeholder="SP" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">CNPJ</div>
+        <input type="text" class="config-input" id="forn-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+          oninput="this.value = mascaraCNPJ(this.value)">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Cód. SAP</div>
+        <input type="text" class="config-input" id="forn-codSap" placeholder="1000113">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalFornecedor()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarFornecedor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Editar Grupo de Cadências -->
 <div class="modal-overlay" id="modalGrupo">
   <div class="modal" style="width:620px;max-width:97vw;max-height:88vh;display:flex;flex-direction:column">
@@ -2004,7 +2291,8 @@ function formatarHistoricoProgramacaoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">📅 ${esc(h.evento)} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
+  const icone = h.evento && h.evento.startsWith('Volume') ? '📦' : '📅';
+  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} ${esc(h.evento)} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
 
 function renderHistoricoProgramacao(v) {
@@ -2036,9 +2324,11 @@ async function carregarUsuariosFirebase(mostrarFeedback = false) {
       await salvarUsuariosFirebase();
       if (mostrarFeedback && info) info.textContent = 'Usuários iniciais enviados ao Firebase.';
     }
+    window._fbPerfisBuscados = true;
     renderAdminUsuarios();
     validarSessaoAtual();
   } catch (e) {
+    window._fbPerfisBuscados = true;
     if (mostrarFeedback && info) info.textContent = 'Erro ao carregar usuários: ' + e.message;
   }
   return _usuariosAtivos;
@@ -2177,7 +2467,20 @@ function abrirAdminModal() {
   document.getElementById('adminModal').classList.add('open');
   document.getElementById('adminInfo').textContent = '';
   popularSelectTransportadores('admin-new-transportador-nome', '');
-  renderAdminUsuarios();
+  // Mostra loading e aguarda Firebase estar pronto
+  const list = document.getElementById('adminUsersList');
+  if (list) list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Carregando...</div>';
+  window._fbPerfisBuscados = false;
+  const tentarCarregar = (tentativas = 0) => {
+    if (window._fb?.listarPerfis) {
+      carregarUsuariosFirebase(false);
+    } else if (tentativas < 15) {
+      setTimeout(() => tentarCarregar(tentativas + 1), 300);
+    } else {
+      if (list) list.innerHTML = '<div style="font-size:12px;color:var(--danger)">Erro ao conectar. Tente recarregar.</div>';
+    }
+  };
+  tentarCarregar();
 }
 
 function fecharAdminModal() {
@@ -2188,7 +2491,10 @@ function renderAdminUsuarios() {
   const list = document.getElementById('adminUsersList');
   if (!list) return;
   if (!_usuariosAtivos.length) {
-    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhum usuário cadastrado.</div>';
+    // Só mostra "nenhum" se o Firebase já foi consultado
+    if (window._fbPerfisBuscados) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhum usuário cadastrado.</div>';
+    }
     return;
   }
   list.innerHTML = _usuariosAtivos.map(u => {
@@ -2860,6 +3166,9 @@ let selectedViagens = new Set();
 let currentFilteredIdxs = [];
 let transportadores = [];
 let editingTranspIdx = null;
+let bases = [];
+let fornecedores = [];
+let editingFornecedorIdx = null;
 
 const STORAGE_KEY = 'nexta_cadencia_sessao';
 
@@ -2970,6 +3279,8 @@ function switchTab(i) {
   if (i === 1) renderViagensTable();
   if (i === 2) renderExport();
   if (i === 3) renderTransportadoresTable();
+  if (i === 4) renderBasesTable();
+  if (i === 5) renderFornecedoresTable();
 }
 
 // ── SAMPLE DATA ──
@@ -3194,11 +3505,80 @@ function excluirLinha(idx) {
 }
 
 // ── MODAL NOVA CADÊNCIA ──
+function popularSelectOrigemFornecedor(selectId, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  const origens = [...new Set(fornecedores.map(f => f.origem))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  sel.innerHTML = `<option value="">Selecione a origem...</option>`;
+  origens.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o;
+    opt.textContent = o;
+    sel.appendChild(opt);
+  });
+  sel.value = origens.includes(current) ? current : '';
+}
+
+function popularSelectBaseFornecedor(selectId, origem, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  const opcoes = fornecedores.filter(f => f.origem === origem).map(f => f.baseAtendimento);
+  sel.innerHTML = `<option value="">${opcoes.length ? 'Selecione a base...' : 'Selecione a origem primeiro'}</option>`;
+  opcoes.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b;
+    opt.textContent = b;
+    sel.appendChild(opt);
+  });
+  sel.disabled = !opcoes.length;
+  if (opcoes.length === 1) {
+    sel.selectedIndex = 1;
+  } else {
+    sel.value = opcoes.includes(current) ? current : '';
+  }
+}
+
+function atualizarCnpjOrigemNovaCad() {
+  const origem = document.getElementById('nc-origem').value;
+  const base   = document.getElementById('nc-base').value;
+  const f = fornecedores.find(f => f.origem === origem && f.baseAtendimento === base);
+  document.getElementById('nc-cnpjOrigem').value = f?.cnpj || '';
+}
+
+function popularSelectBaseDestino(selectId, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  const nomes = [...new Set(bases.map(b => b.nomeMis))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  sel.innerHTML = `<option value="">Selecione o destino...</option>`;
+  nomes.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  sel.value = nomes.includes(current) ? current : '';
+}
+
+function atualizarCnpjDestinoNovaCad() {
+  const nomeMis = document.getElementById('nc-destino').value;
+  const b = bases.find(b => b.nomeMis === nomeMis);
+  document.getElementById('nc-cnpjDestino').value = b?.cnpj || '';
+}
+
 function abrirModalNovaCadencia() {
-  ['nc-id','nc-produto','nc-origem','nc-base','nc-cnpjOrigem','nc-cnpjDestino','nc-destino','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
+  ['nc-id','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  document.getElementById('nc-produto').value = '';
+  popularSelectOrigemFornecedor('nc-origem', '');
+  popularSelectBaseFornecedor('nc-base', '', '');
+  popularSelectBaseDestino('nc-destino', '');
+  document.getElementById('nc-cnpjOrigem').value = '';
+  document.getElementById('nc-cnpjDestino').value = '';
   document.getElementById('modalNovaCad').classList.add('open');
   setTimeout(() => document.getElementById('nc-id').focus(), 100);
 }
@@ -3309,6 +3689,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
         novasViagens.push({
           ...anterior,
           ...baseViagem,
+          volume: anterior.volumeAjustadoManualmente ? anterior.volume : baseViagem.volume,
           dtCarregProg: anterior.dtCarregProg || g.dtCarreg,
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           status: anterior.status || 'Backlog',
@@ -3429,8 +3810,9 @@ function updateKPIs(list) {
   const bAlerta  = bucketStats(d => d > hoje && d <= d2);
   const bAtencao = bucketStats(d => d > d2);
 
-  const volNegoc = ativas.filter(v => ['Ofertado','Aceito'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
-  const volConf  = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
+  const volOfertado = ativas.filter(v => v.status === 'Ofertado').reduce((s,v) => s + (v.volume||0), 0);
+  const volAceito   = ativas.filter(v => v.status === 'Aceito').reduce((s,v) => s + (v.volume||0), 0);
+  const volConf     = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
 
   const fmt = n => Number.isInteger(n)
     ? n.toLocaleString('pt-BR')
@@ -3460,7 +3842,8 @@ function updateKPIs(list) {
   setBucket('atencao', bAtencao);
 
   document.getElementById('sv-vol-pendente').textContent = fmt(volPrincipal);
-  document.getElementById('sv-vol-negoc').textContent    = fmt(volNegoc);
+  document.getElementById('sv-vol-ofertado').textContent = fmt(volOfertado);
+  document.getElementById('sv-vol-aceito').textContent   = fmt(volAceito);
   document.getElementById('sv-vol-conf').textContent     = fmt(volConf);
   document.getElementById('sv-taxa').textContent         = taxa + '%';
 
@@ -3607,7 +3990,17 @@ function renderViagensTable() {
           </div>
           ${v.alertaProgramacao ? `<span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px" title="Data alterada após o aceite">⚠ Alterada</span>` : ''}
         </td>
-        <td>${v.volume}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input class="placa-input" style="width:56px;text-transform:none;text-align:right;font-family:var(--font-cond)"
+              type="number" min="0.1" step="0.1"
+              value="${v.volume}"
+              onblur="salvarVolumeInline(${realIdx}, this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              ${isTransportador() ? 'disabled' : ''}>
+            ${v.volumeAjustadoManualmente ? `<span title="Volume ajustado manualmente">✎</span>` : ''}
+          </div>
+        </td>
         <td><span class="status ${statusClass}">${v.status}</span></td>
         <td class="cell-truncate" title="${esc(v.transportador)}">${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td style="padding-right:12px"><input class="placa-input" value="${esc(v.placa||'')}" placeholder="AAA0A000"
@@ -3715,6 +4108,602 @@ async function persistirTransportadores() {
   try {
     await window._fb.salvarTransportadores(transportadores);
   } catch (e) { console.error('Erro ao salvar transportadores:', e); }
+}
+
+// ── CADASTRO DE BASES (carga única, somente consulta) ──
+const BASES_SEED = [
+  { "empresa": "SIM", "cidade": "Cubatão", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "CUBATAO - SIM IPIRANGA", "empresaSap": "2013", "localExpedicao": "100", "idHerrlog": "2013-100", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Guarulhos", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - SIM TR", "empresaSap": "2013", "localExpedicao": "48", "idHerrlog": "2013-48", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Guarulhos", "deposito": "BAGUAR", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - SIM BAGUAR", "empresaSap": "2013", "localExpedicao": "54", "idHerrlog": "2013-54", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Paulínia", "deposito": "OPLA", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM OPLA", "empresaSap": "2013", "localExpedicao": "49", "idHerrlog": "2013-49", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Paulínia", "deposito": "RUFF", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - RUFF Antigo", "empresaSap": "2013", "localExpedicao": "38", "idHerrlog": "2013-38", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Paulínia", "deposito": "TRANSO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM TRANSO", "empresaSap": "2013", "localExpedicao": "39", "idHerrlog": "2013-39", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Paulínia", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM TORRÃO", "empresaSap": "2013", "localExpedicao": "64", "idHerrlog": "2013-64", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Ribeirão Preto", "deposito": "RUFF", "estado": "SP", "regional": "São Paulo", "nomeMis": "RIB PRETO - SIM RUFF", "empresaSap": "2013", "localExpedicao": "35", "idHerrlog": "2013-35", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "São Caetano", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - SIM VIBRA", "empresaSap": "2013", "localExpedicao": "13", "idHerrlog": "2013-13", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "São Caetano", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - SIM IPIRANGA", "empresaSap": "2013", "localExpedicao": "90", "idHerrlog": "2013-90", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Betim", "deposito": "POTENCIAL", "estado": "MG", "regional": "Minas", "nomeMis": "BETIM - SIM POTENCIAL", "empresaSap": "2015", "localExpedicao": "40", "idHerrlog": "2015-40", "cnpj": "07.857.168/0015-62", "cidadeCnpj": "BETIM - MG", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "SIM", "cidade": "Uberlândia", "deposito": "LIDERPETRO", "estado": "MG", "regional": "Minas", "nomeMis": "UBERLANDIA - SIM LIDERPETRO", "empresaSap": "2015", "localExpedicao": "97", "idHerrlog": "2015-97", "cnpj": "07.857.168/0015-62", "cidadeCnpj": "BETIM - MG", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Rio Verde", "deposito": "DTC", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "RIO VERDE - NEXTA DTC", "empresaSap": "6006", "localExpedicao": "72", "idHerrlog": "6006-72", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Senador Canedo", "deposito": "TESCAN", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA TESCAN", "empresaSap": "6006", "localExpedicao": "69", "idHerrlog": "6006-69", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Senador Canedo", "deposito": "CCO", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA CCO", "empresaSap": "6006", "localExpedicao": "70", "idHerrlog": "6006-70", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Senador Canedo", "deposito": "DTC", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA DTC", "empresaSap": "6006", "localExpedicao": "71", "idHerrlog": "6006-71", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Senador Canedo", "deposito": "TRANSPETRO", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA TRANSPETRO", "empresaSap": "6006", "localExpedicao": "68", "idHerrlog": "6006-68", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Varzea Grande", "deposito": "PETROLUZ", "estado": "MT", "regional": "Centro Oeste", "nomeMis": "VÁRZEA G - NEXTA PETROLUZ", "empresaSap": "6007", "localExpedicao": "84", "idHerrlog": "6007-84", "cnpj": "71.770.689/0007-77", "cidadeCnpj": "VARZEA GRANDE - MT", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Barra do Garças", "deposito": "NEXTA", "estado": "MT", "regional": "Centro Oeste", "nomeMis": "BARRA DO GARÇAS", "empresaSap": "6008", "localExpedicao": "73", "idHerrlog": "6008-73", "cnpj": "71.770.689/0008-58", "cidadeCnpj": "BARRA DO GARÇAS - MT", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Duque de Caxias", "deposito": "VIBRA", "estado": "RJ", "regional": "Minas", "nomeMis": "DUQUE - NEXTA VIBRA", "empresaSap": "6009", "localExpedicao": "86", "idHerrlog": "6009-86", "cnpj": "71.770.689/0009-39", "cidadeCnpj": "DUQUE DE CAXIAS - RJ", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Duque de Caxias", "deposito": "IPIRANGA", "estado": "RJ", "regional": "Minas", "nomeMis": "DUQUE - NEXTA IPIRANGA", "empresaSap": "6009", "localExpedicao": "85", "idHerrlog": "6009-85", "cnpj": "71.770.689/0009-39", "cidadeCnpj": "DUQUE DE CAXIAS - RJ", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Cubatão", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "CUBATAO - NEXTA IPIRANGA", "empresaSap": "6011", "localExpedicao": "98", "idHerrlog": "6011-98", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Guarulhos", "deposito": "BAGUAR", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - NEXTA BAGUAR", "empresaSap": "6011", "localExpedicao": "80", "idHerrlog": "6011-80", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Guarulhos", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - NEXTA TORRÃO", "empresaSap": "6011", "localExpedicao": "81", "idHerrlog": "6011-81", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "São Caetano", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - NEXTA VIBRA", "empresaSap": "6011", "localExpedicao": "82", "idHerrlog": "6011-82", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "São Caetano", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - NEXTA IPIRANGA", "empresaSap": "6011", "localExpedicao": "83", "idHerrlog": "6011-83", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Paulínia", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - NEXTA TORRAO", "empresaSap": "6012", "localExpedicao": "77", "idHerrlog": "6012-77", "cnpj": "71.770.689/0012-34", "cidadeCnpj": "PAULÍNIA - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Uberlândia", "deposito": "TRANSPETRO", "estado": "MG", "regional": "Minas", "nomeMis": "UBERLANDIA - NEXTA TRANSPETRO", "empresaSap": "6014", "localExpedicao": "66", "idHerrlog": "6014-66", "cnpj": "71.770.689/0014-04", "cidadeCnpj": "UBERLÂNDIA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Uberlândia", "deposito": "LIDERPETRO", "estado": "MG", "regional": "Minas", "nomeMis": "UBERLANDIA - NEXTA LIDERPETRO", "empresaSap": "6014", "localExpedicao": "95", "idHerrlog": "6014-95", "cnpj": "71.770.689/0014-04", "cidadeCnpj": "UBERLÂNDIA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Uberlândia", "deposito": "NEXTA", "estado": "MG", "regional": "Minas", "nomeMis": "UBERLANDIA - NEXTA TOTAL", "empresaSap": "6014", "localExpedicao": "67", "idHerrlog": "6014-67", "cnpj": "71.770.689/0014-04", "cidadeCnpj": "UBERLÂNDIA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Uberaba", "deposito": "TRANSPETRO", "estado": "MG", "regional": "Minas", "nomeMis": "UBERABA - NEXTA TRANSPETRO", "empresaSap": "6015", "localExpedicao": "65", "idHerrlog": "6015-65", "cnpj": "71.770.689/0015-87", "cidadeCnpj": "UBERABA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Betim", "deposito": "RBZ", "estado": "MG", "regional": "Minas", "nomeMis": "BETIM - NEXTA RBZ", "empresaSap": "6016", "localExpedicao": "74", "idHerrlog": "6016-74", "cnpj": "71.770.689/0016-68", "cidadeCnpj": "BETIM - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Betim", "deposito": "POTENCIAL", "estado": "MG", "regional": "Minas", "nomeMis": "BETIM - NEXTA POTENCIAL", "empresaSap": "6016", "localExpedicao": "75", "idHerrlog": "6016-75", "cnpj": "71.770.689/0016-68", "cidadeCnpj": "BETIM - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Ribeirão Preto", "deposito": "POOL", "estado": "SP", "regional": "São Paulo", "nomeMis": "RIB PRETO - NEXTA PETRO", "empresaSap": "6018", "localExpedicao": "76", "idHerrlog": "6018-76", "cnpj": "71.770.689/0018-20", "cidadeCnpj": "RIBEIRÃO PRETO - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "S. J. dos Campos", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SJ CAMPOS - NEXTA VIBRA", "empresaSap": "6019", "localExpedicao": "79", "idHerrlog": "6019-79", "cnpj": "71.770.689/0019-00", "cidadeCnpj": "S. J. DOS CAMPOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  { "empresa": "Nexta", "cidade": "Brasília", "deposito": "TECBRAS", "estado": "DF", "regional": "Centro Oeste", "nomeMis": "BRASILIA - NEXTA TEC", "empresaSap": "6020", "localExpedicao": "87", "idHerrlog": "6020-87", "cnpj": "71.770.689/0020-44", "cidadeCnpj": "BRASÍLIA - DF", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" }
+];
+
+async function carregarBasesFirebase() {
+  if (!window._fb?.carregarBases) return;
+  try {
+    const raw = await window._fb.carregarBases();
+    if (raw !== null && raw !== undefined) {
+      bases = Array.isArray(raw) ? raw : Object.values(raw);
+    } else {
+      bases = [...BASES_SEED];
+      await window._fb.salvarBases(bases);
+    }
+  } catch (e) { console.error('Erro ao carregar bases:', e); }
+}
+
+function renderBasesTable() {
+  const busca = (document.getElementById('fBasesBusca')?.value || '').toLowerCase().trim();
+  const filtered = bases.filter(b =>
+    !busca || Object.values(b).join(' ').toLowerCase().includes(busca)
+  );
+
+  const isEmpty = bases.length === 0;
+  document.getElementById('basesEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('basesContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  document.getElementById('badge-bases').textContent =
+    filtered.length < bases.length
+      ? `${filtered.length} de ${bases.length} cadastradas`
+      : `${bases.length} cadastrada${bases.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('basesBody').innerHTML = filtered.map(b => {
+    const realIdx = bases.indexOf(b);
+    return `
+    <tr>
+      <td style="white-space:normal">${esc(b.empresa)}</td>
+      <td style="white-space:normal">${esc(b.cidade)}</td>
+      <td style="white-space:normal">${esc(b.deposito)}</td>
+      <td>${esc(b.estado)}</td>
+      <td style="white-space:normal">${esc(b.regional)}</td>
+      <td style="white-space:normal;min-width:150px">${esc(b.nomeMis)}</td>
+      <td style="white-space:normal">${esc(b.empresaSap)}</td>
+      <td style="white-space:normal">${esc(b.localExpedicao)}</td>
+      <td style="white-space:normal">${esc(b.idHerrlog)}</td>
+      <td style="font-family:monospace;white-space:normal">${esc(b.cnpj)}</td>
+      <td style="white-space:normal;min-width:120px">${esc(b.cidadeCnpj)}</td>
+      <td style="white-space:normal;min-width:150px">${esc(b.razaoSocial)}</td>
+      <td class="col-acao">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalBase(${realIdx})">✏️</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerBase(${realIdx})">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+let editingBaseIdx = null;
+
+function abrirModalBase(idx) {
+  editingBaseIdx = idx;
+  const isNovo = idx === null || idx === undefined;
+  document.getElementById('base-modal-title').textContent = isNovo ? 'Nova Base' : 'Editar Base';
+  const b = isNovo ? {} : bases[idx];
+  document.getElementById('base-empresa').value = b.empresa || '';
+  document.getElementById('base-cidade').value = b.cidade || '';
+  document.getElementById('base-estado').value = b.estado || '';
+  document.getElementById('base-deposito').value = b.deposito || '';
+  document.getElementById('base-regional').value = b.regional || '';
+  document.getElementById('base-nomeMis').value = b.nomeMis || '';
+  document.getElementById('base-empresaSap').value = b.empresaSap || '';
+  document.getElementById('base-localExpedicao').value = b.localExpedicao || '';
+  document.getElementById('base-idHerrlog').value = b.idHerrlog || '';
+  document.getElementById('base-cnpj').value = b.cnpj || '';
+  document.getElementById('base-cidadeCnpj').value = b.cidadeCnpj || '';
+  document.getElementById('base-razaoSocial').value = b.razaoSocial || '';
+  document.getElementById('modalBase').classList.add('open');
+  setTimeout(() => document.getElementById('base-empresa').focus(), 100);
+}
+
+function fecharModalBase() {
+  document.getElementById('modalBase').classList.remove('open');
+  editingBaseIdx = null;
+}
+
+async function salvarBase() {
+  const empresa  = document.getElementById('base-empresa').value.trim();
+  const cidade   = document.getElementById('base-cidade').value.trim();
+  const estado   = document.getElementById('base-estado').value.trim();
+  const deposito = document.getElementById('base-deposito').value.trim();
+  const regional = document.getElementById('base-regional').value.trim();
+  const nomeMis  = document.getElementById('base-nomeMis').value.trim();
+  if (!empresa || !cidade || !estado || !deposito || !regional || !nomeMis) {
+    alert('Preencha Empresa, Cidade, Estado, Depósito, Regional e Nome MIS.');
+    return;
+  }
+
+  const duplicado = bases.findIndex((b, i) => i !== editingBaseIdx && b.nomeMis.toLowerCase() === nomeMis.toLowerCase());
+  if (duplicado !== -1) {
+    alert(`O Nome MIS "${nomeMis}" já está cadastrado.`);
+    return;
+  }
+
+  const registro = {
+    empresa, cidade, estado, deposito, regional, nomeMis,
+    empresaSap:     document.getElementById('base-empresaSap').value.trim(),
+    localExpedicao: document.getElementById('base-localExpedicao').value.trim(),
+    idHerrlog:      document.getElementById('base-idHerrlog').value.trim(),
+    cnpj:           document.getElementById('base-cnpj').value.trim(),
+    cidadeCnpj:     document.getElementById('base-cidadeCnpj').value.trim(),
+    razaoSocial:    document.getElementById('base-razaoSocial').value.trim(),
+  };
+
+  const isNovo = editingBaseIdx === null || editingBaseIdx === undefined;
+  if (isNovo) bases.push(registro);
+  else bases[editingBaseIdx] = registro;
+  fecharModalBase();
+  renderBasesTable();
+  await persistirBases();
+}
+
+async function removerBase(idx) {
+  const b = bases[idx];
+  if (!confirm(`Remover a base "${b.nomeMis}" do cadastro?`)) return;
+  bases.splice(idx, 1);
+  renderBasesTable();
+  await persistirBases();
+}
+
+async function persistirBases() {
+  if (!window._fb?.salvarBases) return;
+  try {
+    await window._fb.salvarBases(bases);
+  } catch (e) { console.error('Erro ao salvar bases:', e); }
+}
+
+const FORNECEDORES_SEED = [
+  {"origem": "EVO NARANDIBA", "baseAtendimento": "NARANDIBA", "cidade": "NARANDIBA", "uf": "SP", "cnpj": "61.149.589/0046-80", "codSap": "1000113"},
+  {"origem": "RZ ARARAQUARA", "baseAtendimento": "PIRACICABA", "cidade": "PIRACICABA", "uf": "SP", "cnpj": "08.070.508/0121-84", "codSap": "1000115"},
+  {"origem": "EVO UMOE", "baseAtendimento": "UMOE", "cidade": "SANDOVALINA", "uf": "SP", "cnpj": "61.149.589/0054-90", "codSap": "1000352"},
+  {"origem": "OLFAR ERECHIM", "baseAtendimento": "ERECHIM", "cidade": "ERECHIM", "uf": "RS", "cnpj": "91.830.836/0006-83", "codSap": "1000811"},
+  {"origem": "TRANSO COMBUSTIVEIS", "baseAtendimento": "PAULINIA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "01.136.600/0001-44", "codSap": "1001419"},
+  {"origem": "Idaza Distribuidora de Petróleo Ltda", "baseAtendimento": "Idaza Distribuidora de Petróleo Ltda", "cidade": "LAGES", "uf": "SC", "cnpj": "01.787.793/0018-41", "codSap": "1001445"},
+  {"origem": "ON PETRO", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "09.250.921/0006-91", "codSap": "1001662"},
+  {"origem": "SSOIL", "baseAtendimento": "PAULINIA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "05.759.383/0020-62", "codSap": "1001741"},
+  {"origem": "VITAL", "baseAtendimento": "CANOAS", "cidade": "CANOAS", "uf": "RS", "cnpj": "92.678.432/0008-40", "codSap": "1002414"},
+  {"origem": "POTENCIAL", "baseAtendimento": "LAPA", "cidade": "LAPA", "uf": "PR", "cnpj": "12.613.484/0001-23", "codSap": "1003900"},
+  {"origem": "PETROBRAS", "baseAtendimento": "RIBEIRÃO PRETO", "cidade": "RIBEIRAO PRETO", "uf": "SP", "cnpj": "33.000.167/0014-26", "codSap": "1003904"},
+  {"origem": "PETROBRAS", "baseAtendimento": "CUBATAO 2", "cidade": "CUBATAO", "uf": "SP", "cnpj": "33.000.167/0147-57", "codSap": "1003905"},
+  {"origem": "EVO JACAREZINHO", "baseAtendimento": "JACAREZINHO", "cidade": "JACAREZINHO", "uf": "PR", "cnpj": "61.149.589/0154-53", "codSap": "1003915"},
+  {"origem": "EVO NOVA LONDRINA", "baseAtendimento": "NOVA LONDRINA", "cidade": "NOVA LONDRINA", "uf": "PR", "cnpj": "61.149.589/0259-20", "codSap": "1003916"},
+  {"origem": "CPA", "baseAtendimento": "IVATÉ", "cidade": "IVATE", "uf": "PR", "cnpj": "75.717.355/0004-48", "codSap": "1003917"},
+  {"origem": "CPA", "baseAtendimento": "USACUCAR", "cidade": "MARINGA", "uf": "PR", "cnpj": "75.717.355/0005-29", "codSap": "1003918"},
+  {"origem": "NIMOFAST", "baseAtendimento": "CURITIBA", "cidade": "CURITIBA", "uf": "PR", "cnpj": "77.696.235/0001-94", "codSap": "1003919"},
+  {"origem": "BIANCHINI", "baseAtendimento": "CANOAS", "cidade": "CANOAS", "uf": "RS", "cnpj": "87.548.020/0002-60", "codSap": "1004059"},
+  {"origem": "3 TENTOS", "baseAtendimento": "IJUI", "cidade": "IJUI", "uf": "RS", "cnpj": "94.813.102/0017-37", "codSap": "1004061"},
+  {"origem": "RPR", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "94.845.674/0001-30", "codSap": "1004091"},
+  {"origem": "ECE SP", "baseAtendimento": "ECE - SP", "cidade": "SAO PAULO", "uf": "SP", "cnpj": "45.335.934/0001-12", "codSap": "1004258"},
+  {"origem": "CAMERA", "baseAtendimento": "IJUI", "cidade": "IJUI", "uf": "RS", "cnpj": "98.248.644/0026-56", "codSap": "1005117"},
+  {"origem": "ON PETRO", "baseAtendimento": "PAULÍNIA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "09.250.921/0013-10", "codSap": "1005370"},
+  {"origem": "SANTA LUCIA", "baseAtendimento": "ARARAS", "cidade": "ARARAS", "uf": "SP", "cnpj": "10.265.949/0002-58", "codSap": "1005372"},
+  {"origem": "OLEOPLAN", "baseAtendimento": "VERANOPOLIS", "cidade": "VERANOPOLIS", "uf": "RS", "cnpj": "88.676.127/0002-57", "codSap": "1005381"},
+  {"origem": "NEXTA", "baseAtendimento": "PAULINIA - RUFF", "cidade": "PAULINIA", "uf": "SP", "cnpj": "71.770.689/0012-34", "codSap": "1005436"},
+  {"origem": "Americanoil Distribuidora de Derivados", "baseAtendimento": "AMERCANOIL", "cidade": "LAGES", "uf": "SC", "cnpj": "01.973.067/0010-66", "codSap": "1006108"},
+  {"origem": "JBS", "baseAtendimento": "MAFRA", "cidade": "MAFRA", "uf": "SC", "cnpj": "02.914.460/0327-88", "codSap": "1006280"},
+  {"origem": "JBS", "baseAtendimento": "LINS", "cidade": "LINS", "uf": "SP", "cnpj": "02.916.265/0133-00", "codSap": "1006281"},
+  {"origem": "BRASKEM", "baseAtendimento": "TRIUNFO", "cidade": "TRIUNFO", "uf": "RS", "cnpj": "42.150.391/0038-62", "codSap": "1006344"},
+  {"origem": "BRASKEM", "baseAtendimento": "SANTO ANDRE", "cidade": "SANTO ANDRE", "uf": "SP", "cnpj": "42.150.391/0050-59", "codSap": "1006345"},
+  {"origem": "RZ ARARAQUARA", "baseAtendimento": "BONFIM", "cidade": "GUARIBA", "uf": "SP", "cnpj": "08.070.508/0065-32", "codSap": "1006356"},
+  {"origem": "CPA", "baseAtendimento": "COOPERVAL", "cidade": "JANDAIA DO SUL", "uf": "PR", "cnpj": "75.084.871/0001-30", "codSap": "1006485"},
+  {"origem": "SULPLATA", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "75.633.560/0001-82", "codSap": "1006539"},
+  {"origem": "SSOIL", "baseAtendimento": "COROADOS", "cidade": "COROADOS", "uf": "SP", "cnpj": "30.459.634/0001-78", "codSap": "1006619"},
+  {"origem": "PETROBRAS", "baseAtendimento": "PAULINIA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "33.000.167/0643-47", "codSap": "1006694"},
+  {"origem": "CPA", "baseAtendimento": "SAO CARLOS DO IVAI", "cidade": "SAO CARLOS DO IVAI", "uf": "PR", "cnpj": "78.340.270/0002-10", "codSap": "1006765"},
+  {"origem": "COCAMAR", "baseAtendimento": "MARINGA", "cidade": "MARINGA", "uf": "PR", "cnpj": "79.114.450/0256-64", "codSap": "1006900"},
+  {"origem": "EVO MELHORAMENTOS", "baseAtendimento": "JUSSARA", "cidade": "JUSSARA", "uf": "GO", "cnpj": "61.149.589/0221-58", "codSap": "1006911"},
+  {"origem": "CPA", "baseAtendimento": "TRES MORRINHOS", "cidade": "TERRA RICA", "uf": "PR", "cnpj": "75.717.355/0008-71", "codSap": "1006914"},
+  {"origem": "POTENCIAL", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "80.795.727/0002-22", "codSap": "1006983"},
+  {"origem": "POTENCIAL", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "06.278.750/0004-59", "codSap": "1006984"},
+  {"origem": "POTENCIAL", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "80.795.727/0016-28", "codSap": "1006989"},
+  {"origem": "CB BIOENERGIA", "baseAtendimento": "CB BIOENERGIA", "cidade": "SANTIAGO", "uf": "RS", "cnpj": "43.355.094/0001-24", "codSap": "1007201"},
+  {"origem": "INPASA", "baseAtendimento": "SINOP", "cidade": "SINOP", "uf": "MT", "cnpj": "29.316.596/0001-15", "codSap": "1008506"},
+  {"origem": "INPASA", "baseAtendimento": "DOURADOS", "cidade": "DOURADOS", "uf": "MS", "cnpj": "29.316.596/0002-04", "codSap": "1008507"},
+  {"origem": "ATVOS", "baseAtendimento": "NOVA ALVORADA DO SUL", "cidade": "NOVA ALVORADA", "uf": "RS", "cnpj": "08.906.558/0001-42", "codSap": "1008656"},
+  {"origem": "ATVOS", "baseAtendimento": "USINA ELDORADO", "cidade": "RIO BRILHANTE", "uf": "MS", "cnpj": "05.620.523/0002-35", "codSap": "1009078"},
+  {"origem": "ON PETRO", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "80.795.727/0016-28", "codSap": "1009774"},
+  {"origem": "SUL PLATA", "baseAtendimento": "CURITIBA", "cidade": "CURITIBA", "uf": "PR", "cnpj": "02.487.698/0001-47", "codSap": "1010223"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "07.857.168/0004-00", "codSap": "1011173"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "BIGUAÇU", "cidade": "BIGUACU", "uf": "SC", "cnpj": "07.857.168/0008-33", "codSap": "1011175"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "CUBATAO - SIM IPIRANGA", "cidade": "CUBATAO", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "GUARULHOS", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "GUARULHOS - ALE", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "PAULINIA - OPLA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "PAULINIA - RUFF Antigo", "cidade": "PAULINIA", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "PAULINIA - TORRÃO - SIM", "cidade": "PAULINIA", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "PAULINIA - TRANSO", "cidade": "PAULINIA", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "RIB PRETO", "cidade": "RIBEIRAO PRETO", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "SAO CAETANO - SIM IPIRANGA", "cidade": "SAO CAETANO DO SUL", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "SAO CAETANO - SIM VIBRA", "cidade": "SAO CAETANO DO SUL", "uf": "SP", "cnpj": "07.857.168/0013-09", "codSap": "1011178"},
+  {"origem": "IACO", "baseAtendimento": "PARAISO DA AGUAS", "cidade": "PARAISO DAS AGUAS", "uf": "MS", "cnpj": "07.895.728/0006-82", "codSap": "1011334"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "GASA", "cidade": "ANDRADINA", "uf": "SP", "cnpj": "08.070.508/0068-85", "codSap": "1011718"},
+  {"origem": "RZ ASSIS", "baseAtendimento": "IPAUSSU", "cidade": "IPAUSSU", "uf": "SP", "cnpj": "08.070.508/0069-66", "codSap": "1011719"},
+  {"origem": "PETROBRAS", "baseAtendimento": "BIGUACU", "cidade": "BIGUACU", "uf": "SC", "cnpj": "33.000.167/0017-79", "codSap": "1013494"},
+  {"origem": "PETROBRAS", "baseAtendimento": "GUARAMIRIM", "cidade": "GUARAMIRIM", "uf": "SC", "cnpj": "33.000.167/0028-21", "codSap": "1013495"},
+  {"origem": "PETROBRAS", "baseAtendimento": "ITAJAI", "cidade": "ITAJAI", "uf": "SC", "cnpj": "33.000.167/0045-22", "codSap": "1013496"},
+  {"origem": "PETROBRAS", "baseAtendimento": "CANOAS", "cidade": "CANOAS", "uf": "RS", "cnpj": "33.000.167/0102-55", "codSap": "1013497"},
+  {"origem": "PETROBRAS", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "33.000.167/0809-70", "codSap": "1013498"},
+  {"origem": "PETROBRAS", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "33.000.167/0850-00", "codSap": "1013499"},
+  {"origem": "PETROBRAS", "baseAtendimento": "SAO CAETANO DO SUL", "cidade": "SAO CAETANO DO SUL", "uf": "SP", "cnpj": "33.000.167/0956-50", "codSap": "1013520"},
+  {"origem": "PETROBRAS", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "33.000.167/1002-46", "codSap": "1013521"},
+  {"origem": "BSBIOS - PASSO FUNDO", "baseAtendimento": "PASSO FUNDO", "cidade": "PASSO FUNDO", "uf": "RS", "cnpj": "07.322.382/0001-19", "codSap": "1013530"},
+  {"origem": "BSBIOS - MARIALVA", "baseAtendimento": "MARIALVA", "cidade": "MARIALVA", "uf": "PR", "cnpj": "07.322.382/0004-61", "codSap": "1013531"},
+  {"origem": "CBL", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "03.649.445/0004-38", "codSap": "1013792"},
+  {"origem": "IPIRANGA", "baseAtendimento": "BAGE", "cidade": "BAGE", "uf": "RS", "cnpj": "33.337.122/0023-32", "codSap": "1013884"},
+  {"origem": "IPIRANGA", "baseAtendimento": "SANTA MARIA", "cidade": "SANTA MARIA", "uf": "RS", "cnpj": "34.274.233/0372-86", "codSap": "1013886"},
+  {"origem": "IPIRANGA", "baseAtendimento": "PASSO FUNDO", "cidade": "PASSO FUNDO", "uf": "RS", "cnpj": "33.337.122/0059-43", "codSap": "1013887"},
+  {"origem": "IPIRANGA", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "33.337.122/0096-98", "codSap": "1013888"},
+  {"origem": "IPIRANGA", "baseAtendimento": "CANOAS", "cidade": "CANOAS", "uf": "RS", "cnpj": "33.337.122/0159-06", "codSap": "1013889"},
+  {"origem": "RDP", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "00.209.895/0012-21", "codSap": "1013991"},
+  {"origem": "RAIZEN", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "33.453.598/0137-05", "codSap": "1014162"},
+  {"origem": "RZ IMPORTADO", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "33.453.598/0244-99", "codSap": "1014164"},
+  {"origem": "VIBRA", "baseAtendimento": "RIO DE JANEIRO", "cidade": "RIO DE JANEIRO", "uf": "RJ", "cnpj": "34.274.233/0001-02", "codSap": "1015071"},
+  {"origem": "VIBRA", "baseAtendimento": "SAO PAULO", "cidade": "SAO PAULO", "uf": "SP", "cnpj": "34.274.233/0059-10", "codSap": "1015072"},
+  {"origem": "VIBRA", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "34.274.233/0067-20", "codSap": "1015073"},
+  {"origem": "VIBRA", "baseAtendimento": "CANOAS", "cidade": "CANOAS", "uf": "RS", "cnpj": "34.274.233/0068-01", "codSap": "1015074"},
+  {"origem": "VIBRA", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "34.274.233/0262-41", "codSap": "1015075"},
+  {"origem": "VIBRA", "baseAtendimento": "IJUI", "cidade": "IJUI", "uf": "RS", "cnpj": "34.274.233/0286-19", "codSap": "1015076"},
+  {"origem": "VIBRA", "baseAtendimento": "LONDRINA", "cidade": "LONDRINA", "uf": "PR", "cnpj": "34.274.233/0333-70", "codSap": "1015077"},
+  {"origem": "VIBRA", "baseAtendimento": "ITAJAI", "cidade": "ITAJAI", "uf": "SC", "cnpj": "34.274.233/0372-86", "codSap": "1015078"},
+  {"origem": "RODOIL", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "07.520.438/0003-01", "codSap": "1015135"},
+  {"origem": "RODOIL", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "06.278.750/0004-59", "codSap": "1015136"},
+  {"origem": "RODOIL", "baseAtendimento": "Rodoil CB", "cidade": "CORONEL BARROS", "uf": "RS", "cnpj": "07.520.438/0015-45", "codSap": "1015139"},
+  {"origem": "RZ MS", "baseAtendimento": "CAARAPO", "cidade": "CAARAPO", "uf": "MS", "cnpj": "09.538.989/0001-66", "codSap": "1016299"},
+  {"origem": "RZ ASSIS", "baseAtendimento": "PARAGUACU", "cidade": "PARAGUACU PAULISTA", "uf": "SP", "cnpj": "09.538.989/0004-09", "codSap": "1016300"},
+  {"origem": "RZ ASSIS", "baseAtendimento": "MARACAI", "cidade": "MARACAI", "uf": "SP", "cnpj": "09.538.989/0006-70", "codSap": "1016301"},
+  {"origem": "RZ ASSIS", "baseAtendimento": "TARUMA", "cidade": "TARUMA", "uf": "SP", "cnpj": "09.538.989/0007-51", "codSap": "1016302"},
+  {"origem": "SANTA LUCIA", "baseAtendimento": "SANTA MARIA", "cidade": "SANTA MARIA", "uf": "RS", "cnpj": "06.278.750/0001-06", "codSap": "1017117"},
+  {"origem": "SANTA LUCIA", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "06.278.750/0003-78", "codSap": "1017118"},
+  {"origem": "SANTA LUCIA", "baseAtendimento": "RIO GRANDE", "cidade": "RIO GRANDE", "uf": "RS", "cnpj": "06.278.750/0004-59", "codSap": "1017119"},
+  {"origem": "EVO PARAGUAÇU", "baseAtendimento": "PARAGUAÇU", "cidade": "PARAGUACU PAULISTA", "uf": "SP", "cnpj": "10.265.949/0029-78", "codSap": "1017186"},
+  {"origem": "RZ MS", "baseAtendimento": "RIO BRILHANTE", "cidade": "RIO BRILHANTE", "uf": "MS", "cnpj": "15.527.906/0035-85", "codSap": "1017669"},
+  {"origem": "CPA", "baseAtendimento": "ASTORGA", "cidade": "ASTORGA", "uf": "PR", "cnpj": "03.345.641/0003-38", "codSap": "1017830"},
+  {"origem": "CPA", "baseAtendimento": "RIO AMAMBAÍ", "cidade": "NAVIRAI", "uf": "MS", "cnpj": "23.858.708/0001-83", "codSap": "1017971"},
+  {"origem": "RAIZEN", "baseAtendimento": "PONTE ALTA", "cidade": "BARRA BONITA", "uf": "SP", "cnpj": "05.495.024/0001-82", "codSap": "1019655"},
+  {"origem": "NEXTA", "baseAtendimento": "GUARULHOS - BAGUAR", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1019794"},
+  {"origem": "PETROBRAS", "baseAtendimento": "CUBATAO", "cidade": "CUBATAO", "uf": "SP", "cnpj": "33.000.167/0116-50", "codSap": "1019825"},
+  {"origem": "BOCCHI", "baseAtendimento": "MUITOS CAPOES", "cidade": "MUITOS CAPOES", "uf": "RS", "cnpj": "02.987.873/0010-56", "codSap": "1019827"},
+  {"origem": "BP", "baseAtendimento": "SÃO PAULO", "cidade": "PAULINIA", "uf": "SP", "cnpj": "31.864.869/0004-50", "codSap": "1019853"},
+  {"origem": "ECE PR", "baseAtendimento": "ECE PR", "cidade": "JACAREZINHO", "uf": "PR", "cnpj": "45.335.934/0008-99", "codSap": "1020360"},
+  {"origem": "GP DISTRIBUIDORA", "baseAtendimento": "GP ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "03.609.381/0008-75", "codSap": "1021573"},
+  {"origem": "EVO QUATA", "baseAtendimento": "QUATA", "cidade": "QUATA", "uf": "SP", "cnpj": "61.149.589/0102-22", "codSap": "1022255"},
+  {"origem": "RZ MS", "baseAtendimento": "PASSA TEMPO", "cidade": "RIO BRILHANTE", "uf": "MS", "cnpj": "15.527.906/0007-21", "codSap": "1022527"},
+  {"origem": "RZ ARARAQUARA", "baseAtendimento": "RAFARD", "cidade": "RAFARD", "uf": "SP", "cnpj": "08.070.508/0122-65", "codSap": "1022546"},
+  {"origem": "EVO IPE", "baseAtendimento": "NOVA INDEPENDENCIA", "cidade": "NOVA INDEPENDENCIA", "uf": "SP", "cnpj": "61.149.589/0041-76", "codSap": "1022579"},
+  {"origem": "RZ ASSIS", "baseAtendimento": "BARRA BONITA", "cidade": "BARRA BONITA", "uf": "SP", "cnpj": "08.070.508/0003-30", "codSap": "1022640"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "MUNDIAL", "cidade": "MIRANDOPOLIS", "uf": "SP", "cnpj": "08.070.508/0097-10", "codSap": "1022646"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "DESTILAVEM", "cidade": "ARACATUBA", "uf": "SP", "cnpj": "08.070.508/0066-13", "codSap": "1022647"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "BENALCOOL", "cidade": "BENTO DE ABREU", "uf": "SP", "cnpj": "08.070.508/0083-14", "codSap": "1022648"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "UNIVALEM", "cidade": "VALPARAISO", "uf": "SP", "cnpj": "08.070.508/0067-02", "codSap": "1022649"},
+  {"origem": "EVO SANTA MARIA", "baseAtendimento": "SANTA MARIA", "cidade": "SANTA MARIA", "uf": "RS", "cnpj": "61.149.589/0130-86", "codSap": "1022650"},
+  {"origem": "EVO FERRARI", "baseAtendimento": "FERRARI", "cidade": "PIRASSUNUNGA", "uf": "SP", "cnpj": "61.149.589/0048-42", "codSap": "1022651"},
+  {"origem": "EVO SÃO LUIZ", "baseAtendimento": "SÃO LUIZ", "cidade": "PIRASSUNUNGA", "uf": "SP", "cnpj": "61.149.589/0263-07", "codSap": "1022652"},
+  {"origem": "EVO SANTA LUCIA", "baseAtendimento": "SANTA LUCIA", "cidade": "ARARAS", "uf": "SP", "cnpj": "61.149.589/0128-61", "codSap": "1022653"},
+  {"origem": "RZ ARARAQUARA", "baseAtendimento": "COLOMBIA", "cidade": "COLOMBIA", "uf": "SP", "cnpj": "49.213.747/0129-80", "codSap": "1022745"},
+  {"origem": "SANTA LUCIA", "baseAtendimento": "SANTA LUCIA - ARAUCÁRIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "06.278.750/0006-10", "codSap": "1023004"},
+  {"origem": "RDP", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "00.209.895/0003-30", "codSap": "1023665"},
+  {"origem": "CIAPETRO", "baseAtendimento": "ESTEIO", "cidade": "ESTEIO", "uf": "RS", "cnpj": "01.466.091/0020-80", "codSap": "1023667"},
+  {"origem": "EVO CERRADÃO", "baseAtendimento": "CERRADAO", "cidade": "FRUTAL", "uf": "MG", "cnpj": "61.149.589/0052-29", "codSap": "1023813"},
+  {"origem": "RZ ARARAQUARA", "baseAtendimento": "SERTÃOZINHO", "cidade": "SERTAOZINHO", "uf": "SP", "cnpj": "49.213.747/0118-28", "codSap": "1023819"},
+  {"origem": "NEXTA", "baseAtendimento": "BETIM - NEXTA POTENCIAL", "cidade": "BETIM", "uf": "MG", "cnpj": "71.770.689/0016-68", "codSap": "1023853"},
+  {"origem": "PETROBRAS", "baseAtendimento": "BETIM", "cidade": "BETIM", "uf": "MG", "cnpj": "33.000.167/0093-20", "codSap": "1023873"},
+  {"origem": "EVO INTERLAGOS", "baseAtendimento": "INTERLAGOS", "cidade": "PEREIRA BARRETO", "uf": "SP", "cnpj": "61.149.589/0032-85", "codSap": "1023874"},
+  {"origem": "INPASA", "baseAtendimento": "NOVA MUTUM", "cidade": "NOVA MUTUM", "uf": "MT", "cnpj": "29.316.596/0004-68", "codSap": "1023930"},
+  {"origem": "INPASA", "baseAtendimento": "SIDROLANDIA", "cidade": "SIDROLANDIA", "uf": "MS", "cnpj": "29.316.596/0006-20", "codSap": "1023991"},
+  {"origem": "NEXTA", "baseAtendimento": "GUARULHOS - TORRÃO - CARBOPETRO", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1024268"},
+  {"origem": "EVO BURITIZAL", "baseAtendimento": "BURITIZAL", "cidade": "BURITIZAL", "uf": "SP", "cnpj": "61.149.589/0203-76", "codSap": "1024987"},
+  {"origem": "PETROBRAS", "baseAtendimento": "GUARULHOS", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "33.000.167/1090-30", "codSap": "1024994"},
+  {"origem": "RZ ARAÇATUBA", "baseAtendimento": "GASA - ANDRADINA", "cidade": "ANDRADINA", "uf": "SP", "cnpj": "13.687.183/0004-50", "codSap": "1025263"},
+  {"origem": "DIA'33", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "48.868.064/0001-35", "codSap": "1025363"},
+  {"origem": "3 TENTOS", "baseAtendimento": "VERA", "cidade": "VERA", "uf": "MT", "cnpj": "94.813.102/0050-58", "codSap": "1025763"},
+  {"origem": "Rodoil Lages", "baseAtendimento": "SANTA MARIA", "cidade": "SANTA MARIA", "uf": "RS", "cnpj": "07.520.438/0013-83", "codSap": "1025864"},
+  {"origem": "RODOBRAS", "baseAtendimento": "RODOBRAS", "cidade": "GOIANIA", "uf": "GO", "cnpj": "57.370.381/0001-18", "codSap": "1026095"},
+  {"origem": "VIBRA", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "44.321.374/0006-99", "codSap": "1026143"},
+  {"origem": "OLEOPLAN", "baseAtendimento": "LUCAS DO RIO VERDE", "cidade": "LUCAS DO RIO VERDE", "uf": "MT", "cnpj": "31.090.078/0001-78", "codSap": "1026410"},
+  {"origem": "EVO UBERABA", "baseAtendimento": "EVO - UBERABA", "cidade": "UBERABA", "uf": "MG", "cnpj": "61.149.589/0051-48", "codSap": "1026632"},
+  {"origem": "NEXTA", "baseAtendimento": "BARRA DO GARÇAS", "cidade": "BARRA DO GARCAS", "uf": "MT", "cnpj": "71.770.689/0008-58", "codSap": "1026848"},
+  {"origem": "EVO VALE", "baseAtendimento": "SUZANAPOLIS", "cidade": "SUZANAPOLIS", "uf": "SP", "cnpj": "61.149.589/0264-98", "codSap": "1026914"},
+  {"origem": "NEXTA", "baseAtendimento": "BETIM", "cidade": "BETIM", "uf": "MG", "cnpj": "71.770.689/0016-68", "codSap": "1026931"},
+  {"origem": "NEXTA", "baseAtendimento": "UBERLANDIA - TOTAL", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "71.770.689/0014-04", "codSap": "1026934"},
+  {"origem": "NEXTA", "baseAtendimento": "SEN. CANEDO - TESCAN", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "71.770.689/0006-96", "codSap": "1026935"},
+  {"origem": "NEXTA", "baseAtendimento": "RIB. PRETO", "cidade": "RIBEIRAO PRETO", "uf": "SP", "cnpj": "71.770.689/0018-20", "codSap": "1026936"},
+  {"origem": "NEXTA", "baseAtendimento": "PAULINIA TORRAO-NEXTA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "71.770.689/0012-34", "codSap": "1026937"},
+  {"origem": "NEXTA", "baseAtendimento": "S. J. CAMPOS - BAVAP", "cidade": "SAO JOSE DOS CAMPOS", "uf": "SP", "cnpj": "71.770.689/0019-00", "codSap": "1026940"},
+  {"origem": "NEXTA", "baseAtendimento": "CUBATAO - NEXTA IPIRANGA", "cidade": "CUBATAO", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1026941"},
+  {"origem": "NEXTA", "baseAtendimento": "GUARULHOS", "cidade": "GUARULHOS", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1026941"},
+  {"origem": "NEXTA", "baseAtendimento": "SAO CAETANO - VIBRA", "cidade": "SAO CAETANO DO SUL", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1026941"},
+  {"origem": "NEXTA", "baseAtendimento": "DUQUE DE CAXIAS", "cidade": "DUQUE DE CAXIAS", "uf": "RJ", "cnpj": "71.770.689/0009-39", "codSap": "1026942"},
+  {"origem": "ADM DO BRASIL", "baseAtendimento": "ADM DO BRASIL", "cidade": "RONDONOPOLIS", "uf": "MT", "cnpj": "02.003.402/0024-61", "codSap": "1026978"},
+  {"origem": "NIMOFAST", "baseAtendimento": "CAMPINAS", "cidade": "CAMPINAS", "uf": "SP", "cnpj": "77.696.235/0004-37", "codSap": "1026985"},
+  {"origem": "EVO SERRANA", "baseAtendimento": "SERRANA", "cidade": "SERRANA", "uf": "SP", "cnpj": "61.149.589/0112-02", "codSap": "1027094"},
+  {"origem": "ECE MG", "baseAtendimento": "ECE - MG", "cidade": "BETIM", "uf": "MG", "cnpj": "45.335.934/0045-33", "codSap": "1027157"},
+  {"origem": "RUFF", "baseAtendimento": "RUFF Itajaí", "cidade": "ITAJAI", "uf": "SC", "cnpj": "00.756.149/0022-20", "codSap": "1027271"},
+  {"origem": "EVO SANTA ADELIA", "baseAtendimento": "EVO SANTA ADELIA", "cidade": "JABOTICABAL", "uf": "SP", "cnpj": "61.149.589/0124-38", "codSap": "1027420"},
+  {"origem": "TERIN", "baseAtendimento": "PARANAGUA", "cidade": "PARANAGUA", "uf": "PR", "cnpj": "24.093.861/0001-20", "codSap": "1027586"},
+  {"origem": "AGT", "baseAtendimento": "AGT", "cidade": "ANAURILANDIA", "uf": "MS", "cnpj": "53.326.726/0001-85", "codSap": "1027720"},
+  {"origem": "FS COMERCIALIZAÇÃO", "baseAtendimento": "FS GOIAS", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "50.878.908/0002-51", "codSap": "1027762"},
+  {"origem": "FS COMERCIALIZAÇÃO", "baseAtendimento": "FS MT", "cidade": "LUCAS DO RIO VERDE", "uf": "MT", "cnpj": "50.878.908/0003-32", "codSap": "1027765"},
+  {"origem": "FS COMERCIALIZAÇÃO", "baseAtendimento": "COMERCIALIZADORA SP", "cidade": "SAO PAULO", "uf": "SP", "cnpj": "50.878.908/0001-70", "codSap": "1027766"},
+  {"origem": "NEXTA", "baseAtendimento": "PAULINIA - TORRAO", "cidade": "PAULINIA", "uf": "SP", "cnpj": "71.770.689/0012-34", "codSap": "1027906"},
+  {"origem": "EVO PEREIRA BARRETO", "baseAtendimento": "PEREIRA BARRETO", "cidade": "PEREIRA BARRETO", "uf": "SP", "cnpj": "10.265.949/0013-00", "codSap": "1028267"},
+  {"origem": "NEXTA", "baseAtendimento": "SAO CAETANO - NEXTA IPIRANGA", "cidade": "SAO CAETANO DO SUL", "uf": "SP", "cnpj": "71.770.689/0011-53", "codSap": "1028278"},
+  {"origem": "CARAMURU", "baseAtendimento": "IPAMERI", "cidade": "IPAMERI", "uf": "GO", "cnpj": "00.080.671/0021-53", "codSap": "1028296"},
+  {"origem": "BE8", "baseAtendimento": "NOVA MARILANDIA", "cidade": "NOVA MARILANDIA", "uf": "MT", "cnpj": "08.684.263/0001-79", "codSap": "1028338"},
+  {"origem": "SETTA", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "55.483.564/0011-96", "codSap": "1028474"},
+  {"origem": "RUMOS", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "10.767.247/0008-68", "codSap": "1028576"},
+  {"origem": "SADA", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "08.768.527/0009-20", "codSap": "1028684"},
+  {"origem": "BP", "baseAtendimento": "BP SANTA JU", "cidade": "SANTA JULIANA", "uf": "MG", "cnpj": "05.980.986/0001-27", "codSap": "1028685"},
+  {"origem": "FEDERAL", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "02.909.530/0004-25", "codSap": "1028924"},
+  {"origem": "CACHOEIRA", "baseAtendimento": "CACHOEIRA", "cidade": "TUPACIGUARA", "uf": "MG", "cnpj": "19.680.743/0001-88", "codSap": "1029009"},
+  {"origem": "AGRISA AGRO", "baseAtendimento": "SÃO JOAO", "cidade": "CABO FRIO", "uf": "RJ", "cnpj": "28.851.889/0002-10", "codSap": "1029233"},
+  {"origem": "NEXTA", "baseAtendimento": "DUQUE - VIBRA", "cidade": "DUQUE DE CAXIAS", "uf": "RJ", "cnpj": "71.770.689/0009-39", "codSap": "1030311"},
+  {"origem": "VALE DO PARACATU", "baseAtendimento": "VALE DO PARACATU", "cidade": "PARACATU", "uf": "MG", "cnpj": "07.459.492/0001-27", "codSap": "1030343"},
+  {"origem": "NEXTA", "baseAtendimento": "BETIM - RBZ", "cidade": "BETIM", "uf": "MG", "cnpj": "71.770.689/0016-68", "codSap": "1031166"},
+  {"origem": "NEXTA", "baseAtendimento": "UBERLANDIA - TRANSPETRO", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "71.770.689/0014-04", "codSap": "1031288"},
+  {"origem": "NEXTA", "baseAtendimento": "UBERABA - TRANSPETRO", "cidade": "UBERABA", "uf": "MG", "cnpj": "71.770.689/0015-87", "codSap": "1031289"},
+  {"origem": "COAGRO", "baseAtendimento": "COAGRO", "cidade": "CAMPOS DOS GOYTACAZES", "uf": "RJ", "cnpj": "05.500.757/0001-68", "codSap": "1031342"},
+  {"origem": "NEXTA", "baseAtendimento": "BRASILIA - TECTRAS", "cidade": "BRASILIA", "uf": "DF", "cnpj": "71.770.689/0020-44", "codSap": "1031376"},
+  {"origem": "BCI", "baseAtendimento": "BELO HORIZONTE", "cidade": "BELO HORIZONTE", "uf": "MG", "cnpj": "12.103.781/0006-33", "codSap": "1031596"},
+  {"origem": "NEXTA", "baseAtendimento": "V. GRANDE - PETROLUZ", "cidade": "VARZEA GRANDE", "uf": "MT", "cnpj": "71.770.689/0007-77", "codSap": "1031639"},
+  {"origem": "TEREOS", "baseAtendimento": "OLIMPIA", "cidade": "OLIMPIA", "uf": "SP", "cnpj": "47.080.619/0011-99", "codSap": "1031802"},
+  {"origem": "BCI", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "12.103.781/0003-90", "codSap": "1031820"},
+  {"origem": "AGROPEU AGRO", "baseAtendimento": "POMPEU", "cidade": "POMPEU", "uf": "MG", "cnpj": "16.617.789/0001-64", "codSap": "1031941"},
+  {"origem": "BAMBUI", "baseAtendimento": "BAMBUI", "cidade": "BAMBUI", "uf": "MG", "cnpj": "07.930.999/0002-06", "codSap": "1031944"},
+  {"origem": "AROEIRA", "baseAtendimento": "Aroeira", "cidade": "TUPACIGUARA", "uf": "MG", "cnpj": "08.355.201/0001-13", "codSap": "1031946"},
+  {"origem": "BIOENERGETICA", "baseAtendimento": "BIOENERGETICA", "cidade": "JOAO PINHEIRO", "uf": "MG", "cnpj": "08.793.343/0001-62", "codSap": "1031947"},
+  {"origem": "RAIZEN", "baseAtendimento": "MORRO AGUDO", "cidade": "MORRO AGUDO", "uf": "SP", "cnpj": "49.213.747/0001-17", "codSap": "1031949"},
+  {"origem": "BOM SUCESSO", "baseAtendimento": "BOM SUCESSO", "cidade": "GOIATUBA", "uf": "GO", "cnpj": "11.092.881/0001-34", "codSap": "1031960"},
+  {"origem": "BP", "baseAtendimento": "BP ITT", "cidade": "ITUIUTABA", "uf": "MG", "cnpj": "08.164.344/0001-48", "codSap": "1031961"},
+  {"origem": "BP - ITUMBIARA", "baseAtendimento": "BP ITUMBIARA", "cidade": "ITUMBIARA", "uf": "GO", "cnpj": "08.517.600/0001-33", "codSap": "1031962"},
+  {"origem": "BP", "baseAtendimento": "TROPICAL - BP", "cidade": "EDEIA", "uf": "GO", "cnpj": "08.195.806/0001-94", "codSap": "1031963"},
+  {"origem": "BRENCO", "baseAtendimento": "PEROLANDIA", "cidade": "PEROLANDIA", "uf": "GO", "cnpj": "08.070.566/0011-73", "codSap": "1031964"},
+  {"origem": "CACU", "baseAtendimento": "CACU", "cidade": "CACU", "uf": "GO", "cnpj": "07.996.345/0001-96", "codSap": "1031965"},
+  {"origem": "CAMBUI", "baseAtendimento": "CAMBUI", "cidade": "SANTA HELENA DE GOIAS", "uf": "GO", "cnpj": "09.022.388/0001-04", "codSap": "1031967"},
+  {"origem": "CARAMURU", "baseAtendimento": "SÃO SIMAO", "cidade": "SAO SIMAO", "uf": "GO", "cnpj": "00.080.671/0003-71", "codSap": "1031968"},
+  {"origem": "CIA AGRICOLA", "baseAtendimento": "PONTENOVENSE", "cidade": "URUCANIA", "uf": "MG", "cnpj": "23.796.998/0001-88", "codSap": "1031983"},
+  {"origem": "RAIZEN", "baseAtendimento": "IGARAPAVA", "cidade": "IGARAPAVA", "uf": "SP", "cnpj": "08.070.508/0124-27", "codSap": "1032001"},
+  {"origem": "DELTA", "baseAtendimento": "DELTA", "cidade": "DELTA", "uf": "MG", "cnpj": "13.537.735/0003-62", "codSap": "1032002"},
+  {"origem": "DELTA VOLTA GRANDE", "baseAtendimento": "DELTA VOLTA GRANDE", "cidade": "CONCEICAO DAS ALAGOAS", "uf": "MG", "cnpj": "13.537.735/0002-81", "codSap": "1032003"},
+  {"origem": "RIO DO CACHIMBO", "baseAtendimento": "RIO DO CACHIMBO", "cidade": "JOAO PINHEIRO", "uf": "MG", "cnpj": "21.783.238/0001-00", "codSap": "1032114"},
+  {"origem": "FLORESTA", "baseAtendimento": "SANTO ANTONIO DA BARRA", "cidade": "SANTO ANTONIO DA BARRA", "uf": "GO", "cnpj": "08.048.772/0001-05", "codSap": "1032186"},
+  {"origem": "RAIZEN", "baseAtendimento": "LAGOA DA PRATA", "cidade": "LAGOA DA PRATA", "uf": "MG", "cnpj": "13.687.183/0003-79", "codSap": "103220"},
+  {"origem": "GOIASA", "baseAtendimento": "GOIASA", "cidade": "GOIATUBA", "uf": "GO", "cnpj": "02.773.950/0001-84", "codSap": "1032201"},
+  {"origem": "JALLES", "baseAtendimento": "MATRIZ", "cidade": "GOIANESIA", "uf": "GO", "cnpj": "02.635.522/0001-95", "codSap": "1032209"},
+  {"origem": "JALLES", "baseAtendimento": "OTAVIO LAGE", "cidade": "GOIANESIA", "uf": "GO", "cnpj": "02.635.522/0049-30", "codSap": "1032220"},
+  {"origem": "LARCO", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "02.805.889/0009-67", "codSap": "1032226"},
+  {"origem": "OLFAR PORTO REAL", "baseAtendimento": "PORTO REAL", "cidade": "PORTO REAL", "uf": "RJ", "cnpj": "91.830.836/0040-85", "codSap": "1032266"},
+  {"origem": "LARCO", "baseAtendimento": "SENADOR CANEDO-COMERCIAL", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "02.805.889/0028-20", "codSap": "1032421"},
+  {"origem": "PETROEXPRESS", "baseAtendimento": "RIB PRETO", "cidade": "RIBEIRAO PRETO", "uf": "SP", "cnpj": "02.924.588/0011-77", "codSap": "1032431"},
+  {"origem": "NEXTA", "baseAtendimento": "SEN. CANEDO - CCO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "71.770.689/0006-96", "codSap": "1032434"},
+  {"origem": "SANTA VITORIA", "baseAtendimento": "SANTA VITORIA", "cidade": "SANTA VITORIA", "uf": "MG", "cnpj": "07.981.751/0001-85", "codSap": "1032458"},
+  {"origem": "CARGILL", "baseAtendimento": "BIOENERGIA", "cidade": "QUIRINOPOLIS", "uf": "GO", "cnpj": "10.249.419/0002-16", "codSap": "1032471"},
+  {"origem": "TEREOS", "baseAtendimento": "GUAIRA", "cidade": "GUAIRA", "uf": "SP", "cnpj": "47.080.619/0033-02", "codSap": "1032502"},
+  {"origem": "USINA ALTA MOGIANA", "baseAtendimento": "USINA ALTA MOGIANA", "cidade": "SAO JOAQUIM DA BARRA", "uf": "SP", "cnpj": "53.009.825/0001-33", "codSap": "1032525"},
+  {"origem": "BP", "baseAtendimento": "BP MOEMA", "cidade": "ORINDIUVA", "uf": "SP", "cnpj": "49.972.326/0001-70", "codSap": "1032626"},
+  {"origem": "USINA PANORAMA", "baseAtendimento": "USINA PANORAMA", "cidade": "ITUMBIARA", "uf": "GO", "cnpj": "08.704.527/0001-09", "codSap": "1032627"},
+  {"origem": "USINA RIO VERDE", "baseAtendimento": "USINA RIO VERDE", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "02.043.917/0001-07", "codSap": "1032628"},
+  {"origem": "USINA ITAMARATI", "baseAtendimento": "USINA ITAMARATI", "cidade": "NOVA OLIMPIA", "uf": "MT", "cnpj": "15.009.178/0001-70", "codSap": "1032700"},
+  {"origem": "VALE DO TIJUCO", "baseAtendimento": "VALE DO TIJUCO", "cidade": "UBERABA", "uf": "MG", "cnpj": "08.493.354/0001-27", "codSap": "1032705"},
+  {"origem": "VALE DO VERDAO", "baseAtendimento": "TURVELANDIA", "cidade": "TURVELANDIA", "uf": "GO", "cnpj": "02.859.452/0002-30", "codSap": "1032706"},
+  {"origem": "PETROBRAS", "baseAtendimento": "DUQUE DE CAXIAS", "cidade": "DUQUE DE CAXIAS", "uf": "RJ", "cnpj": "33.000.167/0088-62", "codSap": "1032716"},
+  {"origem": "WD-JOAO PINHEIRO", "baseAtendimento": "WD-JOAO PINHEIRO", "cidade": "JOAO PINHEIRO", "uf": "MG", "cnpj": "01.105.558/0001-02", "codSap": "1032720"},
+  {"origem": "DISTRI RIO BRANCO", "baseAtendimento": "DISTRI RIO BRANCO", "cidade": "BETIM", "uf": "MG", "cnpj": "01.256.137/0006-89", "codSap": "1032722"},
+  {"origem": "CIAPETRO", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "01.466.091/0010-09", "codSap": "1032723"},
+  {"origem": "CIAPETRO", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "01.466.091/0012-70", "codSap": "1032724"},
+  {"origem": "LARCO", "baseAtendimento": "UBERLANDIA-DI", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "02.805.889/0013-43", "codSap": "1032727"},
+  {"origem": "COOP", "baseAtendimento": "BURITI", "cidade": "BURITIZAL", "uf": "SP", "cnpj": "10.265.949/0025-44", "codSap": "1032742"},
+  {"origem": "INPASA", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "33.337.122/0231-78", "codSap": "1032745"},
+  {"origem": "TEREOS", "baseAtendimento": "COLINA", "cidade": "COLINA", "uf": "SP", "cnpj": "47.080.619/0062-39", "codSap": "1032748"},
+  {"origem": "PETROBRAS", "baseAtendimento": "SÃO JOSE DOS CAMPOS", "cidade": "SAO JOSE DOS CAMPOS", "uf": "SP", "cnpj": "33.000.167/0822-48", "codSap": "1032766"},
+  {"origem": "PETROBRAS", "baseAtendimento": "BRASILIA", "cidade": "BRASILIA", "uf": "DF", "cnpj": "33.000.167/0019-30", "codSap": "1032768"},
+  {"origem": "PETROBRAS", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "33.000.167/0021-55", "codSap": "1032780"},
+  {"origem": "PETROBRAS", "baseAtendimento": "UBERABA", "cidade": "UBERABA", "uf": "MG", "cnpj": "33.000.167/1103-90", "codSap": "1032782"},
+  {"origem": "COFCO", "baseAtendimento": "RONDONOPOLIS", "cidade": "RONDONOPOLIS", "uf": "MT", "cnpj": "06.315.338/0228-64", "codSap": "1032798"},
+  {"origem": "PETROBRAS", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "33.000.167/0022-36", "codSap": "1032805"},
+  {"origem": "JATAI", "baseAtendimento": "JATAI", "cidade": "JATAI", "uf": "GO", "cnpj": "08.070.508/0167-67", "codSap": "1032886"},
+  {"origem": "CARGILL", "baseAtendimento": "NOVOS HORIZONTES", "cidade": "ANAPOLIS", "uf": "GO", "cnpj": "50.290.329/0026-60", "codSap": "1032914"},
+  {"origem": "MINERVA", "baseAtendimento": "MINERVA-PALMEIRAS", "cidade": "PALMEIRAS DE GOIAS", "uf": "GO", "cnpj": "67.620.377/0047-05", "codSap": "1032915"},
+  {"origem": "BINATURAL ENERGIAS", "baseAtendimento": "FORMOSA", "cidade": "FORMOSA", "uf": "GO", "cnpj": "07.113.559/0001-77", "codSap": "1032916"},
+  {"origem": "PBIO", "baseAtendimento": "MONTES CLAROS", "cidade": "MONTES CLAROS", "uf": "MG", "cnpj": "10.144.628/0004-67", "codSap": "1032917"},
+  {"origem": "RAIZEN", "baseAtendimento": "BETIM", "cidade": "BETIM", "uf": "MG", "cnpj": "33.453.598/0108-62", "codSap": "1033010"},
+  {"origem": "PETROBRAS", "baseAtendimento": "RONDONOPOLIS", "cidade": "RONDONOPOLIS", "uf": "MT", "cnpj": "33.000.167/0126-22", "codSap": "1033254"},
+  {"origem": "CANAPOLIS", "baseAtendimento": "CANAPOLIS", "cidade": "CANAPOLIS", "uf": "MG", "cnpj": "28.144.326/0001-01", "codSap": "1033506"},
+  {"origem": "NARDINI", "baseAtendimento": "NARDINI-APORE", "cidade": "APORE", "uf": "GO", "cnpj": "48.708.267/0015-60", "codSap": "1033542"},
+  {"origem": "RUMOS", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "10.767.247/0003-53", "codSap": "1033547"},
+  {"origem": "FEDERAL", "baseAtendimento": "RIO VERDE", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "02.909.530/0022-07", "codSap": "1033560"},
+  {"origem": "EVO STO ANTONIO", "baseAtendimento": "EVO - STO ANTONIO", "cidade": "SERTAOZINHO", "uf": "SP", "cnpj": "61.149.589/0135-90", "codSap": "1033561"},
+  {"origem": "SETTA", "baseAtendimento": "RIO VERDE", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "55.483.564/0019-43", "codSap": "1033578"},
+  {"origem": "REJAILE", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "00.209.895/0010-60", "codSap": "1033611"},
+  {"origem": "LARCO", "baseAtendimento": "RIO VERDE", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "02.805.889/0030-44", "codSap": "1033666"},
+  {"origem": "ATVOS", "baseAtendimento": "ATVOS - UMV", "cidade": "MINEIROS", "uf": "GO", "cnpj": "08.070.566/0012-54", "codSap": "1033668"},
+  {"origem": "ATVOS", "baseAtendimento": "CAÇU", "cidade": "CACU", "uf": "GO", "cnpj": "08.598.391/0001-08", "codSap": "1033697"},
+  {"origem": "RUFF", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "00.756.149/0007-90", "codSap": "1033698"},
+  {"origem": "RUFF", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "00.756.149/0021-49", "codSap": "1033699"},
+  {"origem": "ATVOS", "baseAtendimento": "MIRANTE PARANAPANEMA", "cidade": "MIRANTE DO PARANAPANEMA", "uf": "SP", "cnpj": "07.298.800/0001-80", "codSap": "1033700"},
+  {"origem": "SETTA", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "55.483.564/0017-81", "codSap": "1033718"},
+  {"origem": "ATVOS", "baseAtendimento": "ALTO TAQUARI", "cidade": "ALTO TAQUARI", "uf": "MT", "cnpj": "08.070.566/0017-69", "codSap": "1033724"},
+  {"origem": "NEXTA", "baseAtendimento": "RIO VERDE - DTC", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "71.770.689/0006-96", "codSap": "1033737"},
+  {"origem": "LARCO", "baseAtendimento": "UBERLANDIA-MORADA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "02.805.889/0045-20", "codSap": "1033755"},
+  {"origem": "INTEGRACAO", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "44.248.274/0008-46", "codSap": "1033757"},
+  {"origem": "INTEGRACAO", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "44.248.274/0005-01", "codSap": "1033758"},
+  {"origem": "NEXTA", "baseAtendimento": "SEN. CANEDO - DTC", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "71.770.689/0006-96", "codSap": "1033772"},
+  {"origem": "PETROBAHIA", "baseAtendimento": "UBERLANDIA", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "01.125.282/0027-55", "codSap": "1033778"},
+  {"origem": "PETROBAHIA", "baseAtendimento": "SENADOR CANEDO", "cidade": "SENADOR CANEDO", "uf": "GO", "cnpj": "01.125.282/0021-60", "codSap": "1033780"},
+  {"origem": "CIAPETRO", "baseAtendimento": "RIO VERDE", "cidade": "RIO VERDE", "uf": "GO", "cnpj": "01.466.091/0031-33", "codSap": "1033827"},
+  {"origem": "NEXTA", "baseAtendimento": "DUQUE - IPIRANGA", "cidade": "DUQUE DE CAXIAS", "uf": "RJ", "cnpj": "71.770.689/0009-39", "codSap": "1033908"},
+  {"origem": "BIO SEV", "baseAtendimento": "BIO SEV - LAGOA", "cidade": "LAGOA DA PRATA", "uf": "MG", "cnpj": "15.527.906/0029-37", "codSap": "1034346"},
+  {"origem": "IPIRANGA", "baseAtendimento": "ARAUCARIA", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "33.337.122/0090-00", "codSap": "1035148"},
+  {"origem": "IPIRANGA", "baseAtendimento": "PAULÍNIA", "cidade": "PAULINIA", "uf": "SP", "cnpj": "33.337.122/0053-58", "codSap": "1035337"},
+  {"origem": "IPIRANGA", "baseAtendimento": "SANTOS", "cidade": "SANTOS", "uf": "SP", "cnpj": "33.337.122/0111-61", "codSap": "1035351"},
+  {"origem": "NEXTA", "baseAtendimento": "UBERLANDIA - NEXTA LIDERPETRO", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "71.770.689/0014-04", "codSap": "1035582"},
+  {"origem": "USINA LAGUNA", "baseAtendimento": "USINA LAGUNA", "cidade": "BATAYPORA", "uf": "MS", "cnpj": "07.912.062/0001-19", "codSap": "1035704"},
+  {"origem": "INPASA", "baseAtendimento": "INPASA LEM", "cidade": "LUIS EDUARDO MAGALHAES", "uf": "BA", "cnpj": "29.316.596/0010-06", "codSap": "1035917"},
+  {"origem": "ADECOAGRO", "baseAtendimento": "IVINHEMA", "cidade": "IVINHEMA", "uf": "MS", "cnpj": "07.903.169/0017-68", "codSap": "1036182"},
+  {"origem": "ADECOAGRO", "baseAtendimento": "ANGELICA", "cidade": "ANGELICA", "uf": "MS", "cnpj": "07.903.169/0001-09", "codSap": "1036184"},
+  {"origem": "PETROBRAS", "baseAtendimento": "CUBATÃO", "cidade": "CUBATAO", "uf": "SP", "cnpj": "33.000.167/0955-79", "codSap": "1036348"},
+  {"origem": "BE8", "baseAtendimento": "ALTO ARAGUAIA", "cidade": "ALTO ARAGUAIA", "uf": "MT", "cnpj": "63.228.664/0001-22", "codSap": "1037934"},
+  {"origem": "EVO CAETÉ", "baseAtendimento": "CAETE", "cidade": "PAULICEIA", "uf": "SP", "cnpj": "61.149.589/0268-11", "codSap": "1067157"},
+  {"origem": "EVO RIO BRILHANTE", "baseAtendimento": "RIO BRILHANTE", "cidade": "RIO BRILHANTE", "uf": "MS", "cnpj": "61.806.722/0001-22", "codSap": "1067159"},
+  {"origem": "BP", "baseAtendimento": "BP MOEMA PONTA PORÃ", "cidade": "PONTA PORA", "uf": "MS", "cnpj": "49.972.326/0038-61", "codSap": "1067165"},
+  {"origem": "AMERICANOIL", "baseAtendimento": "AMERICANOIL BIGUAÇU", "cidade": "BIGUACU", "uf": "SC", "cnpj": "01.973.067/0005-07", "codSap": "1068977"},
+  {"origem": "ULTRACARGO", "baseAtendimento": "ULTRACARGO SANTOS", "cidade": "SANTOS", "uf": "SP", "cnpj": "14.688.220/0011-36", "codSap": "1069246"},
+  {"origem": "CHARRUA", "baseAtendimento": "CHA - Araucaria", "cidade": "ARAUCARIA", "uf": "PR", "cnpj": "01.317.309/0012-25", "codSap": "2000250"},
+  {"origem": "CHARRUA", "baseAtendimento": "CHA - Betim", "cidade": "BETIM", "uf": "MG", "cnpj": "01.317.309/0016-59", "codSap": "2000280"},
+  {"origem": "CHARRUA", "baseAtendimento": "CUBATAO - CHARRUA IPIRANGA", "cidade": "CUBATAO", "uf": "SP", "cnpj": "01.317.309/0017-30", "codSap": "2000281"},
+  {"origem": "CHARRUA", "baseAtendimento": "PAULINIA - CHARRUA TORRÃO", "cidade": "PAULINIA", "uf": "SP", "cnpj": "01.317.309/0017-30", "codSap": "2000281"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "BETIM", "cidade": "BETIM", "uf": "MG", "cnpj": "07.857.168/0015-62", "codSap": "2000283"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "UBERLANDIA - SIM LIDERPETRO", "cidade": "UBERLANDIA", "uf": "MG", "cnpj": "07.857.168/0015-62", "codSap": "2000283"},
+  {"origem": "SIM DISTRIBUIDORA", "baseAtendimento": "PAULINIA - RUFF", "cidade": "PAULINIA", "uf": "SP", "cnpj": "07.857.168/0017-24", "codSap": "2000320"}
+];
+
+async function carregarFornecedoresFirebase() {
+  if (!window._fb?.carregarFornecedores) return;
+  try {
+    const raw = await window._fb.carregarFornecedores();
+    if (raw !== null && raw !== undefined) {
+      fornecedores = Array.isArray(raw) ? raw : Object.values(raw);
+    } else {
+      fornecedores = [...FORNECEDORES_SEED];
+      await window._fb.salvarFornecedores(fornecedores);
+    }
+  } catch (e) { console.error('Erro ao carregar fornecedores:', e); }
+}
+
+function renderFornecedoresTable() {
+  const busca = (document.getElementById('fFornecedoresBusca')?.value || '').toLowerCase().trim();
+  const filtered = fornecedores.filter(f =>
+    !busca || Object.values(f).join(' ').toLowerCase().includes(busca)
+  );
+
+  const isEmpty = fornecedores.length === 0;
+  document.getElementById('fornecedoresEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('fornecedoresContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  document.getElementById('badge-fornecedores').textContent =
+    filtered.length < fornecedores.length
+      ? `${filtered.length} de ${fornecedores.length} cadastrados`
+      : `${fornecedores.length} cadastrado${fornecedores.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('fornecedoresBody').innerHTML = filtered.map(f => {
+    const realIdx = fornecedores.indexOf(f);
+    return `
+    <tr>
+      <td style="white-space:normal">${esc(f.origem)}</td>
+      <td style="white-space:normal">${esc(f.baseAtendimento)}</td>
+      <td style="white-space:normal">${esc(f.cidade)}</td>
+      <td>${esc(f.uf)}</td>
+      <td style="font-family:monospace;white-space:normal">${esc(f.cnpj)}</td>
+      <td style="white-space:normal">${esc(f.codSap)}</td>
+      <td class="col-acao">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFornecedor(${realIdx})">✏️</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerFornecedor(${realIdx})">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalFornecedor(idx) {
+  editingFornecedorIdx = idx;
+  const isNovo = idx === null || idx === undefined;
+  document.getElementById('fornecedor-modal-title').textContent = isNovo ? 'Novo Fornecedor' : 'Editar Fornecedor';
+  const f = isNovo ? {} : fornecedores[idx];
+  document.getElementById('forn-origem').value = f.origem || '';
+  document.getElementById('forn-baseAtendimento').value = f.baseAtendimento || '';
+  document.getElementById('forn-cidade').value = f.cidade || '';
+  document.getElementById('forn-uf').value = f.uf || '';
+  document.getElementById('forn-cnpj').value = f.cnpj || '';
+  document.getElementById('forn-codSap').value = f.codSap || '';
+  document.getElementById('modalFornecedor').classList.add('open');
+  setTimeout(() => document.getElementById('forn-origem').focus(), 100);
+}
+
+function fecharModalFornecedor() {
+  document.getElementById('modalFornecedor').classList.remove('open');
+  editingFornecedorIdx = null;
+}
+
+async function salvarFornecedor() {
+  const origem = document.getElementById('forn-origem').value.trim();
+  const baseAtendimento = document.getElementById('forn-baseAtendimento').value.trim();
+  const cidade = document.getElementById('forn-cidade').value.trim();
+  const uf = document.getElementById('forn-uf').value.trim();
+  if (!origem || !baseAtendimento || !cidade || !uf) {
+    alert('Preencha Origem, Base de Atendimento, Cidade e UF.');
+    return;
+  }
+
+  const duplicado = fornecedores.findIndex((f, i) =>
+    i !== editingFornecedorIdx &&
+    f.origem.toLowerCase() === origem.toLowerCase() &&
+    f.baseAtendimento.toLowerCase() === baseAtendimento.toLowerCase()
+  );
+  if (duplicado !== -1) {
+    alert(`A combinação "${origem}" / "${baseAtendimento}" já está cadastrada.`);
+    return;
+  }
+
+  const registro = {
+    origem, baseAtendimento, cidade, uf,
+    cnpj:   document.getElementById('forn-cnpj').value.trim(),
+    codSap: document.getElementById('forn-codSap').value.trim(),
+  };
+
+  const isNovo = editingFornecedorIdx === null || editingFornecedorIdx === undefined;
+  if (isNovo) fornecedores.push(registro);
+  else fornecedores[editingFornecedorIdx] = registro;
+  fecharModalFornecedor();
+  renderFornecedoresTable();
+  await persistirFornecedores();
+}
+
+async function removerFornecedor(idx) {
+  const f = fornecedores[idx];
+  if (!confirm(`Remover o fornecedor "${f.origem} / ${f.baseAtendimento}" do cadastro?`)) return;
+  fornecedores.splice(idx, 1);
+  renderFornecedoresTable();
+  await persistirFornecedores();
+}
+
+async function persistirFornecedores() {
+  if (!window._fb?.salvarFornecedores) return;
+  try {
+    await window._fb.salvarFornecedores(fornecedores);
+  } catch (e) { console.error('Erro ao salvar fornecedores:', e); }
 }
 
 function renderTransportadoresTable() {
@@ -4135,6 +5124,33 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   renderViagensTable();
 }
 
+function salvarVolumeInline(realIdx, valorInput) {
+  const v = viagens[realIdx];
+  const anterior = v.volume;
+  const valor = valorInput.trim().replace(',', '.');
+  const novo = parseFloat(valor);
+  if (!valor || isNaN(novo) || novo <= 0) {
+    alert('Volume inválido. Informe um número maior que zero.');
+    renderViagensTable();
+    return;
+  }
+  const novoArred = +novo.toFixed(1);
+  if (novoArred === anterior) return;
+  v.volume = novoArred;
+  v.volumeAjustadoManualmente = true;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Volume ajustado: ${anterior} m³ → ${novoArred} m³`,
+  });
+  if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+    v.alertaProgramacao = true;
+  }
+  agendarAutosave();
+  renderViagensTable();
+}
+
 function salvarViagem() {
   if (editingIdx === null) return;
   const statusAnterior = viagens[editingIdx].status;
@@ -4179,8 +5195,14 @@ function gerarOrdemRetirada(idx) {
   const transpRazao = cnpjEntry?.razaoSocial || v.transportador || '—';
   const transpCnpj  = cnpjEntry?.cnpj || '—';
 
+  // Destinatário: nomes/cidade comerciais (Nome MIS) podem repetir o mesmo CNPJ entre bases —
+  // o fornecedor que recebe o PDF precisa da razão social e cidade registradas no CNPJ (cadastro de Bases).
+  const baseDestino   = bases.find(b => b.nomeMis === v.destino) || bases.find(b => b.cnpj === v.cnpjDestino);
+  const destinatario  = baseDestino?.razaoSocial || v.destino || '—';
+  const cnpjDestino   = v.cnpjDestino || baseDestino?.cnpj || '—';
+  const cidadeDest    = baseDestino?.cidadeCnpj || (v.destino ? v.destino.split(' - ')[0].trim() : '—');
+
   const localCarreg  = [v.origem, v.base].filter(Boolean).join(' - ') || '—';
-  const cidadeDest   = v.destino ? v.destino.split(' - ')[0].trim() : '—';
   const dtCarreg     = (v.dtCarreg && v.dtCarreg !== '-') ? v.dtCarreg : '—';
   const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -4211,7 +5233,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 .sec-lbl{flex:1;background:#d0d0d0;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:.5px;padding:5px 10px;text-align:center}
 .sec-val{flex:1;text-align:center;padding:8px 10px;font-size:12px;font-weight:bold}
 .w170{width:170px;flex-shrink:0}
-.obs-box{min-height:60px;padding:8px 10px;font-size:11px;color:#999;font-style:italic}
+.obs-box{min-height:60px;padding:8px 10px;font-size:11px;color:#000;white-space:pre-wrap}
 .conf-row{display:flex;border-top:1px solid #000}
 .conf-cell{flex:1;padding:8px 14px;text-align:center;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.4px}
 .conf-line{margin-bottom:4px;border-bottom:1px solid #000;height:28px}
@@ -4281,11 +5303,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
   </div>
   <div class="r">
     <div class="c lbl br w170">DESTINATARIO</div>
-    <div class="c val ctr f1">${e(v.destino || '—')}</div>
+    <div class="c val ctr f1">${e(destinatario)}</div>
   </div>
   <div class="r">
     <div class="c lbl br w170">CNPJ DESTINATARIO</div>
-    <div class="c val ctr f1">${e(v.cnpjDestino || '—')}</div>
+    <div class="c val ctr f1">${e(cnpjDestino)}</div>
   </div>
   <div class="r">
     <div class="c lbl br w170">CIDADE DESTINATARIO</div>
@@ -4305,7 +5327,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
   </div>
 
   <div class="r"><div class="sec-lbl">OBSERVAÇÕES</div></div>
-  <div class="r"><div class="obs-box"></div></div>
+  <div class="r"><div class="obs-box">${e(v.obs || '')}</div></div>
 
 </div>
 <script>window.onload=()=>window.print();<\/script>
@@ -4538,6 +5560,83 @@ zone.addEventListener('drop', e => {
   if (file) processarArquivo(file);
 });
 
+// ── Upload xlsx Fornecedores (modelo "dados origens") ──
+function processarArquivoFornecedores(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      let headerIdx = -1;
+      for (let i = 0; i < rows.length; i++) {
+        const first = String(rows[i][0] || '').trim();
+        if (first === 'Origem') { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        alert('Não foi possível encontrar o cabeçalho da planilha.\nVerifique se a coluna "Origem" existe.');
+        return;
+      }
+
+      const headers = rows[headerIdx].map(h => String(h).trim());
+      const col = (nome) => headers.indexOf(nome);
+
+      const idxOrigem = col('Origem');
+      const idxBase   = col('Base de Atendimento');
+      const idxCidade = col('Cidade');
+      const idxUf     = col('UF');
+      const idxCnpj   = col('CNPJ');
+      const idxSap    = col('Cód. SAP');
+
+      let importados = 0, atualizados = 0;
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const origem = String(r[idxOrigem] || '').trim();
+        const baseAtendimento = String(r[idxBase] || '').trim();
+        if (!origem || !baseAtendimento) continue;
+
+        const registro = {
+          origem,
+          baseAtendimento,
+          cidade: String(r[idxCidade] || '').trim(),
+          uf:     String(r[idxUf]     || '').trim().toUpperCase(),
+          cnpj:   mascaraCNPJ(String(r[idxCnpj] || '').trim()),
+          codSap: idxSap >= 0 ? String(r[idxSap] || '').trim() : '',
+        };
+
+        const existenteIdx = fornecedores.findIndex(f =>
+          f.origem.toLowerCase() === origem.toLowerCase() &&
+          f.baseAtendimento.toLowerCase() === baseAtendimento.toLowerCase()
+        );
+        if (existenteIdx >= 0) { fornecedores[existenteIdx] = registro; atualizados++; }
+        else { fornecedores.push(registro); importados++; }
+      }
+
+      if (importados === 0 && atualizados === 0) {
+        alert('Nenhuma linha de dados encontrada na planilha.');
+        return;
+      }
+
+      renderFornecedoresTable();
+      persistirFornecedores();
+
+      mostrarStatus('saved', `${importados} novo(s) e ${atualizados} atualizado(s) a partir de "${file.name}"`);
+    } catch(err) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('fileInputFornecedores').addEventListener('change', function(e) {
+  processarArquivoFornecedores(e.target.files[0]);
+  e.target.value = '';
+});
+
 document.getElementById('modalOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
@@ -4555,6 +5654,9 @@ document.getElementById('modalTransportador').addEventListener('click', function
 });
 document.getElementById('modalTrocarSenha').addEventListener('click', function(e) {
   if (e.target === this) fecharModalTrocarSenha();
+});
+document.getElementById('modalFornecedor').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalFornecedor();
 });
 
 // ── INIT: restaurar sessão ao abrir ──
@@ -4689,7 +5791,9 @@ async function iniciarFirebase() {
   try {
 await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
-  
+  await carregarBasesFirebase();
+  await carregarFornecedoresFirebase();
+
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
     mostrarStatus('', 'Pronto — crie uma nova semana para começar');
@@ -4715,9 +5819,6 @@ await carregarUsuariosFirebase();
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
-  if (!sessionStorage.getItem(AUTH_STORAGE_KEY)) {
-    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
-  }
 
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
@@ -4727,7 +5828,22 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
 
-  mostrarStatus('', '');
+  if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
+    mostrarStatus('saving', 'Reconectando...');
+    const tentarReconectar = (tentativas = 0) => {
+      if (window._fb) {
+        iniciarFirebase();
+      } else if (tentativas < 20) {
+        setTimeout(() => tentarReconectar(tentativas + 1), 200);
+      } else {
+        mostrarStatus('saving', 'Erro ao reconectar. Recarregue a página.');
+      }
+    };
+    tentarReconectar();
+  } else {
+    mostrarStatus('', '');
+    setTimeout(() => document.getElementById('login-usuario')?.focus(), 50);
+  }
 });
 </script>
 </body>
