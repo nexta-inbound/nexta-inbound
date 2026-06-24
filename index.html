@@ -2309,27 +2309,30 @@ function renderHistoricoProgramacao(v) {
 
 async function carregarUsuariosFirebase(mostrarFeedback = false) {
   const info = document.getElementById('adminInfo');
-  if (!window._fb?.carregarUsuarios) {
-    if (mostrarFeedback && info) info.textContent = 'Firebase ainda não está pronto.';
+  const list = document.getElementById('adminUsersList');
+  if (!window._fb?.listarPerfis) {
+    if (list) list.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Firebase não está pronto.</div>';
     return _usuariosAtivos;
   }
   try {
-    const raw = await window._fb.carregarUsuarios();
-    const usuarios = normalizarUsuarios(raw);
-    if (usuarios.length) {
-      _usuariosAtivos = usuarios;
-      if (mostrarFeedback && info) info.textContent = `${usuarios.length} usuário(s) carregado(s) do Firebase.`;
-    } else {
-      _usuariosAtivos = [...USUARIOS_CONFIG];
-      await salvarUsuariosFirebase();
-      if (mostrarFeedback && info) info.textContent = 'Usuários iniciais enviados ao Firebase.';
-    }
+    const perfis = await window._fb.listarPerfis();
+    const lista = Object.entries(perfis || {}).map(([uid, p]) => ({
+      login: p.email || uid,
+      uid,
+      nome: p.nome || p.email || uid,
+      admin: !!p.admin,
+      tipo: p.tipo || 'staff',
+      transportadorNome: p.transportadorNome || '',
+    }));
+    _usuariosAtivos = lista;
+    if (mostrarFeedback && info) info.textContent = lista.length + ' usuário(s) carregado(s).';
     window._fbPerfisBuscados = true;
     renderAdminUsuarios();
     validarSessaoAtual();
   } catch (e) {
     window._fbPerfisBuscados = true;
-    if (mostrarFeedback && info) info.textContent = 'Erro ao carregar usuários: ' + e.message;
+    if (list) list.innerHTML = '<div style="font-size:12px;color:var(--danger)">Erro: ' + e.message + '</div>';
+    console.error('carregarUsuariosFirebase:', e);
   }
   return _usuariosAtivos;
 }
