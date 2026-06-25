@@ -511,6 +511,9 @@
   .stat-card.c-danger { border-color: rgba(255,107,95,0.30); }
   .stat-card.c-danger.has-alert { border-color: rgba(255,107,95,0.58); background: rgba(255,107,95,0.08); }
   .stat-card.c-warn.has-alert { border-color: rgba(249,115,22,0.58); background: rgba(249,115,22,0.08); }
+  .stat-card.clickable { cursor: pointer; }
+  .stat-card.clickable:hover { border-color: var(--accent); }
+  .stat-card.indicador-ativo { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
   .stat-label { font-family: var(--font-cond); font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
   .stat-sub  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
   .stat-val { font-family: var(--font-cond); font-size: 28px; font-weight: 700; }
@@ -1532,22 +1535,22 @@
     <div id="kpiCardsWrap">
     <div class="kpi-group-label">⚡ Alertas Operacionais <span id="kpi-filter-badge" style="display:none;font-size:9px;color:var(--accent);background:var(--accent-dim);padding:1px 7px;border-radius:8px;margin-left:6px;letter-spacing:0">filtrado</span></div>
     <div class="stats-row" id="kpi-alertas">
-      <div class="stat-card c-danger" id="kpi-backlog">
+      <div class="stat-card c-danger clickable" id="kpi-backlog" onclick="filtrarPorIndicador('backlog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🔴 Backlog (vencido)</div>
         <div class="stat-val" id="sv-backlog">0</div>
         <div class="stat-sub" id="sub-backlog">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-warn" id="kpi-critico">
+      <div class="stat-card c-warn clickable" id="kpi-critico" onclick="filtrarPorIndicador('critico')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🟠 Crítico (hoje)</div>
         <div class="stat-val" id="sv-critico">0</div>
         <div class="stat-sub" id="sub-critico">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-accent" id="kpi-alerta">
+      <div class="stat-card c-accent clickable" id="kpi-alerta" onclick="filtrarPorIndicador('alerta')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🟡 Alerta (D+1 / D+2)</div>
         <div class="stat-val" id="sv-alerta">0</div>
         <div class="stat-sub" id="sub-alerta">0 sem aceite de transportador</div>
       </div>
-      <div class="stat-card c-success" id="kpi-atencao">
+      <div class="stat-card c-success clickable" id="kpi-atencao" onclick="filtrarPorIndicador('atencao')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🟢 Atenção (D+3 ou mais)</div>
         <div class="stat-val" id="sv-atencao">0</div>
         <div class="stat-sub" id="sub-atencao">0 sem aceite de transportador</div>
@@ -1555,27 +1558,27 @@
     </div>
     <div class="kpi-group-label">📊 Volumes</div>
     <div class="stats-row" style="grid-template-columns:repeat(5, 1fr)">
-      <div class="stat-card c-muted">
+      <div class="stat-card c-muted clickable" id="kpi-vol-pendente" onclick="filtrarPorIndicador('vol-pendente')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label" id="lbl-vol-pendente">📦 Volume Pendente</div>
         <div class="stat-val" id="sv-vol-pendente">0</div>
         <div class="stat-sub" id="sub-vol-pendente">m³ no pool Sem Transportador (Backlog + Recusado)</div>
       </div>
-      <div class="stat-card c-accent">
+      <div class="stat-card c-accent clickable" id="kpi-vol-ofertado" onclick="filtrarPorIndicador('vol-ofertado')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">📤 Ofertado</div>
         <div class="stat-val" id="sv-vol-ofertado">0</div>
         <div class="stat-sub">m³ Ofertado</div>
       </div>
-      <div class="stat-card c-accent">
+      <div class="stat-card c-accent clickable" id="kpi-vol-aceito" onclick="filtrarPorIndicador('vol-aceito')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🤝 Aceito</div>
         <div class="stat-val" id="sv-vol-aceito">0</div>
         <div class="stat-sub">m³ Aceito</div>
       </div>
-      <div class="stat-card c-success">
+      <div class="stat-card c-success clickable" id="kpi-vol-conf" onclick="filtrarPorIndicador('vol-conf')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ Volume Confirmado</div>
         <div class="stat-val" id="sv-vol-conf">0</div>
         <div class="stat-sub">m³ com Placa Enviada</div>
       </div>
-      <div class="stat-card c-accent">
+      <div class="stat-card c-accent clickable" id="kpi-vol-taxa" onclick="filtrarPorIndicador('taxa')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label" id="lbl-taxa">📈 Taxa de Alocação</div>
         <div class="stat-val" id="sv-taxa">0%</div>
         <div class="stat-sub" id="sub-taxa">Viagens fora do pool Sem Transportador</div>
@@ -3362,6 +3365,7 @@ let viagens = [];
 let semanaAtiva = null;
 window._fbUnsub = null;
 let activeFilter = 'todos';
+let activeIndicador = null;
 let activeFilterExport = 'pendente';
 let activeTab = 0;
 let editingIdx = null;
@@ -4123,6 +4127,53 @@ function updateKPIs(list) {
       : viagens.length;
     badge.style.display = list.length < totalEscopo ? 'inline' : 'none';
   }
+
+  const indicadorIds = {
+    backlog: 'kpi-backlog', critico: 'kpi-critico', alerta: 'kpi-alerta', atencao: 'kpi-atencao',
+    'vol-pendente': 'kpi-vol-pendente', 'vol-ofertado': 'kpi-vol-ofertado', 'vol-aceito': 'kpi-vol-aceito',
+    'vol-conf': 'kpi-vol-conf', taxa: 'kpi-vol-taxa',
+  };
+  Object.values(indicadorIds).forEach(id => document.getElementById(id)?.classList.remove('indicador-ativo'));
+  if (activeIndicador) document.getElementById(indicadorIds[activeIndicador])?.classList.add('indicador-ativo');
+}
+
+// Replica, como predicado por viagem, a mesma lógica de cada card de indicador
+// (ver updateKPIs) — clicar no card filtra a tabela exatamente pelo que ele exibe.
+function testeIndicador(key) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
+  const transportador = isTransportador();
+  const RESOLVIDOS = ['Placa Enviada', 'Frota Dedicada', 'CIF'];
+  const bucket = filtroData => v => {
+    if (v.status === 'Cancelado' || RESOLVIDOS.includes(v.status)) return false;
+    const d = parseDMY(v.dtCarreg);
+    return !!d && filtroData(d);
+  };
+  switch (key) {
+    case 'backlog': return bucket(d => d < hoje);
+    case 'critico': return bucket(d => d.getTime() === hoje.getTime());
+    case 'alerta':  return bucket(d => d > hoje && d <= d2);
+    case 'atencao': return bucket(d => d > d2);
+    case 'vol-ofertado': return v => v.status === 'Ofertado';
+    case 'vol-aceito':   return v => v.status === 'Aceito';
+    case 'vol-conf':     return v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status);
+    case 'vol-pendente':
+      return transportador
+        ? v => v.status !== 'Cancelado'
+        : v => ['Backlog', 'Recusado'].includes(v.status);
+    case 'taxa':
+      return transportador
+        ? v => ['Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(v.status)
+        : v => !['Backlog', 'Recusado'].includes(v.status);
+    default: return () => true;
+  }
+}
+
+function filtrarPorIndicador(key) {
+  activeIndicador = activeIndicador === key ? null : key;
+  activeFilter = 'todos';
+  document.querySelectorAll('#filterChips .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  renderViagensTable();
 }
 
 // ── VIAGENS TABLE ──
@@ -4137,6 +4188,7 @@ function estadoFiltrosViagem() {
     produtos: new Set(msVProduto?.getSelected() || []),
     origens: new Set(msVOrigem?.getSelected() || []),
     destinos: new Set(msVDestino?.getSelected() || []),
+    indicadorTest: activeIndicador ? testeIndicador(activeIndicador) : null,
   };
 }
 
@@ -4144,6 +4196,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
   if (isTransportador() && v.status === 'Backlog') return false;
   if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
+  if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
@@ -4198,8 +4251,15 @@ function renderViagensTable() {
 
   let filtered = viagens.filter(v => passaFiltrosViagem(v, filtrosViagem));
 
+  // KPIs sempre calculados ignorando o próprio filtro de indicador: assim, ao clicar
+  // num card, os demais cards do grupo continuam mostrando o total real (não "congelam"
+  // em 0 só porque a tabela foi restrita ao card clicado).
+  const paraKpis = activeIndicador
+    ? viagens.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
+    : filtered;
+
   currentFilteredIdxs = filtered.map(v => viagens.indexOf(v));
-  updateKPIs(filtered);
+  updateKPIs(paraKpis);
   updatePipeline(filtered);
   const tbody = document.getElementById('viagensBody');
   tbody.innerHTML = '';
@@ -4339,6 +4399,7 @@ function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear();
   activeFilter = 'todos';
+  activeIndicador = null;
   document.querySelectorAll('#filterChips .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
   renderViagensTable();
 }
@@ -5440,6 +5501,7 @@ function aplicarVeiculoDedicadoSelecionado(veiculoId) {
 
 function filterViagens(f, el) {
   activeFilter = f;
+  activeIndicador = null;
   document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   renderViagensTable();
