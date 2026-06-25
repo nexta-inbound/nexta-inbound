@@ -20,6 +20,7 @@
     --pet-blue: #2255CC;
     --pet-blue-bg: #EEF3FF;
     --pet-purple: #7C3AED;
+    --pet-teal: #14B8A6;
     --pet-navy: #111A0A;
     --pet-navy-mid: #1C2E10;
 
@@ -196,18 +197,21 @@
   .pipe-step.cancel .pipe-icon { border-color: var(--danger); background: var(--danger-dim); }
   .pipe-step.recusado .pipe-icon { border-color: var(--pet-purple); background: rgba(124,58,237,0.14); }
   .pipe-step.cif .pipe-icon { border-color: var(--pet-blue); background: rgba(34,85,204,0.14); }
+  .pipe-step.frota .pipe-icon { border-color: var(--pet-teal); background: rgba(20,184,166,0.14); }
   .pipe-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .pipe-step.active .pipe-label { color: var(--accent); }
   .pipe-step.done .pipe-label { color: var(--success); }
   .pipe-step.cancel .pipe-label { color: var(--danger); }
   .pipe-step.recusado .pipe-label { color: var(--pet-purple); }
   .pipe-step.cif .pipe-label { color: var(--pet-blue); }
+  .pipe-step.frota .pipe-label { color: var(--pet-teal); }
   .pipe-count { font-size: 17px; font-family: var(--font-cond); font-weight: 700; color: var(--text); }
   .pipe-step.active .pipe-count { color: var(--accent); }
   .pipe-step.done .pipe-count { color: var(--success); }
   .pipe-step.cancel .pipe-count { color: var(--danger); }
   .pipe-step.recusado .pipe-count { color: var(--pet-purple); }
   .pipe-step.cif .pipe-count { color: var(--pet-blue); }
+  .pipe-step.frota .pipe-count { color: var(--pet-teal); }
 
   /* ── TABS ── */
   .tabs-bar {
@@ -396,29 +400,56 @@
   .btn-danger:hover { background: var(--danger); color: white; }
 
   /* ── STATUS CHIPS ── */
-  .status {
+  /* "Segmentado": pílula com borda + fundo tintado na cor do status — Status (span) e Agendamento (select)
+     compartilham o mesmo tratamento visual via variáveis CSS, para não duplicar a cor de cada estado. */
+  .status, select.sel-status {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    font-size: 13px;
+    gap: 6px;
+    font-size: 11px;
     font-weight: 700;
-    line-height: 1;
+    line-height: 1.3;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 2px solid var(--st-border, var(--border-dk));
+    background: var(--st-bg, var(--panel-soft));
+    color: var(--st-color, var(--text-muted));
+    white-space: nowrap;
   }
-  .status::before { content:''; width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-  .status-backlog { color: var(--text-muted); }
-  .status-backlog::before { background: var(--text-muted); }
-  .status-ofertado { color: var(--accent2); }
-  .status-ofertado::before { background: var(--accent2); }
-  .status-aceito { color: var(--success); }
-  .status-aceito::before { background: var(--success); }
-  .status-placa { color: var(--accent); }
-  .status-placa::before { background: var(--accent); }
-  .status-cancelado { color: var(--danger); }
-  .status-cancelado::before { background: var(--danger); }
-  .status-recusado { color: var(--pet-purple); }
-  .status-recusado::before { background: var(--pet-purple); }
-  .status-cif { color: var(--pet-blue); }
-  .status-cif::before { background: var(--pet-blue); }
+  select.sel-status { cursor: pointer; }
+  .status::before { content:''; width:6px; height:6px; border-radius:50%; flex-shrink:0; background: var(--st-color, var(--text-muted)); }
+  .status-backlog { --st-color: var(--text-muted); --st-border: var(--border-dk); --st-bg: var(--panel-soft); }
+  .status-ofertado { --st-color: var(--accent2); --st-border: rgba(249,115,22,0.4); --st-bg: var(--accent2-dim); }
+  .status-aceito { --st-color: var(--success); --st-border: rgba(54,209,107,0.4); --st-bg: var(--success-dim); }
+  .status-placa { --st-color: var(--accent); --st-border: rgba(141,200,48,0.4); --st-bg: var(--accent-dim); }
+  .status-cancelado { --st-color: var(--danger); --st-border: rgba(255,107,95,0.4); --st-bg: var(--danger-dim); }
+  .status-recusado { --st-color: var(--pet-purple); --st-border: rgba(124,58,237,0.4); --st-bg: rgba(124,58,237,0.14); }
+  .status-cif { --st-color: var(--pet-blue); --st-border: rgba(34,85,204,0.4); --st-bg: rgba(34,85,204,0.14); }
+  .status-frota { --st-color: var(--pet-teal); --st-border: rgba(20,184,166,0.4); --st-bg: rgba(20,184,166,0.14); }
+
+  /* ── STATUS DE AGENDAMENTO ── */
+  /* mesma pílula do Status (segmentada), aplicada a um <select> em vez de um <span> estático */
+  select.sel-agend {
+    font-weight: 700;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border-width: 2px;
+    cursor: pointer;
+  }
+  select.sel-agend.sel-agend-nao { color: var(--text-muted); border-color: var(--border-dk); background: var(--panel-soft); }
+  select.sel-agend.sel-agend-usina { color: var(--accent2); border-color: rgba(249,115,22,0.4); background: var(--accent2-dim); }
+  select.sel-agend.sel-agend-segurando { color: var(--pet-purple); border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.14); }
+  select.sel-agend.sel-agend-agendado { color: var(--success); border-color: rgba(54,209,107,0.4); background: var(--success-dim); }
+
+  /* ── UTILIZAÇÃO SEMANAL (Veículos Dedicados) ── */
+  .vd-week { display: flex; gap: 3px; }
+  .vd-day {
+    width: 30px; padding: 3px 0; border-radius: 4px; text-align: center;
+    font-size: 9px; line-height: 1.3; border: 1px solid var(--border); color: var(--text-muted);
+  }
+  .vd-day-num { font-size: 11px; font-weight: 700; display: block; }
+  .vd-day.busy { background: rgba(20,184,166,0.14); border-color: var(--pet-teal); color: var(--pet-teal); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -588,6 +619,9 @@
   td.col-acao > div {
     display: flex; align-items: center; gap: 4px;
   }
+  /* variante empilhada (vertical) — usada na tabela de Gerir Viagens, onde o espaço horizontal é mais disputado */
+  th.col-acao.col-acao-sm, td.col-acao.col-acao-sm { width: 48px; min-width: 48px; }
+  td.col-acao.col-acao-sm > div { flex-direction: column; }
   tr:hover td.col-acao { background: #1E3024; }
 
   /* truncate long text cells */
@@ -621,6 +655,7 @@
   .cell-pedido-mis {
     font-size: 13px;
     color: var(--text-dim);
+    max-width: 130px;
   }
   .cell-preview-id {
     font-family: var(--font-cond);
@@ -633,6 +668,7 @@
     white-space: nowrap;
     line-height: 1.4;
     width: 92px;
+    max-width: 152px;
   }
   th.col-data-desejada, th.col-data-programacao {
     white-space: normal;
@@ -980,6 +1016,7 @@
   body.transportador-mode #tabBtn3,
   body.transportador-mode #tabBtn4,
   body.transportador-mode #tabBtn5,
+  body.transportador-mode #tabBtn6,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #btnLimparSessao,
@@ -989,7 +1026,8 @@
   body.transportador-mode #chipBacklog,
   body.transportador-mode #chipCif,
   body.transportador-mode .col-data-desejada,
-  body.transportador-mode .col-pedido-mis {
+  body.transportador-mode .col-pedido-mis,
+  body.transportador-mode .col-agendamento {
     display: none !important;
   }
   body:not(.transportador-mode) #bulkBarTransportador {
@@ -1120,6 +1158,13 @@
     },
     salvarFornecedores: async (lista) => {
       await set(ref(db, 'fornecedores'), lista);
+    },
+    carregarVeiculosDedicados: async () => {
+      const snap = await get(ref(db, 'veiculosDedicados'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarVeiculosDedicados: async (lista) => {
+      await set(ref(db, 'veiculosDedicados'), lista);
     },
     // ── Firebase Authentication ──
     login: async (email, senha) => {
@@ -1323,6 +1368,13 @@
       <div class="pipe-label">Viagens CIF</div>
     </div>
   </div>
+  <div class="pipe-step frota" id="pipe-frota" title="Viagens com placa de frota dedicada já atribuída — prontas para o monitoramento">
+    <div class="pipe-icon">🛻</div>
+    <div>
+      <div class="pipe-count" id="cnt-frota">0</div>
+      <div class="pipe-label">Frota Dedicada</div>
+    </div>
+  </div>
   <div class="pipe-step" id="pipe-3" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado">
     <div class="pipe-icon">📋</div>
     <div>
@@ -1375,6 +1427,7 @@
   <div class="tab" id="tabBtn3" onclick="switchTab(3)">④ Transportadores</div>
   <div class="tab" id="tabBtn4" onclick="switchTab(4)">⑤ Bases</div>
   <div class="tab" id="tabBtn5" onclick="switchTab(5)">⑥ Fornecedores</div>
+  <div class="tab" id="tabBtn6" onclick="switchTab(6)">⑦ Veículos Dedicados</div>
 </div>
 
 <div class="main">
@@ -1542,6 +1595,7 @@
             <div class="chip" onclick="filterViagens('Recusado',this)">Recusadas</div>
             <div class="chip" onclick="filterViagens('Aceito',this)">Aceitas</div>
             <div class="chip" onclick="filterViagens('Placa Enviada',this)">Placa Enviada</div>
+            <div class="chip" onclick="filterViagens('Frota Dedicada',this)">Frota Dedicada</div>
             <div class="chip" id="chipCif" onclick="filterViagens('CIF',this)">CIF</div>
             <div class="chip" onclick="filterViagens('Cancelado',this)">Canceladas</div>
           </div>
@@ -1591,6 +1645,14 @@
           <option value="Placa Enviada">Placa Enviada</option>
           <option value="Cancelado">Cancelado</option>
         </select>
+        <span class="filter-sep">Agendamento:</span>
+        <select class="filter-select" id="bulk-agendamento" style="padding:5px 10px">
+          <option value="">Manter atual</option>
+          <option value="Não Agendado">Não Agendado</option>
+          <option value="Usina de Fila">Usina de Fila</option>
+          <option value="Segurando Grade">Segurando Grade</option>
+          <option value="Agendado">Agendado</option>
+        </select>
         <span class="filter-sep">Transportador:</span>
         <select class="filter-select" id="bulk-transp" style="width:190px" onchange="popularSelectCnpjsTransportador('bulk-transp-cnpj', this.value, '')">
           <option value="">Manter atual</option>
@@ -1629,9 +1691,9 @@
               <th class="col-data-programacao">Data Programação</th>
               <th>Vol (m³)</th>
               <th>Status</th>
+              <th class="col-agendamento">Agendamento</th>
               <th>Transportador</th>
-              <th>Placa</th>
-              <th class="col-acao">Ação</th>
+              <th class="col-acao col-acao-sm">Ação</th>
             </tr>
           </thead>
           <tbody id="viagensBody"></tbody>
@@ -1655,14 +1717,21 @@
         <div class="section-title">Exportar para o Sistema de Monitoramento</div>
         <div class="section-sub">Viagens com placa confirmada prontas para importação</div>
       </div>
-      <button class="btn btn-success" onclick="exportarHerrlog()" title="Gera o XLSX no modelo do Importador Herrlog (abas Viagens + Eventos de Viagem)">⬇ Exportar Herrlog</button>
+      <button class="btn btn-success" id="btnExportarHerrlog" onclick="exportarHerrlog()" title="Gera o XLSX no modelo do Importador Herrlog (abas Viagens + Eventos de Viagem) — apenas viagens pendentes">⬇ Exportar Herrlog</button>
     </div>
 
     <div style="margin-top:20px">
       <div class="table-wrap">
         <div class="table-toolbar">
-          <span class="table-title">Viagens prontas para importação</span>
-          <span class="badge badge-success" id="badge-prontas">0 viagens</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">Viagens prontas para importação</span>
+            <span class="badge badge-success" id="badge-prontas">0 viagens</span>
+          </div>
+          <div class="chip-group" id="exportFilterChips">
+            <div class="chip" id="chipExpTodos" onclick="filterExport('todos',this)">Todos</div>
+            <div class="chip active" id="chipExpPendente" onclick="filterExport('pendente',this)">Pendente</div>
+            <div class="chip" id="chipExpEnviado" onclick="filterExport('enviado',this)">Enviado</div>
+          </div>
         </div>
         <div class="scrollable">
           <table>
@@ -1676,6 +1745,7 @@
                 <th>Dt Descarga</th>
                 <th>Volume</th>
                 <th>Transportador</th>
+                <th>Envio</th>
               </tr>
             </thead>
             <tbody id="exportBody"></tbody>
@@ -1849,6 +1919,59 @@
   </div>
 </div>
 
+<!-- ===== TAB 7: VEÍCULOS DEDICADOS ===== -->
+<div class="tab-content" id="tab-6">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Veículos Dedicados</div>
+      <div class="section-sub">Placas de frota dedicada alocadas em transportadoras — disponíveis para atribuição direta em "Gerir Viagens"</div>
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalVeiculo(null)">＋ Novo Veículo</button>
+  </div>
+
+  <div id="veiculosEmpty" class="empty-state">
+    <div class="empty-icon">🚛</div>
+    <div class="empty-text">Nenhum veículo dedicado cadastrado</div>
+    <div class="empty-sub">Clique em "+ Novo Veículo" para cadastrar o primeiro</div>
+  </div>
+
+  <div id="veiculosContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Veículos Dedicados</span>
+          <span class="badge badge-accent" id="badge-veiculos">0 cadastrados</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fVeiculosBusca"
+            placeholder="🔍  Transportador, placa, motorista, CPF..."
+            oninput="renderVeiculosTable()">
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosVeiculos()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th>Transportador</th>
+              <th>Placa Cavalo</th>
+              <th>Carreta 1</th>
+              <th>Carreta 2</th>
+              <th style="white-space:normal">Motorista</th>
+              <th>CPF</th>
+              <th style="white-space:normal;min-width:260px">Utilização na Semana</th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="veiculosBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- MODAL: Nova Cadência -->
@@ -1950,7 +2073,7 @@
 
 <!-- MODAL: Gerir Viagem -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal" style="width:700px;max-width:96vw">
+  <div class="modal" style="width:860px;max-width:96vw;max-height:90vh;overflow-y:auto">
     <div class="modal-title">Gerenciar Viagem</div>
     <div class="modal-sub" id="modal-id-label">—</div>
 
@@ -1987,10 +2110,10 @@
       </div>
     </div>
 
-    <div class="modal-row" style="grid-template-columns:1.2fr 1.3fr 1fr">
+    <div class="modal-row" id="row-transp-status" style="grid-template-columns:1.2fr 1.3fr 1fr">
       <div class="modal-field">
         <div class="modal-label">Transportador</div>
-        <select class="config-input" id="m-transportador" onchange="popularSelectCnpjsTransportador('m-transportador-cnpj', this.value, '')">
+        <select class="config-input" id="m-transportador" onchange="popularSelectCnpjsTransportador('m-transportador-cnpj', this.value, ''); atualizarVeiculosDedicadosDoTransportador(this.value)">
           <option value="">— Não alocado —</option>
         </select>
       </div>
@@ -2002,14 +2125,21 @@
       </div>
       <div class="modal-field">
         <div class="modal-label">Status</div>
-        <select class="config-input" id="m-status">
+        <select class="config-input" id="m-status" onchange="ajustarCampoFrotaDedicada()">
           <option value="Backlog">Backlog</option>
           <option value="Ofertado">Ofertado</option>
           <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
           <option value="Placa Enviada">Placa Enviada</option>
+          <option value="Frota Dedicada">Frota Dedicada</option>
           <option value="CIF">CIF</option>
           <option value="Cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="modal-field" id="campo-veiculo-dedicado" style="display:none">
+        <div class="modal-label">Veículo Dedicado *</div>
+        <select class="config-input" id="m-veiculo-dedicado" onchange="aplicarVeiculoDedicadoSelecionado(this.value)">
+          <option value="">Selecione o veículo...</option>
         </select>
       </div>
     </div>
@@ -2221,6 +2351,56 @@
   </div>
 </div>
 
+<!-- MODAL: Novo/Editar Veículo Dedicado -->
+<div class="modal-overlay" id="modalVeiculo">
+  <div class="modal" style="width:560px;max-width:96vw">
+    <div class="modal-title" id="veiculo-modal-title">Novo Veículo Dedicado</div>
+    <div class="modal-sub">Placa e motorista fixos de um transportador — disponíveis para atribuição direta em "Gerir Viagens"</div>
+
+    <div class="modal-field">
+      <div class="modal-label">Transportador *</div>
+      <select class="config-input" id="veiculo-transportador">
+        <option value="">Selecione o transportador...</option>
+      </select>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Placa do Cavalo *</div>
+        <input type="text" class="config-input" id="veiculo-placaCavalo" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Placa Carreta 1</div>
+        <input type="text" class="config-input" id="veiculo-placaCarreta1" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Placa Carreta 2</div>
+        <input type="text" class="config-input" id="veiculo-placaCarreta2" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Nome do Motorista</div>
+        <input type="text" class="config-input" id="veiculo-nomeMotorista" placeholder="Nome completo">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CPF do Motorista</div>
+        <input type="text" class="config-input" id="veiculo-cpfMotorista" placeholder="000.000.000-00" maxlength="14"
+          oninput="this.value = mascaraCPF(this.value)">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalVeiculo()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarVeiculo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Editar Grupo de Cadências -->
 <div class="modal-overlay" id="modalGrupo">
   <div class="modal" style="width:620px;max-width:97vw;max-height:88vh;display:flex;flex-direction:column">
@@ -2282,7 +2462,7 @@ function formatarHistoricoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', Cancelado: '✕' }[h.evento] || '•';
+  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', Cancelado: '✕' }[h.evento] || '•';
   const quem = esc(h.transportador || '—') + (h.cnpj ? ` <span style="color:var(--text-muted);font-family:monospace;font-size:10px">${esc(h.cnpj)}</span>` : '');
   return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} <strong>${esc(h.evento)}</strong> — ${quem} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
@@ -2788,6 +2968,14 @@ function fecharModalGrupo() {
 }
 
 function salvarGrupo() {
+  for (let i = 0; i < editingGrupoIdxs.length; i++) {
+    const dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
+    const dtDesc   = document.getElementById(`ge-dtdesc-${i}`).value.trim();
+    if (!anoPlausivel(dtCarreg) || !anoPlausivel(dtDesc)) {
+      alert(`Verifique o ano das datas no registro ${i + 1} — parece um erro de digitação (ex: 2062 em vez de 2026).`);
+      return;
+    }
+  }
   editingGrupoIdxs.forEach((idx, i) => {
     cadencias[idx].dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
     cadencias[idx].dtDesc   = document.getElementById(`ge-dtdesc-${i}`).value.trim();
@@ -2841,15 +3029,17 @@ function limparSelecao() {
 
 function aplicarEmLote() {
   const status = document.getElementById('bulk-status').value;
+  const agendamento = document.getElementById('bulk-agendamento').value;
   const transpRaw = document.getElementById('bulk-transp').value.trim();
   const transpCnpj = document.getElementById('bulk-transp-cnpj').value.trim();
   const removerAlocacao = transpRaw === '__sem_alocacao__';
   const transp = removerAlocacao ? '' : transpRaw;
-  if (!status && !transpRaw) { alert('Preencha ao menos o status ou o transportador para aplicar em lote.'); return; }
+  if (!status && !agendamento && !transpRaw) { alert('Preencha ao menos o status, o agendamento ou o transportador para aplicar em lote.'); return; }
   if (!selectedViagens.size) return;
   selectedViagens.forEach(idx => {
     const v = viagens[idx];
     const statusAnterior = v.status;
+    const agendamentoAnterior = v.statusAgendamento || 'Não Agendado';
     if (removerAlocacao) {
       v.transportador = '';
       v.transportadorCnpj = '';
@@ -2861,9 +3051,19 @@ function aplicarEmLote() {
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
       registrarHistoricoOferta(v, status);
     }
+    if (agendamento && agendamento !== agendamentoAnterior) {
+      v.statusAgendamento = agendamento;
+      if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+      v.historicoProgramacao.push({
+        data: new Date().toISOString(),
+        usuario: _authUsuarioAtual?.nome || '',
+        evento: `Status de agendamento ajustado: ${agendamentoAnterior} → ${agendamento}`,
+      });
+    }
   });
   selectedViagens.clear();
   document.getElementById('bulk-status').value = '';
+  document.getElementById('bulk-agendamento').value = '';
   document.getElementById('bulk-transp').value = '';
   document.getElementById('bulk-transp-cnpj').value = '';
   updatePipeline();
@@ -3162,6 +3362,7 @@ let viagens = [];
 let semanaAtiva = null;
 window._fbUnsub = null;
 let activeFilter = 'todos';
+let activeFilterExport = 'pendente';
 let activeTab = 0;
 let editingIdx = null;
 let autosaveTimer = null;
@@ -3172,6 +3373,8 @@ let editingTranspIdx = null;
 let bases = [];
 let fornecedores = [];
 let editingFornecedorIdx = null;
+let veiculosDedicados = [];
+let editingVeiculoIdx = null;
 
 const STORAGE_KEY = 'nexta_cadencia_sessao';
 
@@ -3300,6 +3503,7 @@ function switchTab(i) {
   if (i === 3) renderTransportadoresTable();
   if (i === 4) renderBasesTable();
   if (i === 5) renderFornecedoresTable();
+  if (i === 6) renderVeiculosTable();
 }
 
 // ── SAMPLE DATA ──
@@ -3520,8 +3724,14 @@ function editarLinha(gi, idx) {
 }
 
 function salvarLinha(gi, idx) {
-  cadencias[idx].dtCarreg = document.getElementById(`ei-dtcarreg-${gi}`).value.trim() || '-';
-  cadencias[idx].dtDesc   = document.getElementById(`ei-dtdesc-${gi}`).value.trim();
+  const dtCarreg = document.getElementById(`ei-dtcarreg-${gi}`).value.trim() || '-';
+  const dtDesc   = document.getElementById(`ei-dtdesc-${gi}`).value.trim();
+  if (!anoPlausivel(dtCarreg) || !anoPlausivel(dtDesc)) {
+    alert('Verifique o ano das datas informadas — parece um erro de digitação (ex: 2062 em vez de 2026).');
+    return;
+  }
+  cadencias[idx].dtCarreg = dtCarreg;
+  cadencias[idx].dtDesc   = dtDesc;
   cadencias[idx].volume   = parseFloat(document.getElementById(`ei-volume-${gi}`).value) || 0;
   cadencias[idx].modal    = document.getElementById(`ei-modal-${gi}`).value === 'CIF' ? 'CIF' : 'FOB';
   renderPreview();
@@ -3630,15 +3840,20 @@ function salvarNovaCadencia() {
   const produto = document.getElementById('nc-produto').value.trim();
   const origem  = document.getElementById('nc-origem').value.trim();
   const destino = document.getElementById('nc-destino').value.trim();
+  const dtCarreg = document.getElementById('nc-dtcarreg').value.trim() || '-';
   const dtDesc  = document.getElementById('nc-dtdesc').value.trim();
   const volume  = parseFloat(document.getElementById('nc-volume').value) || 0;
   if (!id || !produto || !destino || !dtDesc || !volume) {
     alert('Preencha os campos obrigatórios: ID, Produto, Destino, Dt Descarga e Volume.');
     return;
   }
+  if (!anoPlausivel(dtCarreg) || !anoPlausivel(dtDesc)) {
+    alert('Verifique o ano das datas informadas — parece um erro de digitação (ex: 2062 em vez de 2026).');
+    return;
+  }
   cadencias.push({
     id,
-    dtCarreg:    document.getElementById('nc-dtcarreg').value.trim() || '-',
+    dtCarreg,
     dtDesc,
     produto,
     origem,
@@ -3743,6 +3958,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
           horaCarregProg: anterior.horaCarregProg || '12:00',
           horaDescProg:   anterior.horaDescProg   || '12:00',
           status: anterior.status || (baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog'),
+          statusAgendamento: anterior.statusAgendamento || 'Não Agendado',
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
           obs: anterior.obs || '',
@@ -3756,6 +3972,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
           horaCarregProg: '12:00',
           horaDescProg: '12:00',
           status: baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog',
+          statusAgendamento: 'Não Agendado',
           transportador: '',
           placa: '',
           obs: ''
@@ -3848,7 +4065,7 @@ function updateKPIs(list) {
   // Escada de severidade por data de carregamento: Backlog (vencido) > Crítico (D0)
   // > Alerta (D+1/D+2) > Atenção (D+3+). "Placa Enviada" sai do radar (já resolvido);
   // "sem aceite" = ainda não confirmado pelo transportador (Backlog/Ofertado/Recusado).
-  const pendentes = ativas.filter(v => !['Placa Enviada', 'CIF'].includes(v.status));
+  const pendentes = ativas.filter(v => !['Placa Enviada', 'Frota Dedicada', 'CIF'].includes(v.status));
   const SEM_ACEITE = ['Backlog', 'Ofertado', 'Recusado'];
   const bucketStats = filtroData => {
     const itens = pendentes.filter(v => {
@@ -3864,7 +4081,7 @@ function updateKPIs(list) {
 
   const volOfertado = ativas.filter(v => v.status === 'Ofertado').reduce((s,v) => s + (v.volume||0), 0);
   const volAceito   = ativas.filter(v => v.status === 'Aceito').reduce((s,v) => s + (v.volume||0), 0);
-  const volConf     = list.filter(v => v.status === 'Placa Enviada').reduce((s,v) => s + (v.volume||0), 0);
+  const volConf     = list.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
 
   const fmt = n => Number.isInteger(n)
     ? n.toLocaleString('pt-BR')
@@ -3875,8 +4092,8 @@ function updateKPIs(list) {
   let volPrincipal, taxa;
   if (transportador) {
     volPrincipal = ativas.reduce((s,v) => s + (v.volume||0), 0);
-    const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada'].includes(v.status)).length;
-    const respondidas  = list.filter(v => ['Aceito','Placa Enviada'].includes(v.status)).length;
+    const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada','Frota Dedicada'].includes(v.status)).length;
+    const respondidas  = list.filter(v => ['Aceito','Placa Enviada','Frota Dedicada'].includes(v.status)).length;
     taxa = consideradas ? Math.round((respondidas / consideradas) * 100) : 0;
   } else {
     volPrincipal = ativas.filter(v => ['Backlog','Recusado'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
@@ -3989,15 +4206,6 @@ function renderViagensTable() {
   filtered.forEach((v) => {
     const realIdx = viagens.indexOf(v);
     const isSelected = selectedViagens.has(realIdx);
-    const statusClass = {
-      'Backlog':       'status-backlog',
-      'Ofertado':      'status-ofertado',
-      'Recusado':      'status-recusado',
-      'Aceito':        'status-aceito',
-      'Placa Enviada': 'status-placa',
-      'Cancelado':     'status-cancelado',
-      'CIF':           'status-cif',
-    }[v.status] || 'status-backlog';
 
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
     const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
@@ -4018,7 +4226,7 @@ function renderViagensTable() {
             onblur="salvarPedidoMisInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
             ${(isTransportador() || !v.pedidoProvisorio) ? 'disabled' : ''}>
-          ${v.pedidoProvisorio ? `<span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
+          ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
         </td>
         <td>${prodTag(v.produto)}</td>
         <td class="cell-truncate" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
@@ -4052,28 +4260,22 @@ function renderViagensTable() {
               ${isTransportador() ? 'disabled' : ''}>
           </div>
         </td>
-        <td>
-          <div style="display:flex;align-items:center;gap:4px">
-            <input class="placa-input" style="width:56px;text-transform:none;text-align:right;font-family:var(--font-cond)"
-              type="number" min="0.1" step="0.1"
-              value="${v.volume}"
-              onblur="salvarVolumeInline(${realIdx}, this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()"
-              ${isTransportador() ? 'disabled' : ''}>
-            ${v.volumeAjustadoManualmente ? `<span title="Volume ajustado manualmente">✎</span>` : ''}
-          </div>
+        <td style="max-width:86px">
+          <input class="placa-input" style="width:56px;text-transform:none;text-align:right;font-family:var(--font-cond)"
+            type="number" min="0.1" step="0.1"
+            value="${v.volume}"
+            onblur="salvarVolumeInline(${realIdx}, this.value)"
+            onkeydown="if(event.key==='Enter')this.blur()"
+            ${isTransportador() ? 'disabled' : ''}>
+          ${v.volumeAjustadoManualmente ? `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>` : ''}
         </td>
-        <td><span class="status ${statusClass}">${v.status}</span></td>
+        <td>${renderSeletorStatus(v, realIdx)}</td>
+        <td class="col-agendamento">${renderSeletorAgendamento(v, realIdx)}</td>
         <td class="cell-truncate" title="${esc(v.transportador)}">
           ${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}
           ${isTransportador() && v.transportador ? renderSeletorCnpjTransportador(v, realIdx) : ''}
         </td>
-        <td style="padding-right:12px"><input class="placa-input" value="${esc(v.placa||'')}" placeholder="AAA0A000"
-          onblur="salvarPlacaInline(${realIdx}, this.value)"
-          onkeydown="if(event.key==='Enter')this.blur()"
-          ${isTransportador() && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
-          maxlength="8"></td>
-        <td class="col-acao">
+        <td class="col-acao col-acao-sm">
           <div>
             ${isTransportador() && v.status === 'Ofertado' ? `
               <button class="btn btn-success btn-sm" style="padding:4px 8px;font-size:11px" onclick="aceitarOfertaTransportador(${realIdx})" title="Aceitar oferta">✅</button>
@@ -4113,6 +4315,18 @@ function fmtShort(s) {
   if (!s || s === '-') return '—';
   const p = s.split('/');
   return p.length >= 2 ? `${p[0]}/${p[1]}` : s;
+}
+
+// Guarda contra erro de digitação no ano (ex: 2062 em vez de 2026) — a tabela só mostra DD/MM,
+// então um ano errado fica invisível na tela e quebra silenciosamente cálculos por intervalo de data.
+function anoPlausivel(dataStr) {
+  if (!dataStr || dataStr === '-') return true;
+  const partes = dataStr.split('/');
+  if (partes.length !== 3) return true;
+  const ano = parseInt(partes[2], 10);
+  if (!ano) return true;
+  const atual = new Date().getFullYear();
+  return ano >= atual - 1 && ano <= atual + 2;
 }
 
 function limparFiltrosCad() {
@@ -4771,6 +4985,172 @@ async function persistirFornecedores() {
   } catch (e) { console.error('Erro ao salvar fornecedores:', e); }
 }
 
+// ── CADASTRO DE VEÍCULOS DEDICADOS ──
+async function carregarVeiculosDedicadosFirebase() {
+  if (!window._fb?.carregarVeiculosDedicados) return;
+  try {
+    const raw = await window._fb.carregarVeiculosDedicados();
+    veiculosDedicados = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+  } catch (e) { console.error('Erro ao carregar veículos dedicados:', e); }
+}
+
+async function persistirVeiculosDedicados() {
+  if (!window._fb?.salvarVeiculosDedicados) return;
+  try {
+    await window._fb.salvarVeiculosDedicados(veiculosDedicados);
+  } catch (e) { console.error('Erro ao salvar veículos dedicados:', e); }
+}
+
+function gerarIdVeiculoDedicado() {
+  return 'VD-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+}
+
+// Dias da semana ativa (derivados da chave "YYYY-MM-DD_YYYY-MM-DD" da sessão) —
+// usados para montar a faixa de utilização por veículo, independente do calendário real.
+function diasDaSemanaAtiva() {
+  if (!semanaAtiva || !semanaAtiva.includes('_')) return [];
+  const [iniISO, fimISO] = semanaAtiva.split('_');
+  const ini = new Date(iniISO + 'T00:00:00');
+  const fim = new Date(fimISO + 'T00:00:00');
+  if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return [];
+  const dias = [];
+  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) dias.push(new Date(d));
+  return dias;
+}
+
+function viagensDoVeiculoNoDia(veiculoId, dia) {
+  const d0 = new Date(dia); d0.setHours(0, 0, 0, 0);
+  return viagens.filter(v => {
+    if (v.veiculoDedicadoId !== veiculoId || v.status === 'Cancelado') return false;
+    const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
+    if (!ini) return false;
+    const fim = parseDMY(v.dtDescProg || v.dtDesc) || ini;
+    const a = new Date(ini); a.setHours(0, 0, 0, 0);
+    const b = new Date(fim); b.setHours(0, 0, 0, 0);
+    return d0 >= a && d0 <= b;
+  });
+}
+
+const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+function renderUtilizacaoSemanal(veiculoId) {
+  const dias = diasDaSemanaAtiva();
+  if (!dias.length) return '<span style="color:var(--text-muted);font-size:11px">Sem semana ativa</span>';
+  return `<div class="vd-week">${dias.map(d => {
+    const viagensNoDia = viagensDoVeiculoNoDia(veiculoId, d);
+    const ocupado = viagensNoDia.length > 0;
+    const titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre';
+    return `<div class="vd-day ${ocupado ? 'busy' : ''}" title="${esc(titulo)}">
+        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${DIAS_SEMANA_ABREV[d.getDay()]}
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function renderVeiculosTable() {
+  const busca = (document.getElementById('fVeiculosBusca')?.value || '').toLowerCase().trim();
+  const filtered = veiculosDedicados.filter(vd =>
+    !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
+      .join(' ').toLowerCase().includes(busca)
+  );
+
+  const isEmpty = veiculosDedicados.length === 0;
+  document.getElementById('veiculosEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('veiculosContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  document.getElementById('badge-veiculos').textContent =
+    filtered.length < veiculosDedicados.length
+      ? `${filtered.length} de ${veiculosDedicados.length} cadastrados`
+      : `${veiculosDedicados.length} cadastrado${veiculosDedicados.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('veiculosBody').innerHTML = filtered.map(vd => {
+    const realIdx = veiculosDedicados.indexOf(vd);
+    return `
+    <tr>
+      <td class="cell-truncate" style="font-weight:700;color:var(--accent)">${esc(vd.transportador)}</td>
+      <td style="font-family:monospace">${esc(vd.placaCavalo)}</td>
+      <td style="font-family:monospace">${esc(vd.placaCarreta1) || '—'}</td>
+      <td style="font-family:monospace">${esc(vd.placaCarreta2) || '—'}</td>
+      <td style="white-space:normal">${esc(vd.nomeMotorista) || '—'}</td>
+      <td style="font-family:monospace">${esc(vd.cpfMotorista) || '—'}</td>
+      <td>${renderUtilizacaoSemanal(vd.id)}</td>
+      <td class="col-acao">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalVeiculo(${realIdx})">✏️</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerVeiculo(${realIdx})">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalVeiculo(idx) {
+  editingVeiculoIdx = idx;
+  const isNovo = idx === null || idx === undefined;
+  document.getElementById('veiculo-modal-title').textContent = isNovo ? 'Novo Veículo Dedicado' : 'Editar Veículo Dedicado';
+  const vd = isNovo ? {} : veiculosDedicados[idx];
+  popularSelectTransportadores('veiculo-transportador', vd.transportador || '');
+  document.getElementById('veiculo-placaCavalo').value = vd.placaCavalo || '';
+  document.getElementById('veiculo-placaCarreta1').value = vd.placaCarreta1 || '';
+  document.getElementById('veiculo-placaCarreta2').value = vd.placaCarreta2 || '';
+  document.getElementById('veiculo-nomeMotorista').value = vd.nomeMotorista || '';
+  document.getElementById('veiculo-cpfMotorista').value = vd.cpfMotorista || '';
+  document.getElementById('modalVeiculo').classList.add('open');
+  setTimeout(() => document.getElementById('veiculo-transportador').focus(), 100);
+}
+
+function fecharModalVeiculo() {
+  document.getElementById('modalVeiculo').classList.remove('open');
+  editingVeiculoIdx = null;
+}
+
+async function salvarVeiculo() {
+  const transportador = document.getElementById('veiculo-transportador').value;
+  const placaCavalo = document.getElementById('veiculo-placaCavalo').value.toUpperCase().trim();
+  if (!transportador || !placaCavalo) {
+    alert('Selecione o transportador e informe a placa do cavalo.');
+    return;
+  }
+
+  const duplicado = veiculosDedicados.findIndex((vd, i) =>
+    i !== editingVeiculoIdx && vd.placaCavalo.toUpperCase() === placaCavalo);
+  if (duplicado !== -1) {
+    alert(`A placa "${placaCavalo}" já está cadastrada para "${veiculosDedicados[duplicado].transportador}".`);
+    return;
+  }
+
+  const isNovo = editingVeiculoIdx === null || editingVeiculoIdx === undefined;
+  const registro = {
+    id: isNovo ? gerarIdVeiculoDedicado() : veiculosDedicados[editingVeiculoIdx].id,
+    transportador,
+    placaCavalo,
+    placaCarreta1: document.getElementById('veiculo-placaCarreta1').value.toUpperCase().trim(),
+    placaCarreta2: document.getElementById('veiculo-placaCarreta2').value.toUpperCase().trim(),
+    nomeMotorista: document.getElementById('veiculo-nomeMotorista').value.trim(),
+    cpfMotorista: document.getElementById('veiculo-cpfMotorista').value.trim(),
+  };
+
+  if (isNovo) veiculosDedicados.push(registro);
+  else veiculosDedicados[editingVeiculoIdx] = registro;
+  fecharModalVeiculo();
+  renderVeiculosTable();
+  await persistirVeiculosDedicados();
+}
+
+async function removerVeiculo(idx) {
+  const vd = veiculosDedicados[idx];
+  if (!confirm(`Remover o veículo "${vd.placaCavalo}" (${vd.transportador}) do cadastro?`)) return;
+  veiculosDedicados.splice(idx, 1);
+  renderVeiculosTable();
+  await persistirVeiculosDedicados();
+}
+
+function limparFiltrosVeiculos() {
+  const el = document.getElementById('fVeiculosBusca');
+  if (el) el.value = '';
+  renderVeiculosTable();
+}
+
 function renderTransportadoresTable() {
   const busca = (document.getElementById('fTranspBusca')?.value || '').toLowerCase().trim();
   const filtered = transportadores.filter(t =>
@@ -4916,14 +5296,16 @@ async function salvarTransportador() {
   if (nomeAntigo && nomeFantasia !== nomeAntigo) {
     const viagensAfetadas = viagens.filter(v => v.transportador === nomeAntigo).length;
     const perfisAfetados = _usuariosAtivos.filter(u => u.tipo === 'transportador' && u.transportadorNome === nomeAntigo);
-    if (viagensAfetadas || perfisAfetados.length) {
+    const veiculosAfetados = veiculosDedicados.filter(vd => vd.transportador === nomeAntigo).length;
+    if (viagensAfetadas || perfisAfetados.length || veiculosAfetados) {
       const confirma = confirm(
         `O nome deste transportador mudou de "${nomeAntigo}" para "${nomeFantasia}".\n\n` +
-        `${viagensAfetadas} viagem(ns) da semana atual e ${perfisAfetados.length} login(s) de transportador apontam para o nome antigo.\n\n` +
+        `${viagensAfetadas} viagem(ns) da semana atual, ${veiculosAfetados} veículo(s) dedicado(s) e ${perfisAfetados.length} login(s) de transportador apontam para o nome antigo.\n\n` +
         `Atualizar todos para o novo nome agora? (Recomendado — sem isso, esses logins de transportador deixam de ver suas cargas.)`
       );
       if (confirma) {
         viagens.forEach(v => { if (v.transportador === nomeAntigo) v.transportador = nomeFantasia; });
+        veiculosDedicados.forEach(vd => { if (vd.transportador === nomeAntigo) vd.transportador = nomeFantasia; });
         for (const u of perfisAfetados) {
           u.transportadorNome = nomeFantasia;
           if (window._fb?.salvarPerfil) {
@@ -4931,6 +5313,7 @@ async function salvarTransportador() {
           }
         }
         if (viagensAfetadas) agendarAutosave();
+        if (veiculosAfetados) await persistirVeiculosDedicados();
       }
     }
   }
@@ -4963,7 +5346,7 @@ function popularSelectTransportadores(selectId, valorAtual) {
   const current = valorAtual !== undefined ? valorAtual : sel.value;
   const emptyLabel = selectId === 'bulk-transp'
     ? 'Manter atual'
-    : selectId === 'admin-new-transportador-nome'
+    : selectId === 'admin-new-transportador-nome' || selectId === 'veiculo-transportador'
       ? 'Selecione o transportador...'
       : '— Não alocado —';
   sel.innerHTML = `<option value="">${emptyLabel}</option>`;
@@ -5008,6 +5391,53 @@ function popularSelectCnpjsTransportador(selectId, nomeApelido, valorAtual) {
   }
 }
 
+function popularSelectVeiculosDedicados(selectId, valorAtual, nomeTransportador) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const lista = nomeTransportador
+    ? veiculosDedicados.filter(vd => vd.transportador === nomeTransportador)
+    : veiculosDedicados;
+  sel.innerHTML = `<option value="">${lista.length ? 'Selecione o veículo...' : (nomeTransportador ? 'Nenhum veículo cadastrado para este transportador' : 'Nenhum veículo cadastrado')}</option>`;
+  lista.forEach(vd => {
+    const opt = document.createElement('option');
+    opt.value = vd.id;
+    opt.textContent = `${vd.placaCavalo} · ${vd.transportador}${vd.nomeMotorista ? ' · ' + vd.nomeMotorista : ''}`;
+    sel.appendChild(opt);
+  });
+  sel.value = lista.some(vd => vd.id === valorAtual) ? valorAtual : '';
+}
+
+function ajustarCampoFrotaDedicada() {
+  const isFrota = document.getElementById('m-status').value === 'Frota Dedicada';
+  document.getElementById('campo-veiculo-dedicado').style.display = isFrota ? '' : 'none';
+  document.getElementById('row-transp-status').style.gridTemplateColumns = isFrota ? '1.1fr 1.1fr 0.9fr 1.3fr' : '1.2fr 1.3fr 1fr';
+  if (isFrota) {
+    const atual = editingIdx !== null ? viagens[editingIdx]?.veiculoDedicadoId : '';
+    const transportadorAtual = document.getElementById('m-transportador').value;
+    popularSelectVeiculosDedicados('m-veiculo-dedicado', atual, transportadorAtual);
+  }
+  ['m-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-nomeMotorista', 'm-cpfMotorista'].forEach(id => {
+    document.getElementById(id).readOnly = isFrota;
+  });
+}
+
+function atualizarVeiculosDedicadosDoTransportador(nomeTransportador) {
+  if (document.getElementById('m-status').value !== 'Frota Dedicada') return;
+  popularSelectVeiculosDedicados('m-veiculo-dedicado', document.getElementById('m-veiculo-dedicado').value, nomeTransportador);
+}
+
+function aplicarVeiculoDedicadoSelecionado(veiculoId) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd) return;
+  document.getElementById('m-placa').value = vd.placaCavalo || '';
+  document.getElementById('m-placaCarreta1').value = vd.placaCarreta1 || '';
+  document.getElementById('m-placaCarreta2').value = vd.placaCarreta2 || '';
+  document.getElementById('m-nomeMotorista').value = vd.nomeMotorista || '';
+  document.getElementById('m-cpfMotorista').value = vd.cpfMotorista || '';
+  popularSelectTransportadores('m-transportador', vd.transportador || '');
+  popularSelectCnpjsTransportador('m-transportador-cnpj', vd.transportador || '', '');
+}
+
 function filterViagens(f, el) {
   activeFilter = f;
   document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
@@ -5035,6 +5465,7 @@ function openModal(idx) {
   document.getElementById('m-nomeMotorista').value  = v.nomeMotorista || '';
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
+  ajustarCampoFrotaDedicada();
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('alertaProgramacaoBanner').style.display = v.alertaProgramacao ? '' : 'none';
   renderHistoricoOferta(v);
@@ -5165,16 +5596,30 @@ function salvarPedidoMisInline(realIdx, valorInput) {
 }
 
 function renderSeletorCnpjTransportador(v, realIdx) {
-  if (!['Ofertado', 'Aceito', 'Placa Enviada'].includes(v.status)) return '';
+  if (!['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(v.status)) return '';
   const t = buscarTransportadorPorNome(v.transportador);
   const cnpjs = t?.cnpjs || [];
   if (cnpjs.length < 2) return ''; // 0 ou 1 CNPJ: nada a escolher (já selecionado automaticamente)
-  const opcoes = cnpjs.map(c => `<option value="${esc(c.cnpj)}" ${c.cnpj === v.transportadorCnpj ? 'selected' : ''}>${esc(c.razaoSocial)}</option>`).join('');
-  return `<br><select class="placa-input" style="width:100%;max-width:185px;font-size:10px;text-transform:none;margin-top:3px"
-      onchange="salvarCnpjTransportadorInline(${realIdx}, this.value)" title="CNPJ que vai atender esta viagem — ${esc(v.transportador)}">
+  const opcoes = cnpjs.map(c => {
+    const cnpjLabel = esc(c.cnpj || c.codSap);
+    return `<option value="${esc(c.cnpj)}" data-cnpj="${cnpjLabel}" data-razao="${esc(c.razaoSocial)}" ${c.cnpj === v.transportadorCnpj ? 'selected' : ''}>${cnpjLabel}</option>`;
+  }).join('');
+  return `<br><select class="placa-input" style="width:100%;max-width:185px;font-size:10px;font-family:monospace;text-transform:none;margin-top:3px"
+      onfocus="alternarOpcoesCnpjSelect(this, true)" onblur="alternarOpcoesCnpjSelect(this, false)"
+      onchange="alternarOpcoesCnpjSelect(this, false); salvarCnpjTransportadorInline(${realIdx}, this.value)"
+      title="CNPJ que vai atender esta viagem — clique para ver a razão social de cada um">
       <option value="">Selecione o CNPJ...</option>
       ${opcoes}
     </select>`;
+}
+
+// Select mostra só o CNPJ quando fechado (compacto, largura previsível);
+// ao focar/abrir, troca o texto das opções para "CNPJ · razão social" para facilitar a escolha.
+function alternarOpcoesCnpjSelect(select, mostrarRazao) {
+  Array.from(select.options).forEach(opt => {
+    if (!opt.dataset.cnpj) return; // mantém o placeholder "Selecione o CNPJ..." intacto
+    opt.textContent = mostrarRazao ? `${opt.dataset.cnpj} · ${opt.dataset.razao}` : opt.dataset.cnpj;
+  });
 }
 
 function salvarCnpjTransportadorInline(realIdx, cnpj) {
@@ -5229,6 +5674,11 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : parteData;
     if (!parseDMY(novo)) {
       alert('Data inválida. Use o formato DD/MM HH:mm.');
+      renderViagensTable();
+      return;
+    }
+    if (!anoPlausivel(novo)) {
+      alert(`Ano da data parece incorreto (${novo}) — verifique se não é um erro de digitação.`);
       renderViagensTable();
       return;
     }
@@ -5287,9 +5737,135 @@ function salvarVolumeInline(realIdx, valorInput) {
   renderViagensTable();
 }
 
+const OPCOES_STATUS = ['Backlog', 'Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'CIF', 'Cancelado'];
+
+function claseStatus(status) {
+  return {
+    'Backlog':        'status-backlog',
+    'Ofertado':       'status-ofertado',
+    'Recusado':       'status-recusado',
+    'Aceito':         'status-aceito',
+    'Placa Enviada':  'status-placa',
+    'Frota Dedicada': 'status-frota',
+    'CIF':            'status-cif',
+    'Cancelado':      'status-cancelado',
+  }[status] || 'status-backlog';
+}
+
+function renderSeletorStatus(v, realIdx) {
+  const transportador = isTransportador();
+  const opcoes = OPCOES_STATUS.map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''}>${op}</option>`).join('');
+  let html = `<select class="placa-input sel-status ${claseStatus(v.status)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
+      onchange="salvarStatusInline(${realIdx}, this.value)" ${transportador ? 'disabled' : ''}>
+      ${opcoes}
+    </select>`;
+  if (v.status === 'Frota Dedicada' && !transportador) {
+    const veiculos = veiculosDedicados.filter(vd => !v.transportador || vd.transportador === v.transportador);
+    const opcoesVeiculo = veiculos.map(vd =>
+      `<option value="${esc(vd.id)}" ${vd.id === v.veiculoDedicadoId ? 'selected' : ''}>${esc(vd.placaCavalo)} · ${esc(vd.transportador)}</option>`
+    ).join('');
+    html += `<br><select class="placa-input" style="width:100%;max-width:185px;font-size:10px;text-transform:none;margin-top:3px"
+        onchange="salvarVeiculoDedicadoInline(${realIdx}, this.value)" title="Veículo dedicado que vai atender esta viagem">
+        <option value="">Selecione o veículo...</option>
+        ${opcoesVeiculo}
+      </select>`;
+  } else {
+    html += `<br><input class="placa-input" style="width:100%;max-width:140px;font-size:11px;margin-top:3px" value="${esc(v.placa||'')}" placeholder="AAA0A000"
+        onblur="salvarPlacaInline(${realIdx}, this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()"
+        ${transportador && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
+        maxlength="8">`;
+  }
+  return html;
+}
+
+function salvarStatusInline(realIdx, novoStatus) {
+  const v = viagens[realIdx];
+  if (novoStatus === v.status) return;
+  if (novoStatus === 'Frota Dedicada') {
+    renderViagensTable(); // mantém o select no status anterior até a troca ser concluída no modal
+    openModal(realIdx);
+    document.getElementById('m-status').value = 'Frota Dedicada';
+    ajustarCampoFrotaDedicada();
+    return;
+  }
+  v.status = novoStatus;
+  v.veiculoDedicadoId = '';
+  if (v.placa && v.status === 'Aceito') {
+    v.status = 'Placa Enviada';
+  }
+  if (['Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Cancelado'].includes(v.status)) {
+    registrarHistoricoOferta(v, v.status);
+  }
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
+  const v = viagens[realIdx];
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd) return;
+  v.veiculoDedicadoId = veiculoId;
+  v.transportador = vd.transportador || '';
+  v.placa = vd.placaCavalo || '';
+  v.placaCarreta1 = vd.placaCarreta1 || '';
+  v.placaCarreta2 = vd.placaCarreta2 || '';
+  v.nomeMotorista = vd.nomeMotorista || '';
+  v.cpfMotorista = vd.cpfMotorista || '';
+  const t = buscarTransportadorPorNome(vd.transportador);
+  v.transportadorCnpj = t?.cnpjs?.length === 1 ? t.cnpjs[0].cnpj
+    : (t?.cnpjs?.some(c => c.cnpj === v.transportadorCnpj) ? v.transportadorCnpj : '');
+  registrarHistoricoOferta(v, 'Frota Dedicada');
+  updatePipeline();
+  agendarAutosave();
+  renderViagensTable();
+}
+
+const OPCOES_AGENDAMENTO = ['Não Agendado', 'Usina de Fila', 'Segurando Grade', 'Agendado'];
+
+function claseAgendamento(valor) {
+  return {
+    'Não Agendado': 'sel-agend-nao',
+    'Usina de Fila': 'sel-agend-usina',
+    'Segurando Grade': 'sel-agend-segurando',
+    'Agendado': 'sel-agend-agendado',
+  }[valor] || 'sel-agend-nao';
+}
+
+function renderSeletorAgendamento(v, realIdx) {
+  const atual = v.statusAgendamento || 'Não Agendado';
+  const opcoes = OPCOES_AGENDAMENTO.map(op => `<option value="${op}" ${op === atual ? 'selected' : ''}>${op}</option>`).join('');
+  return `<select class="placa-input sel-agend ${claseAgendamento(atual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
+      onchange="salvarAgendamentoInline(${realIdx}, this.value)" ${isTransportador() ? 'disabled' : ''}>
+      ${opcoes}
+    </select>`;
+}
+
+function salvarAgendamentoInline(realIdx, valor) {
+  const v = viagens[realIdx];
+  const anterior = v.statusAgendamento || 'Não Agendado';
+  if (valor === anterior) return;
+  v.statusAgendamento = valor;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Status de agendamento ajustado: ${anterior} → ${valor}`,
+  });
+  agendarAutosave();
+  renderViagensTable();
+}
+
 function salvarViagem() {
   if (editingIdx === null) return;
   const statusAnterior = viagens[editingIdx].status;
+  const novoStatus = document.getElementById('m-status').value;
+  const novoVeiculoId = document.getElementById('m-veiculo-dedicado').value;
+  if (novoStatus === 'Frota Dedicada' && !novoVeiculoId) {
+    alert('Selecione o veículo dedicado que vai atender esta viagem.');
+    return;
+  }
   const novoTransportador = document.getElementById('m-transportador').value;
   const novoCnpj = document.getElementById('m-transportador-cnpj').value;
   if (novoTransportador) {
@@ -5301,18 +5877,19 @@ function salvarViagem() {
   }
   viagens[editingIdx].transportador     = novoTransportador;
   viagens[editingIdx].transportadorCnpj = novoTransportador ? novoCnpj : '';
-  viagens[editingIdx].status         = document.getElementById('m-status').value;
+  viagens[editingIdx].status         = novoStatus;
   viagens[editingIdx].placa          = document.getElementById('m-placa').value.toUpperCase();
   viagens[editingIdx].placaCarreta1  = document.getElementById('m-placaCarreta1').value.toUpperCase();
   viagens[editingIdx].placaCarreta2  = document.getElementById('m-placaCarreta2').value.toUpperCase();
   viagens[editingIdx].nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
   viagens[editingIdx].cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   viagens[editingIdx].obs            = document.getElementById('m-obs').value;
+  viagens[editingIdx].veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
   if (viagens[editingIdx].placa && viagens[editingIdx].status === 'Aceito') {
     viagens[editingIdx].status = 'Placa Enviada';
   }
   if (viagens[editingIdx].status !== statusAnterior
-    && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(viagens[editingIdx].status)) {
+    && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(viagens[editingIdx].status)) {
     registrarHistoricoOferta(viagens[editingIdx], viagens[editingIdx].status);
   }
   closeModal();
@@ -5488,6 +6065,8 @@ function updatePipeline(list) {
   // Status: refletem a lista recebida (filtrada ou total)
   const cntCif       = list.filter(v => v.status === 'CIF').length;
   document.getElementById('cnt-cif').textContent = cntCif;
+  const cntFrota     = list.filter(v => v.status === 'Frota Dedicada').length;
+  document.getElementById('cnt-frota').textContent = cntFrota;
   const cntBacklog   = list.filter(v => v.status === 'Backlog').length;
   const cntOfertado  = list.filter(v => v.status === 'Ofertado').length;
   const cntRecusado  = list.filter(v => v.status === 'Recusado').length;
@@ -5538,18 +6117,38 @@ function updatePipeline(list) {
 }
 
 // ── EXPORT ──
+function filterExport(f, el) {
+  activeFilterExport = f;
+  document.querySelectorAll('#exportFilterChips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderExport();
+}
+
 function renderExport() {
-  const prontas = viagens.filter(v => v.status === 'Placa Enviada' && v.placa);
-  const isEmpty = prontas.length === 0;
+  const elegiveis = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  document.getElementById('badge-prontas').textContent = prontas.length + ' viagens';
+  const pendentes = elegiveis.filter(v => !v.herrlogExportadoEm);
+  const filtradas = activeFilterExport === 'pendente' ? pendentes
+    : activeFilterExport === 'enviado' ? elegiveis.filter(v => v.herrlogExportadoEm)
+    : elegiveis;
+
+  document.getElementById('badge-prontas').textContent = filtradas.length + ' viagem' + (filtradas.length !== 1 ? 's' : '');
+
+  const btnExportar = document.getElementById('btnExportarHerrlog');
+  btnExportar.textContent = `⬇ Exportar Herrlog${pendentes.length ? ` (${pendentes.length} pendente${pendentes.length !== 1 ? 's' : ''})` : ''}`;
+  btnExportar.disabled = pendentes.length === 0;
 
   const tbody = document.getElementById('exportBody');
   tbody.innerHTML = '';
-  prontas.forEach(v => {
+  filtradas.forEach(v => {
+    const enviado = !!v.herrlogExportadoEm;
+    const dtEnvio = enviado
+      ? new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '';
     tbody.innerHTML += `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
@@ -5560,6 +6159,9 @@ function renderExport() {
         <td><strong>${v.dtDesc}</strong></td>
         <td>${v.volume} m³</td>
         <td>${v.transportador}</td>
+        <td>${enviado
+          ? `<span class="badge badge-success" title="Exportado em ${dtEnvio}">✅ Enviado · ${dtEnvio}</span>`
+          : `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">⏳ Pendente</span>`}</td>
       </tr>
     `;
   });
@@ -5589,8 +6191,8 @@ function parseDataHora(dataStr, horaStr) {
 }
 
 function exportarHerrlog() {
-  const prontas = viagens.filter(v => v.status === 'Placa Enviada' && v.placa);
-  if (!prontas.length) return alert('Nenhuma viagem com placa confirmada.');
+  const prontas = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa && !v.herrlogExportadoEm);
+  if (!prontas.length) return alert('Nenhuma viagem pendente de exportação — tudo que está pronto já foi enviado ao Herrlog.');
 
   const provisorias = prontas.filter(v => v.pedidoProvisorio);
   if (provisorias.length) {
@@ -5649,6 +6251,11 @@ function exportarHerrlog() {
   XLSX.utils.book_append_sheet(wb, wsEventos, 'Eventos de Viagem');
 
   XLSX.writeFile(wb, `herrlog_importacao_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+  const agora = new Date().toISOString();
+  prontas.forEach(v => { v.herrlogExportadoEm = agora; });
+  agendarAutosave();
+  renderExport();
 }
 
 function aplicarFormatoData(ws, colIdx0based, numLinhas) {
@@ -6063,6 +6670,7 @@ await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
   await carregarBasesFirebase();
   await carregarFornecedoresFirebase();
+  await carregarVeiculosDedicadosFirebase();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
