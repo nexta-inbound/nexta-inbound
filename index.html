@@ -676,10 +676,21 @@
     width: 92px;
     max-width: 152px;
   }
-  th.col-data-desejada, th.col-data-programacao {
+  th.col-data-desejada, th.col-data-programacao, th.col-eta-herrlog {
     white-space: normal;
     max-width: 96px;
     line-height: 1.3;
+  }
+  .cell-eta-realizada {
+    color: var(--success);
+    font-weight: 700;
+  }
+  .cell-eta-estimada {
+    color: var(--text);
+  }
+  .cell-eta-label {
+    font-size: 11px;
+    color: var(--text-muted);
   }
   .date-start {
     font-size: 12px;
@@ -1026,6 +1037,7 @@
   body.transportador-mode #tabBtn4,
   body.transportador-mode #tabBtn5,
   body.transportador-mode #tabBtn6,
+  body.transportador-mode #tabBtn7,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #btnLimparSessao,
@@ -1089,6 +1101,11 @@
     ouvirMudancas: (key, callback) => {
       return onValue(ref(db, 'sessoes/' + key), (snap) => {
         if (snap.exists()) callback(snap.val());
+      });
+    },
+    ouvirMonitoramentoHerrlog: (callback) => {
+      return onValue(ref(db, 'monitoramentoHerrlog'), (snap) => {
+        callback(snap.exists() ? snap.val() : {});
       });
     },
     carregarUsuarios: async () => {
@@ -1433,10 +1450,11 @@
   <div class="tab active" id="tabBtn0" onclick="switchTab(0)">① Importar Cadência</div>
   <div class="tab" id="tabBtn1" onclick="switchTab(1)">② Gerir Viagens</div>
   <div class="tab" id="tabBtn2" onclick="switchTab(2)">③ Exportar para Monitoramento</div>
-  <div class="tab" id="tabBtn3" onclick="switchTab(3)">④ Transportadores</div>
-  <div class="tab" id="tabBtn4" onclick="switchTab(4)">⑤ Bases</div>
-  <div class="tab" id="tabBtn5" onclick="switchTab(5)">⑥ Fornecedores</div>
-  <div class="tab" id="tabBtn6" onclick="switchTab(6)">⑦ Veículos Dedicados</div>
+  <div class="tab" id="tabBtn3" onclick="switchTab(3)">④ Monitoramento</div>
+  <div class="tab" id="tabBtn4" onclick="switchTab(4)">⑤ Transportadores</div>
+  <div class="tab" id="tabBtn5" onclick="switchTab(5)">⑥ Bases</div>
+  <div class="tab" id="tabBtn6" onclick="switchTab(6)">⑦ Fornecedores</div>
+  <div class="tab" id="tabBtn7" onclick="switchTab(7)">⑧ Veículos Dedicados</div>
 </div>
 
 <div class="main">
@@ -1738,7 +1756,7 @@
         <div class="section-title">Exportar para o Sistema de Monitoramento</div>
         <div class="section-sub">Viagens com placa confirmada prontas para importação</div>
       </div>
-      <button class="btn btn-success" id="btnExportarHerrlog" onclick="exportarHerrlog()" title="Gera o XLSX no modelo do Importador Herrlog (abas Viagens + Eventos de Viagem) — apenas viagens pendentes">⬇ Exportar Herrlog</button>
+      <button class="btn btn-success" id="btnExportarHerrlog" onclick="exportarHerrlog()" title="Gera o XLSX no modelo do Importador Herrlog (abas Viagens + Eventos de Viagem) — todas as viagens com placa confirmada">⬇ Exportar Herrlog</button>
     </div>
 
     <div style="margin-top:20px">
@@ -1750,8 +1768,8 @@
           </div>
           <div class="chip-group" id="exportFilterChips">
             <div class="chip" id="chipExpTodos" onclick="filterExport('todos',this)">Todos</div>
-            <div class="chip active" id="chipExpPendente" onclick="filterExport('pendente',this)">Pendente</div>
-            <div class="chip" id="chipExpEnviado" onclick="filterExport('enviado',this)">Enviado</div>
+            <div class="chip active" id="chipExpAguardando" onclick="filterExport('aguardando',this)" title="Ainda não encontrada no monitoramento da Herrlog — exportada ou não">Aguardando criação na Herrlog</div>
+            <div class="chip" id="chipExpConfirmado" onclick="filterExport('confirmado',this)" title="Confirmado pelo monitoramento Herrlog (extracao_herrlog.py)">Confirmado</div>
           </div>
         </div>
         <div class="scrollable">
@@ -1777,8 +1795,107 @@
   </div>
 </div>
 
-<!-- ===== TAB 4: TRANSPORTADORES ===== -->
+<!-- ===== TAB 4: MONITORAMENTO ===== -->
 <div class="tab-content" id="tab-3">
+  <div id="monitoramentoEmpty" class="empty-state">
+    <div class="empty-icon">📡</div>
+    <div class="empty-text">Nenhuma viagem monitorada ainda</div>
+    <div class="empty-sub">Viagens aparecem aqui quando têm placa confirmada (Placa Enviada/Frota Dedicada) e já foram encontradas no monitoramento da Herrlog</div>
+  </div>
+
+  <div id="monitoramentoContent" style="display:none">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Monitoramento Herrlog</div>
+        <div class="section-sub">Viagens com placa confirmada já rastreadas pela Herrlog — comparação entre Data Desejada, Data Programação e ETA Real</div>
+      </div>
+    </div>
+
+    <div class="kpi-group-label">📅 Aderência à Data Programação</div>
+    <div class="stats-row" style="grid-template-columns:repeat(3, 1fr)">
+      <div class="stat-card c-danger">
+        <div class="stat-label">🔴 Atraso</div>
+        <div class="stat-val" id="sv-mon-atraso-prog">0</div>
+        <div class="stat-sub" id="sub-mon-atraso-prog">ETA Real depois da Data Programação</div>
+      </div>
+      <div class="stat-card c-accent">
+        <div class="stat-label">🔵 Adiantado</div>
+        <div class="stat-val" id="sv-mon-adiantado-prog">0</div>
+        <div class="stat-sub" id="sub-mon-adiantado-prog">ETA Real antes da Data Programação</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-label">✅ Aderência à Programação</div>
+        <div class="stat-val" id="sv-mon-aderencia-prog">0%</div>
+        <div class="stat-sub" id="sub-mon-aderencia-prog">não atrasadas em relação à Data Programação</div>
+      </div>
+    </div>
+
+    <div class="kpi-group-label">🎯 Aderência à Data Desejada</div>
+    <div class="stats-row" style="grid-template-columns:repeat(3, 1fr)">
+      <div class="stat-card c-danger">
+        <div class="stat-label">🔴 Atraso</div>
+        <div class="stat-val" id="sv-mon-atraso-des">0</div>
+        <div class="stat-sub" id="sub-mon-atraso-des">ETA Real depois da Data Desejada</div>
+      </div>
+      <div class="stat-card c-accent">
+        <div class="stat-label">🔵 Adiantado</div>
+        <div class="stat-val" id="sv-mon-adiantado-des">0</div>
+        <div class="stat-sub" id="sub-mon-adiantado-des">ETA Real antes da Data Desejada</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-label">✅ Aderência à Data Desejada</div>
+        <div class="stat-val" id="sv-mon-aderencia-des">0%</div>
+        <div class="stat-sub" id="sub-mon-aderencia-des">não atrasadas em relação à Data Desejada</div>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:20px">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Viagens Monitoradas</span>
+          <span class="badge badge-success" id="badge-monitoramento">0 viagens</span>
+        </div>
+        <div class="chip-group" id="monFilterChips"></div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fMonBusca"
+            placeholder="🔍  ID viagem, Pedido MIS, placa..."
+            oninput="renderMonitoramento()">
+          <div id="ms-monProduto"></div>
+          <div id="ms-monOrigem"></div>
+          <div id="ms-monDestino"></div>
+          <input type="text" class="filter-input" id="fMonTransp"
+            placeholder="🚚 Transportador..." style="width:150px"
+            oninput="renderMonitoramento()">
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosMonitoramento()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th>ID Viagem</th>
+              <th>Placa</th>
+              <th>Produto</th>
+              <th>Destino</th>
+              <th class="col-data-desejada">Data Desejada</th>
+              <th class="col-data-programacao">Data Programação</th>
+              <th class="col-eta-herrlog">ETA Real (Herrlog)</th>
+              <th style="white-space:normal">vs Programação</th>
+              <th style="white-space:normal">vs Desejada</th>
+              <th>Status Herrlog</th>
+            </tr>
+          </thead>
+          <tbody id="monitoramentoBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 5: TRANSPORTADORES ===== -->
+<div class="tab-content" id="tab-4">
   <div class="section-header">
     <div>
       <div class="section-title">Cadastro de Transportadores</div>
@@ -1826,8 +1943,8 @@
   </div>
 </div>
 
-<!-- ===== TAB 5: BASES ===== -->
-<div class="tab-content" id="tab-4">
+<!-- ===== TAB 6: BASES ===== -->
+<div class="tab-content" id="tab-5">
   <div class="section-header">
     <div>
       <div class="section-title">Cadastro de Bases</div>
@@ -1884,8 +2001,8 @@
   </div>
 </div>
 
-<!-- ===== TAB 6: FORNECEDORES ===== -->
-<div class="tab-content" id="tab-5">
+<!-- ===== TAB 7: FORNECEDORES ===== -->
+<div class="tab-content" id="tab-6">
   <div class="section-header">
     <div>
       <div class="section-title">Cadastro de Fornecedores</div>
@@ -1940,8 +2057,8 @@
   </div>
 </div>
 
-<!-- ===== TAB 7: VEÍCULOS DEDICADOS ===== -->
-<div class="tab-content" id="tab-6">
+<!-- ===== TAB 8: VEÍCULOS DEDICADOS ===== -->
+<div class="tab-content" id="tab-7">
   <div class="section-header">
     <div>
       <div class="section-title">Veículos Dedicados</div>
@@ -2931,6 +3048,7 @@ class MultiSelect {
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
 let msVProduto, msVOrigem, msVDestino;
+let msMonProduto, msMonOrigem, msMonDestino;
 let msCProduto, msCModal, msCOrigem, msCDestino;
 
 // ── MODAL GRUPO ──
@@ -3380,14 +3498,18 @@ function processarRetornoOferta(file) {
 let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
+let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
+let activeFilterMonStatus = 'todos'; // filtro de estado (Status Herrlog) na aba Monitoramento
+let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
 window._fbUnsub = null;
+window._fbUnsubMonitoramento = null;
 let activeFilter = new Set(); // status selecionados (vazio = "Todos")
 let activeAgendamento = new Set(); // status de agendamento selecionados (vazio = "Todos")
 let activeDiasCarregamento = new Set(); // offsets D0..D+4 selecionados (vazio = sem filtro)
 let activeIndicador = null;
 let sortColuna = null;
 let sortDir = 'asc';
-let activeFilterExport = 'pendente';
+let activeFilterExport = 'aguardando';
 let activeTab = 0;
 let editingIdx = null;
 let autosaveTimer = null;
@@ -3525,10 +3647,11 @@ function switchTab(i) {
   activeTab = i;
   if (i === 1) renderViagensTable();
   if (i === 2) renderExport();
-  if (i === 3) renderTransportadoresTable();
-  if (i === 4) renderBasesTable();
-  if (i === 5) renderFornecedoresTable();
-  if (i === 6) renderVeiculosTable();
+  if (i === 3) renderMonitoramento();
+  if (i === 4) renderTransportadoresTable();
+  if (i === 5) renderBasesTable();
+  if (i === 6) renderFornecedoresTable();
+  if (i === 7) renderVeiculosTable();
 }
 
 // ── SAMPLE DATA ──
@@ -4485,6 +4608,31 @@ function fmtShort(s) {
   if (!s || s === '-') return '—';
   const p = s.split('/');
   return p.length >= 2 ? `${p[0]}/${p[1]}` : s;
+}
+
+// Formata um ISO datetime (gravado pelo extracao_herrlog.py via .isoformat()) como "DD/MM HH:mm".
+function fmtIsoShort(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${mi}`;
+}
+
+// Coluna "ETA Real (Herrlog)": prioriza a chegada já realizada; senão mostra a
+// estimativa dinâmica da Herrlog; senão a viagem ainda não foi exportada/rastreada.
+function renderEtaHerrlog(mon) {
+  if (!mon) return '<span style="color:var(--text-muted)">—</span>';
+  if (mon.chegadaReal) {
+    return `<div class="cell-eta-label">Chegada Real</div><div class="cell-eta-realizada">${fmtIsoShort(mon.chegadaReal)}</div>`;
+  }
+  if (mon.etaDestino) {
+    return `<div class="cell-eta-label">ETA Herrlog</div><div class="cell-eta-estimada">${fmtIsoShort(mon.etaDestino)}</div>`;
+  }
+  return '<span style="color:var(--text-muted)">—</span>';
 }
 
 // Guarda contra erro de digitação no ano (ex: 2062 em vez de 2026) — a tabela só mostra DD/MM,
@@ -6346,24 +6494,24 @@ function renderExport() {
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  const pendentes = elegiveis.filter(v => !v.herrlogExportadoEm);
-  const filtradas = activeFilterExport === 'pendente' ? pendentes
-    : activeFilterExport === 'enviado' ? elegiveis.filter(v => v.herrlogExportadoEm)
+  const aguardando  = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // não confirmado na Herrlog (exportado ou não)
+  const confirmadas = elegiveis.filter(v => !!monitoramentoHerrlog[v.idViagem]);
+  const filtradas = activeFilterExport === 'aguardando' ? aguardando
+    : activeFilterExport === 'confirmado' ? confirmadas
     : elegiveis;
 
   document.getElementById('badge-prontas').textContent = filtradas.length + ' viagem' + (filtradas.length !== 1 ? 's' : '');
 
+  // Botão sempre habilitado quando há viagens elegíveis — reexportar não tem custo.
+  // O contador reflete exatamente o que será exportado (respeita o filtro ativo).
   const btnExportar = document.getElementById('btnExportarHerrlog');
-  btnExportar.textContent = `⬇ Exportar Herrlog${pendentes.length ? ` (${pendentes.length} pendente${pendentes.length !== 1 ? 's' : ''})` : ''}`;
-  btnExportar.disabled = pendentes.length === 0;
+  btnExportar.textContent = `⬇ Exportar Herrlog${filtradas.length ? ` (${filtradas.length})` : ''}`;
+  btnExportar.disabled = filtradas.length === 0;
 
   const tbody = document.getElementById('exportBody');
   tbody.innerHTML = '';
   filtradas.forEach(v => {
-    const enviado = !!v.herrlogExportadoEm;
-    const dtEnvio = enviado
-      ? new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-      : '';
+    const mon = monitoramentoHerrlog[v.idViagem] || null;
     tbody.innerHTML += `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
@@ -6374,9 +6522,172 @@ function renderExport() {
         <td><strong>${v.dtDesc}</strong></td>
         <td>${v.volume} m³</td>
         <td>${v.transportador}</td>
-        <td>${enviado
-          ? `<span class="badge badge-success" title="Exportado em ${dtEnvio}">✅ Enviado · ${dtEnvio}</span>`
-          : `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">⏳ Pendente</span>`}</td>
+        <td>${renderEnvioHerrlog(v, mon)}</td>
+      </tr>
+    `;
+  });
+}
+
+// Status real do "Envio": confirmado quando a viagem aparece no monitoramento
+// da Herrlog (extracao_herrlog.py, a cada ciclo) — não apenas quando o XLSX
+// foi baixado. Isso avisa o usuário quando exportou mas esqueceu de importar
+// (ou a importação falhou) na Herrlog.
+function renderEnvioHerrlog(v, mon) {
+  if (mon) {
+    const quando = mon.atualizadoEm ? fmtIsoShort(mon.atualizadoEm) : '';
+    return `<span class="badge badge-success" title="Confirmado pelo monitoramento Herrlog${quando ? ' · atualizado ' + quando : ''}">✅ Confirmado na Herrlog</span>`;
+  }
+  const titulo = v.herrlogExportadoEm
+    ? `XLSX exportado em ${new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ainda não encontrado na Herrlog. Confira se a importação foi feita.`
+    : 'Ainda não exportado — gere o XLSX e importe na Herrlog.';
+  return `<span class="badge" style="color:var(--accent2);background:var(--accent2-dim)" title="${titulo}">⚠ Aguardando criação na Herrlog</span>`;
+}
+
+// ── MONITORAMENTO (aderência ETA Real x Data Desejada / Data Programação) ──
+
+// Classifica o dia do ETA Real (ou Chegada Real, se a viagem já finalizou) em
+// relação a uma data de referência "DD/MM/AAAA" do portal. Tolerância: mesmo
+// dia conta como "no-prazo" (decisão do time — variações de horário no mesmo
+// dia não são tratadas como atraso/adiantamento).
+function classificarAderencia(dataRefDMY, isoEta) {
+  const ref = parseDMY(dataRefDMY);
+  if (!ref || !isoEta) return null;
+  const eta = new Date(isoEta);
+  if (isNaN(eta.getTime())) return null;
+  const refDia = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()).getTime();
+  const etaDia = new Date(eta.getFullYear(), eta.getMonth(), eta.getDate()).getTime();
+  const diffDias = Math.round((etaDia - refDia) / 86400000);
+  if (diffDias > 0) return 'atraso';
+  if (diffDias < 0) return 'adiantado';
+  return 'no-prazo';
+}
+
+function badgeAderencia(status) {
+  if (status === 'atraso')    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)">🔴 Atraso</span>`;
+  if (status === 'adiantado') return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)">🔵 Adiantado</span>`;
+  if (status === 'no-prazo')  return `<span class="badge badge-success">✅ No prazo</span>`;
+  return `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">—</span>`;
+}
+
+// idx -1 = "Todos"; demais índices referenciam _monEstadosAtual (evita ter que
+// escapar o texto do estado dentro do atributo onclick).
+function filterMonitoramentoStatus(idx) {
+  activeFilterMonStatus = idx === -1 ? 'todos' : _monEstadosAtual[idx];
+  renderMonitoramento();
+}
+
+// Mesma dinâmica de filtros (busca, produto, origem, destino, transportador)
+// usada em "Gerir Viagens" (estadoFiltrosViagem/passaFiltrosViagem), aplicada
+// ao subconjunto de viagens já monitoradas pela Herrlog.
+function estadoFiltrosMonitoramento() {
+  return {
+    busca: (document.getElementById('fMonBusca')?.value || '').toLowerCase().trim(),
+    transp: (document.getElementById('fMonTransp')?.value || '').toLowerCase().trim(),
+    produtos: new Set(msMonProduto?.getSelected() || []),
+    origens: new Set(msMonOrigem?.getSelected() || []),
+    destinos: new Set(msMonDestino?.getSelected() || []),
+  };
+}
+
+function passaFiltrosMonitoramento(v, f, ignorar = '') {
+  if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
+  if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
+  if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
+  if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
+  if (f.busca) {
+    const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
+    if (!hay.includes(f.busca)) return false;
+  }
+  return true;
+}
+
+function atualizarOpcoesFiltrosMonitoramento(monitoradas, f) {
+  msMonProduto?.setOptions(valoresUnicosOrdenados(
+    monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'produto')), v => v.produto
+  ));
+  msMonOrigem?.setOptions(valoresUnicosOrdenados(
+    monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'origem')), valorOrigemFiltro
+  ));
+  msMonDestino?.setOptions(valoresUnicosOrdenados(
+    monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'destino')), v => v.destino
+  ));
+}
+
+function limparFiltrosMonitoramento() {
+  document.getElementById('fMonBusca').value = '';
+  document.getElementById('fMonTransp').value = '';
+  msMonProduto?.clear(); msMonOrigem?.clear(); msMonDestino?.clear();
+  renderMonitoramento();
+}
+
+function renderMonitoramento() {
+  const monitoradas = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && monitoramentoHerrlog[v.idViagem]);
+  const isEmpty = monitoradas.length === 0;
+  document.getElementById('monitoramentoEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('monitoramentoContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  const f = estadoFiltrosMonitoramento();
+  atualizarOpcoesFiltrosMonitoramento(monitoradas, f);
+  const filtradas = monitoradas.filter(v => passaFiltrosMonitoramento(v, f));
+
+  const linhas = filtradas.map(v => {
+    const mon = monitoramentoHerrlog[v.idViagem];
+    const etaIso = mon.chegadaReal || mon.etaDestino || null;
+    return {
+      v, mon, etaIso,
+      vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
+      vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
+    };
+  });
+
+  const contar  = (campo, valor) => linhas.filter(l => l[campo] === valor).length;
+  const comDado = (campo) => linhas.filter(l => l[campo] !== null).length;
+  const pct     = (n, total) => total ? Math.round((n / total) * 100) : 0;
+
+  const totalProg = comDado('vsProgramacao');
+  const totalDes  = comDado('vsDesejada');
+
+  // Aderência = % de viagens NÃO atrasadas (no-prazo + adiantado contam como
+  // dentro do compromisso — só atraso quebra a aderência à data de referência).
+  const atrasoProg = contar('vsProgramacao', 'atraso');
+  const atrasoDes  = contar('vsDesejada', 'atraso');
+
+  document.getElementById('sv-mon-atraso-prog').textContent    = atrasoProg;
+  document.getElementById('sv-mon-adiantado-prog').textContent = contar('vsProgramacao', 'adiantado');
+  document.getElementById('sv-mon-aderencia-prog').textContent = pct(totalProg - atrasoProg, totalProg) + '%';
+
+  document.getElementById('sv-mon-atraso-des').textContent    = atrasoDes;
+  document.getElementById('sv-mon-adiantado-des').textContent = contar('vsDesejada', 'adiantado');
+  document.getElementById('sv-mon-aderencia-des').textContent = pct(totalDes - atrasoDes, totalDes) + '%';
+
+  // ── Filtro por estado da viagem (Status Herrlog) ──
+  _monEstadosAtual = [...new Set(linhas.map(l => l.mon.statusHerrlog).filter(Boolean))].sort();
+  if (activeFilterMonStatus !== 'todos' && !_monEstadosAtual.includes(activeFilterMonStatus)) activeFilterMonStatus = 'todos';
+
+  const chipsWrap = document.getElementById('monFilterChips');
+  chipsWrap.innerHTML = `<div class="chip ${activeFilterMonStatus === 'todos' ? 'active' : ''}" onclick="filterMonitoramentoStatus(-1)">Todos</div>` +
+    _monEstadosAtual.map((e, i) => `<div class="chip ${activeFilterMonStatus === e ? 'active' : ''}" onclick="filterMonitoramentoStatus(${i})">${esc(e)}</div>`).join('');
+
+  const linhasFiltradas = activeFilterMonStatus === 'todos' ? linhas : linhas.filter(l => l.mon.statusHerrlog === activeFilterMonStatus);
+
+  document.getElementById('badge-monitoramento').textContent = linhasFiltradas.length + ' viagem' + (linhasFiltradas.length !== 1 ? 's' : '');
+
+  const tbody = document.getElementById('monitoramentoBody');
+  tbody.innerHTML = '';
+  linhasFiltradas.forEach(({ v, mon, vsProgramacao, vsDesejada }) => {
+    tbody.innerHTML += `
+      <tr>
+        <td class="cell-id-viagem">${v.idViagem}</td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
+        <td>${prodTag(v.produto)}</td>
+        <td>${esc(v.destino)}</td>
+        <td class="cell-periodo col-data-desejada">${fmtShort(v.dtDesc)}</td>
+        <td class="cell-periodo col-data-programacao">${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}</td>
+        <td class="cell-periodo col-eta-herrlog">${renderEtaHerrlog(mon)}</td>
+        <td>${badgeAderencia(vsProgramacao)}</td>
+        <td>${badgeAderencia(vsDesejada)}</td>
+        <td style="font-size:12px;color:var(--text-dim)">${esc(mon.statusHerrlog || '—')}</td>
       </tr>
     `;
   });
@@ -6405,9 +6716,29 @@ function parseDataHora(dataStr, horaStr) {
   return d;
 }
 
+// Converte para serial do Excel calculando direto a partir dos componentes
+// locais (ano/mês/dia/hora/minuto), sem passar pelo datenum() do SheetJS.
+// O datenum() da lib usa getTimezoneOffset() do epoch (30/12/1899), que em
+// fusos com offset histórico fracionário (ex.: America/Sao_Paulo antes da
+// padronização de 1914) devolve um valor diferente do offset atual — isso
+// desloca o serial em alguns minutos e a célula exibe "59" em vez de "00".
+// Calculando o serial nós mesmos (Date.UTC só como aritmética de calendário,
+// sem nenhuma consulta de fuso horário) evita esse problema.
+function paraSerialExcel(date) {
+  if (!date) return null;
+  const utcMs = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds());
+  return (utcMs - Date.UTC(1899, 11, 30)) / 86400000;
+}
+
 function exportarHerrlog() {
-  const prontas = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa && !v.herrlogExportadoEm);
-  if (!prontas.length) return alert('Nenhuma viagem pendente de exportação — tudo que está pronto já foi enviado ao Herrlog.');
+  // Sem restrição por herrlogExportadoEm — reexportar quantas vezes precisar não é
+  // problema; o filtro "Aguardando criação na Herrlog" já indica o que falta confirmar.
+  // Exporta exatamente o que está sendo exibido pelo filtro ativo (Todos/Aguardando/Confirmado).
+  const elegiveis = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const prontas = activeFilterExport === 'aguardando' ? elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem])
+    : activeFilterExport === 'confirmado' ? elegiveis.filter(v => !!monitoramentoHerrlog[v.idViagem])
+    : elegiveis;
+  if (!prontas.length) return alert('Nenhuma viagem com placa confirmada para exportar (considerando o filtro atual).');
 
   const provisorias = prontas.filter(v => v.pedidoProvisorio);
   if (provisorias.length) {
@@ -6438,19 +6769,21 @@ function exportarHerrlog() {
   const linhasEventos = [];
 
   resolvidas.forEach(({ v, fornecedor, base }) => {
-    const inicioPrevisto = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg)
+    const dataCarregamento = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg)
       || parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg);
-    const dataDescarga = parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg) || inicioPrevisto;
+    const dataDescarga = parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg) || dataCarregamento;
+    // Início Previsto = 4h antes do carregamento (tempo de deslocamento até o ponto de carga).
+    const inicioPrevisto = dataCarregamento ? new Date(dataCarregamento.getTime() - 4 * 60 * 60 * 1000) : null;
     const trailers = [v.placaCarreta1, v.placaCarreta2].filter(Boolean).join(';');
     const volumeLitros = (v.volume || 0) * 1000;
 
     linhasViagens.push([
-      v.idViagem, 'Programado', inicioPrevisto, v.placa, trailers,
+      v.idViagem, 'Programado', paraSerialExcel(inicioPrevisto), v.placa, trailers,
       '', '', v.produto, v.cadenciaOrigem || '', '', volumeLitros, volumeLitros, volumeLitros, '', '',
     ]);
 
-    linhasEventos.push([v.idViagem, fornecedor.codSap, 'Carregamento', inicioPrevisto]);
-    linhasEventos.push([v.idViagem, base.idHerrlog, 'Descarga', dataDescarga]);
+    linhasEventos.push([v.idViagem, fornecedor.codSap, 'Carregamento', paraSerialExcel(dataCarregamento)]);
+    linhasEventos.push([v.idViagem, base.idHerrlog, 'Descarga', paraSerialExcel(dataDescarga)]);
   });
 
   const wb = XLSX.utils.book_new();
@@ -6810,8 +7143,21 @@ function configurarListenerSemana(key) {
     if (activeTab === 0 && cadencias.length > 0) renderPreview();
     if (activeTab === 1) renderViagensTable();
     if (activeTab === 2) renderExport();
+    if (activeTab === 3) renderMonitoramento();
     updatePipeline();
     mostrarStatus('saved', '🔄 Atualizado por outro usuário');
+  });
+}
+
+// Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` —
+// alimentado pelo extracao_herrlog.py a cada ciclo). Independente da semana
+// ativa, por isso o listener e' configurado uma unica vez.
+function configurarListenerMonitoramentoHerrlog() {
+  if (window._fbUnsubMonitoramento) { window._fbUnsubMonitoramento(); window._fbUnsubMonitoramento = null; }
+  window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog((dados) => {
+    monitoramentoHerrlog = dados || {};
+    if (activeTab === 2) renderExport();
+    if (activeTab === 3) renderMonitoramento();
   });
 }
 
@@ -6886,6 +7232,7 @@ await carregarUsuariosFirebase();
   await carregarBasesFirebase();
   await carregarFornecedoresFirebase();
   await carregarVeiculosDedicadosFirebase();
+  configurarListenerMonitoramentoHerrlog();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
@@ -6922,6 +7269,9 @@ window.addEventListener('DOMContentLoaded', () => {
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
+  msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento);
+  msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento);
+  msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento);
 
   if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
     mostrarStatus('saving', 'Reconectando...');
