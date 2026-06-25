@@ -366,6 +366,9 @@
   }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(141,200,48,0.08); }
+  .th-sortable { cursor: pointer; user-select: none; }
+  .th-sortable:hover { color: var(--accent); }
+  .sort-arrow { display: inline-block; margin-left: 3px; color: var(--accent); font-size: 9px; }
 
   .product-tag {
     display: inline-block;
@@ -582,7 +585,7 @@
   .filter-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(141,200,48,0.12); }
   .filter-input::placeholder { color: var(--text-muted); }
   .filter-input.fi-wide { width: 240px; }
-  .filter-input.fi-date { width: 120px; color-scheme: light; }
+  .filter-input.fi-date { width: 60px; text-align: center; }
   .filter-sep { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
   .placa-input {
@@ -718,6 +721,9 @@
     cursor: pointer; border: 1px solid var(--border); transition: all 0.15s;
   }
   .chip.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+  .chip-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+  .chip-agend { background: rgba(124,58,237,0.14); color: #B79AF0; border-color: rgba(124,58,237,0.5); }
+  .chip-agend.active { background: rgba(124,58,237,0.38); color: #F2EBFF; border-color: var(--pet-purple); }
   tr.row-selected td { background: rgba(141,200,48,0.12); }
   tr.row-selected td.col-acao { background: #213923 !important; }
   tr:hover.row-selected td.col-acao { background: #264229 !important; }
@@ -1592,15 +1598,20 @@
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span class="table-title">Programação de Viagens</span>
           <div class="chip-group" id="filterChips">
-            <div class="chip active" id="chipTodos" onclick="filterViagens('todos',this)">Todos</div>
-            <div class="chip" id="chipBacklog" onclick="filterViagens('Backlog',this)">Backlog</div>
-            <div class="chip" onclick="filterViagens('Ofertado',this)">Ofertadas</div>
-            <div class="chip" onclick="filterViagens('Recusado',this)">Recusadas</div>
-            <div class="chip" onclick="filterViagens('Aceito',this)">Aceitas</div>
-            <div class="chip" onclick="filterViagens('Placa Enviada',this)">Placa Enviada</div>
-            <div class="chip" onclick="filterViagens('Frota Dedicada',this)">Frota Dedicada</div>
-            <div class="chip" id="chipCif" onclick="filterViagens('CIF',this)">CIF</div>
-            <div class="chip" onclick="filterViagens('Cancelado',this)">Canceladas</div>
+            <div class="chip active" id="chipTodos" data-status="todos" onclick="filterViagens('todos')" title="Limpa a seleção de status">Todos</div>
+            <div class="chip" id="chipBacklog" data-status="Backlog" onclick="filterViagens('Backlog')" title="Clique para somar/remover este status à seleção">Backlog</div>
+            <div class="chip" data-status="Ofertado" onclick="filterViagens('Ofertado')" title="Clique para somar/remover este status à seleção">Ofertadas</div>
+            <div class="chip" data-status="Recusado" onclick="filterViagens('Recusado')" title="Clique para somar/remover este status à seleção">Recusadas</div>
+            <div class="chip" data-status="Aceito" onclick="filterViagens('Aceito')" title="Clique para somar/remover este status à seleção">Aceitas</div>
+            <div class="chip" data-status="Placa Enviada" onclick="filterViagens('Placa Enviada')" title="Clique para somar/remover este status à seleção">Placa Enviada</div>
+            <div class="chip" data-status="Frota Dedicada" onclick="filterViagens('Frota Dedicada')" title="Clique para somar/remover este status à seleção">Frota Dedicada</div>
+            <div class="chip" id="chipCif" data-status="CIF" onclick="filterViagens('CIF')" title="Clique para somar/remover este status à seleção">CIF</div>
+            <div class="chip" data-status="Cancelado" onclick="filterViagens('Cancelado')" title="Clique para somar/remover este status à seleção">Canceladas</div>
+            <span class="chip-sep"></span>
+            <div class="chip chip-agend" data-agend="Não Agendado" onclick="filterAgendamento('Não Agendado')" title="Filtro de Agendamento — clique para somar/remover">Não Agendado</div>
+            <div class="chip chip-agend" data-agend="Usina de Fila" onclick="filterAgendamento('Usina de Fila')" title="Filtro de Agendamento — clique para somar/remover">Usina de Fila</div>
+            <div class="chip chip-agend" data-agend="Segurando Grade" onclick="filterAgendamento('Segurando Grade')" title="Filtro de Agendamento — clique para somar/remover">Segurando Grade</div>
+            <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
         </div>
         <div id="wrapImportarRetorno">
@@ -1622,18 +1633,25 @@
           <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
-              <input type="date" class="filter-input fi-date" id="fCarrDe" onchange="renderViagensTable()" title="Carregamento De">
+              <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInput()" title="Carregamento De (ano atual)">
               <span class="filter-sep">—</span>
-              <input type="date" class="filter-input fi-date" id="fCarrAte" onchange="renderViagensTable()" title="Carregamento Até">
+              <input type="text" class="filter-input fi-date" id="fCarrAte" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInput()" title="Carregamento Até (ano atual)">
             </div>
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↓</span>
-              <input type="date" class="filter-input fi-date" id="fDtDe" onchange="renderViagensTable()" title="Descarga De">
+              <input type="text" class="filter-input fi-date" id="fDtDe" placeholder="DD/MM" maxlength="5" oninput="renderViagensTable()" title="Descarga De (ano atual)">
               <span class="filter-sep">—</span>
-              <input type="date" class="filter-input fi-date" id="fDtAte" onchange="renderViagensTable()" title="Descarga Até">
+              <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTable()" title="Descarga Até (ano atual)">
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+          <div class="chip-group" id="diaCarregChips" style="align-self:center;margin-left:6px">
+            <div class="chip" data-dia="0" onclick="filtrarDiaCarregamento(0)" title="Carregamento = hoje">D0</div>
+            <div class="chip" data-dia="1" onclick="filtrarDiaCarregamento(1)" title="Carregamento = amanhã">D+1</div>
+            <div class="chip" data-dia="2" onclick="filtrarDiaCarregamento(2)" title="Carregamento = hoje + 2 dias">D+2</div>
+            <div class="chip" data-dia="3" onclick="filtrarDiaCarregamento(3)" title="Carregamento = hoje + 3 dias">D+3</div>
+            <div class="chip" data-dia="4" onclick="filtrarDiaCarregamento(4)" title="Carregamento = hoje + 4 dias">D+4</div>
+          </div>
         </div>
       </div>
       <div id="bulkBar" style="display:none;padding:8px 18px;border-bottom:1px solid var(--border);background:rgba(141,200,48,0.12);flex-wrap:wrap;gap:10px;align-items:center">
@@ -1685,17 +1703,17 @@
                 <input type="checkbox" id="chk-all" onclick="toggleSelectAll(this.checked)"
                   style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
               </th>
-              <th>ID Viagem</th>
-              <th class="col-pedido-mis">Pedido MIS</th>
-              <th>Produto</th>
-              <th>Origem</th>
-              <th>Destino</th>
-              <th class="col-data-desejada">Data Desejada Abastecimento</th>
-              <th class="col-data-programacao">Data Programação</th>
-              <th>Vol (m³)</th>
-              <th>Status</th>
-              <th class="col-agendamento">Agendamento</th>
-              <th>Transportador</th>
+              <th class="th-sortable" data-col="idViagem" onclick="ordenarColuna('idViagem')">ID Viagem<span class="sort-arrow"></span></th>
+              <th class="col-pedido-mis th-sortable" data-col="pedidoMis" onclick="ordenarColuna('pedidoMis')">Pedido MIS<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="produto" onclick="ordenarColuna('produto')">Produto<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="origem" onclick="ordenarColuna('origem')">Origem<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="destino" onclick="ordenarColuna('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="col-data-desejada th-sortable" data-col="dataDesejada" onclick="ordenarColuna('dataDesejada')">Data Desejada Abastecimento<span class="sort-arrow"></span></th>
+              <th class="col-data-programacao th-sortable" data-col="dataProgramacao" onclick="ordenarColuna('dataProgramacao')">Data Programação<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="volume" onclick="ordenarColuna('volume')">Vol (m³)<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="status" onclick="ordenarColuna('status')">Status<span class="sort-arrow"></span></th>
+              <th class="col-agendamento th-sortable" data-col="agendamento" onclick="ordenarColuna('agendamento')">Agendamento<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="transportador" onclick="ordenarColuna('transportador')">Transportador<span class="sort-arrow"></span></th>
               <th class="col-acao col-acao-sm">Ação</th>
             </tr>
           </thead>
@@ -2608,10 +2626,9 @@ function aplicarRestricoesPorTipo(usuario) {
   selectedViagens.clear();
   atualizarBulkBar();
 
-  if (transportador && activeFilter === 'Backlog') {
-    activeFilter = 'todos';
-    document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
-    document.getElementById('chipTodos')?.classList.add('active');
+  if (transportador && activeFilter.has('Backlog')) {
+    activeFilter.delete('Backlog');
+    sincronizarChipsStatus();
   }
 
   if (transportador) switchTab(1);
@@ -3364,8 +3381,12 @@ let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
 window._fbUnsub = null;
-let activeFilter = 'todos';
+let activeFilter = new Set(); // status selecionados (vazio = "Todos")
+let activeAgendamento = new Set(); // status de agendamento selecionados (vazio = "Todos")
+let activeDiasCarregamento = new Set(); // offsets D0..D+4 selecionados (vazio = sem filtro)
 let activeIndicador = null;
+let sortColuna = null;
+let sortDir = 'asc';
 let activeFilterExport = 'pendente';
 let activeTab = 0;
 let editingIdx = null;
@@ -4171,8 +4192,28 @@ function testeIndicador(key) {
 
 function filtrarPorIndicador(key) {
   activeIndicador = activeIndicador === key ? null : key;
-  activeFilter = 'todos';
-  document.querySelectorAll('#filterChips .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  activeFilter.clear();
+  sincronizarChipsStatus();
+  renderViagensTable();
+}
+
+function sincronizarChipsStatus() {
+  document.querySelectorAll('#filterChips .chip').forEach(c => {
+    if (c.dataset.status !== undefined) {
+      const st = c.dataset.status;
+      c.classList.toggle('active', st === 'todos' ? activeFilter.size === 0 : activeFilter.has(st));
+    } else if (c.dataset.agend !== undefined) {
+      c.classList.toggle('active', activeAgendamento.has(c.dataset.agend));
+    }
+  });
+}
+
+function filterAgendamento(f) {
+  // Eixo independente do status/indicador — não reseta o que já estiver selecionado ali,
+  // permitindo combinar (ex.: "Crítico" + "Não Agendado").
+  if (activeAgendamento.has(f)) activeAgendamento.delete(f);
+  else activeAgendamento.add(f);
+  sincronizarChipsStatus();
   renderViagensTable();
 }
 
@@ -4195,7 +4236,8 @@ function estadoFiltrosViagem() {
 function passaFiltrosViagem(v, f, ignorar = '') {
   if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
   if (isTransportador() && v.status === 'Backlog') return false;
-  if (activeFilter !== 'todos' && v.status !== activeFilter) return false;
+  if (activeFilter.size && !activeFilter.has(v.status)) return false;
+  if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
@@ -4205,18 +4247,28 @@ function passaFiltrosViagem(v, f, ignorar = '') {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
     if (!hay.includes(f.busca)) return false;
   }
+  if (activeDiasCarregamento.size) {
+    const vc = parseDMY(v.dtCarreg);
+    if (!vc) return false;
+    const ok = [...activeDiasCarregamento].some(n => mesmoDiaCalendario(vc, diaCarregamentoDate(n)));
+    if (!ok) return false;
+  }
   if (f.carrDe || f.carrAte) {
     const vc = parseDMY(v.dtCarreg);
+    const de = parseDMSemAno(f.carrDe);
+    const ate = parseDMSemAno(f.carrAte);
     if (vc) {
-      if (f.carrDe && vc < new Date(f.carrDe)) return false;
-      if (f.carrAte && vc > new Date(f.carrAte + 'T23:59')) return false;
+      if (de && vc < de) return false;
+      if (ate && vc > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
     }
   }
   if (f.dtDe || f.dtAte) {
     const vd = parseDMY(v.dtDesc);
+    const de = parseDMSemAno(f.dtDe);
+    const ate = parseDMSemAno(f.dtAte);
     if (vd) {
-      if (f.dtDe && vd < new Date(f.dtDe)) return false;
-      if (f.dtAte && vd > new Date(f.dtAte + 'T23:59')) return false;
+      if (de && vd < de) return false;
+      if (ate && vd > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
     }
   }
   return true;
@@ -4237,6 +4289,49 @@ function atualizarOpcoesFiltrosViagem(f) {
   ));
 }
 
+function valorOrdenacao(v, coluna) {
+  switch (coluna) {
+    case 'idViagem':       return v.idViagem || '';
+    case 'pedidoMis':      return v.cadenciaOrigem || '';
+    case 'produto':        return v.produto || '';
+    case 'origem':         return v.origem || '';
+    case 'destino':        return v.destino || '';
+    case 'dataDesejada':   return parseDMY(v.dtCarreg) || new Date(8640000000000000);
+    case 'dataProgramacao':return parseDMY(v.dtCarregProg || v.dtCarreg) || new Date(8640000000000000);
+    case 'volume':         return v.volume || 0;
+    case 'status':         { const i = OPCOES_STATUS.indexOf(v.status); return i === -1 ? 999 : i; }
+    case 'agendamento':    { const i = OPCOES_AGENDAMENTO.indexOf(v.statusAgendamento || 'Não Agendado'); return i === -1 ? 999 : i; }
+    case 'transportador':  return v.transportador || '';
+    default: return '';
+  }
+}
+
+function compararOrdenacao(a, b, coluna) {
+  const va = valorOrdenacao(a, coluna);
+  const vb = valorOrdenacao(b, coluna);
+  if (va instanceof Date || vb instanceof Date) return va - vb;
+  if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+  return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+}
+
+function ordenarColuna(coluna) {
+  if (sortColuna === coluna) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortColuna = coluna;
+    sortDir = 'asc';
+  }
+  renderViagensTable();
+}
+
+function atualizarSetasOrdenacao() {
+  document.querySelectorAll('.th-sortable').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    arrow.textContent = sortColuna === th.dataset.col ? (sortDir === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
 function renderViagensTable() {
   const isEmpty = viagens.length === 0;
   document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
@@ -4250,6 +4345,12 @@ function renderViagensTable() {
   filtrosViagem = estadoFiltrosViagem();
 
   let filtered = viagens.filter(v => passaFiltrosViagem(v, filtrosViagem));
+  if (sortColuna) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    filtered = filtered.slice().sort((a, b) => dir * compararOrdenacao(a, b, sortColuna));
+  }
+  atualizarSetasOrdenacao();
+  sincronizarChipsDiaCarregamento();
 
   // KPIs sempre calculados ignorando o próprio filtro de indicador: assim, ao clicar
   // num card, os demais cards do grupo continuam mostrando o total real (não "congelam"
@@ -4371,6 +4472,15 @@ function parseDMY(s) {
   return new Date(+p[2], +p[1] - 1, +p[0]);
 }
 
+// Filtro de período "DD/MM" sem ano — assume o ano atual (evita digitar o ano a cada filtro).
+function parseDMSemAno(s) {
+  const m = (s || '').trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const dia = +m[1], mes = +m[2];
+  if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return null;
+  return new Date(new Date().getFullYear(), mes - 1, dia);
+}
+
 function fmtShort(s) {
   if (!s || s === '-') return '—';
   const p = s.split('/');
@@ -4398,9 +4508,46 @@ function limparFiltrosCad() {
 function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear();
-  activeFilter = 'todos';
+  activeFilter.clear();
+  activeAgendamento.clear();
+  activeDiasCarregamento.clear();
   activeIndicador = null;
-  document.querySelectorAll('#filterChips .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  sincronizarChipsStatus();
+  sincronizarChipsDiaCarregamento();
+  renderViagensTable();
+}
+
+function diaCarregamentoDate(n) {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n);
+  return d;
+}
+
+function mesmoDiaCalendario(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// D0..D+4 são um eixo independente do filtro manual De/Até — permitem somar dias
+// não-contíguos (ex.: D0 + D+3 sem precisar dos dias entre eles).
+function filtrarDiaCarregamento(n) {
+  if (activeDiasCarregamento.has(n)) activeDiasCarregamento.delete(n);
+  else activeDiasCarregamento.add(n);
+  document.getElementById('fCarrDe').value = '';
+  document.getElementById('fCarrAte').value = '';
+  sincronizarChipsDiaCarregamento();
+  renderViagensTable();
+}
+
+function sincronizarChipsDiaCarregamento() {
+  document.querySelectorAll('#diaCarregChips .chip').forEach(c => {
+    c.classList.toggle('active', activeDiasCarregamento.has(+c.dataset.dia));
+  });
+}
+
+function onCarregamentoManualInput() {
+  if (activeDiasCarregamento.size) {
+    activeDiasCarregamento.clear();
+    sincronizarChipsDiaCarregamento();
+  }
   renderViagensTable();
 }
 
@@ -5499,11 +5646,17 @@ function aplicarVeiculoDedicadoSelecionado(veiculoId) {
   popularSelectCnpjsTransportador('m-transportador-cnpj', vd.transportador || '', '');
 }
 
-function filterViagens(f, el) {
-  activeFilter = f;
+function filterViagens(f) {
   activeIndicador = null;
-  document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
+  if (f === 'todos') {
+    activeFilter.clear();
+    activeAgendamento.clear();
+  } else if (activeFilter.has(f)) {
+    activeFilter.delete(f);
+  } else {
+    activeFilter.add(f);
+  }
+  sincronizarChipsStatus();
   renderViagensTable();
 }
 
