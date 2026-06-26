@@ -1272,6 +1272,20 @@
     <div class="login-admin-subtitle">Usuários cadastrados no Firebase</div>
     <div class="login-admin-users" id="adminUsersList"></div>
 
+    <div id="adminResetSenhaBox" style="display:none;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px;margin-bottom:14px">
+      <strong style="color:var(--accent);font-size:12px;display:block;margin-bottom:6px">🔑 Comando para definir a nova senha</strong>
+      <div style="font-size:11.5px;color:var(--text-dim);line-height:1.6;margin-bottom:8px">
+        O navegador não pode trocar a senha de outro usuário diretamente (isso exige a credencial de administrador do Firebase, que nunca pode ficar no código do site).
+        Abra um terminal em <code>testes/portal_inbound/</code> e rode o comando abaixo
+        (configuração única necessária: veja o topo de <code>admin_resetar_senha.py</code>).
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <code id="adminResetSenhaCmd" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11.5px;word-break:break-all;color:var(--success)"></code>
+        <button class="btn btn-secondary btn-sm" onclick="adminCopiarComandoResetSenha()">📋 Copiar</button>
+      </div>
+      <div class="login-admin-info" id="adminResetSenhaInfo"></div>
+    </div>
+
     <hr class="login-admin-separator">
 
     <div class="login-admin-subtitle">Adicionar novo usuário</div>
@@ -1812,18 +1826,23 @@
     </div>
 
     <div class="kpi-group-label">📅 Aderência à Data Programação</div>
-    <div class="stats-row" style="grid-template-columns:repeat(3, 1fr)">
-      <div class="stat-card c-danger">
-        <div class="stat-label">🔴 Atraso</div>
-        <div class="stat-val" id="sv-mon-atraso-prog">0</div>
-        <div class="stat-sub" id="sub-mon-atraso-prog">ETA Real depois da Data Programação</div>
+    <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
+      <div class="stat-card c-success clickable" id="kpi-mon-noprazo-prog" onclick="filtrarPorIndicadorMon('noprazo-prog')" title="Clique para filtrar a tabela por estas viagens">
+        <div class="stat-label">✅ No Prazo</div>
+        <div class="stat-val" id="sv-mon-noprazo-prog">0</div>
+        <div class="stat-sub" id="sub-mon-noprazo-prog">ETA Real no mesmo dia da Data Programação</div>
       </div>
-      <div class="stat-card c-accent">
+      <div class="stat-card c-accent clickable" id="kpi-mon-adiantado-prog" onclick="filtrarPorIndicadorMon('adiantado-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🔵 Adiantado</div>
         <div class="stat-val" id="sv-mon-adiantado-prog">0</div>
         <div class="stat-sub" id="sub-mon-adiantado-prog">ETA Real antes da Data Programação</div>
       </div>
-      <div class="stat-card c-success">
+      <div class="stat-card c-danger clickable" id="kpi-mon-atraso-prog" onclick="filtrarPorIndicadorMon('atraso-prog')" title="Clique para filtrar a tabela por estas viagens">
+        <div class="stat-label">🔴 Atraso</div>
+        <div class="stat-val" id="sv-mon-atraso-prog">0</div>
+        <div class="stat-sub" id="sub-mon-atraso-prog">ETA Real depois da Data Programação</div>
+      </div>
+      <div class="stat-card c-success clickable" id="kpi-mon-aderencia-prog" onclick="filtrarPorIndicadorMon('aderencia-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ Aderência à Programação</div>
         <div class="stat-val" id="sv-mon-aderencia-prog">0%</div>
         <div class="stat-sub" id="sub-mon-aderencia-prog">não atrasadas em relação à Data Programação</div>
@@ -1831,18 +1850,23 @@
     </div>
 
     <div class="kpi-group-label">🎯 Aderência à Data Desejada</div>
-    <div class="stats-row" style="grid-template-columns:repeat(3, 1fr)">
-      <div class="stat-card c-danger">
-        <div class="stat-label">🔴 Atraso</div>
-        <div class="stat-val" id="sv-mon-atraso-des">0</div>
-        <div class="stat-sub" id="sub-mon-atraso-des">ETA Real depois da Data Desejada</div>
+    <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
+      <div class="stat-card c-success clickable" id="kpi-mon-noprazo-des" onclick="filtrarPorIndicadorMon('noprazo-des')" title="Clique para filtrar a tabela por estas viagens">
+        <div class="stat-label">✅ No Prazo</div>
+        <div class="stat-val" id="sv-mon-noprazo-des">0</div>
+        <div class="stat-sub" id="sub-mon-noprazo-des">ETA Real no mesmo dia da Data Desejada</div>
       </div>
-      <div class="stat-card c-accent">
+      <div class="stat-card c-accent clickable" id="kpi-mon-adiantado-des" onclick="filtrarPorIndicadorMon('adiantado-des')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🔵 Adiantado</div>
         <div class="stat-val" id="sv-mon-adiantado-des">0</div>
         <div class="stat-sub" id="sub-mon-adiantado-des">ETA Real antes da Data Desejada</div>
       </div>
-      <div class="stat-card c-success">
+      <div class="stat-card c-danger clickable" id="kpi-mon-atraso-des" onclick="filtrarPorIndicadorMon('atraso-des')" title="Clique para filtrar a tabela por estas viagens">
+        <div class="stat-label">🔴 Atraso</div>
+        <div class="stat-val" id="sv-mon-atraso-des">0</div>
+        <div class="stat-sub" id="sub-mon-atraso-des">ETA Real depois da Data Desejada</div>
+      </div>
+      <div class="stat-card c-success clickable" id="kpi-mon-aderencia-des" onclick="filtrarPorIndicadorMon('aderencia-des')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ Aderência à Data Desejada</div>
         <div class="stat-val" id="sv-mon-aderencia-des">0%</div>
         <div class="stat-sub" id="sub-mon-aderencia-des">não atrasadas em relação à Data Desejada</div>
@@ -1868,23 +1892,39 @@
           <input type="text" class="filter-input" id="fMonTransp"
             placeholder="🚚 Transportador..." style="width:150px"
             oninput="renderMonitoramento()">
+          <select class="filter-select" id="fMonFrota" onchange="renderMonitoramento()" title="Filtrar por Frota Dedicada">
+            <option value="">Frota: Todos</option>
+            <option value="sim">Frota Dedicada</option>
+            <option value="nao">Frota Própria (Spot)</option>
+          </select>
           <button class="btn btn-secondary btn-sm" onclick="limparFiltrosMonitoramento()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+          <div class="chip-group" id="diaEntregaMonChips" style="align-self:center;margin-left:6px">
+            <div class="chip" data-dia="0" onclick="filtrarDiaEntregaMon(0)" title="Entrega = hoje">D0</div>
+            <div class="chip" data-dia="1" onclick="filtrarDiaEntregaMon(1)" title="Entrega = amanhã">D+1</div>
+            <div class="chip" data-dia="2" onclick="filtrarDiaEntregaMon(2)" title="Entrega = hoje + 2 dias">D+2</div>
+            <div class="chip" data-dia="3" onclick="filtrarDiaEntregaMon(3)" title="Entrega = hoje + 3 dias">D+3</div>
+            <div class="chip" data-dia="4" onclick="filtrarDiaEntregaMon(4)" title="Entrega = hoje + 4 dias">D+4</div>
+          </div>
         </div>
       </div>
       <div class="scrollable">
         <table>
           <thead>
             <tr>
-              <th>ID Viagem</th>
-              <th>Placa</th>
-              <th>Produto</th>
-              <th>Destino</th>
-              <th class="col-data-desejada">Data Desejada</th>
-              <th class="col-data-programacao">Data Programação</th>
-              <th class="col-eta-herrlog">ETA Real (Herrlog)</th>
-              <th style="white-space:normal">vs Programação</th>
-              <th style="white-space:normal">vs Desejada</th>
-              <th>Status Herrlog</th>
+              <th class="th-sortable" data-col="idViagem" onclick="ordenarColunaMon('idViagem')">ID Viagem<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="placa" onclick="ordenarColunaMon('placa')">Placa<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="produto" onclick="ordenarColunaMon('produto')">Produto<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="origem" onclick="ordenarColunaMon('origem')">Origem<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="destino" onclick="ordenarColunaMon('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="volume" onclick="ordenarColunaMon('volume')">Volume<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="transportador" onclick="ordenarColunaMon('transportador')">Transportador<span class="sort-arrow"></span></th>
+              <th class="th-sortable" style="white-space:normal" data-col="frotaDedicada" onclick="ordenarColunaMon('frotaDedicada')">Frota Dedicada<span class="sort-arrow"></span></th>
+              <th class="col-data-desejada th-sortable" data-col="dataDesejada" onclick="ordenarColunaMon('dataDesejada')">Data Desejada<span class="sort-arrow"></span></th>
+              <th class="col-data-programacao th-sortable" data-col="dataProgramacao" onclick="ordenarColunaMon('dataProgramacao')">Data Programação<span class="sort-arrow"></span></th>
+              <th class="col-eta-herrlog th-sortable" data-col="etaReal" onclick="ordenarColunaMon('etaReal')">ETA Real (Herrlog)<span class="sort-arrow"></span></th>
+              <th class="th-sortable" style="white-space:normal" data-col="vsProgramacao" onclick="ordenarColunaMon('vsProgramacao')">vs Programação<span class="sort-arrow"></span></th>
+              <th class="th-sortable" style="white-space:normal" data-col="vsDesejada" onclick="ordenarColunaMon('vsDesejada')">vs Desejada<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="statusHerrlog" onclick="ordenarColunaMon('statusHerrlog')">Status Herrlog<span class="sort-arrow"></span></th>
             </tr>
           </thead>
           <tbody id="monitoramentoBody"></tbody>
@@ -2841,6 +2881,7 @@ function renderAdminUsuarios() {
         <span style="font-family:monospace;font-size:10px">UID: ${esc(u.uid)}</span>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-secondary btn-sm" onclick="adminPedirResetSenha('${esc(u.uid)}')" title="Gera o comando para definir uma nova senha para este usuário">🔑 Resetar senha</button>
         <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.uid)}')" ${u.uid === _authUsuarioAtual?.uid ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
       </div>
     </div>
@@ -2906,6 +2947,38 @@ async function adminRemoverUsuario(uid) {
   } catch (e) {
     info.textContent = 'Erro ao remover perfil: ' + e.message;
     console.error('adminRemoverUsuario:', e);
+  }
+}
+
+// ── RESETAR SENHA DE OUTRO USUÁRIO ──
+// O SDK do navegador só consegue trocar a senha do PRÓPRIO usuário logado
+// (Firebase Authentication exige a credencial de administrador do projeto
+// para alterar a senha de outra conta, e essa credencial nunca pode estar
+// no código do site). Por isso aqui só geramos o comando do utilitário
+// admin_resetar_senha.py (testes/portal_inbound/), que usa a Admin SDK
+// localmente — o admin roda esse comando uma vez no terminal.
+function adminPedirResetSenha(uid) {
+  const u = _usuariosAtivos.find(x => x.uid === uid);
+  const novaSenha = prompt(`Nova senha para "${u?.nome || uid}" (mínimo 6 caracteres):`);
+  if (novaSenha === null) return;
+  if (novaSenha.length < 6) {
+    alert('A senha precisa ter pelo menos 6 caracteres.');
+    return;
+  }
+  document.getElementById('adminResetSenhaCmd').textContent = `python admin_resetar_senha.py ${uid} ${novaSenha}`;
+  document.getElementById('adminResetSenhaInfo').textContent = '';
+  document.getElementById('adminResetSenhaBox').style.display = '';
+  document.getElementById('adminResetSenhaBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function adminCopiarComandoResetSenha() {
+  const info = document.getElementById('adminResetSenhaInfo');
+  const cmd = document.getElementById('adminResetSenhaCmd').textContent;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    info.textContent = 'Comando copiado! Cole no terminal, dentro de testes/portal_inbound/.';
+  } catch (e) {
+    info.textContent = 'Não foi possível copiar automaticamente — selecione o comando manualmente.';
   }
 }
 
@@ -3501,6 +3574,10 @@ let semanaAtiva = null;
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
 let activeFilterMonStatus = 'todos'; // filtro de estado (Status Herrlog) na aba Monitoramento
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
+let activeIndicadorMon = null; // card de KPI clicado na aba Monitoramento (vsProgramacao/vsDesejada)
+let activeDiasEntregaMon = new Set(); // offsets D0..D+4 (data de entrega/descarga) selecionados na aba Monitoramento
+let sortColunaMon = null;
+let sortDirMon = 'asc';
 window._fbUnsub = null;
 window._fbUnsubMonitoramento = null;
 let activeFilter = new Set(); // status selecionados (vazio = "Todos")
@@ -4448,7 +4525,7 @@ function ordenarColuna(coluna) {
 }
 
 function atualizarSetasOrdenacao() {
-  document.querySelectorAll('.th-sortable').forEach(th => {
+  document.querySelectorAll('#tab-1 .th-sortable').forEach(th => {
     const arrow = th.querySelector('.sort-arrow');
     if (!arrow) return;
     arrow.textContent = sortColuna === th.dataset.col ? (sortDir === 'asc' ? '▲' : '▼') : '';
@@ -6569,11 +6646,65 @@ function badgeAderencia(status) {
   return `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">—</span>`;
 }
 
+function badgeFrotaDedicada(v) {
+  return v.status === 'Frota Dedicada'
+    ? '<span class="status status-frota">✓ Sim</span>'
+    : '<span class="status status-placa">Não</span>';
+}
+
 // idx -1 = "Todos"; demais índices referenciam _monEstadosAtual (evita ter que
 // escapar o texto do estado dentro do atributo onclick).
 function filterMonitoramentoStatus(idx) {
   activeFilterMonStatus = idx === -1 ? 'todos' : _monEstadosAtual[idx];
   renderMonitoramento();
+}
+
+function calcularLinhaMonitoramento(v) {
+  const mon = monitoramentoHerrlog[v.idViagem];
+  const etaIso = mon.chegadaReal || mon.etaDestino || null;
+  return {
+    v, mon, etaIso,
+    vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
+    vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
+  };
+}
+
+// Replica, como predicado por viagem, a mesma lógica de cada card de KPI da
+// aba Monitoramento — clicar no card filtra a tabela exatamente pelo que ele exibe.
+function testeIndicadorMonitoramento(key) {
+  const cls = v => calcularLinhaMonitoramento(v);
+  switch (key) {
+    case 'atraso-prog':    return v => cls(v).vsProgramacao === 'atraso';
+    case 'adiantado-prog': return v => cls(v).vsProgramacao === 'adiantado';
+    case 'noprazo-prog':   return v => cls(v).vsProgramacao === 'no-prazo';
+    case 'aderencia-prog': return v => { const c = cls(v).vsProgramacao; return !!c && c !== 'atraso'; };
+    case 'atraso-des':     return v => cls(v).vsDesejada === 'atraso';
+    case 'adiantado-des':  return v => cls(v).vsDesejada === 'adiantado';
+    case 'noprazo-des':    return v => cls(v).vsDesejada === 'no-prazo';
+    case 'aderencia-des':  return v => { const c = cls(v).vsDesejada; return !!c && c !== 'atraso'; };
+    default: return () => true;
+  }
+}
+
+function filtrarPorIndicadorMon(key) {
+  activeIndicadorMon = activeIndicadorMon === key ? null : key;
+  renderMonitoramento();
+}
+
+// D0..D+4 sobre a data de entrega (descarga) — mesmo mecanismo de
+// filtrarDiaCarregamento, reaproveitando diaCarregamentoDate/mesmoDiaCalendario
+// (são puramente "hoje + n dias", não específicos de carregamento).
+function filtrarDiaEntregaMon(n) {
+  if (activeDiasEntregaMon.has(n)) activeDiasEntregaMon.delete(n);
+  else activeDiasEntregaMon.add(n);
+  sincronizarChipsDiaEntregaMon();
+  renderMonitoramento();
+}
+
+function sincronizarChipsDiaEntregaMon() {
+  document.querySelectorAll('#diaEntregaMonChips .chip').forEach(c => {
+    c.classList.toggle('active', activeDiasEntregaMon.has(+c.dataset.dia));
+  });
 }
 
 // Mesma dinâmica de filtros (busca, produto, origem, destino, transportador)
@@ -6583,9 +6714,11 @@ function estadoFiltrosMonitoramento() {
   return {
     busca: (document.getElementById('fMonBusca')?.value || '').toLowerCase().trim(),
     transp: (document.getElementById('fMonTransp')?.value || '').toLowerCase().trim(),
+    frota: document.getElementById('fMonFrota')?.value || '',
     produtos: new Set(msMonProduto?.getSelected() || []),
     origens: new Set(msMonOrigem?.getSelected() || []),
     destinos: new Set(msMonDestino?.getSelected() || []),
+    indicadorTest: activeIndicadorMon ? testeIndicadorMonitoramento(activeIndicadorMon) : null,
   };
 }
 
@@ -6594,9 +6727,18 @@ function passaFiltrosMonitoramento(v, f, ignorar = '') {
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
+  if (f.frota === 'sim' && v.status !== 'Frota Dedicada') return false;
+  if (f.frota === 'nao' && v.status === 'Frota Dedicada') return false;
+  if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (f.busca) {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
     if (!hay.includes(f.busca)) return false;
+  }
+  if (activeDiasEntregaMon.size) {
+    const vd = parseDMY(v.dtDesc);
+    if (!vd) return false;
+    const ok = [...activeDiasEntregaMon].some(n => mesmoDiaCalendario(vd, diaCarregamentoDate(n)));
+    if (!ok) return false;
   }
   return true;
 }
@@ -6616,8 +6758,60 @@ function atualizarOpcoesFiltrosMonitoramento(monitoradas, f) {
 function limparFiltrosMonitoramento() {
   document.getElementById('fMonBusca').value = '';
   document.getElementById('fMonTransp').value = '';
+  document.getElementById('fMonFrota').value = '';
   msMonProduto?.clear(); msMonOrigem?.clear(); msMonDestino?.clear();
+  activeIndicadorMon = null;
+  activeDiasEntregaMon.clear();
+  sincronizarChipsDiaEntregaMon();
   renderMonitoramento();
+}
+
+function valorOrdenacaoMon(l, coluna) {
+  const v = l.v, mon = l.mon;
+  const ordemAderencia = { atraso: 0, adiantado: 1, 'no-prazo': 2 };
+  switch (coluna) {
+    case 'idViagem':        return v.idViagem || '';
+    case 'placa':           return v.placa || '';
+    case 'produto':         return v.produto || '';
+    case 'origem':          return v.origem || '';
+    case 'destino':         return v.destino || '';
+    case 'volume':          return v.volume || 0;
+    case 'transportador':   return v.transportador || '';
+    case 'frotaDedicada':   return v.status === 'Frota Dedicada' ? 1 : 0;
+    case 'dataDesejada':    return parseDMY(v.dtDesc) || new Date(8640000000000000);
+    case 'dataProgramacao': return parseDMY(v.dtDescProg || v.dtDesc) || new Date(8640000000000000);
+    case 'etaReal':         return l.etaIso ? new Date(l.etaIso) : new Date(8640000000000000);
+    case 'vsProgramacao':   return l.vsProgramacao in ordemAderencia ? ordemAderencia[l.vsProgramacao] : 99;
+    case 'vsDesejada':      return l.vsDesejada in ordemAderencia ? ordemAderencia[l.vsDesejada] : 99;
+    case 'statusHerrlog':   return mon.statusHerrlog || '';
+    default: return '';
+  }
+}
+
+function compararOrdenacaoMon(a, b, coluna) {
+  const va = valorOrdenacaoMon(a, coluna);
+  const vb = valorOrdenacaoMon(b, coluna);
+  if (va instanceof Date || vb instanceof Date) return va - vb;
+  if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+  return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+}
+
+function ordenarColunaMon(coluna) {
+  if (sortColunaMon === coluna) {
+    sortDirMon = sortDirMon === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortColunaMon = coluna;
+    sortDirMon = 'asc';
+  }
+  renderMonitoramento();
+}
+
+function atualizarSetasOrdenacaoMon() {
+  document.querySelectorAll('#tab-3 .th-sortable').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    arrow.textContent = sortColunaMon === th.dataset.col ? (sortDirMon === 'asc' ? '▲' : '▼') : '';
+  });
 }
 
 function renderMonitoramento() {
@@ -6629,37 +6823,49 @@ function renderMonitoramento() {
 
   const f = estadoFiltrosMonitoramento();
   atualizarOpcoesFiltrosMonitoramento(monitoradas, f);
-  const filtradas = monitoradas.filter(v => passaFiltrosMonitoramento(v, f));
+  sincronizarChipsDiaEntregaMon();
 
-  const linhas = filtradas.map(v => {
-    const mon = monitoramentoHerrlog[v.idViagem];
-    const etaIso = mon.chegadaReal || mon.etaDestino || null;
-    return {
-      v, mon, etaIso,
-      vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
-      vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
-    };
-  });
-
-  const contar  = (campo, valor) => linhas.filter(l => l[campo] === valor).length;
-  const comDado = (campo) => linhas.filter(l => l[campo] !== null).length;
+  const contar  = (lista, campo, valor) => lista.filter(l => l[campo] === valor).length;
+  const comDado = (lista, campo) => lista.filter(l => l[campo] !== null).length;
   const pct     = (n, total) => total ? Math.round((n / total) * 100) : 0;
 
-  const totalProg = comDado('vsProgramacao');
-  const totalDes  = comDado('vsDesejada');
+  // KPIs sempre calculados ignorando o próprio filtro de indicador: assim, ao clicar
+  // num card, os demais cards do grupo continuam mostrando o total real (não "congelam"
+  // em 0 só porque a tabela foi restrita ao card clicado) — mesma lógica de Gerir Viagens.
+  const paraKpis = (activeIndicadorMon
+    ? monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'indicador'))
+    : monitoradas.filter(v => passaFiltrosMonitoramento(v, f))
+  ).map(calcularLinhaMonitoramento);
+
+  const totalProg = comDado(paraKpis, 'vsProgramacao');
+  const totalDes  = comDado(paraKpis, 'vsDesejada');
 
   // Aderência = % de viagens NÃO atrasadas (no-prazo + adiantado contam como
   // dentro do compromisso — só atraso quebra a aderência à data de referência).
-  const atrasoProg = contar('vsProgramacao', 'atraso');
-  const atrasoDes  = contar('vsDesejada', 'atraso');
+  const atrasoProg = contar(paraKpis, 'vsProgramacao', 'atraso');
+  const atrasoDes  = contar(paraKpis, 'vsDesejada', 'atraso');
 
   document.getElementById('sv-mon-atraso-prog').textContent    = atrasoProg;
-  document.getElementById('sv-mon-adiantado-prog').textContent = contar('vsProgramacao', 'adiantado');
+  document.getElementById('sv-mon-adiantado-prog').textContent = contar(paraKpis, 'vsProgramacao', 'adiantado');
+  document.getElementById('sv-mon-noprazo-prog').textContent   = contar(paraKpis, 'vsProgramacao', 'no-prazo');
   document.getElementById('sv-mon-aderencia-prog').textContent = pct(totalProg - atrasoProg, totalProg) + '%';
 
   document.getElementById('sv-mon-atraso-des').textContent    = atrasoDes;
-  document.getElementById('sv-mon-adiantado-des').textContent = contar('vsDesejada', 'adiantado');
+  document.getElementById('sv-mon-adiantado-des').textContent = contar(paraKpis, 'vsDesejada', 'adiantado');
+  document.getElementById('sv-mon-noprazo-des').textContent   = contar(paraKpis, 'vsDesejada', 'no-prazo');
   document.getElementById('sv-mon-aderencia-des').textContent = pct(totalDes - atrasoDes, totalDes) + '%';
+
+  const indicadorIdsMon = {
+    'atraso-prog': 'kpi-mon-atraso-prog', 'adiantado-prog': 'kpi-mon-adiantado-prog',
+    'noprazo-prog': 'kpi-mon-noprazo-prog', 'aderencia-prog': 'kpi-mon-aderencia-prog',
+    'atraso-des': 'kpi-mon-atraso-des', 'adiantado-des': 'kpi-mon-adiantado-des',
+    'noprazo-des': 'kpi-mon-noprazo-des', 'aderencia-des': 'kpi-mon-aderencia-des',
+  };
+  Object.values(indicadorIdsMon).forEach(id => document.getElementById(id)?.classList.remove('indicador-ativo'));
+  if (activeIndicadorMon) document.getElementById(indicadorIdsMon[activeIndicadorMon])?.classList.add('indicador-ativo');
+
+  // ── Tabela: aplica todos os filtros, inclusive o indicador clicado ──
+  let linhas = monitoradas.filter(v => passaFiltrosMonitoramento(v, f)).map(calcularLinhaMonitoramento);
 
   // ── Filtro por estado da viagem (Status Herrlog) ──
   _monEstadosAtual = [...new Set(linhas.map(l => l.mon.statusHerrlog).filter(Boolean))].sort();
@@ -6669,7 +6875,13 @@ function renderMonitoramento() {
   chipsWrap.innerHTML = `<div class="chip ${activeFilterMonStatus === 'todos' ? 'active' : ''}" onclick="filterMonitoramentoStatus(-1)">Todos</div>` +
     _monEstadosAtual.map((e, i) => `<div class="chip ${activeFilterMonStatus === e ? 'active' : ''}" onclick="filterMonitoramentoStatus(${i})">${esc(e)}</div>`).join('');
 
-  const linhasFiltradas = activeFilterMonStatus === 'todos' ? linhas : linhas.filter(l => l.mon.statusHerrlog === activeFilterMonStatus);
+  let linhasFiltradas = activeFilterMonStatus === 'todos' ? linhas : linhas.filter(l => l.mon.statusHerrlog === activeFilterMonStatus);
+
+  if (sortColunaMon) {
+    const dir = sortDirMon === 'asc' ? 1 : -1;
+    linhasFiltradas = linhasFiltradas.slice().sort((a, b) => dir * compararOrdenacaoMon(a, b, sortColunaMon));
+  }
+  atualizarSetasOrdenacaoMon();
 
   document.getElementById('badge-monitoramento').textContent = linhasFiltradas.length + ' viagem' + (linhasFiltradas.length !== 1 ? 's' : '');
 
@@ -6681,7 +6893,11 @@ function renderMonitoramento() {
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
         <td>${prodTag(v.produto)}</td>
+        <td>${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
         <td>${esc(v.destino)}</td>
+        <td>${v.volume} m³</td>
+        <td>${esc(v.transportador)}</td>
+        <td>${badgeFrotaDedicada(v)}</td>
         <td class="cell-periodo col-data-desejada">${fmtShort(v.dtDesc)}</td>
         <td class="cell-periodo col-data-programacao">${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}</td>
         <td class="cell-periodo col-eta-herrlog">${renderEtaHerrlog(mon)}</td>
