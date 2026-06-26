@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nexta Logística</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3056,9 +3056,10 @@ class MultiSelect {
     document.addEventListener('click', e => { if (!this.el.contains(e.target)) this._closePanel(); });
   }
   setOptions(opts) {
+    const inalterado = this.options.length === opts.length && this.options.every((v, i) => v === opts[i]);
     this.options = opts;
     this.selected = new Set([...this.selected].filter(v => opts.includes(v)));
-    this._renderPanel();
+    if (!inalterado) this._renderPanel();
     this._renderLabel();
   }
   getSelected() { return [...this.selected]; }
@@ -4538,11 +4539,8 @@ function renderViagensTable() {
   document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  let filtrosViagem = estadoFiltrosViagem();
+  const filtrosViagem = estadoFiltrosViagem();
   atualizarOpcoesFiltrosViagem(filtrosViagem);
-  filtrosViagem = estadoFiltrosViagem();
-  atualizarOpcoesFiltrosViagem(filtrosViagem);
-  filtrosViagem = estadoFiltrosViagem();
 
   let filtered = viagens.filter(v => passaFiltrosViagem(v, filtrosViagem));
   if (sortColuna) {
@@ -4559,13 +4557,13 @@ function renderViagensTable() {
     ? viagens.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
     : filtered;
 
-  currentFilteredIdxs = filtered.map(v => viagens.indexOf(v));
+  const idxPorViagem = new Map(viagens.map((v, i) => [v, i]));
+  currentFilteredIdxs = filtered.map(v => idxPorViagem.get(v));
   updateKPIs(paraKpis);
   updatePipeline(filtered);
   const tbody = document.getElementById('viagensBody');
-  tbody.innerHTML = '';
-  filtered.forEach((v) => {
-    const realIdx = viagens.indexOf(v);
+  const linhasViagensHtml = filtered.map((v) => {
+    const realIdx = idxPorViagem.get(v);
     const isSelected = selectedViagens.has(realIdx);
 
     const origemDisplay = v.origem + (v.base ? ` (${v.base})` : '');
@@ -4573,7 +4571,7 @@ function renderViagensTable() {
     const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
     const horaCarreg = v.horaCarregProg || '12:00';
     const horaDesc   = v.horaDescProg   || '12:00';
-    tbody.innerHTML += `
+    return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
           <input type="checkbox" ${isSelected ? 'checked' : ''}
@@ -4653,6 +4651,7 @@ function renderViagensTable() {
       </tr>
     `;
   });
+  tbody.innerHTML = linhasViagensHtml.join('');
 
   const chkAll = document.getElementById('chk-all');
   if (chkAll) {
@@ -5602,13 +5601,12 @@ function renderTransportadoresTable() {
       : `${transportadores.length} cadastrado${transportadores.length !== 1 ? 's' : ''}`;
 
   const tbody = document.getElementById('transpBody');
-  tbody.innerHTML = '';
-  filtered.forEach(t => {
+  tbody.innerHTML = filtered.map(t => {
     const realIdx = transportadores.indexOf(t);
     const cnpjsHtml = t.cnpjs.length
       ? t.cnpjs.map(c => `<div>${esc(c.codSap)} · ${esc(c.razaoSocial)}${c.cnpj ? ` · <span style="font-family:monospace">${esc(c.cnpj)}</span>` : ''}</div>`).join('')
       : '<span style="color:var(--text-muted)">—</span>';
-    tbody.innerHTML += `
+    return `
       <tr>
         <td class="cell-truncate" style="font-family:var(--font-cond);font-size:14px;font-weight:700;color:var(--accent)">${esc(t.nomeFantasia)}</td>
         <td class="cell-truncate" style="color:var(--text-dim)">${esc(t.email || '—')}</td>
@@ -5620,7 +5618,7 @@ function renderTransportadoresTable() {
           </div>
         </td>
       </tr>`;
-  });
+  }).join('');
   popularSelectTransportadores('bulk-transp');
 }
 
@@ -6586,10 +6584,9 @@ function renderExport() {
   btnExportar.disabled = filtradas.length === 0;
 
   const tbody = document.getElementById('exportBody');
-  tbody.innerHTML = '';
-  filtradas.forEach(v => {
+  tbody.innerHTML = filtradas.map(v => {
     const mon = monitoramentoHerrlog[v.idViagem] || null;
-    tbody.innerHTML += `
+    return `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
@@ -6602,7 +6599,7 @@ function renderExport() {
         <td>${renderEnvioHerrlog(v, mon)}</td>
       </tr>
     `;
-  });
+  }).join('');
 }
 
 // Status real do "Envio": confirmado quando a viagem aparece no monitoramento
@@ -6886,9 +6883,8 @@ function renderMonitoramento() {
   document.getElementById('badge-monitoramento').textContent = linhasFiltradas.length + ' viagem' + (linhasFiltradas.length !== 1 ? 's' : '');
 
   const tbody = document.getElementById('monitoramentoBody');
-  tbody.innerHTML = '';
-  linhasFiltradas.forEach(({ v, mon, vsProgramacao, vsDesejada }) => {
-    tbody.innerHTML += `
+  tbody.innerHTML = linhasFiltradas.map(({ v, mon, vsProgramacao, vsDesejada }) => {
+    return `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
@@ -6906,7 +6902,7 @@ function renderMonitoramento() {
         <td style="font-size:12px;color:var(--text-dim)">${esc(mon.statusHerrlog || '—')}</td>
       </tr>
     `;
-  });
+  }).join('');
 }
 
 // ── EXPORT HERRLOG (modelo Importador Herrlog: abas Viagens + Eventos de Viagem) ──
