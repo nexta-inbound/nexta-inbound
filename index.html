@@ -21,6 +21,8 @@
     --pet-blue-bg: #EEF3FF;
     --pet-purple: #7C3AED;
     --pet-teal: #14B8A6;
+    --pet-sky: #38BDF8;
+    --pet-indigo: #6366F1;
     --pet-navy: #111A0A;
     --pet-navy-mid: #1C2E10;
 
@@ -198,6 +200,8 @@
   .pipe-step.recusado .pipe-icon { border-color: var(--pet-purple); background: rgba(124,58,237,0.14); }
   .pipe-step.cif .pipe-icon { border-color: var(--pet-blue); background: rgba(34,85,204,0.14); }
   .pipe-step.frota .pipe-icon { border-color: var(--pet-teal); background: rgba(20,184,166,0.14); }
+  .pipe-step.emandamento .pipe-icon { border-color: var(--pet-indigo); background: rgba(99,102,241,0.14); }
+  .pipe-step.finalizada .pipe-icon { border-color: var(--pet-sky); background: rgba(56,189,248,0.14); }
   .pipe-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .pipe-step.active .pipe-label { color: var(--accent); }
   .pipe-step.done .pipe-label { color: var(--success); }
@@ -205,6 +209,8 @@
   .pipe-step.recusado .pipe-label { color: var(--pet-purple); }
   .pipe-step.cif .pipe-label { color: var(--pet-blue); }
   .pipe-step.frota .pipe-label { color: var(--pet-teal); }
+  .pipe-step.emandamento .pipe-label { color: var(--pet-indigo); }
+  .pipe-step.finalizada .pipe-label { color: var(--pet-sky); }
   .pipe-count { font-size: 17px; font-family: var(--font-cond); font-weight: 700; color: var(--text); }
   .pipe-step.active .pipe-count { color: var(--accent); }
   .pipe-step.done .pipe-count { color: var(--success); }
@@ -212,6 +218,8 @@
   .pipe-step.recusado .pipe-count { color: var(--pet-purple); }
   .pipe-step.cif .pipe-count { color: var(--pet-blue); }
   .pipe-step.frota .pipe-count { color: var(--pet-teal); }
+  .pipe-step.emandamento .pipe-count { color: var(--pet-indigo); }
+  .pipe-step.finalizada .pipe-count { color: var(--pet-sky); }
 
   /* ── TABS ── */
   .tabs-bar {
@@ -429,6 +437,8 @@
   .status-recusado { --st-color: var(--pet-purple); --st-border: rgba(124,58,237,0.4); --st-bg: rgba(124,58,237,0.14); }
   .status-cif { --st-color: var(--pet-blue); --st-border: rgba(34,85,204,0.4); --st-bg: rgba(34,85,204,0.14); }
   .status-frota { --st-color: var(--pet-teal); --st-border: rgba(20,184,166,0.4); --st-bg: rgba(20,184,166,0.14); }
+  .status-emandamento { --st-color: var(--pet-indigo); --st-border: rgba(99,102,241,0.4); --st-bg: rgba(99,102,241,0.14); }
+  .status-finalizada { --st-color: var(--pet-sky); --st-border: rgba(56,189,248,0.4); --st-bg: rgba(56,189,248,0.14); }
 
   /* ── STATUS DE AGENDAMENTO ── */
   /* mesma pílula do Status (segmentada), aplicada a um <select> em vez de um <span> estático */
@@ -443,10 +453,12 @@
   select.sel-agend.sel-agend-nao { color: var(--text-muted); border-color: var(--border-dk); background: var(--panel-soft); }
   select.sel-agend.sel-agend-usina { color: var(--accent2); border-color: rgba(249,115,22,0.4); background: var(--accent2-dim); }
   select.sel-agend.sel-agend-segurando { color: var(--pet-purple); border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.14); }
+  select.sel-agend.sel-agend-semsaldo { color: var(--danger); border-color: rgba(255,107,95,0.4); background: var(--danger-dim); }
+  select.sel-agend.sel-agend-semgrades { color: var(--pet-blue); border-color: rgba(34,85,204,0.4); background: rgba(34,85,204,0.14); }
   select.sel-agend.sel-agend-agendado { color: var(--success); border-color: rgba(54,209,107,0.4); background: var(--success-dim); }
 
   /* ── UTILIZAÇÃO SEMANAL (Veículos Dedicados) ── */
-  .vd-week { display: flex; gap: 3px; }
+  .vd-week { display: flex; gap: 3px; flex-wrap: wrap; max-width: 260px; }
   .vd-day {
     width: 30px; padding: 3px 0; border-radius: 4px; text-align: center;
     font-size: 9px; line-height: 1.3; border: 1px solid var(--border); color: var(--text-muted);
@@ -1041,6 +1053,10 @@
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #btnLimparSessao,
+  body.transportador-mode #sepMultiSemana,
+  body.transportador-mode #lblMultiSemana,
+  body.transportador-mode #ms-semanas,
+  body.transportador-mode #btnAtualizarMultiSemana,
   body.transportador-mode #bulkBar,
   body.transportador-mode #wrapImportarRetorno,
   body.transportador-mode #fTransp,
@@ -1052,6 +1068,12 @@
     display: none !important;
   }
   body:not(.transportador-mode) #bulkBarTransportador {
+    display: none !important;
+  }
+
+  /* ── VISUALIZAÇÃO MULTI-SEMANA (consulta combinada, somente leitura) ── */
+  body.multi-semana-mode .col-checkbox,
+  body.multi-semana-mode #wrapImportarRetorno {
     display: none !important;
   }
 </style>
@@ -1368,6 +1390,13 @@
     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semana:</span>
     <select class="filter-select" id="semanaSelect" onchange="trocarSemana(this.value)" style="font-size:12px;font-weight:600;color:var(--accent);border-color:var(--accent)"></select>
     <button class="btn-reset" id="btnNovaSemana" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
+    <span class="filter-sep" style="opacity:.4" id="sepMultiSemana">|</span>
+    <label id="lblMultiSemana" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap">
+      <input type="checkbox" id="chkMultiSemana" onchange="onToggleMultiSemana(this.checked)" style="cursor:pointer">
+      Várias semanas
+    </label>
+    <div id="ms-semanas" style="display:none"></div>
+    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Recarregar dados das semanas selecionadas (esta visão não atualiza em tempo real)" style="display:none">🔄</button>
   </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
@@ -1448,6 +1477,20 @@
     <div>
       <div class="pipe-count" id="cnt-monitoramento">0</div>
       <div class="pipe-label">Placa Enviada</div>
+    </div>
+  </div>
+  <div class="pipe-step emandamento" id="pipe-emandamento" title="Viagens em deslocamento/na origem/no destino segundo a Herrlog — ainda não finalizadas">
+    <div class="pipe-icon">🛣️</div>
+    <div>
+      <div class="pipe-count" id="cnt-emandamento">0</div>
+      <div class="pipe-label">Em Andamento</div>
+    </div>
+  </div>
+  <div class="pipe-step finalizada" id="pipe-finalizada" title="Viagens com chegada confirmada na Herrlog (T5 - Viagem finalizada)">
+    <div class="pipe-icon">🏁</div>
+    <div>
+      <div class="pipe-count" id="cnt-finalizadas">0</div>
+      <div class="pipe-label">Viagem Finalizada</div>
     </div>
   </div>
   <div class="pipe-step cancel" id="pipe-7">
@@ -1567,7 +1610,12 @@
 
   <div id="viagensContent" style="display:none">
     <div class="kpi-toggle-header" id="kpiToggleHeader" onclick="toggleKpisViagens()">
-      <span class="kpi-toggle-title">📊 Indicadores</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">👤 Programador</span>
+        <div id="ms-vProgramador"></div>
+        <span class="filter-sep" style="opacity:.4">|</span>
+        <span class="kpi-toggle-title">📊 Indicadores</span>
+      </div>
       <span class="kpi-toggle-icon" id="kpiToggleIcon">▾</span>
     </div>
     <div id="kpiCardsWrap">
@@ -1637,12 +1685,16 @@
             <div class="chip" data-status="Aceito" onclick="filterViagens('Aceito')" title="Clique para somar/remover este status à seleção">Aceitas</div>
             <div class="chip" data-status="Placa Enviada" onclick="filterViagens('Placa Enviada')" title="Clique para somar/remover este status à seleção">Placa Enviada</div>
             <div class="chip" data-status="Frota Dedicada" onclick="filterViagens('Frota Dedicada')" title="Clique para somar/remover este status à seleção">Frota Dedicada</div>
+            <div class="chip" data-status="Em Andamento" onclick="filterViagens('Em Andamento')" title="Clique para somar/remover este status à seleção">Em Andamento</div>
+            <div class="chip" data-status="Viagem Finalizada" onclick="filterViagens('Viagem Finalizada')" title="Clique para somar/remover este status à seleção">Finalizadas</div>
             <div class="chip" id="chipCif" data-status="CIF" onclick="filterViagens('CIF')" title="Clique para somar/remover este status à seleção">CIF</div>
             <div class="chip" data-status="Cancelado" onclick="filterViagens('Cancelado')" title="Clique para somar/remover este status à seleção">Canceladas</div>
             <span class="chip-sep"></span>
             <div class="chip chip-agend" data-agend="Não Agendado" onclick="filterAgendamento('Não Agendado')" title="Filtro de Agendamento — clique para somar/remover">Não Agendado</div>
             <div class="chip chip-agend" data-agend="Usina de Fila" onclick="filterAgendamento('Usina de Fila')" title="Filtro de Agendamento — clique para somar/remover">Usina de Fila</div>
             <div class="chip chip-agend" data-agend="Segurando Grade" onclick="filterAgendamento('Segurando Grade')" title="Filtro de Agendamento — clique para somar/remover">Segurando Grade</div>
+            <div class="chip chip-agend" data-agend="Sem Saldo" onclick="filterAgendamento('Sem Saldo')" title="Filtro de Agendamento — clique para somar/remover">Sem Saldo</div>
+            <div class="chip chip-agend" data-agend="Sem Grades" onclick="filterAgendamento('Sem Grades')" title="Filtro de Agendamento — clique para somar/remover">Sem Grades</div>
             <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
         </div>
@@ -1704,6 +1756,8 @@
           <option value="Não Agendado">Não Agendado</option>
           <option value="Usina de Fila">Usina de Fila</option>
           <option value="Segurando Grade">Segurando Grade</option>
+          <option value="Sem Saldo">Sem Saldo</option>
+          <option value="Sem Grades">Sem Grades</option>
           <option value="Agendado">Agendado</option>
         </select>
         <span class="filter-sep">Transportador:</span>
@@ -1713,6 +1767,11 @@
         </select>
         <select class="filter-select" id="bulk-transp-cnpj" style="width:170px">
           <option value="">CNPJ (opcional)...</option>
+        </select>
+        <span class="filter-sep">Programador:</span>
+        <select class="filter-select" id="bulk-programador" style="width:170px">
+          <option value="">Manter atual</option>
+          <option value="__sem_classificacao__">— Não classificado —</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="aplicarEmLote()">✓ Aplicar</button>
         <span class="filter-sep" style="opacity:.4">|</span>
@@ -2310,7 +2369,9 @@
           <option value="Aceito">Aceito</option>
           <option value="Placa Enviada">Placa Enviada</option>
           <option value="Frota Dedicada">Frota Dedicada</option>
-          <option value="CIF">CIF</option>
+          <option value="Em Andamento" disabled>Em Andamento (automático via Herrlog)</option>
+          <option value="Viagem Finalizada" disabled>Viagem Finalizada (automático via Herrlog)</option>
+          <option value="CIF" disabled>CIF (automático via Tipo de Frete da cadência)</option>
           <option value="Cancelado">Cancelado</option>
         </select>
       </div>
@@ -2320,6 +2381,13 @@
           <option value="">Selecione o veículo...</option>
         </select>
       </div>
+    </div>
+
+    <div class="modal-field" style="max-width:320px">
+      <div class="modal-label">Programador</div>
+      <select class="config-input" id="m-programador">
+        <option value="">— Não classificado —</option>
+      </select>
     </div>
 
     <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -2625,10 +2693,16 @@ function nomeTransportadorLogado() {
 }
 
 // ── HISTÓRICO DE OFERTAS POR VIAGEM ──
-function registrarHistoricoOferta(v, evento) {
+// usuario (opcional): quem fica registrado como autor do evento. Por padrão é o usuário
+// logado (cobre ações manuais de staff e do próprio transportador); passe um valor
+// explícito para eventos automáticos (ver sincronizarStatusHerrlog), já que ali quem
+// dispara a chamada é o navegador de qualquer staff com a página aberta no momento,
+// não necessariamente quem "decidiu" a mudança.
+function registrarHistoricoOferta(v, evento, usuario) {
   if (!Array.isArray(v.historico)) v.historico = [];
   v.historico.push({
     data: new Date().toISOString(),
+    usuario: usuario !== undefined ? usuario : (_authUsuarioAtual?.nome || ''),
     transportador: v.transportador || '',
     cnpj: v.transportadorCnpj || '',
     evento,
@@ -2640,8 +2714,13 @@ function formatarHistoricoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', Cancelado: '✕' }[h.evento] || '•';
-  const quem = esc(h.transportador || '—') + (h.cnpj ? ` <span style="color:var(--text-muted);font-family:monospace;font-size:10px">${esc(h.cnpj)}</span>` : '');
+  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', 'Em Andamento': '🛣️', 'Viagem Finalizada': '🏁', Cancelado: '✕' }[h.evento] || '•';
+  // "quem" combina autor (usuário logado ou "Herrlog (automático)") + transportador/CNPJ
+  // quando relevante (ex.: Frota Dedicada mostra para qual transportador foi atribuída).
+  const partesQuem = [];
+  if (h.usuario) partesQuem.push(esc(h.usuario));
+  if (h.transportador) partesQuem.push(esc(h.transportador) + (h.cnpj ? ` <span style="color:var(--text-muted);font-family:monospace;font-size:10px">${esc(h.cnpj)}</span>` : ''));
+  const quem = partesQuem.length ? partesQuem.join(' · ') : '—';
   return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} <strong>${esc(h.evento)}</strong> — ${quem} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
 
@@ -3046,10 +3125,14 @@ async function confirmarTrocarSenha() {
 
 // ── MULTISELECT ──
 class MultiSelect {
-  constructor(containerId, placeholder, onChange) {
+  // onOpen (opcional): roda a cada abertura do painel, antes de exibi-lo — usado pelo
+  // seletor de semanas para buscar a lista atualizada (ex.: semana criada depois que o
+  // modo multi-semana já estava ligado) sem precisar desmarcar/marcar o checkbox de novo.
+  constructor(containerId, placeholder, onChange, onOpen) {
     this.el       = document.getElementById(containerId);
     this.ph       = placeholder;
     this.onChange = onChange;
+    this.onOpen   = onOpen;
     this.selected = new Set();
     this.options  = [];
     this._build();
@@ -3076,17 +3159,30 @@ class MultiSelect {
         <span class="ms-lbl" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.ph}</span>
         <span style="font-size:8px;color:var(--text-muted);flex-shrink:0">▼</span>
       </div>
-      <div class="ms-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:220px;max-width:340px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:200;box-shadow:0 8px 28px rgba(0,0,0,0.5);max-height:260px;overflow-y:auto">
+      <div class="ms-panel" style="display:none;position:fixed;min-width:220px;max-width:340px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:300;box-shadow:0 8px 28px rgba(0,0,0,0.5);max-height:260px;overflow-y:auto">
         <div class="ms-opts"></div>
       </div>`;
     this._panel = this.el.querySelector('.ms-panel');
     this._label = this.el.querySelector('.ms-lbl');
-    this.el.querySelector('.ms-trigger').addEventListener('click', e => {
+    this._trigger = this.el.querySelector('.ms-trigger');
+    this._trigger.addEventListener('click', e => {
       e.stopPropagation();
       const open = this._panel.style.display === 'block';
       document.querySelectorAll('.ms-panel').forEach(p => p.style.display = 'none');
+      if (!open) {
+        this._posicionarPanel();
+        this.onOpen?.();
+      }
       this._panel.style.display = open ? 'none' : 'block';
     });
+  }
+  // position:fixed (em vez de absolute) + posição calculada via getBoundingClientRect:
+  // evita que o painel seja cortado quando o MultiSelect fica dentro de um container
+  // com overflow:hidden (ex.: o <header>, que usa overflow:hidden para a borda/glow).
+  _posicionarPanel() {
+    const rect = this._trigger.getBoundingClientRect();
+    this._panel.style.top = (rect.bottom + 4) + 'px';
+    this._panel.style.left = rect.left + 'px';
   }
   _renderLabel() {
     if (this.selected.size === 0) {
@@ -3121,7 +3217,8 @@ class MultiSelect {
 }
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
-let msVProduto, msVOrigem, msVDestino;
+let msVProduto, msVOrigem, msVDestino, msVProgramador;
+let msSemanas;
 let msMonProduto, msMonOrigem, msMonDestino;
 let msCProduto, msCModal, msCOrigem, msCDestino;
 
@@ -3246,7 +3343,10 @@ function aplicarEmLote() {
   const transpCnpj = document.getElementById('bulk-transp-cnpj').value.trim();
   const removerAlocacao = transpRaw === '__sem_alocacao__';
   const transp = removerAlocacao ? '' : transpRaw;
-  if (!status && !agendamento && !transpRaw) { alert('Preencha ao menos o status, o agendamento ou o transportador para aplicar em lote.'); return; }
+  const progRaw = document.getElementById('bulk-programador').value;
+  const removerProgramador = progRaw === '__sem_classificacao__';
+  const programador = removerProgramador ? '' : progRaw;
+  if (!status && !agendamento && !transpRaw && !progRaw) { alert('Preencha ao menos o status, o agendamento, o transportador ou o programador para aplicar em lote.'); return; }
   if (!selectedViagens.size) return;
   selectedViagens.forEach(idx => {
     const v = viagens[idx];
@@ -3258,6 +3358,11 @@ function aplicarEmLote() {
     } else if (transp) {
       v.transportador = transp;
       v.transportadorCnpj = transpCnpj; // troca de apelido invalida o CNPJ anterior; fica vazio se não escolhido aqui
+    }
+    if (removerProgramador) {
+      v.programador = '';
+    } else if (programador) {
+      v.programador = programador;
     }
     if (status) v.status = status;
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
@@ -3278,6 +3383,7 @@ function aplicarEmLote() {
   document.getElementById('bulk-agendamento').value = '';
   document.getElementById('bulk-transp').value = '';
   document.getElementById('bulk-transp-cnpj').value = '';
+  document.getElementById('bulk-programador').value = '';
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
@@ -3572,6 +3678,11 @@ function processarRetornoOferta(file) {
 let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
+
+// ── MULTI-SEMANA (visão combinada somente leitura — ver renderViagensTableMultiSemana) ──
+let modoMultiSemana = false;
+let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
+let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
 let activeFilterMonStatus = 'todos'; // filtro de estado (Status Herrlog) na aba Monitoramento
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
@@ -3651,6 +3762,7 @@ function limparSessao() {
   if (!semanaAtiva) return;
   if (!confirm('Tem certeza? Isso apagará esta semana permanentemente.')) return;
   const executar = () => {
+    if (modoMultiSemana) desativarMultiSemana();
     semanaAtiva = null;
     cadencias = [];
     viagens = [];
@@ -4183,7 +4295,13 @@ function reconciliarViagensComCadencias(grupos, cap) {
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           horaCarregProg: anterior.horaCarregProg || '12:00',
           horaDescProg:   anterior.horaDescProg   || '12:00',
-          status: anterior.status || (baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog'),
+          // CIF é decidido pelo Tipo de Frete da cadência, não manualmente: se a viagem ainda
+          // está no estado inicial (Backlog/CIF/sem status), reflete o modal atual a cada
+          // reprocessamento. Uma vez que progrediu no fluxo (Ofertado, Aceito, Herrlog etc.),
+          // o status real é preservado e nunca é sobrescrito por esta re-derivação.
+          status: (!anterior.status || anterior.status === 'CIF' || anterior.status === 'Backlog')
+            ? (baseViagem.modal === 'CIF' ? 'CIF' : 'Backlog')
+            : anterior.status,
           statusAgendamento: anterior.statusAgendamento || 'Não Agendado',
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
@@ -4291,7 +4409,7 @@ function updateKPIs(list) {
   // Escada de severidade por data de carregamento: Backlog (vencido) > Crítico (D0)
   // > Alerta (D+1/D+2) > Atenção (D+3+). "Placa Enviada" sai do radar (já resolvido);
   // "sem aceite" = ainda não confirmado pelo transportador (Backlog/Ofertado/Recusado).
-  const pendentes = ativas.filter(v => !['Placa Enviada', 'Frota Dedicada', 'CIF'].includes(v.status));
+  const pendentes = ativas.filter(v => !['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF'].includes(v.status));
   const SEM_ACEITE = ['Backlog', 'Ofertado', 'Recusado'];
   const bucketStats = filtroData => {
     const itens = pendentes.filter(v => {
@@ -4307,7 +4425,7 @@ function updateKPIs(list) {
 
   const volOfertado = ativas.filter(v => v.status === 'Ofertado').reduce((s,v) => s + (v.volume||0), 0);
   const volAceito   = ativas.filter(v => v.status === 'Aceito').reduce((s,v) => s + (v.volume||0), 0);
-  const volConf     = list.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
+  const volConf     = list.filter(v => ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
 
   const fmt = n => Number.isInteger(n)
     ? n.toLocaleString('pt-BR')
@@ -4318,8 +4436,8 @@ function updateKPIs(list) {
   let volPrincipal, taxa;
   if (transportador) {
     volPrincipal = ativas.reduce((s,v) => s + (v.volume||0), 0);
-    const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada','Frota Dedicada'].includes(v.status)).length;
-    const respondidas  = list.filter(v => ['Aceito','Placa Enviada','Frota Dedicada'].includes(v.status)).length;
+    const consideradas = list.filter(v => ['Ofertado','Aceito','Placa Enviada','Frota Dedicada','Em Andamento','Viagem Finalizada'].includes(v.status)).length;
+    const respondidas  = list.filter(v => ['Aceito','Placa Enviada','Frota Dedicada','Em Andamento','Viagem Finalizada'].includes(v.status)).length;
     taxa = consideradas ? Math.round((respondidas / consideradas) * 100) : 0;
   } else {
     volPrincipal = ativas.filter(v => ['Backlog','Recusado'].includes(v.status)).reduce((s,v) => s + (v.volume||0), 0);
@@ -4365,7 +4483,7 @@ function testeIndicador(key) {
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
   const transportador = isTransportador();
-  const RESOLVIDOS = ['Placa Enviada', 'Frota Dedicada', 'CIF'];
+  const RESOLVIDOS = ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF'];
   const bucket = filtroData => v => {
     if (v.status === 'Cancelado' || RESOLVIDOS.includes(v.status)) return false;
     const d = parseDMY(v.dtCarreg);
@@ -4378,14 +4496,14 @@ function testeIndicador(key) {
     case 'atencao': return bucket(d => d > d2);
     case 'vol-ofertado': return v => v.status === 'Ofertado';
     case 'vol-aceito':   return v => v.status === 'Aceito';
-    case 'vol-conf':     return v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status);
+    case 'vol-conf':     return v => ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status);
     case 'vol-pendente':
       return transportador
         ? v => v.status !== 'Cancelado'
         : v => ['Backlog', 'Recusado'].includes(v.status);
     case 'taxa':
       return transportador
-        ? v => ['Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(v.status)
+        ? v => ['Aceito', 'Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)
         : v => !['Backlog', 'Recusado'].includes(v.status);
     default: return () => true;
   }
@@ -4430,6 +4548,7 @@ function estadoFiltrosViagem() {
     produtos: new Set(msVProduto?.getSelected() || []),
     origens: new Set(msVOrigem?.getSelected() || []),
     destinos: new Set(msVDestino?.getSelected() || []),
+    programadores: new Set(msVProgramador?.getSelected() || []),
     indicadorTest: activeIndicador ? testeIndicador(activeIndicador) : null,
   };
 }
@@ -4441,6 +4560,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
+  if (ignorar !== 'programador' && f.programadores.size && !f.programadores.has(v.programador)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
@@ -4448,45 +4568,60 @@ function passaFiltrosViagem(v, f, ignorar = '') {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
     if (!hay.includes(f.busca)) return false;
   }
+  // Casa pela data desejada OU pela data de programação (o que foi ajustado manualmente
+  // no Agendamento) — assim a viagem não "desaparece" do filtro só porque foi reagendada
+  // para fora da janela original, nem deixa de aparecer na nova janela.
   if (activeDiasCarregamento.size) {
-    const vc = parseDMY(v.dtCarreg);
-    if (!vc) return false;
-    const ok = [...activeDiasCarregamento].some(n => mesmoDiaCalendario(vc, diaCarregamentoDate(n)));
-    if (!ok) return false;
+    const bateCarreg = (campo) => {
+      const d = parseDMY(campo);
+      return !!d && [...activeDiasCarregamento].some(n => mesmoDiaCalendario(d, diaCarregamentoDate(n)));
+    };
+    if (!bateCarreg(v.dtCarreg) && !bateCarreg(v.dtCarregProg)) return false;
   }
   if (f.carrDe || f.carrAte) {
-    const vc = parseDMY(v.dtCarreg);
     const de = parseDMSemAno(f.carrDe);
     const ate = parseDMSemAno(f.carrAte);
-    if (vc) {
-      if (de && vc < de) return false;
-      if (ate && vc > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
-    }
+    if (!passaFiltroDeData(v.dtCarreg, v.dtCarregProg, de, ate)) return false;
   }
   if (f.dtDe || f.dtAte) {
-    const vd = parseDMY(v.dtDesc);
     const de = parseDMSemAno(f.dtDe);
     const ate = parseDMSemAno(f.dtAte);
-    if (vd) {
-      if (de && vd < de) return false;
-      if (ate && vd > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
-    }
+    if (!passaFiltroDeData(v.dtDesc, v.dtDescProg, de, ate)) return false;
   }
   return true;
 }
 
-function atualizarOpcoesFiltrosViagem(f) {
+// Casa pela data desejada OU pela programação. Se nenhuma das duas tiver uma data válida,
+// não exclui (mesmo comportamento permissivo do filtro original quando o campo está vazio).
+function passaFiltroDeData(desejada, programada, de, ate) {
+  const dentro = (campo) => {
+    const d = parseDMY(campo);
+    if (!d) return null;
+    if (de && d < de) return false;
+    if (ate && d > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
+    return true;
+  };
+  const r1 = dentro(desejada);
+  const r2 = dentro(programada);
+  return r1 === true || r2 === true || (r1 === null && r2 === null);
+}
+
+function atualizarOpcoesFiltrosViagem(f, fonte = viagens) {
   msVProduto?.setOptions(valoresUnicosOrdenados(
-    viagens.filter(v => passaFiltrosViagem(v, f, 'produto')),
+    fonte.filter(v => passaFiltrosViagem(v, f, 'produto')),
     v => v.produto
   ));
   msVOrigem?.setOptions(valoresUnicosOrdenados(
-    viagens.filter(v => passaFiltrosViagem(v, f, 'origem')),
+    fonte.filter(v => passaFiltrosViagem(v, f, 'origem')),
     valorOrigemFiltro
   ));
   msVDestino?.setOptions(valoresUnicosOrdenados(
-    viagens.filter(v => passaFiltrosViagem(v, f, 'destino')),
+    fonte.filter(v => passaFiltrosViagem(v, f, 'destino')),
     v => v.destino
+  ));
+  msVProgramador?.setOptions(valoresUnicosOrdenados(
+    fonte.filter(v => passaFiltrosViagem(v, f, 'programador')),
+    v => v.programador
   ));
 }
 
@@ -4534,10 +4669,14 @@ function atualizarSetasOrdenacao() {
 }
 
 function renderViagensTable() {
+  if (modoMultiSemana) { renderViagensTableMultiSemana(); return; }
   const isEmpty = viagens.length === 0;
   document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
-  if (isEmpty) return;
+  // Limpa qualquer linha de uma semana anterior — sem isso, a tabela (embora oculta por
+  // display:none) ficava com HTML antigo, que reaparecia se algo religasse o conteúdo
+  // sem repassar por aqui (ex.: alternar o modo multi-semana).
+  if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; return; }
 
   const filtrosViagem = estadoFiltrosViagem();
   atualizarOpcoesFiltrosViagem(filtrosViagem);
@@ -4661,7 +4800,78 @@ function renderViagensTable() {
     chkAll.indeterminate = someSel && !allSel;
   }
   popularSelectTransportadores('bulk-transp');
+  popularSelectProgramadores('bulk-programador');
   atualizarBulkBar();
+}
+
+// Visão combinada somente leitura (ver onToggleMultiSemana) — mesmos filtros/KPIs/pipeline
+// da tabela normal, mas sem nenhum controle de edição inline; a coluna "Semana" identifica
+// a origem de cada linha e "Editar" troca para a semana certa antes de abrir o modal.
+function renderViagensTableMultiSemana() {
+  const isEmpty = viagensMultiSemana.length === 0;
+  document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; return; }
+
+  const filtrosViagem = estadoFiltrosViagem();
+  atualizarOpcoesFiltrosViagem(filtrosViagem, viagensMultiSemana);
+
+  let filtered = viagensMultiSemana.filter(v => passaFiltrosViagem(v, filtrosViagem));
+  if (sortColuna) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    filtered = filtered.slice().sort((a, b) => dir * compararOrdenacao(a, b, sortColuna));
+  }
+  atualizarSetasOrdenacao();
+  sincronizarChipsDiaCarregamento();
+
+  const paraKpis = activeIndicador
+    ? viagensMultiSemana.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
+    : filtered;
+  updateKPIs(paraKpis);
+  updatePipeline(filtered);
+
+  const tbody = document.getElementById('viagensBody');
+  tbody.innerHTML = filtered.map((v) => {
+    const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
+    const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
+    const horaCarreg = v.horaCarregProg || '12:00';
+    const horaDesc   = v.horaDescProg   || '12:00';
+    const agendamentoAtual = v.statusAgendamento || 'Não Agendado';
+    return `
+      <tr>
+        <td class="col-checkbox"></td>
+        <td class="cell-id-viagem">${esc(v.idViagem)}</td>
+        <td class="cell-pedido-mis col-pedido-mis">
+          ${esc(v.cadenciaOrigem || '—')}
+          ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block">⏳ Provisório</span>` : ''}
+        </td>
+        <td>${prodTag(v.produto)}</td>
+        <td class="cell-truncate" title="${esc(v.origem)}">
+          ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
+        </td>
+        <td class="cell-truncate" title="${esc(v.destino)}">${esc(v.destino)}</td>
+        <td class="cell-periodo col-data-desejada">
+          <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
+          <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
+        </td>
+        <td class="cell-periodo">
+          <div>↑ ${progCarreg === '-' ? '—' : esc(fmtShort(progCarreg)) + ' ' + esc(horaCarreg)}</div>
+          <div style="margin-top:2px">↓ ${progDesc === '-' ? '—' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}</div>
+        </td>
+        <td style="text-align:right">${v.volume} m³</td>
+        <td><span class="status ${claseStatus(v.status)}">${esc(v.status)}</span></td>
+        <td class="col-agendamento">
+          <select class="placa-input sel-agend ${claseAgendamento(agendamentoAtual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)" disabled>
+            <option selected>${esc(agendamentoAtual)}</option>
+          </select>
+        </td>
+        <td class="cell-truncate" title="${esc(v.transportador)}">${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td class="col-acao col-acao-sm">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirViagemMultiSemana('${esc(v.idViagem)}', '${esc(v._semanaOrigem)}')" title="Editar (troca para a semana desta viagem)">✏️</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function parseDMY(s) {
@@ -4731,7 +4941,7 @@ function limparFiltrosCad() {
 
 function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear();
+  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVProgramador?.clear();
   activeFilter.clear();
   activeAgendamento.clear();
   activeDiasCarregamento.clear();
@@ -5437,22 +5647,29 @@ function gerarIdVeiculoDedicado() {
   return 'VD-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-// Dias da semana ativa (derivados da chave "YYYY-MM-DD_YYYY-MM-DD" da sessão) —
-// usados para montar a faixa de utilização por veículo, independente do calendário real.
+// Dias da(s) semana(s) consideradas (derivados da chave "YYYY-MM-DD_YYYY-MM-DD" de cada
+// sessão) — usados para montar a faixa de utilização por veículo, independente do
+// calendário real. Em modo multi-semana, combina os dias de todas as semanas marcadas
+// (deduplicados e ordenados) em vez de só a semana ativa.
 function diasDaSemanaAtiva() {
-  if (!semanaAtiva || !semanaAtiva.includes('_')) return [];
-  const [iniISO, fimISO] = semanaAtiva.split('_');
-  const ini = new Date(iniISO + 'T00:00:00');
-  const fim = new Date(fimISO + 'T00:00:00');
-  if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return [];
-  const dias = [];
-  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) dias.push(new Date(d));
-  return dias;
+  const keys = modoMultiSemana ? selecaoAtualMsSemanas() : (semanaAtiva ? [semanaAtiva] : []);
+  const diasMap = new Map();
+  keys.forEach(key => {
+    if (!key || !key.includes('_')) return;
+    const [iniISO, fimISO] = key.split('_');
+    const ini = new Date(iniISO + 'T00:00:00');
+    const fim = new Date(fimISO + 'T00:00:00');
+    if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return;
+    for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
+      diasMap.set(d.toISOString().slice(0, 10), new Date(d));
+    }
+  });
+  return [...diasMap.values()].sort((a, b) => a - b);
 }
 
 function viagensDoVeiculoNoDia(veiculoId, dia) {
   const d0 = new Date(dia); d0.setHours(0, 0, 0, 0);
-  return viagens.filter(v => {
+  return (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => {
     if (v.veiculoDedicadoId !== veiculoId || v.status === 'Cancelado') return false;
     const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
     if (!ini) return false;
@@ -5801,6 +6018,33 @@ function popularSelectTransportadores(selectId, valorAtual) {
   }
 }
 
+// Programador = membro da equipe de logística que classifica/se responsabiliza pela
+// viagem. A lista vem dos usuários "staff" já cadastrados (ver carregarUsuariosFirebase),
+// não de um cadastro próprio — evita duplicar nomes que já existem como login do portal.
+function popularSelectProgramadores(selectId, valorAtual) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = valorAtual !== undefined ? valorAtual : sel.value;
+  sel.innerHTML = selectId === 'bulk-programador'
+    ? '<option value="">Manter atual</option><option value="__sem_classificacao__">— Não classificado —</option>'
+    : '<option value="">— Não classificado —</option>';
+  _usuariosAtivos.filter(u => u.tipo !== 'transportador').forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.nome;
+    opt.textContent = u.nome;
+    sel.appendChild(opt);
+  });
+  sel.value = current || '';
+  // Compatibilidade: viagem classificada para um usuário que depois foi removido do staff.
+  if (current && sel.value !== current) {
+    const opt = document.createElement('option');
+    opt.value = current;
+    opt.textContent = `${current} (usuário removido)`;
+    sel.insertBefore(opt, sel.children[1] || null);
+    sel.value = current;
+  }
+}
+
 function popularSelectCnpjsTransportador(selectId, nomeApelido, valorAtual) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
@@ -5896,6 +6140,13 @@ function openModal(idx) {
   document.getElementById('m-destino').textContent = v.destino;
   popularSelectTransportadores('m-transportador', v.transportador || '');
   popularSelectCnpjsTransportador('m-transportador-cnpj', v.transportador || '', v.transportadorCnpj || '');
+  popularSelectProgramadores('m-programador', v.programador || '');
+  // Em Andamento/Viagem Finalizada/CIF só aparecem na lista se já forem o status atual
+  // (senão somem das opções) — ver STATUS_SOMENTE_AUTOMATICO.
+  STATUS_SOMENTE_AUTOMATICO.forEach(st => {
+    const opt = document.querySelector(`#m-status option[value="${st}"]`);
+    if (opt) opt.hidden = st !== v.status;
+  });
   document.getElementById('m-status').value         = v.status || 'Pendente';
   document.getElementById('m-placa').value          = v.placa || '';
   document.getElementById('m-placaCarreta1').value  = v.placaCarreta1 || '';
@@ -6034,7 +6285,7 @@ function salvarPedidoMisInline(realIdx, valorInput) {
 }
 
 function renderSeletorCnpjTransportador(v, realIdx) {
-  if (!['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(v.status)) return '';
+  if (!['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)) return '';
   const t = buscarTransportadorPorNome(v.transportador);
   const cnpjs = t?.cnpjs || [];
   if (cnpjs.length < 2) return ''; // 0 ou 1 CNPJ: nada a escolher (já selecionado automaticamente)
@@ -6175,24 +6426,38 @@ function salvarVolumeInline(realIdx, valorInput) {
   renderViagensTable();
 }
 
-const OPCOES_STATUS = ['Backlog', 'Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'CIF', 'Cancelado'];
+const OPCOES_STATUS = ['Backlog', 'Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF', 'Cancelado'];
+
+// Statuses que nunca podem ser escolhidos manualmente no select — cada um tem uma
+// fonte de verdade própria: Em Andamento/Viagem Finalizada vêm da Herrlog
+// (sincronizarStatusHerrlog); CIF vem do Tipo de Frete da cadência de origem
+// (quebrarEmViagens, ver baseViagem.modal).
+const STATUS_SOMENTE_AUTOMATICO = ['Em Andamento', 'Viagem Finalizada', 'CIF'];
 
 function claseStatus(status) {
   return {
-    'Backlog':        'status-backlog',
-    'Ofertado':       'status-ofertado',
-    'Recusado':       'status-recusado',
-    'Aceito':         'status-aceito',
-    'Placa Enviada':  'status-placa',
-    'Frota Dedicada': 'status-frota',
-    'CIF':            'status-cif',
-    'Cancelado':      'status-cancelado',
+    'Backlog':           'status-backlog',
+    'Ofertado':          'status-ofertado',
+    'Recusado':          'status-recusado',
+    'Aceito':            'status-aceito',
+    'Placa Enviada':     'status-placa',
+    'Frota Dedicada':    'status-frota',
+    'Em Andamento':      'status-emandamento',
+    'Viagem Finalizada': 'status-finalizada',
+    'CIF':               'status-cif',
+    'Cancelado':         'status-cancelado',
   }[status] || 'status-backlog';
 }
 
 function renderSeletorStatus(v, realIdx) {
   const transportador = isTransportador();
-  const opcoes = OPCOES_STATUS.map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''}>${op}</option>`).join('');
+  // Em Andamento/Viagem Finalizada/CIF vêm de fontes automáticas (ver STATUS_SOMENTE_AUTOMATICO):
+  // só aparecem na lista quando já são o status atual da viagem (senão somem das opções),
+  // e mesmo assim ficam "disabled" para não poderem ser escolhidas manualmente.
+  const opcoes = OPCOES_STATUS
+    .filter(op => !STATUS_SOMENTE_AUTOMATICO.includes(op) || op === v.status)
+    .map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''} ${STATUS_SOMENTE_AUTOMATICO.includes(op) ? 'disabled' : ''}>${op}</option>`)
+    .join('');
   let html = `<select class="placa-input sel-status ${claseStatus(v.status)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
       onchange="salvarStatusInline(${realIdx}, this.value)" ${transportador ? 'disabled' : ''}>
       ${opcoes}
@@ -6260,13 +6525,47 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
   renderViagensTable();
 }
 
-const OPCOES_AGENDAMENTO = ['Não Agendado', 'Usina de Fila', 'Segurando Grade', 'Agendado'];
+// ── SINCRONIZAÇÃO AUTOMÁTICA DE STATUS COM A HERRLOG ──
+// O extracao_herrlog.py alimenta o node `monitoramentoHerrlog` a cada ciclo com o
+// CicloLogistico real da viagem (T1 Programado/Em deslocamento, T2 Na Origem,
+// T3 Em deslocamento p/ Destino, T4 No Destino, T5 Viagem finalizada). Usamos isso
+// para promover o status automaticamente, sem depender de ação manual:
+//   Placa Enviada / Frota Dedicada → Em Andamento (qualquer ciclo != T5, já confirmado na Herrlog)
+//                                  → Viagem Finalizada (ciclo T5)
+//   Em Andamento                  → Viagem Finalizada (ciclo T5)
+// "Em Andamento" e "Viagem Finalizada" são exclusivos dessa sincronização — ver
+// STATUS_SOMENTE_AUTOMATICO, que os mantém fora das opções manuais do select de status.
+const STATUS_HERRLOG_FINALIZADA = 'T5 - Viagem finalizada';
+
+function sincronizarStatusHerrlog() {
+  let alterou = false;
+  viagens.forEach(v => {
+    const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
+    if (!statusHerrlog) return;
+    const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
+    const podeAvancar = ['Placa Enviada', 'Frota Dedicada'].includes(v.status)
+      || (v.status === 'Em Andamento' && novoStatus === 'Viagem Finalizada');
+    if (!podeAvancar || v.status === novoStatus) return;
+    v.status = novoStatus;
+    registrarHistoricoOferta(v, novoStatus, 'Herrlog (automático)');
+    alterou = true;
+  });
+  if (alterou) {
+    updatePipeline();
+    agendarAutosave();
+  }
+  return alterou;
+}
+
+const OPCOES_AGENDAMENTO = ['Não Agendado', 'Usina de Fila', 'Segurando Grade', 'Sem Saldo', 'Sem Grades', 'Agendado'];
 
 function claseAgendamento(valor) {
   return {
     'Não Agendado': 'sel-agend-nao',
     'Usina de Fila': 'sel-agend-usina',
     'Segurando Grade': 'sel-agend-segurando',
+    'Sem Saldo': 'sel-agend-semsaldo',
+    'Sem Grades': 'sel-agend-semgrades',
     'Agendado': 'sel-agend-agendado',
   }[valor] || 'sel-agend-nao';
 }
@@ -6322,6 +6621,7 @@ function salvarViagem() {
   viagens[editingIdx].nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
   viagens[editingIdx].cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   viagens[editingIdx].obs            = document.getElementById('m-obs').value;
+  viagens[editingIdx].programador    = document.getElementById('m-programador').value;
   viagens[editingIdx].veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
   if (viagens[editingIdx].placa && viagens[editingIdx].status === 'Aceito') {
     viagens[editingIdx].status = 'Placa Enviada';
@@ -6496,9 +6796,10 @@ function updatePipeline(list) {
   list = list || viagens;
   const isFiltered = list.length < viagens.length;
 
-  // Cadências e Viagens: sempre totais globais
-  document.getElementById('cnt-cadencias').textContent = cadencias.length;
-  document.getElementById('cnt-viagens').textContent   = viagens.length;
+  // Cadências e Viagens: sempre totais globais (em modo multi-semana, cadências não
+  // são combinadas entre semanas — só viagens — por isso fica "—" em vez de um total errado)
+  document.getElementById('cnt-cadencias').textContent = modoMultiSemana ? '—' : cadencias.length;
+  document.getElementById('cnt-viagens').textContent   = modoMultiSemana ? viagensMultiSemana.length : viagens.length;
 
   // Status: refletem a lista recebida (filtrada ou total)
   const cntCif       = list.filter(v => v.status === 'CIF').length;
@@ -6510,6 +6811,8 @@ function updatePipeline(list) {
   const cntRecusado  = list.filter(v => v.status === 'Recusado').length;
   const cntAceito    = list.filter(v => v.status === 'Aceito').length;
   const cntPlaca     = list.filter(v => v.status === 'Placa Enviada').length;
+  const cntEmAndamento = list.filter(v => v.status === 'Em Andamento').length;
+  const cntFinalizada = list.filter(v => v.status === 'Viagem Finalizada').length;
   const cntCancelado = list.filter(v => v.status === 'Cancelado').length;
   // Recusado volta ao pool sem transportador: conta no estágio 3 além do próprio estágio de recusa
   const cntSemTransportador = cntBacklog + cntRecusado;
@@ -6519,6 +6822,8 @@ function updatePipeline(list) {
   document.getElementById('cnt-recusadas').textContent     = cntRecusado;
   document.getElementById('cnt-aceitas').textContent       = cntAceito;
   document.getElementById('cnt-monitoramento').textContent = cntPlaca;
+  document.getElementById('cnt-emandamento').textContent   = cntEmAndamento;
+  document.getElementById('cnt-finalizadas').textContent   = cntFinalizada;
   document.getElementById('cnt-canceladas').textContent    = cntCancelado;
 
   // Tint visual nos labels de status quando filtrado
@@ -6563,7 +6868,7 @@ function filterExport(f, el) {
 }
 
 function renderExport() {
-  const elegiveis = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
   const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
@@ -6644,7 +6949,9 @@ function badgeAderencia(status) {
 }
 
 function badgeFrotaDedicada(v) {
-  return v.status === 'Frota Dedicada'
+  // veiculoDedicadoId (não v.status) preserva a origem "Frota Dedicada" mesmo
+  // depois que a viagem é promovida automaticamente para "Viagem Finalizada".
+  return v.veiculoDedicadoId
     ? '<span class="status status-frota">✓ Sim</span>'
     : '<span class="status status-placa">Não</span>';
 }
@@ -6724,8 +7031,8 @@ function passaFiltrosMonitoramento(v, f, ignorar = '') {
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
-  if (f.frota === 'sim' && v.status !== 'Frota Dedicada') return false;
-  if (f.frota === 'nao' && v.status === 'Frota Dedicada') return false;
+  if (f.frota === 'sim' && !v.veiculoDedicadoId) return false;
+  if (f.frota === 'nao' && v.veiculoDedicadoId) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (f.busca) {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
@@ -6774,7 +7081,7 @@ function valorOrdenacaoMon(l, coluna) {
     case 'destino':         return v.destino || '';
     case 'volume':          return v.volume || 0;
     case 'transportador':   return v.transportador || '';
-    case 'frotaDedicada':   return v.status === 'Frota Dedicada' ? 1 : 0;
+    case 'frotaDedicada':   return v.veiculoDedicadoId ? 1 : 0;
     case 'dataDesejada':    return parseDMY(v.dtDesc) || new Date(8640000000000000);
     case 'dataProgramacao': return parseDMY(v.dtDescProg || v.dtDesc) || new Date(8640000000000000);
     case 'etaReal':         return l.etaIso ? new Date(l.etaIso) : new Date(8640000000000000);
@@ -6812,7 +7119,7 @@ function atualizarSetasOrdenacaoMon() {
 }
 
 function renderMonitoramento() {
-  const monitoradas = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && monitoramentoHerrlog[v.idViagem]);
+  const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status) && monitoramentoHerrlog[v.idViagem]);
   const isEmpty = monitoradas.length === 0;
   document.getElementById('monitoramentoEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('monitoramentoContent').style.display = isEmpty ? 'none' : 'block';
@@ -6946,7 +7253,7 @@ function exportarHerrlog() {
   // Sem restrição por herrlogExportadoEm — reexportar quantas vezes precisar não é
   // problema; o filtro "Aguardando criação na Herrlog" já indica o que falta confirmar.
   // Exporta exatamente o que está sendo exibido pelo filtro ativo (Todos/Aguardando/Confirmado).
-  const elegiveis = viagens.filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
   const prontas = activeFilterExport === 'aguardando' ? elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem])
     : activeFilterExport === 'confirmado' ? elegiveis.filter(v => !!monitoramentoHerrlog[v.idViagem])
     : elegiveis;
@@ -7014,8 +7321,36 @@ function exportarHerrlog() {
 
   const agora = new Date().toISOString();
   prontas.forEach(v => { v.herrlogExportadoEm = agora; });
-  agendarAutosave();
+  salvarExportacaoPorSemana(prontas, agora);
   renderExport();
+}
+
+// Marca herrlogExportadoEm e persiste por semana de origem. Necessário porque, em modo
+// multi-semana, `prontas` reúne cópias de viagens de várias semanas (não as referências
+// reais de `viagens`) — o agendarAutosave() normal só cobre a semana ativa, então as
+// demais semanas precisam ser buscadas, ajustadas e salvas diretamente.
+async function salvarExportacaoPorSemana(prontas, timestamp) {
+  const idsPorSemana = new Map();
+  prontas.forEach(v => {
+    const semana = v._semanaOrigem || semanaAtiva;
+    if (!idsPorSemana.has(semana)) idsPorSemana.set(semana, new Set());
+    idsPorSemana.get(semana).add(v.idViagem);
+  });
+  for (const [semana, ids] of idsPorSemana) {
+    if (semana === semanaAtiva) {
+      viagens.forEach(v => { if (ids.has(v.idViagem)) v.herrlogExportadoEm = timestamp; });
+      agendarAutosave();
+      continue;
+    }
+    try {
+      const payload = await window._fb.carregar(semana);
+      if (!payload) continue;
+      (payload.viagens || []).forEach(v => { if (ids.has(v.idViagem)) v.herrlogExportadoEm = timestamp; });
+      await window._fb.salvar(semana, payload);
+    } catch (e) {
+      console.error(`Falha ao registrar exportação na semana ${semana}:`, e);
+    }
+  }
 }
 
 function aplicarFormatoData(ws, colIdx0based, numLinhas) {
@@ -7084,6 +7419,7 @@ function processarArquivo(file) {
 
         linhasArquivo.push({
           id,
+          _linha:      i + 1,
           dtCarreg:    parseDateCell(r[idxDtCarreg]),
           dtDesc:      parseDateCell(r[idxDtDesc]),
           produto:     String(r[idxProduto]     || '').trim(),
@@ -7102,13 +7438,203 @@ function processarArquivo(file) {
         return;
       }
 
-      abrirPopupModoImportacaoCadencia(linhasArquivo, file);
+      const { validas, invalidas, corrigidas } = validarCadastroImportacao(linhasArquivo);
+      if (invalidas.length > 0) {
+        abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas);
+      } else if (corrigidas.length > 0) {
+        abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file);
+      } else {
+        abrirPopupModoImportacaoCadencia(linhasArquivo, file);
+      }
     } catch(err) {
       alert('Erro ao ler o arquivo: ' + err.message);
       console.error(err);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Confere se Origem e Destino de cada linha existem no cadastro de Fornecedores/Bases.
+// Se o texto digitado não bater mas o CNPJ identificar com certeza o fornecedor/base cadastrado,
+// corrige o texto para o nome oficial (evita que "BETIM" entre como destino diferente de
+// "BETIM - NEXTA RBZ" só porque o CNPJ foi preenchido certo e o nome não).
+function validarCadastroImportacao(linhasArquivo) {
+  const validas = [];
+  const invalidas = [];
+  const corrigidas = [];
+
+  linhasArquivo.forEach(c => {
+    const erros = [];
+
+    if (c.origem && !fornecedores.find(f => f.origem === c.origem)) {
+      const fPorCnpj = c.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(c.cnpjOrigem));
+      if (fPorCnpj) {
+        corrigidas.push({ linha: c, campo: 'Origem', de: c.origem, para: fPorCnpj.origem });
+        c.origem = fPorCnpj.origem;
+        if (fPorCnpj.baseAtendimento && fPorCnpj.baseAtendimento !== c.base) {
+          corrigidas.push({ linha: c, campo: 'Base de Atendimento', de: c.base, para: fPorCnpj.baseAtendimento });
+          c.base = fPorCnpj.baseAtendimento;
+        }
+      } else {
+        erros.push({ campo: 'Origem (fornecedor)', valor: c.origem });
+      }
+    }
+
+    if (c.destino && !bases.find(b => b.nomeMis === c.destino)) {
+      const bPorCnpj = c.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(c.cnpjDestino));
+      if (bPorCnpj) {
+        corrigidas.push({ linha: c, campo: 'Destino', de: c.destino, para: bPorCnpj.nomeMis });
+        c.destino = bPorCnpj.nomeMis;
+      } else {
+        erros.push({ campo: 'Destino (base)', valor: c.destino });
+      }
+    }
+
+    if (erros.length) invalidas.push({ linha: c, erros });
+    else validas.push(c);
+  });
+
+  return { validas, invalidas, corrigidas };
+}
+
+// Mostra as linhas cuja Origem/Destino não bate com o cadastro de Fornecedores/Bases
+// antes de qualquer dado entrar na planilha — evita subir cadência com fornecedor/base "fantasma".
+function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas = []) {
+  const fornecedoresFaltantes = [...new Set(
+    invalidas.flatMap(iv => iv.erros.filter(e => e.campo.startsWith('Origem')).map(e => e.valor))
+  )];
+  const basesFaltantes = [...new Set(
+    invalidas.flatMap(iv => iv.erros.filter(e => e.campo.startsWith('Destino')).map(e => e.valor))
+  )];
+
+  const linhasHtml = invalidas
+    .sort((a, b) => a.linha._linha - b.linha._linha)
+    .map(iv => `
+      <tr>
+        <td style="white-space:nowrap">${iv.linha._linha}</td>
+        <td class="cell-truncate-xs" title="${esc(iv.linha.id)}">${esc(iv.linha.id)}</td>
+        <td style="white-space:normal">${iv.erros.map(e =>
+          `<div>${esc(e.campo)}: <strong>"${esc(e.valor)}"</strong> não cadastrado</div>`
+        ).join('')}</td>
+      </tr>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'popupErrosCadastroOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:600px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--danger)">⚠ ${invalidas.length} linha(s) com fornecedor/base não cadastrado</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Em "${esc(file.name)}" — essas linhas não serão importadas até o cadastro ser corrigido.
+      </div>
+      ${fornecedoresFaltantes.length ? `<div style="font-size:11px;margin-bottom:6px"><strong>Fornecedores (Origem) sem cadastro:</strong> ${fornecedoresFaltantes.map(esc).join(', ')}</div>` : ''}
+      ${basesFaltantes.length ? `<div style="font-size:11px;margin-bottom:10px"><strong>Bases (Destino) sem cadastro:</strong> ${basesFaltantes.map(esc).join(', ')}</div>` : ''}
+      ${corrigidas.length ? `
+      <div style="font-size:11px;color:var(--accent);margin-bottom:6px">✓ ${corrigidas.length} ajuste(s) automático(s) em linha(s) válida(s) (nome digitado não batia com o cadastro, mas o CNPJ identificou certo):</div>
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;max-height:130px">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--panel)">
+            <tr>
+              <th style="text-align:left;padding:6px 8px">Linha</th>
+              <th style="text-align:left;padding:6px 8px">Pedido MIS</th>
+              <th style="text-align:left;padding:6px 8px">Campo</th>
+              <th style="text-align:left;padding:6px 8px">Ajuste</th>
+            </tr>
+          </thead>
+          <tbody>${corrigidas.map(cor => `
+            <tr>
+              <td style="white-space:nowrap">${cor.linha._linha}</td>
+              <td class="cell-truncate-xs" title="${esc(cor.linha.id)}">${esc(cor.linha.id)}</td>
+              <td>${esc(cor.campo)}</td>
+              <td>"${esc(cor.de)}" → <strong>"${esc(cor.para)}"</strong></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>` : ''}
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--panel)">
+            <tr>
+              <th style="text-align:left;padding:6px 8px">Linha</th>
+              <th style="text-align:left;padding:6px 8px">Pedido MIS</th>
+              <th style="text-align:left;padding:6px 8px">Problema</th>
+            </tr>
+          </thead>
+          <tbody>${linhasHtml}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        ${fornecedoresFaltantes.length ? `<button class="btn btn-secondary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); switchTab(6);">🏭 Ir para Fornecedores</button>` : ''}
+        ${basesFaltantes.length ? `<button class="btn btn-secondary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); switchTab(5);">📍 Ir para Bases</button>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <button onclick="fecharPopupErrosCadastroImportacao()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline">Cancelar importação</button>
+        ${validas.length > 0
+          ? `<button class="btn btn-primary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); abrirPopupModoImportacaoCadencia(window._linhasValidasImportCad, window._fileImportCad)">Importar somente as ${validas.length} linha(s) válida(s)</button>`
+          : `<span style="font-size:11px;color:var(--text-muted)">Nenhuma linha válida para importar.</span>`}
+      </div>
+    </div>`;
+  window._linhasValidasImportCad = validas;
+  window._fileImportCad = file;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupErrosCadastroImportacao(); });
+}
+
+function fecharPopupErrosCadastroImportacao() {
+  document.getElementById('popupErrosCadastroOverlay')?.remove();
+  document.getElementById('fileInput').value = '';
+  window._linhasValidasImportCad = null;
+  window._fileImportCad = null;
+}
+
+// Quando o nome digitado não bate com o cadastro mas o CNPJ identifica com certeza o fornecedor/base,
+// o texto já foi corrigido em validarCadastroImportacao — aqui só avisamos o que foi ajustado antes de seguir.
+function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file) {
+  const linhasHtml = corrigidas.map(cor => `
+    <tr>
+      <td style="white-space:nowrap">${cor.linha._linha}</td>
+      <td class="cell-truncate-xs" title="${esc(cor.linha.id)}">${esc(cor.linha.id)}</td>
+      <td>${esc(cor.campo)}</td>
+      <td>"${esc(cor.de)}" → <strong>"${esc(cor.para)}"</strong></td>
+    </tr>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'popupCorrecoesCadastroOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:600px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent)">✓ ${corrigidas.length} ajuste(s) automático(s) pelo CNPJ</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Em "${esc(file.name)}" — o nome digitado na planilha não batia com o cadastro, mas o CNPJ identificou exatamente qual fornecedor/base é. O texto foi corrigido para o nome oficial antes de importar:
+      </div>
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--panel)">
+            <tr>
+              <th style="text-align:left;padding:6px 8px">Linha</th>
+              <th style="text-align:left;padding:6px 8px">Pedido MIS</th>
+              <th style="text-align:left;padding:6px 8px">Campo</th>
+              <th style="text-align:left;padding:6px 8px">Ajuste</th>
+            </tr>
+          </thead>
+          <tbody>${linhasHtml}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <button onclick="fecharPopupCorrecoesCadastroImportacao()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline">Cancelar importação</button>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('popupCorrecoesCadastroOverlay').remove(); abrirPopupModoImportacaoCadencia(window._linhasValidasImportCad, window._fileImportCad)">Continuar importação</button>
+      </div>
+    </div>`;
+  window._linhasValidasImportCad = validas;
+  window._fileImportCad = file;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupCorrecoesCadastroImportacao(); });
+}
+
+function fecharPopupCorrecoesCadastroImportacao() {
+  document.getElementById('popupCorrecoesCadastroOverlay')?.remove();
+  document.getElementById('fileInput').value = '';
+  window._linhasValidasImportCad = null;
+  window._fileImportCad = null;
 }
 
 // Pergunta, a cada upload, se deve somar ao que já existe ou substituir tudo —
@@ -7330,19 +7856,28 @@ async function carregarListaSemanas() {
 }
 
 function trocarSemana(key) {
-  if (!key || key === semanaAtiva) return;
+  if (!key || key === semanaAtiva) return Promise.resolve();
   semanaAtiva = key;
   if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
-  window._fb.carregar(key).then(payload => {
+  const carregamento = window._fb.carregar(key).then(payload => {
+    // Sem payload = semana ainda sem sessão salva no Firebase — trata como vazia em vez
+    // de manter cadências/viagens da semana anterior na memória (bug: ficavam "presas").
     if (payload) {
       aplicarPayload(payload);
-      if (cadencias.length > 0) renderPreview();
-      updatePipeline();
-      if (viagens.length > 0) switchTab(1); else switchTab(0);
+    } else {
+      cadencias = [];
+      viagens = [];
     }
+    sincronizarStatusHerrlog();
+    document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
+    if (cadencias.length > 0) renderPreview();
+    updatePipeline();
+    renderViagensTable();
+    if (viagens.length > 0) switchTab(1); else switchTab(0);
   });
   configurarListenerSemana(key);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(key));
+  return carregamento;
 }
 
 function configurarListenerSemana(key) {
@@ -7351,6 +7886,7 @@ function configurarListenerSemana(key) {
   window._fbUnsub = window._fb.ouvirMudancas(key, (payload) => {
     if (primeira) { primeira = false; return; }
     aplicarPayload(payload);
+    sincronizarStatusHerrlog();
     if (editingIdx !== null) closeModal();
     if (activeTab === 0 && cadencias.length > 0) renderPreview();
     if (activeTab === 1) renderViagensTable();
@@ -7361,6 +7897,95 @@ function configurarListenerSemana(key) {
   });
 }
 
+// ── VISUALIZAÇÃO MULTI-SEMANA ──
+// Combina viagens de várias semanas só para consulta/filtro/exportação (sem tempo
+// real — usar 🔄 para atualizar). Editar uma linha de outra semana sai deste modo,
+// troca a semana ativa para a dela e abre o modal normalmente (salva como sempre).
+async function onToggleMultiSemana(ativo) {
+  document.getElementById('semanaSelect').style.display = ativo ? 'none' : '';
+  document.getElementById('btnNovaSemana').style.display = ativo ? 'none' : '';
+  document.getElementById('ms-semanas').style.display = ativo ? '' : 'none';
+  document.getElementById('btnAtualizarMultiSemana').style.display = ativo ? '' : 'none';
+  modoMultiSemana = ativo;
+  document.body.classList.toggle('multi-semana-mode', ativo);
+  if (!ativo) {
+    viagensMultiSemana = [];
+    renderizarAbaAtual();
+    return;
+  }
+  await atualizarOpcoesMsSemanas();
+  const labelAtual = formatarKeyParaLabel(semanaAtiva);
+  msSemanas.selected = new Set(_semanaLabelParaKey.has(labelAtual) ? [labelAtual] : []);
+  msSemanas._renderPanel();
+  msSemanas._renderLabel();
+  await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+}
+
+// Busca a lista de semanas na hora (não só quando o checkbox é ligado) — chamada também
+// a cada abertura do painel (ver onOpen no construtor do MultiSelect), para que uma
+// semana criada depois de já estar em modo multi-semana apareça pra seleção sem precisar
+// desmarcar/marcar o checkbox de novo. setOptions já preserva a seleção atual.
+async function atualizarOpcoesMsSemanas() {
+  const semanas = await window._fb.listarSemanas();
+  _semanaLabelParaKey = new Map(semanas.map(key => [formatarKeyParaLabel(key), key]));
+  msSemanas.setOptions([..._semanaLabelParaKey.keys()]);
+}
+
+function selecaoAtualMsSemanas() {
+  return (msSemanas?.getSelected() || []).map(label => _semanaLabelParaKey.get(label)).filter(Boolean);
+}
+
+async function carregarViagensMultiSemana(keys) {
+  if (!keys.length) {
+    viagensMultiSemana = [];
+    renderizarAbaAtual();
+    return;
+  }
+  mostrarStatus('saving', 'Carregando semanas selecionadas...');
+  const payloads = await Promise.all(keys.map(key => window._fb.carregar(key)));
+  viagensMultiSemana = [];
+  keys.forEach((key, i) => {
+    const payload = payloads[i];
+    (payload?.viagens || []).forEach(v => {
+      viagensMultiSemana.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
+    });
+  });
+  mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
+  renderizarAbaAtual();
+}
+
+function atualizarMultiSemana() {
+  carregarViagensMultiSemana(selecaoAtualMsSemanas());
+}
+
+// Aplica a visão multi-semana à aba que estiver aberta no momento (Gerir Viagens,
+// Exportar ou Monitoramento — as únicas que combinam viagens entre semanas).
+function renderizarAbaAtual() {
+  if (activeTab === 1) renderViagensTable();
+  else if (activeTab === 2) renderExport();
+  else if (activeTab === 3) renderMonitoramento();
+  else if (activeTab === 7) renderVeiculosTable();
+}
+
+function desativarMultiSemana() {
+  document.getElementById('chkMultiSemana').checked = false;
+  onToggleMultiSemana(false);
+}
+
+// Abre a viagem para edição: se ela for de outra semana, sai do modo multi-semana
+// e troca a semana ativa antes de abrir o modal — edição sempre acontece dentro
+// do contexto normal de uma única semana.
+async function abrirViagemMultiSemana(idViagem, semanaOrigem) {
+  if (semanaOrigem !== semanaAtiva) {
+    if (!confirm(`Esta viagem é da semana ${formatarKeyParaLabel(semanaOrigem)}. Trocar para essa semana para editar?`)) return;
+    desativarMultiSemana();
+    await trocarSemana(semanaOrigem);
+  }
+  const idx = viagens.findIndex(v => v.idViagem === idViagem);
+  if (idx === -1) { alert('Viagem não encontrada na semana ativa.'); return; }
+  openModal(idx);
+}
+
 // Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` —
 // alimentado pelo extracao_herrlog.py a cada ciclo). Independente da semana
 // ativa, por isso o listener e' configurado uma unica vez.
@@ -7368,6 +7993,8 @@ function configurarListenerMonitoramentoHerrlog() {
   if (window._fbUnsubMonitoramento) { window._fbUnsubMonitoramento(); window._fbUnsubMonitoramento = null; }
   window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog((dados) => {
     monitoramentoHerrlog = dados || {};
+    sincronizarStatusHerrlog();
+    if (activeTab === 1) renderViagensTable();
     if (activeTab === 2) renderExport();
     if (activeTab === 3) renderMonitoramento();
   });
@@ -7421,6 +8048,9 @@ function confirmarNovaSemana() {
     erro.textContent = 'Use o formato DD/MM/AAAA em ambos os campos.'; return;
   }
   const key = gerarKeySemana(ini, fim);
+  // Sai da visão multi-semana antes de criar: ela combina dados de outras semanas e, se
+  // ficasse ativa, mostraria a lista antiga em vez da semana nova (vazia) recém-criada.
+  if (modoMultiSemana) desativarMultiSemana();
   cadencias = []; viagens = []; semanaAtiva = key;
   document.getElementById('previewSection').style.display = 'none';
   updatePipeline(); renderViagensTable(); switchTab(0);
@@ -7457,10 +8087,16 @@ await carregarUsuariosFirebase();
   const payload = await window._fb.carregar(semanaAtiva);
   if (payload) {
     aplicarPayload(payload);
-    if (cadencias.length > 0) renderPreview();
-    updatePipeline();
-    if (viagens.length > 0) switchTab(1);
+  } else {
+    cadencias = [];
+    viagens = [];
   }
+  sincronizarStatusHerrlog();
+  document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
+  if (cadencias.length > 0) renderPreview();
+  updatePipeline();
+  renderViagensTable();
+  if (viagens.length > 0) switchTab(1);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
   } catch(err) {
@@ -7477,6 +8113,8 @@ window.addEventListener('DOMContentLoaded', () => {
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
   msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
+  msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable);
+  msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
