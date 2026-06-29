@@ -1135,6 +1135,11 @@
         callback(snap.exists() ? snap.val() : {});
       });
     },
+    ouvirCadastroHerrlogClientes: (callback) => {
+      return onValue(ref(db, 'cadastroHerrlogClientes'), (snap) => {
+        callback(snap.exists() ? snap.val() : {});
+      });
+    },
     carregarUsuarios: async () => {
       const snap = await get(ref(db, 'usuarios'));
       return snap.exists() ? snap.val() : null;
@@ -1856,10 +1861,12 @@
               <tr>
                 <th>ID Viagem</th>
                 <th>Placa</th>
-                <th>Cadastro Herrlog</th>
+                <th>Cadastro Placa</th>
                 <th>Produto</th>
                 <th>Origem</th>
+                <th>Cadastro Fornecedor</th>
                 <th>Destino</th>
+                <th>Cadastro Base</th>
                 <th>Dt Descarga</th>
                 <th>Volume</th>
                 <th>Transportador</th>
@@ -3692,6 +3699,8 @@ let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real 
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
 let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ativo na Herrlog (tabela Cavalo do datalake)
 let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
+let cadastroHerrlogClientes = {}; // { [codigoExterno]: true } — fornecedores/bases com cadastro ativo na Herrlog (tabela Cliente do datalake)
+let cadastroHerrlogClientesCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
 let activeFilterMonStatus = 'todos'; // filtro de estado (Status Herrlog) na aba Monitoramento
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
 let activeIndicadorMon = null; // card de KPI clicado na aba Monitoramento (vsProgramacao/vsDesejada)
@@ -6899,6 +6908,8 @@ function renderExport() {
   const tbody = document.getElementById('exportBody');
   tbody.innerHTML = filtradas.map(v => {
     const mon = monitoramentoHerrlog[v.idViagem] || null;
+    const fornecedor = buscarFornecedorDaViagem(v);
+    const baseDestino = buscarBaseDaViagem(v);
     return `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
@@ -6906,7 +6917,9 @@ function renderExport() {
         <td>${renderCadastroPlaca(v.placa)}</td>
         <td>${prodTag(v.produto)}</td>
         <td>${v.origem}${v.base ? `<span style="color:var(--text-muted)"> (${v.base})</span>` : ''}</td>
+        <td>${renderBadgeCadastroCliente(fornecedor?.codSap)}</td>
         <td>${v.destino}</td>
+        <td>${renderBadgeCadastroCliente(baseDestino?.idHerrlog)}</td>
         <td><strong>${v.dtDesc}</strong></td>
         <td>${v.volume} m³</td>
         <td>${v.transportador}</td>
@@ -6943,6 +6956,24 @@ function renderCadastroPlaca(placa) {
     return `<span class="badge badge-success" title="Placa cadastrada na Herrlog (tabela Cavalo)">✅ Cadastrada</span>`;
   }
   return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Placa sem cadastro na Herrlog — cadastre o veículo no sistema antes de importar o XLSX, ou a viagem pode não ser reconhecida.">⚠ Sem cadastro</span>`;
+}
+
+// Cadastro de fornecedor (origem/usina, campo `codSap`) ou base (destino,
+// campo `idHerrlog`) na Herrlog — ambos batem com Cliente.CodigoExterno no
+// datalake (node `cadastroHerrlogClientes`). Sem esse código, a importação do
+// XLSX (aba Eventos de Viagem) não reconhece o fornecedor/base.
+function renderBadgeCadastroCliente(codigo) {
+  if (!cadastroHerrlogClientesCarregado) {
+    return `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">Verificando…</span>`;
+  }
+  if (!codigo) {
+    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Sem Código SAP/ID Herrlog cadastrado no Fornecedor/Base local — complete o cadastro antes de exportar.">⚠ Sem código local</span>`;
+  }
+  const chave = String(codigo).trim();
+  if (cadastroHerrlogClientes[chave]) {
+    return `<span class="badge badge-success" title="Código ${esc(chave)} cadastrado na Herrlog">✅ Cadastrado</span>`;
+  }
+  return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Código ${esc(chave)} sem cadastro ativo na Herrlog — cadastre antes de importar, ou a viagem pode não ser reconhecida.">⚠ Sem cadastro</span>`;
 }
 
 // ── MONITORAMENTO (aderência ETA Real x Data Desejada / Data Programação) ──
@@ -7239,7 +7270,12 @@ function renderMonitoramento() {
 function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
 
 function buscarFornecedorDaViagem(v) {
-  return fornecedores.find(f => f.origem === v.origem)
+  // Origem (nome do fornecedor) se repete entre cidades/bases de atendimento
+  // diferentes (ex.: "SIM DISTRIBUIDORA" em Guarulhos, Guarulhos-Ale, São Caetano...).
+  // Sem cruzar com a Base, o find() abaixo pegaria a primeira ocorrência do nome,
+  // não necessariamente a base certa — por isso casamos por Origem+Base primeiro.
+  return (v.base && fornecedores.find(f => f.origem === v.origem && f.baseAtendimento === v.base))
+    || fornecedores.find(f => f.origem === v.origem)
     || (v.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(v.cnpjOrigem)))
     || null;
 }
@@ -8026,11 +8062,33 @@ function configurarListenerMonitoramentoHerrlog() {
 // Cadastro de placas na Herrlog (node `cadastroHerrlogPlacas`, alimentado pelo
 // extracao_herrlog.py a partir da tabela Cavalo do datalake). Mesma dinâmica
 // de listener único e independente da semana ativa.
+// O extracao_herrlog.py grava cadastroHerrlogPlacas/cadastroHerrlogClientes como
+// lista (nao como chaves de objeto - alguns codigos do datalake tem "/" ou outros
+// caracteres que o Realtime Database rejeita como chave). Aqui no portal convertemos
+// de volta para um mapa { [codigo]: true } pra manter a busca O(1) nos badges.
+function listaParaMapa(dados) {
+  const lista = Array.isArray(dados) ? dados : Object.values(dados || {});
+  const mapa = {};
+  lista.forEach(codigo => { if (codigo) mapa[codigo] = true; });
+  return mapa;
+}
+
 function configurarListenerCadastroHerrlogPlacas() {
   if (window._fbUnsubCadastroPlacas) { window._fbUnsubCadastroPlacas(); window._fbUnsubCadastroPlacas = null; }
   window._fbUnsubCadastroPlacas = window._fb.ouvirCadastroHerrlogPlacas((dados) => {
-    cadastroHerrlogPlacas = dados || {};
+    cadastroHerrlogPlacas = listaParaMapa(dados);
     cadastroHerrlogCarregado = true;
+    if (activeTab === 2) renderExport();
+  });
+}
+
+// Cadastro de fornecedores/bases na Herrlog (node `cadastroHerrlogClientes`,
+// alimentado pelo extracao_herrlog.py a partir da tabela Cliente do datalake).
+function configurarListenerCadastroHerrlogClientes() {
+  if (window._fbUnsubCadastroClientes) { window._fbUnsubCadastroClientes(); window._fbUnsubCadastroClientes = null; }
+  window._fbUnsubCadastroClientes = window._fb.ouvirCadastroHerrlogClientes((dados) => {
+    cadastroHerrlogClientes = listaParaMapa(dados);
+    cadastroHerrlogClientesCarregado = true;
     if (activeTab === 2) renderExport();
   });
 }
@@ -8111,6 +8169,7 @@ await carregarUsuariosFirebase();
   await carregarVeiculosDedicadosFirebase();
   configurarListenerMonitoramentoHerrlog();
   configurarListenerCadastroHerrlogPlacas();
+  configurarListenerCadastroHerrlogClientes();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
