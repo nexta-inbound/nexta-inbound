@@ -1130,6 +1130,11 @@
         callback(snap.exists() ? snap.val() : {});
       });
     },
+    ouvirCadastroHerrlogPlacas: (callback) => {
+      return onValue(ref(db, 'cadastroHerrlogPlacas'), (snap) => {
+        callback(snap.exists() ? snap.val() : {});
+      });
+    },
     carregarUsuarios: async () => {
       const snap = await get(ref(db, 'usuarios'));
       return snap.exists() ? snap.val() : null;
@@ -1851,6 +1856,7 @@
               <tr>
                 <th>ID Viagem</th>
                 <th>Placa</th>
+                <th>Cadastro Herrlog</th>
                 <th>Produto</th>
                 <th>Origem</th>
                 <th>Destino</th>
@@ -3684,6 +3690,8 @@ let modoMultiSemana = false;
 let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
 let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
+let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ativo na Herrlog (tabela Cavalo do datalake)
+let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
 let activeFilterMonStatus = 'todos'; // filtro de estado (Status Herrlog) na aba Monitoramento
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
 let activeIndicadorMon = null; // card de KPI clicado na aba Monitoramento (vsProgramacao/vsDesejada)
@@ -6895,6 +6903,7 @@ function renderExport() {
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
+        <td>${renderCadastroPlaca(v.placa)}</td>
         <td>${prodTag(v.produto)}</td>
         <td>${v.origem}${v.base ? `<span style="color:var(--text-muted)"> (${v.base})</span>` : ''}</td>
         <td>${v.destino}</td>
@@ -6920,6 +6929,20 @@ function renderEnvioHerrlog(v, mon) {
     ? `XLSX exportado em ${new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ainda não encontrado na Herrlog. Confira se a importação foi feita.`
     : 'Ainda não exportado — gere o XLSX e importe na Herrlog.';
   return `<span class="badge" style="color:var(--accent2);background:var(--accent2-dim)" title="${titulo}">⚠ Aguardando criação na Herrlog</span>`;
+}
+
+// Cadastro da placa na Herrlog (tabela Cavalo do datalake, via cadastroHerrlogPlacas
+// no Firebase): sem esse cadastro a importação do XLSX não reconhece o veículo —
+// o usuário precisa cadastrar a placa na Herrlog antes de importar.
+function renderCadastroPlaca(placa) {
+  if (!cadastroHerrlogCarregado) {
+    return `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)">Verificando…</span>`;
+  }
+  const chave = (placa || '').toUpperCase().trim();
+  if (cadastroHerrlogPlacas[chave]) {
+    return `<span class="badge badge-success" title="Placa cadastrada na Herrlog (tabela Cavalo)">✅ Cadastrada</span>`;
+  }
+  return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Placa sem cadastro na Herrlog — cadastre o veículo no sistema antes de importar o XLSX, ou a viagem pode não ser reconhecida.">⚠ Sem cadastro</span>`;
 }
 
 // ── MONITORAMENTO (aderência ETA Real x Data Desejada / Data Programação) ──
@@ -8000,6 +8023,18 @@ function configurarListenerMonitoramentoHerrlog() {
   });
 }
 
+// Cadastro de placas na Herrlog (node `cadastroHerrlogPlacas`, alimentado pelo
+// extracao_herrlog.py a partir da tabela Cavalo do datalake). Mesma dinâmica
+// de listener único e independente da semana ativa.
+function configurarListenerCadastroHerrlogPlacas() {
+  if (window._fbUnsubCadastroPlacas) { window._fbUnsubCadastroPlacas(); window._fbUnsubCadastroPlacas = null; }
+  window._fbUnsubCadastroPlacas = window._fb.ouvirCadastroHerrlogPlacas((dados) => {
+    cadastroHerrlogPlacas = dados || {};
+    cadastroHerrlogCarregado = true;
+    if (activeTab === 2) renderExport();
+  });
+}
+
 function novaSemana() {
   const hoje = new Date();
   const fmt = (d) => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -8075,6 +8110,7 @@ await carregarUsuariosFirebase();
   await carregarFornecedoresFirebase();
   await carregarVeiculosDedicadosFirebase();
   configurarListenerMonitoramentoHerrlog();
+  configurarListenerCadastroHerrlogPlacas();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
