@@ -1116,13 +1116,22 @@
       const snap = await get(ref(db, 'sessoes/' + key));
       return snap.exists() ? snap.val() : null;
     },
+    // Lista as chaves de semana a partir de `semanasDisponiveis` (so' os nomes,
+    // sem conteudo) - nao de `sessoes` direto: ler o node `sessoes` inteiro pra
+    // descobrir as chaves exigiria permissao de leitura sobre TODAS as semanas e
+    // TODAS as viagens de TODAS as transportadoras (o RTDB nao filtra por valor
+    // numa leitura do node pai), o que reabriria o isolamento por transportador.
     listarSemanas: async () => {
-      const snap = await get(ref(db, 'sessoes'));
+      const snap = await get(ref(db, 'semanasDisponiveis'));
       if (!snap.exists()) return [];
       return Object.keys(snap.val()).sort().reverse();
     },
+    marcarSemanaDisponivel: async (key) => {
+      await set(ref(db, 'semanasDisponiveis/' + key), true);
+    },
     limpar: async (key) => {
       await remove(ref(db, 'sessoes/' + key));
+      await remove(ref(db, 'semanasDisponiveis/' + key));
     },
     ouvirMudancas: (key, callback) => {
       return onValue(ref(db, 'sessoes/' + key), (snap) => {
@@ -8298,6 +8307,7 @@ function confirmarNovaSemana() {
   document.getElementById('previewSection').style.display = 'none';
   updatePipeline(); renderViagensTable(); switchTab(0);
   salvarSessao(true);
+  window._fb.marcarSemanaDisponivel(key);
   setTimeout(() => {
     carregarListaSemanas().then(() => {
       document.getElementById('semanaSelect').value = key;
