@@ -1062,6 +1062,7 @@
   body.transportador-mode #fTransp,
   body.transportador-mode #chipBacklog,
   body.transportador-mode #chipCif,
+  body.transportador-mode #chipCancelado,
   body.transportador-mode #wrapProgramadorFiltro,
   body.transportador-mode #campo-programador,
   body.transportador-mode #chipSepAgend,
@@ -1742,7 +1743,7 @@
             <div class="chip" data-status="Em Andamento" onclick="filterViagens('Em Andamento')" title="Clique para somar/remover este status à seleção">Em Andamento</div>
             <div class="chip" data-status="Viagem Finalizada" onclick="filterViagens('Viagem Finalizada')" title="Clique para somar/remover este status à seleção">Finalizadas</div>
             <div class="chip" id="chipCif" data-status="CIF" onclick="filterViagens('CIF')" title="Clique para somar/remover este status à seleção">CIF</div>
-            <div class="chip" data-status="Cancelado" onclick="filterViagens('Cancelado')" title="Clique para somar/remover este status à seleção">Canceladas</div>
+            <div class="chip" id="chipCancelado" data-status="Cancelado" onclick="filterViagens('Cancelado')" title="Clique para somar/remover este status à seleção">Canceladas</div>
             <span class="chip-sep" id="chipSepAgend"></span>
             <div class="chip chip-agend" data-agend="Não Agendado" onclick="filterAgendamento('Não Agendado')" title="Filtro de Agendamento — clique para somar/remover">Não Agendado</div>
             <div class="chip chip-agend" data-agend="Usina de Fila" onclick="filterAgendamento('Usina de Fila')" title="Filtro de Agendamento — clique para somar/remover">Usina de Fila</div>
@@ -4653,6 +4654,7 @@ function estadoFiltrosViagem() {
 function passaFiltrosViagem(v, f, ignorar = '') {
   if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
   if (isTransportador() && v.status === 'Backlog') return false;
+  if (isTransportador() && v.status === 'Cancelado') return false;
   if (activeFilter.size && !activeFilter.has(v.status)) return false;
   if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
@@ -4862,7 +4864,7 @@ function renderViagensTable() {
             onblur="salvarVolumeInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
             ${isTransportador() ? 'disabled' : ''}>
-          ${v.volumeAjustadoManualmente ? `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>` : ''}
+          ${(v.volumeAjustadoManualmente && !isTransportador()) ? `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>` : ''}
         </td>
         <td>${renderSeletorStatus(v, realIdx)}</td>
         <td class="col-agendamento">${renderSeletorAgendamento(v, realIdx)}</td>
