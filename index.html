@@ -1081,6 +1081,99 @@
   body.multi-semana-mode #wrapImportarRetorno {
     display: none !important;
   }
+
+  /* ── VISÃO TRANSPORTADOR EM CELULAR ── */
+  /* Só para transportador (staff continua só desktop) — reflui header/filtros/KPIs e
+     transforma a tabela de viagens (#tab-1) em cards, usando os mesmos data-label já
+     presentes nos <td> de renderViagensTable(). Não toca em nenhuma função JS: é só
+     CSS reagindo ao mesmo HTML que já é gerado para desktop. */
+  @media (max-width: 760px) {
+    body.transportador-mode .main { padding: 14px 10px; }
+    body.transportador-mode header {
+      flex-wrap: wrap;
+      min-height: auto;
+      padding: 12px 14px;
+      gap: 8px;
+    }
+    body.transportador-mode .header-sub { display: none; }
+    body.transportador-mode .semana-selector { margin-left: 0; width: 100%; justify-content: space-between; }
+    body.transportador-mode .save-indicator { margin-left: 0; padding-left: 0; border-left: none; }
+    body.transportador-mode .tabs-bar { padding: 0 12px; }
+    body.transportador-mode .stats-row { grid-template-columns: repeat(2, 1fr); }
+    body.transportador-mode .table-toolbar { flex-wrap: wrap; padding: 12px; }
+    body.transportador-mode .filter-bar { padding: 10px 12px; }
+    body.transportador-mode .filter-row-dates { flex-direction: column; align-items: stretch; }
+    body.transportador-mode .filter-row-dates .filter-input { width: 100%; }
+    body.transportador-mode .fi-wide { width: 100%; }
+    body.transportador-mode #fBusca { width: 100%; }
+
+    /* tabela de viagens (#tab-1) -> lista de cards */
+    body.transportador-mode #tab-1 table,
+    body.transportador-mode #tab-1 thead,
+    body.transportador-mode #tab-1 tbody,
+    body.transportador-mode #tab-1 tr,
+    body.transportador-mode #tab-1 td {
+      display: block;
+      white-space: normal;
+    }
+    body.transportador-mode #tab-1 thead { position: absolute; left: -9999px; top: -9999px; }
+    body.transportador-mode #tab-1 .scrollable { max-height: none; overflow: visible; }
+    body.transportador-mode #viagensBody .cell-truncate {
+      max-width: none; overflow: visible; text-overflow: unset; white-space: normal;
+    }
+    body.transportador-mode #viagensBody tr {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 14px 12px;
+      margin-bottom: 10px;
+    }
+    body.transportador-mode #viagensBody td {
+      padding: 5px 0;
+      border-bottom: none !important;
+    }
+    body.transportador-mode #viagensBody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 3px;
+    }
+    body.transportador-mode #viagensBody .col-checkbox {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: auto;
+      padding: 0;
+    }
+    body.transportador-mode #viagensBody .cell-id-viagem {
+      font-size: 16px;
+      padding-bottom: 10px;
+      margin-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      max-width: calc(100% - 36px);
+    }
+    body.transportador-mode #viagensBody .col-acao {
+      position: static;
+      width: 100%;
+      min-width: 0;
+      box-shadow: none;
+      border-top: 1px solid var(--border);
+      margin-top: 6px;
+      padding-top: 10px;
+    }
+    body.transportador-mode #viagensBody .col-acao > div {
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    body.transportador-mode .modal-row { grid-template-columns: 1fr; }
+  }
 </style>
 
 <!-- ── FIREBASE ── -->
@@ -4825,12 +4918,12 @@ function renderViagensTable() {
             ${(isTransportador() || !v.pedidoProvisorio) ? 'disabled' : ''}>
           ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
         </td>
-        <td>${prodTag(v.produto)}</td>
-        <td class="cell-truncate" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
+        <td data-label="Produto">${prodTag(v.produto)}</td>
+        <td class="cell-truncate" data-label="Origem" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
           ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
           ${v.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjOrigem)}</span>` : ''}
         </td>
-        <td class="cell-truncate" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
+        <td class="cell-truncate" data-label="Destino" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
           ${esc(v.destino)}
           ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}
         </td>
@@ -4838,7 +4931,7 @@ function renderViagensTable() {
           <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
           <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
         </td>
-        <td class="cell-periodo">
+        <td class="cell-periodo col-data-programacao" data-label="Data Programação">
           <div style="display:flex;align-items:center;gap:4px">
             <span class="filter-sep" style="font-size:10px">↑</span>
             <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)"
@@ -4857,7 +4950,7 @@ function renderViagensTable() {
               ${isTransportador() ? 'disabled' : ''}>
           </div>
         </td>
-        <td style="max-width:86px">
+        <td style="max-width:86px" data-label="Vol (m³)">
           <input class="placa-input" style="width:56px;text-transform:none;text-align:right;font-family:var(--font-cond)"
             type="number" min="0.1" step="0.1"
             value="${v.volume}"
@@ -4866,9 +4959,9 @@ function renderViagensTable() {
             ${isTransportador() ? 'disabled' : ''}>
           ${(v.volumeAjustadoManualmente && !isTransportador()) ? `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>` : ''}
         </td>
-        <td>${renderSeletorStatus(v, realIdx)}</td>
+        <td data-label="Status">${renderSeletorStatus(v, realIdx)}</td>
         <td class="col-agendamento">${renderSeletorAgendamento(v, realIdx)}</td>
-        <td class="cell-truncate" title="${esc(v.transportador)}">
+        <td class="cell-truncate" data-label="Transportador" title="${esc(v.transportador)}">
           ${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}
           ${isTransportador() && v.transportador ? renderSeletorCnpjTransportador(v, realIdx) : ''}
         </td>
