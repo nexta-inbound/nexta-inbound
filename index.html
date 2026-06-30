@@ -1707,6 +1707,7 @@
           <div id="ms-cModal"></div>
           <div id="ms-cOrigem"></div>
           <div id="ms-cDestino"></div>
+          <div id="ms-cRegional"></div>
           <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
@@ -1859,6 +1860,7 @@
           <div id="ms-vProduto"></div>
           <div id="ms-vOrigem"></div>
           <div id="ms-vDestino"></div>
+          <div id="ms-vRegional"></div>
           <input type="text" class="filter-input" id="fTransp"
             placeholder="🚚 Transportador..." style="width:150px"
             oninput="renderViagensTable()">
@@ -2099,6 +2101,7 @@
           <div id="ms-monProduto"></div>
           <div id="ms-monOrigem"></div>
           <div id="ms-monDestino"></div>
+          <div id="ms-monRegional"></div>
           <input type="text" class="filter-input" id="fMonTransp"
             placeholder="🚚 Transportador..." style="width:150px"
             oninput="renderMonitoramento()">
@@ -3370,10 +3373,10 @@ class MultiSelect {
 }
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
-let msVProduto, msVOrigem, msVDestino, msVProgramador;
+let msVProduto, msVOrigem, msVDestino, msVRegional, msVProgramador;
 let msSemanas;
-let msMonProduto, msMonOrigem, msMonDestino;
-let msCProduto, msCModal, msCOrigem, msCDestino;
+let msMonProduto, msMonOrigem, msMonDestino, msMonRegional;
+let msCProduto, msCModal, msCOrigem, msCDestino, msCRegional;
 
 // ── MODAL GRUPO ──
 let editingGrupoIdxs = [];
@@ -4076,6 +4079,14 @@ function valorOrigemFiltro(item) {
   return (item.origem || '') + (item.base ? ` (${item.base})` : '');
 }
 
+// Regional vem do cadastro de Bases (campo "regional"), resolvida pelo destino —
+// não existe campo próprio em viagem/cadência, então buscamos como em buscarBaseDaViagem().
+function valorRegionalFiltro(item) {
+  const b = bases.find(b => b.nomeMis === item.destino)
+    || (item.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(item.cnpjDestino)));
+  return b?.regional || '';
+}
+
 function valoresUnicosOrdenados(arr, getter) {
   return [...new Set(arr.map(getter).filter(Boolean))].sort();
 }
@@ -4091,6 +4102,7 @@ function estadoFiltrosCadencia() {
     modais: new Set(msCModal?.getSelected() || []),
     origens: new Set(msCOrigem?.getSelected() || []),
     destinos: new Set(msCDestino?.getSelected() || []),
+    regionais: new Set(msCRegional?.getSelected() || []),
   };
 }
 
@@ -4099,6 +4111,7 @@ function passaFiltrosCadencia(c, f, ignorar = '') {
   if (ignorar !== 'modal' && f.modais.size && !f.modais.has(c.modal || 'FOB')) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(c))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(c.destino)) return false;
+  if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(c))) return false;
   if (f.busca) {
     const hay = [c.id, c.origem, c.base, c.destino].join(' ').toLowerCase();
     if (!hay.includes(f.busca)) return false;
@@ -4136,6 +4149,10 @@ function atualizarOpcoesFiltrosCadencia(f) {
   msCDestino?.setOptions(valoresUnicosOrdenados(
     cadencias.filter(c => passaFiltrosCadencia(c, f, 'destino')),
     c => c.destino
+  ));
+  msCRegional?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'regional')),
+    valorRegionalFiltro
   ));
 }
 
@@ -4739,6 +4756,7 @@ function estadoFiltrosViagem() {
     produtos: new Set(msVProduto?.getSelected() || []),
     origens: new Set(msVOrigem?.getSelected() || []),
     destinos: new Set(msVDestino?.getSelected() || []),
+    regionais: new Set(msVRegional?.getSelected() || []),
     programadores: new Set(msVProgramador?.getSelected() || []),
     indicadorTest: activeIndicador ? testeIndicador(activeIndicador) : null,
   };
@@ -4755,6 +4773,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (ignorar !== 'programador' && f.programadores.size && !f.programadores.has(v.programador)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
+  if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
   if (f.busca) {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
@@ -4810,6 +4829,10 @@ function atualizarOpcoesFiltrosViagem(f, fonte = viagens) {
   msVDestino?.setOptions(valoresUnicosOrdenados(
     fonte.filter(v => passaFiltrosViagem(v, f, 'destino')),
     v => v.destino
+  ));
+  msVRegional?.setOptions(valoresUnicosOrdenados(
+    fonte.filter(v => passaFiltrosViagem(v, f, 'regional')),
+    valorRegionalFiltro
   ));
   msVProgramador?.setOptions(valoresUnicosOrdenados(
     fonte.filter(v => passaFiltrosViagem(v, f, 'programador')),
@@ -5127,13 +5150,13 @@ function anoPlausivel(dataStr) {
 
 function limparFiltrosCad() {
   ['fCadBusca','fCadCarrDe','fCadCarrAte','fCadDtDe','fCadDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msCProduto?.clear(); msCModal?.clear(); msCOrigem?.clear(); msCDestino?.clear();
+  msCProduto?.clear(); msCModal?.clear(); msCOrigem?.clear(); msCDestino?.clear(); msCRegional?.clear();
   renderPreview();
 }
 
 function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVProgramador?.clear();
+  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVRegional?.clear(); msVProgramador?.clear();
   activeFilter.clear();
   activeAgendamento.clear();
   activeDiasCarregamento.clear();
@@ -7313,6 +7336,7 @@ function estadoFiltrosMonitoramento() {
     produtos: new Set(msMonProduto?.getSelected() || []),
     origens: new Set(msMonOrigem?.getSelected() || []),
     destinos: new Set(msMonDestino?.getSelected() || []),
+    regionais: new Set(msMonRegional?.getSelected() || []),
     indicadorTest: activeIndicadorMon ? testeIndicadorMonitoramento(activeIndicadorMon) : null,
   };
 }
@@ -7321,6 +7345,7 @@ function passaFiltrosMonitoramento(v, f, ignorar = '') {
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
+  if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
   if (f.frota === 'sim' && !v.veiculoDedicadoId) return false;
   if (f.frota === 'nao' && v.veiculoDedicadoId) return false;
@@ -7348,13 +7373,16 @@ function atualizarOpcoesFiltrosMonitoramento(monitoradas, f) {
   msMonDestino?.setOptions(valoresUnicosOrdenados(
     monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'destino')), v => v.destino
   ));
+  msMonRegional?.setOptions(valoresUnicosOrdenados(
+    monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'regional')), valorRegionalFiltro
+  ));
 }
 
 function limparFiltrosMonitoramento() {
   document.getElementById('fMonBusca').value = '';
   document.getElementById('fMonTransp').value = '';
   document.getElementById('fMonFrota').value = '';
-  msMonProduto?.clear(); msMonOrigem?.clear(); msMonDestino?.clear();
+  msMonProduto?.clear(); msMonOrigem?.clear(); msMonDestino?.clear(); msMonRegional?.clear();
   activeIndicadorMon = null;
   activeDiasEntregaMon.clear();
   sincronizarChipsDiaEntregaMon();
@@ -8463,15 +8491,18 @@ window.addEventListener('DOMContentLoaded', () => {
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
   msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
+  msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable);
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable);
   msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
+  msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview);
   msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento);
   msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento);
   msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento);
+  msMonRegional = new MultiSelect('ms-monRegional', 'Regional', renderMonitoramento);
 
   if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
     mostrarStatus('saving', 'Reconectando...');
