@@ -7781,10 +7781,21 @@ function processarArquivo(file) {
   reader.readAsArrayBuffer(file);
 }
 
+// Compara nomes ignorando diferenças triviais (acentuação em forma NFD vindo do Excel,
+// espaços duplicados, maiúsculas/minúsculas) — sem isso um nome digitado IDÊNTICO ao
+// cadastro pode falhar no "===" e cair no fallback por CNPJ, que é ambíguo quando várias
+// bases/depósitos compartilham o mesmo CNPJ (ex.: vários depósitos Nexta sob a mesma empresa SAP).
+function normalizarParaComparacao(s) {
+  return String(s || '').normalize('NFC').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
 // Confere se Origem e Destino de cada linha existem no cadastro de Fornecedores/Bases.
-// Se o texto digitado não bater mas o CNPJ identificar com certeza o fornecedor/base cadastrado,
-// corrige o texto para o nome oficial (evita que "BETIM" entre como destino diferente de
-// "BETIM - NEXTA RBZ" só porque o CNPJ foi preenchido certo e o nome não).
+// 1) Bate exato -> ok, não mexe.
+// 2) Bate só "normalizado" (mesmo nome, formatação diferente) -> corrige silenciosamente para
+//    o texto canônico do cadastro, sem entrar como "ajuste pelo CNPJ" (é o mesmo nome).
+// 3) Não bate nem normalizado, mas o CNPJ identifica com certeza o fornecedor/base -> corrige
+//    pelo CNPJ e avisa o usuário (evita que "BETIM" entre como destino diferente de
+//    "BETIM - NEXTA RBZ" só porque o CNPJ foi preenchido certo e o nome não).
 function validarCadastroImportacao(linhasArquivo) {
   const validas = [];
   const invalidas = [];
@@ -7794,26 +7805,36 @@ function validarCadastroImportacao(linhasArquivo) {
     const erros = [];
 
     if (c.origem && !fornecedores.find(f => f.origem === c.origem)) {
-      const fPorCnpj = c.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(c.cnpjOrigem));
-      if (fPorCnpj) {
-        corrigidas.push({ linha: c, campo: 'Origem', de: c.origem, para: fPorCnpj.origem });
-        c.origem = fPorCnpj.origem;
-        if (fPorCnpj.baseAtendimento && fPorCnpj.baseAtendimento !== c.base) {
-          corrigidas.push({ linha: c, campo: 'Base de Atendimento', de: c.base, para: fPorCnpj.baseAtendimento });
-          c.base = fPorCnpj.baseAtendimento;
-        }
+      const fNormalizado = fornecedores.find(f => normalizarParaComparacao(f.origem) === normalizarParaComparacao(c.origem));
+      if (fNormalizado) {
+        c.origem = fNormalizado.origem;
       } else {
-        erros.push({ campo: 'Origem (fornecedor)', valor: c.origem });
+        const fPorCnpj = c.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(c.cnpjOrigem));
+        if (fPorCnpj) {
+          corrigidas.push({ linha: c, campo: 'Origem', de: c.origem, para: fPorCnpj.origem });
+          c.origem = fPorCnpj.origem;
+          if (fPorCnpj.baseAtendimento && fPorCnpj.baseAtendimento !== c.base) {
+            corrigidas.push({ linha: c, campo: 'Base de Atendimento', de: c.base, para: fPorCnpj.baseAtendimento });
+            c.base = fPorCnpj.baseAtendimento;
+          }
+        } else {
+          erros.push({ campo: 'Origem (fornecedor)', valor: c.origem });
+        }
       }
     }
 
     if (c.destino && !bases.find(b => b.nomeMis === c.destino)) {
-      const bPorCnpj = c.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(c.cnpjDestino));
-      if (bPorCnpj) {
-        corrigidas.push({ linha: c, campo: 'Destino', de: c.destino, para: bPorCnpj.nomeMis });
-        c.destino = bPorCnpj.nomeMis;
+      const bNormalizado = bases.find(b => normalizarParaComparacao(b.nomeMis) === normalizarParaComparacao(c.destino));
+      if (bNormalizado) {
+        c.destino = bNormalizado.nomeMis;
       } else {
-        erros.push({ campo: 'Destino (base)', valor: c.destino });
+        const bPorCnpj = c.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(c.cnpjDestino));
+        if (bPorCnpj) {
+          corrigidas.push({ linha: c, campo: 'Destino', de: c.destino, para: bPorCnpj.nomeMis });
+          c.destino = bPorCnpj.nomeMis;
+        } else {
+          erros.push({ campo: 'Destino (base)', valor: c.destino });
+        }
       }
     }
 
