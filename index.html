@@ -7105,6 +7105,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 .hdr-oc-val{padding:8px 14px;text-align:center;font-size:13px;font-weight:bold}
 .sec-lbl{flex:1;background:#d0d0d0;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:.5px;padding:5px 10px;text-align:center}
 .sec-val{flex:1;text-align:center;padding:8px 10px;font-size:12px;font-weight:bold}
+.sec-val-cnpj{font-weight:normal;font-size:10px;color:#555;font-family:monospace;letter-spacing:.2px}
 .w170{width:170px;flex-shrink:0}
 .obs-box{min-height:60px;padding:8px 10px;font-size:11px;color:#000;white-space:pre-wrap}
 .conf-row{display:flex;border-top:1px solid #000}
@@ -7129,7 +7130,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
   </div>
 
   <div class="r"><div class="sec-lbl">LOCAL DE CARREGAMENTO</div></div>
-  <div class="r"><div class="sec-val">${e(localCarreg)}</div></div>
+  <div class="r"><div class="sec-val">${e(localCarreg)}${v.cnpjOrigem ? ` <span class="sec-val-cnpj">${e(v.cnpjOrigem)}</span>` : ''}</div></div>
 
   <div class="r">
     <div class="c lbl ctr br f1">DATA DE CARREGAMENTO</div>
