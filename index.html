@@ -1080,8 +1080,9 @@
     display: none !important;
   }
 
-  /* ── VISUALIZAÇÃO MULTI-SEMANA (consulta combinada, somente leitura) ── */
-  body.multi-semana-mode .col-checkbox,
+  /* ── VISUALIZAÇÃO MULTI-SEMANA (consulta e edição combinadas) ── */
+  /* "Importar Retorno de Oferta" continua escondido: a planilha de retorno é sempre
+     de uma única semana, e essa visão mistura viagens de várias semanas na mesma tabela. */
   body.multi-semana-mode #wrapImportarRetorno {
     display: none !important;
   }
@@ -3511,8 +3512,9 @@ function aplicarEmLote() {
   const programador = removerProgramador ? '' : progRaw;
   if (!status && !agendamento && !transpRaw && !progRaw) { alert('Preencha ao menos o status, o agendamento, o transportador ou o programador para aplicar em lote.'); return; }
   if (!selectedViagens.size) return;
+  const arr = viagensAtivo();
   selectedViagens.forEach(idx => {
-    const v = viagens[idx];
+    const v = arr[idx];
     const statusAnterior = v.status;
     const agendamentoAnterior = v.statusAgendamento || 'Não Agendado';
     if (removerAlocacao) {
@@ -3540,6 +3542,7 @@ function aplicarEmLote() {
         evento: `Status de agendamento ajustado: ${agendamentoAnterior} → ${agendamento}`,
       });
     }
+    if (modoMultiSemana && v._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
   });
   selectedViagens.clear();
   document.getElementById('bulk-status').value = '';
@@ -3687,7 +3690,7 @@ function enviarOfertaPorEmail() {
   if (!selectedViagens.size) { alert('Selecione ao menos uma viagem para enviar a oferta.'); return; }
 
   const idxs = [...selectedViagens];
-  let selecionadas = idxs.map(i => viagens[i]).filter(Boolean);
+  let selecionadas = idxs.map(i => viagensAtivo()[i]).filter(Boolean);
 
   const semTransportador = selecionadas.filter(v => !v.transportador);
   if (semTransportador.length) {
@@ -3842,10 +3845,15 @@ let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
 
-// ── MULTI-SEMANA (visão combinada somente leitura — ver renderViagensTableMultiSemana) ──
+// ── MULTI-SEMANA (visão combinada e editável — ver onToggleMultiSemana) ──
 let modoMultiSemana = false;
 let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
 let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
+
+// Fonte de dados da tabela de viagens: a semana ativa ou a combinação multi-semana.
+function viagensAtivo() {
+  return modoMultiSemana ? viagensMultiSemana : viagens;
+}
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
 let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ativo na Herrlog (tabela Cavalo do datalake)
 let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
@@ -3888,6 +3896,51 @@ const STORAGE_KEY = 'nexta_cadencia_sessao';
 // cadencias/config, que ele nem consegue ler) - so pode gravar, um a um, os
 // registros (idViagem) que de fato mudaram.
 let viagensAlteradas = new Set();
+
+// Mesma ideia de gravação parcial acima, mas para a visão multi-semana: idViagem -> chave
+// da semana de origem, para saber onde gravar cada registro alterado (não há uma única
+// "sessão ativa" nessa visão, então não dá pra usar viagensAlteradas/salvarSessao aqui).
+let viagensAlteradasMultiSemana = new Map();
+let autosaveMultiSemanaTimer = null;
+
+function agendarAutosaveMultiSemana() {
+  clearTimeout(autosaveMultiSemanaTimer);
+  autosaveMultiSemanaTimer = setTimeout(salvarAlteracoesMultiSemana, 1500);
+}
+
+async function salvarAlteracoesMultiSemana() {
+  if (!viagensAlteradasMultiSemana.size) return;
+  const pendentes = new Map(viagensAlteradasMultiSemana);
+  viagensAlteradasMultiSemana.clear();
+  const porSemana = new Map();
+  pendentes.forEach((semana, idViagem) => {
+    const v = viagensMultiSemana.find(x => x.idViagem === idViagem && x._semanaOrigem === semana);
+    if (!v) return;
+    const { _semanaOrigem, _semanaLabel, ...limpo } = v; // não gravar os campos internos de UI
+    if (!porSemana.has(semana)) porSemana.set(semana, {});
+    porSemana.get(semana)[idViagem] = limpo;
+  });
+  mostrarStatus('saving', 'Salvando...');
+  try {
+    // Reaproveita o update multi-path já usado para o papel transportador (ver
+    // window._fb.salvarViagensTransportador) — grava só os IDs alterados, sem tocar
+    // cadencias/config/demais viagens da semana (não temos essas outras informações
+    // em memória aqui, então uma gravação da sessão inteira as apagaria).
+    await Promise.all([...porSemana].map(([semana, porId]) => window._fb.salvarViagensTransportador(semana, porId)));
+    mostrarStatusSalvo();
+  } catch (e) {
+    console.error('Erro ao salvar viagens (multi-semana):', e);
+    mostrarStatus('saving', 'Erro ao salvar');
+  }
+}
+
+// Marca a viagem como alterada (se for de uma semana em modo multi-semana) e agenda o
+// autosave — substitui a chamada direta a agendarAutosave() em toda edição inline da
+// tabela de viagens, para que a marcação por semana não precise ser duplicada em cada uma.
+function marcarEAgendar(v) {
+  if (modoMultiSemana && v?._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
+  agendarAutosave();
+}
 
 // viagens chega do Firebase como objeto chaveado por idViagem (storage, ver regras);
 // em memoria sempre fica como array (todo o resto do app consome assim).
@@ -3984,6 +4037,7 @@ function limparSessao() {
 }
 
 function agendarAutosave() {
+  if (modoMultiSemana) { agendarAutosaveMultiSemana(); return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     if (cadencias.length > 0 || viagens.length > 0) {
@@ -4097,6 +4151,10 @@ function valorUfOrigemFiltro(item) {
 
 // Regional vem do cadastro de Bases (campo "regional"), resolvida pelo destino —
 // não existe campo próprio em viagem/cadência, então buscamos como em buscarBaseDaViagem().
+function valorProgramadorFiltro(item) {
+  return item.programador || 'Não Classificado';
+}
+
 function valorRegionalFiltro(item) {
   const b = bases.find(b => b.nomeMis === item.destino)
     || (item.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(item.cnpjDestino)));
@@ -4693,8 +4751,8 @@ function updateKPIs(list) {
   const badge = document.getElementById('kpi-filter-badge');
   if (badge) {
     const totalEscopo = transportador
-      ? viagens.filter(v => (v.transportador || '').trim() === nomeTransportadorLogado()).length
-      : viagens.length;
+      ? viagensAtivo().filter(v => (v.transportador || '').trim() === nomeTransportadorLogado()).length
+      : viagensAtivo().length;
     badge.style.display = list.length < totalEscopo ? 'inline' : 'none';
   }
 
@@ -4793,7 +4851,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
-  if (ignorar !== 'programador' && f.programadores.size && !f.programadores.has(v.programador)) return false;
+  if (ignorar !== 'programador' && f.programadores.size && !f.programadores.has(valorProgramadorFiltro(v))) return false;
   if (ignorar !== 'uf' && f.ufs.size && !f.ufs.has(valorUfOrigemFiltro(v))) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
@@ -4864,7 +4922,7 @@ function atualizarOpcoesFiltrosViagem(f, fonte = viagens) {
   ));
   msVProgramador?.setOptions(valoresUnicosOrdenados(
     fonte.filter(v => passaFiltrosViagem(v, f, 'programador')),
-    v => v.programador
+    valorProgramadorFiltro
   ));
 }
 
@@ -4912,8 +4970,8 @@ function atualizarSetasOrdenacao() {
 }
 
 function renderViagensTable() {
-  if (modoMultiSemana) { renderViagensTableMultiSemana(); return; }
-  const isEmpty = viagens.length === 0;
+  const fonte = viagensAtivo();
+  const isEmpty = fonte.length === 0;
   document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
   // Limpa qualquer linha de uma semana anterior — sem isso, a tabela (embora oculta por
@@ -4922,9 +4980,9 @@ function renderViagensTable() {
   if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; return; }
 
   const filtrosViagem = estadoFiltrosViagem();
-  atualizarOpcoesFiltrosViagem(filtrosViagem);
+  atualizarOpcoesFiltrosViagem(filtrosViagem, fonte);
 
-  let filtered = viagens.filter(v => passaFiltrosViagem(v, filtrosViagem));
+  let filtered = fonte.filter(v => passaFiltrosViagem(v, filtrosViagem));
   if (sortColuna) {
     const dir = sortDir === 'asc' ? 1 : -1;
     filtered = filtered.slice().sort((a, b) => dir * compararOrdenacao(a, b, sortColuna));
@@ -4936,10 +4994,10 @@ function renderViagensTable() {
   // num card, os demais cards do grupo continuam mostrando o total real (não "congelam"
   // em 0 só porque a tabela foi restrita ao card clicado).
   const paraKpis = activeIndicador
-    ? viagens.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
+    ? fonte.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
     : filtered;
 
-  const idxPorViagem = new Map(viagens.map((v, i) => [v, i]));
+  const idxPorViagem = new Map(fonte.map((v, i) => [v, i]));
   currentFilteredIdxs = filtered.map(v => idxPorViagem.get(v));
   updateKPIs(paraKpis);
   updatePipeline(filtered);
@@ -5045,76 +5103,6 @@ function renderViagensTable() {
   popularSelectTransportadores('bulk-transp');
   popularSelectProgramadores('bulk-programador');
   atualizarBulkBar();
-}
-
-// Visão combinada somente leitura (ver onToggleMultiSemana) — mesmos filtros/KPIs/pipeline
-// da tabela normal, mas sem nenhum controle de edição inline; a coluna "Semana" identifica
-// a origem de cada linha e "Editar" troca para a semana certa antes de abrir o modal.
-function renderViagensTableMultiSemana() {
-  const isEmpty = viagensMultiSemana.length === 0;
-  document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
-  document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
-  if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; return; }
-
-  const filtrosViagem = estadoFiltrosViagem();
-  atualizarOpcoesFiltrosViagem(filtrosViagem, viagensMultiSemana);
-
-  let filtered = viagensMultiSemana.filter(v => passaFiltrosViagem(v, filtrosViagem));
-  if (sortColuna) {
-    const dir = sortDir === 'asc' ? 1 : -1;
-    filtered = filtered.slice().sort((a, b) => dir * compararOrdenacao(a, b, sortColuna));
-  }
-  atualizarSetasOrdenacao();
-  sincronizarChipsDiaCarregamento();
-
-  const paraKpis = activeIndicador
-    ? viagensMultiSemana.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
-    : filtered;
-  updateKPIs(paraKpis);
-  updatePipeline(filtered);
-
-  const tbody = document.getElementById('viagensBody');
-  tbody.innerHTML = filtered.map((v) => {
-    const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
-    const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
-    const horaCarreg = v.horaCarregProg || '12:00';
-    const horaDesc   = v.horaDescProg   || '12:00';
-    const agendamentoAtual = v.statusAgendamento || 'Não Agendado';
-    return `
-      <tr>
-        <td class="col-checkbox"></td>
-        <td class="cell-id-viagem">${esc(v.idViagem)}</td>
-        <td class="cell-pedido-mis col-pedido-mis">
-          ${esc(v.cadenciaOrigem || '—')}
-          ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block">⏳ Provisório</span>` : ''}
-        </td>
-        <td>${prodTag(v.produto)}</td>
-        <td class="cell-truncate" title="${esc(v.origem)}">
-          ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
-        </td>
-        <td class="cell-truncate" title="${esc(v.destino)}">${esc(v.destino)}</td>
-        <td class="cell-periodo col-data-desejada">
-          <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
-          <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
-        </td>
-        <td class="cell-periodo">
-          <div>↑ ${progCarreg === '-' ? '—' : esc(fmtShort(progCarreg)) + ' ' + esc(horaCarreg)}</div>
-          <div style="margin-top:2px">↓ ${progDesc === '-' ? '—' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}</div>
-        </td>
-        <td style="text-align:right">${v.volume} m³</td>
-        <td><span class="status ${claseStatus(v.status)}">${esc(v.status)}</span></td>
-        <td class="col-agendamento">
-          <select class="placa-input sel-agend ${claseAgendamento(agendamentoAtual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)" disabled>
-            <option selected>${esc(agendamentoAtual)}</option>
-          </select>
-        </td>
-        <td class="cell-truncate" title="${esc(v.transportador)}">${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}</td>
-        <td class="col-acao col-acao-sm">
-          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirViagemMultiSemana('${esc(v.idViagem)}', '${esc(v._semanaOrigem)}')" title="Editar (troca para a semana desta viagem)">✏️</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
 }
 
 function parseDMY(s) {
@@ -6330,7 +6318,7 @@ function ajustarCampoFrotaDedicada() {
   document.getElementById('campo-veiculo-dedicado').style.display = isFrota ? '' : 'none';
   document.getElementById('row-transp-status').style.gridTemplateColumns = isFrota ? '1.1fr 1.1fr 0.9fr 1.3fr' : '1.2fr 1.3fr 1fr';
   if (isFrota) {
-    const atual = editingIdx !== null ? viagens[editingIdx]?.veiculoDedicadoId : '';
+    const atual = editingIdx !== null ? viagensAtivo()[editingIdx]?.veiculoDedicadoId : '';
     const transportadorAtual = document.getElementById('m-transportador').value;
     popularSelectVeiculosDedicados('m-veiculo-dedicado', atual, transportadorAtual);
   }
@@ -6361,7 +6349,7 @@ function verificarPlacaDuplicadaModal() {
   const banner = document.getElementById('alertaPlacaDuplicadaBanner');
   if (editingIdx === null) { banner.style.display = 'none'; return; }
   const placa = document.getElementById('m-placa').value;
-  const conflitos = viagensComPlacaConflitante(viagens[editingIdx], placa);
+  const conflitos = viagensComPlacaConflitante(viagensAtivo()[editingIdx], placa);
   if (!conflitos.length) { banner.style.display = 'none'; return; }
   const ids = conflitos.map(c => c.idViagem).join(', ');
   banner.textContent = `⚠ Placa ${placa} também alocada em ${ids} no mesmo período — confira se não é engano do transportador.`;
@@ -6385,7 +6373,7 @@ function filterViagens(f) {
 // ── MODAL ──
 function openModal(idx) {
   editingIdx = idx;
-  const v = viagens[idx];
+  const v = viagensAtivo()[idx];
   document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
   document.getElementById('m-produto').textContent = v.produto;
   document.getElementById('m-volume').textContent = v.volume + ' m³';
@@ -6521,7 +6509,7 @@ function recusarOfertasSelecionadasTransportador() {
 }
 
 function salvarPedidoMisInline(realIdx, valorInput) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   if (!v.pedidoProvisorio) return;
   const novo = valorInput.trim();
   const anterior = v.cadenciaOrigem || '';
@@ -6539,7 +6527,7 @@ function salvarPedidoMisInline(realIdx, valorInput) {
     usuario: _authUsuarioAtual?.nome || '',
     evento: `Pedido MIS confirmado: ${anterior || '—'} → ${novo}`,
   });
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
@@ -6571,7 +6559,7 @@ function alternarOpcoesCnpjSelect(select, mostrarRazao) {
 }
 
 function salvarCnpjTransportadorInline(realIdx, cnpj) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   if (v.transportadorCnpj === cnpj) return;
   const anterior = v.transportadorCnpj || '';
   v.transportadorCnpj = cnpj;
@@ -6582,13 +6570,13 @@ function salvarCnpjTransportadorInline(realIdx, cnpj) {
     evento: `CNPJ do transportador ajustado: ${anterior || '—'} → ${cnpj || '—'}`,
   });
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   if (v.placa === placa) return;
   v.placa = placa;
   if (placa && v.status === 'Aceito') {
@@ -6600,12 +6588,12 @@ function salvarPlacaInline(realIdx, value) {
   }
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   const campo = tipo === 'carreg' ? 'dtCarregProg' : 'dtDescProg';
   const campoHora = tipo === 'carreg' ? 'horaCarregProg' : 'horaDescProg';
   const desejado = tipo === 'carreg' ? v.dtCarreg : v.dtDesc;
@@ -6656,12 +6644,12 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   if (['Aceito', 'Placa Enviada'].includes(v.status)) {
     v.alertaProgramacao = true;
   }
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function salvarVolumeInline(realIdx, valorInput) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   const anterior = v.volume;
   const valor = valorInput.trim().replace(',', '.');
   const novo = parseFloat(valor);
@@ -6683,7 +6671,7 @@ function salvarVolumeInline(realIdx, valorInput) {
   if (['Aceito', 'Placa Enviada'].includes(v.status)) {
     v.alertaProgramacao = true;
   }
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
@@ -6706,7 +6694,7 @@ function viagensComPlacaConflitante(viagemAtual, placa) {
   if (!placa) return [];
   const janelaAtual = janelaViagem(viagemAtual);
   if (!janelaAtual) return [];
-  return viagens.filter(v => {
+  return viagensAtivo().filter(v => {
     if (v.idViagem === viagemAtual.idViagem) return false;
     if ((v.placa || '').toUpperCase().trim() !== placa) return false;
     if (STATUS_SEM_CONFLITO_PLACA.includes(v.status)) return false;
@@ -6781,7 +6769,7 @@ function badgePlacaConflitante(v) {
 }
 
 function salvarStatusInline(realIdx, novoStatus) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   if (novoStatus === v.status) return;
   if (novoStatus === 'Frota Dedicada') {
     renderViagensTable(); // mantém o select no status anterior até a troca ser concluída no modal
@@ -6799,12 +6787,12 @@ function salvarStatusInline(realIdx, novoStatus) {
     registrarHistoricoOferta(v, v.status);
   }
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   if (!vd) return;
   v.veiculoDedicadoId = veiculoId;
@@ -6819,7 +6807,7 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
     : (t?.cnpjs?.some(c => c.cnpj === v.transportadorCnpj) ? v.transportadorCnpj : '');
   registrarHistoricoOferta(v, 'Frota Dedicada');
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
@@ -6878,7 +6866,7 @@ function renderSeletorAgendamento(v, realIdx) {
 }
 
 function salvarAgendamentoInline(realIdx, valor) {
-  const v = viagens[realIdx];
+  const v = viagensAtivo()[realIdx];
   const anterior = v.statusAgendamento || 'Não Agendado';
   if (valor === anterior) return;
   v.statusAgendamento = valor;
@@ -6888,13 +6876,14 @@ function salvarAgendamentoInline(realIdx, valor) {
     usuario: _authUsuarioAtual?.nome || '',
     evento: `Status de agendamento ajustado: ${anterior} → ${valor}`,
   });
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function salvarViagem() {
   if (editingIdx === null) return;
-  const statusAnterior = viagens[editingIdx].status;
+  const v = viagensAtivo()[editingIdx];
+  const statusAnterior = v.status;
   const novoStatus = document.getElementById('m-status').value;
   const novoVeiculoId = document.getElementById('m-veiculo-dedicado').value;
   if (novoStatus === 'Frota Dedicada' && !novoVeiculoId) {
@@ -6910,35 +6899,35 @@ function salvarViagem() {
       return;
     }
   }
-  viagens[editingIdx].transportador     = novoTransportador;
-  viagens[editingIdx].transportadorCnpj = novoTransportador ? novoCnpj : '';
-  viagens[editingIdx].status         = novoStatus;
-  viagens[editingIdx].placa          = document.getElementById('m-placa').value.toUpperCase();
-  viagens[editingIdx].placaCarreta1  = document.getElementById('m-placaCarreta1').value.toUpperCase();
-  viagens[editingIdx].placaCarreta2  = document.getElementById('m-placaCarreta2').value.toUpperCase();
-  viagens[editingIdx].nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
-  viagens[editingIdx].cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
-  viagens[editingIdx].obs            = document.getElementById('m-obs').value;
-  viagens[editingIdx].programador    = document.getElementById('m-programador').value;
-  viagens[editingIdx].veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
-  if (viagens[editingIdx].placa && viagens[editingIdx].status === 'Aceito') {
-    viagens[editingIdx].status = 'Placa Enviada';
+  v.transportador     = novoTransportador;
+  v.transportadorCnpj = novoTransportador ? novoCnpj : '';
+  v.status         = novoStatus;
+  v.placa          = document.getElementById('m-placa').value.toUpperCase();
+  v.placaCarreta1  = document.getElementById('m-placaCarreta1').value.toUpperCase();
+  v.placaCarreta2  = document.getElementById('m-placaCarreta2').value.toUpperCase();
+  v.nomeMotorista  = document.getElementById('m-nomeMotorista').value.trim();
+  v.cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
+  v.obs            = document.getElementById('m-obs').value;
+  v.programador    = document.getElementById('m-programador').value;
+  v.veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
+  if (v.placa && v.status === 'Aceito') {
+    v.status = 'Placa Enviada';
   }
-  if (viagens[editingIdx].status !== statusAnterior
-    && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(viagens[editingIdx].status)) {
-    registrarHistoricoOferta(viagens[editingIdx], viagens[editingIdx].status);
+  if (v.status !== statusAnterior
+    && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(v.status)) {
+    registrarHistoricoOferta(v, v.status);
   }
-  if (isTransportador()) viagensAlteradas.add(viagens[editingIdx].idViagem);
+  if (isTransportador()) viagensAlteradas.add(v.idViagem);
   closeModal();
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 // ── ORDEM DE CARREGAMENTO (PDF) ──
 function gerarOrdemRetirada(idx) {
   if (idx === null || idx === undefined) return;
-  const v = viagens[idx];
+  const v = viagensAtivo()[idx];
   if (!v) return;
 
   const cnpjEntry   = buscarCnpjEntry(v.transportador, v.transportadorCnpj);
@@ -7137,8 +7126,8 @@ function updatePipeline(list) {
   );
 
   if (cadencias.length > 0)
-    document.getElementById('pipe-1').classList.add(viagens.length > 0 ? 'done' : 'active');
-  if (viagens.length > 0)
+    document.getElementById('pipe-1').classList.add(viagensAtivo().length > 0 ? 'done' : 'active');
+  if (viagensAtivo().length > 0)
     document.getElementById('pipe-2').classList.add('done');
   if (cntSemTransportador > 0) document.getElementById('pipe-3').classList.add('active');
   if (cntOfertado > 0)  document.getElementById('pipe-4').classList.add('active');
@@ -8293,9 +8282,11 @@ function configurarListenerSemana(key) {
 }
 
 // ── VISUALIZAÇÃO MULTI-SEMANA ──
-// Combina viagens de várias semanas só para consulta/filtro/exportação (sem tempo
-// real — usar 🔄 para atualizar). Editar uma linha de outra semana sai deste modo,
-// troca a semana ativa para a dela e abre o modal normalmente (salva como sempre).
+// Combina e permite editar viagens de várias semanas ao mesmo tempo (ver viagensAtivo()).
+// Cada edição é gravada direto na semana de origem da viagem (marcarEAgendar/
+// salvarAlteracoesMultiSemana), sem sobrescrever cadencias/config nem outras viagens
+// daquela semana. Não há listener em tempo real para as semanas que não são a ativa —
+// use 🔄 para buscar mudanças feitas por outra aba/usuário nelas.
 async function onToggleMultiSemana(ativo) {
   document.getElementById('semanaSelect').style.display = ativo ? 'none' : '';
   document.getElementById('btnNovaSemana').style.display = ativo ? 'none' : '';
@@ -8337,15 +8328,23 @@ async function carregarViagensMultiSemana(keys) {
     return;
   }
   mostrarStatus('saving', 'Carregando semanas selecionadas...');
-  const payloads = await Promise.all(keys.map(key => window._fb.carregar(key)));
-  viagensMultiSemana = [];
-  keys.forEach((key, i) => {
-    const payload = payloads[i];
-    (payload?.viagens || []).forEach(v => {
-      viagensMultiSemana.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
+  try {
+    const payloads = await Promise.all(keys.map(key => window._fb.carregar(key)));
+    viagensMultiSemana = [];
+    keys.forEach((key, i) => {
+      const payload = payloads[i];
+      // O Firebase RTDB devolve `viagens` como objeto (chaveado por idViagem) sempre que
+      // há gaps nos índices — não dá pra assumir array como em outros pontos do código,
+      // por isso normalizarViagensArray() (mesma função usada em aplicarPayload()).
+      normalizarViagensArray(payload?.viagens).forEach(v => {
+        viagensMultiSemana.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
+      });
     });
-  });
-  mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
+    mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
+  } catch (e) {
+    console.error('Erro ao carregar viagens multi-semana:', e);
+    mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
+  }
   renderizarAbaAtual();
 }
 
@@ -8365,20 +8364,6 @@ function renderizarAbaAtual() {
 function desativarMultiSemana() {
   document.getElementById('chkMultiSemana').checked = false;
   onToggleMultiSemana(false);
-}
-
-// Abre a viagem para edição: se ela for de outra semana, sai do modo multi-semana
-// e troca a semana ativa antes de abrir o modal — edição sempre acontece dentro
-// do contexto normal de uma única semana.
-async function abrirViagemMultiSemana(idViagem, semanaOrigem) {
-  if (semanaOrigem !== semanaAtiva) {
-    if (!confirm(`Esta viagem é da semana ${formatarKeyParaLabel(semanaOrigem)}. Trocar para essa semana para editar?`)) return;
-    desativarMultiSemana();
-    await trocarSemana(semanaOrigem);
-  }
-  const idx = viagens.findIndex(v => v.idViagem === idViagem);
-  if (idx === -1) { alert('Viagem não encontrada na semana ativa.'); return; }
-  openModal(idx);
 }
 
 // Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` —
