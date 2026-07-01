@@ -606,6 +606,10 @@
   .filter-input.fi-wide { width: 240px; }
   .filter-input.fi-date { width: 60px; text-align: center; }
   .filter-sep { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  /* UF Origem só guarda siglas de 2 letras — não precisa do mesmo min-width dos demais
+     multiselects (Produto, Origem, Destino...), que exibem nomes bem mais longos. O
+     !important é necessário porque MultiSelect._build() define min-width inline. */
+  .ms-narrow .ms-trigger { min-width: 92px !important; }
 
   .placa-input {
     background: var(--panel);
@@ -1713,7 +1717,7 @@
             oninput="renderPreview()">
           <div id="ms-cProduto"></div>
           <div id="ms-cModal"></div>
-          <div id="ms-cUf"></div>
+          <div id="ms-cUf" class="ms-narrow"></div>
           <div id="ms-cOrigem"></div>
           <div id="ms-cDestino"></div>
           <div id="ms-cRegional"></div>
@@ -1867,14 +1871,15 @@
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
             oninput="renderViagensTable()">
           <div id="ms-vProduto"></div>
-          <div id="ms-vUf"></div>
+          <div id="ms-vUf" class="ms-narrow"></div>
           <div id="ms-vOrigem"></div>
           <div id="ms-vDestino"></div>
           <div id="ms-vRegional"></div>
           <input type="text" class="filter-input" id="fTransp"
             placeholder="🚚 Transportador..." style="width:150px"
             oninput="renderViagensTable()">
-          <div style="display:flex;flex-direction:column;gap:4px;margin-left:4px">
+          <div class="filter-row-dates" style="margin-left:auto">
+          <div style="display:flex;flex-direction:column;gap:4px">
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
               <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInput()" title="Carregamento De (ano atual)">
@@ -1888,13 +1893,14 @@
               <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTable()" title="Descarga Até (ano atual)">
             </div>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center;margin-left:2px">✕ Limpar</button>
-          <div class="chip-group" id="diaCarregChips" style="align-self:center;margin-left:6px">
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center">✕ Limpar</button>
+          <div class="chip-group" id="diaCarregChips" style="align-self:center">
             <div class="chip" data-dia="0" onclick="filtrarDiaCarregamento(0)" title="Carregamento = hoje">D0</div>
             <div class="chip" data-dia="1" onclick="filtrarDiaCarregamento(1)" title="Carregamento = amanhã">D+1</div>
             <div class="chip" data-dia="2" onclick="filtrarDiaCarregamento(2)" title="Carregamento = hoje + 2 dias">D+2</div>
             <div class="chip" data-dia="3" onclick="filtrarDiaCarregamento(3)" title="Carregamento = hoje + 3 dias">D+3</div>
             <div class="chip" data-dia="4" onclick="filtrarDiaCarregamento(4)" title="Carregamento = hoje + 4 dias">D+4</div>
+          </div>
           </div>
         </div>
       </div>
@@ -2109,7 +2115,7 @@
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
             oninput="renderMonitoramento()">
           <div id="ms-monProduto"></div>
-          <div id="ms-monUf"></div>
+          <div id="ms-monUf" class="ms-narrow"></div>
           <div id="ms-monOrigem"></div>
           <div id="ms-monDestino"></div>
           <div id="ms-monRegional"></div>
