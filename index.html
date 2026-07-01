@@ -571,6 +571,10 @@
     outline: none;
   }
   .filter-select:focus { border-color: var(--accent); }
+  .filter-select option {
+    background: var(--panel);
+    color: var(--text);
+  }
 
   /* filter bar */
   .filter-bar {
@@ -1705,6 +1709,7 @@
             oninput="renderPreview()">
           <div id="ms-cProduto"></div>
           <div id="ms-cModal"></div>
+          <div id="ms-cUf"></div>
           <div id="ms-cOrigem"></div>
           <div id="ms-cDestino"></div>
           <div id="ms-cRegional"></div>
@@ -1858,6 +1863,7 @@
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
             oninput="renderViagensTable()">
           <div id="ms-vProduto"></div>
+          <div id="ms-vUf"></div>
           <div id="ms-vOrigem"></div>
           <div id="ms-vDestino"></div>
           <div id="ms-vRegional"></div>
@@ -2099,6 +2105,7 @@
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
             oninput="renderMonitoramento()">
           <div id="ms-monProduto"></div>
+          <div id="ms-monUf"></div>
           <div id="ms-monOrigem"></div>
           <div id="ms-monDestino"></div>
           <div id="ms-monRegional"></div>
@@ -3373,10 +3380,10 @@ class MultiSelect {
 }
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
-let msVProduto, msVOrigem, msVDestino, msVRegional, msVProgramador;
+let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador;
 let msSemanas;
-let msMonProduto, msMonOrigem, msMonDestino, msMonRegional;
-let msCProduto, msCModal, msCOrigem, msCDestino, msCRegional;
+let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
+let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
 
 // ── MODAL GRUPO ──
 let editingGrupoIdxs = [];
@@ -4079,6 +4086,15 @@ function valorOrigemFiltro(item) {
   return (item.origem || '') + (item.base ? ` (${item.base})` : '');
 }
 
+// UF vem do Cadastro de Fornecedores, resolvida por CNPJ (mais preciso) ou por
+// origem + base de atendimento — mesma chave usada em atualizarCnpjOrigemNovaCad().
+function valorUfOrigemFiltro(item) {
+  const f = (item.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(item.cnpjOrigem)))
+    || fornecedores.find(f => f.origem === item.origem && f.baseAtendimento === item.base)
+    || fornecedores.find(f => f.origem === item.origem);
+  return f?.uf || '';
+}
+
 // Regional vem do cadastro de Bases (campo "regional"), resolvida pelo destino —
 // não existe campo próprio em viagem/cadência, então buscamos como em buscarBaseDaViagem().
 function valorRegionalFiltro(item) {
@@ -4100,6 +4116,7 @@ function estadoFiltrosCadencia() {
     dtAte: document.getElementById('fCadDtAte')?.value || '',
     produtos: new Set(msCProduto?.getSelected() || []),
     modais: new Set(msCModal?.getSelected() || []),
+    ufs: new Set(msCUf?.getSelected() || []),
     origens: new Set(msCOrigem?.getSelected() || []),
     destinos: new Set(msCDestino?.getSelected() || []),
     regionais: new Set(msCRegional?.getSelected() || []),
@@ -4109,6 +4126,7 @@ function estadoFiltrosCadencia() {
 function passaFiltrosCadencia(c, f, ignorar = '') {
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(c.produto)) return false;
   if (ignorar !== 'modal' && f.modais.size && !f.modais.has(c.modal || 'FOB')) return false;
+  if (ignorar !== 'uf' && f.ufs.size && !f.ufs.has(valorUfOrigemFiltro(c))) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(c))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(c.destino)) return false;
   if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(c))) return false;
@@ -4141,6 +4159,10 @@ function atualizarOpcoesFiltrosCadencia(f) {
   msCModal?.setOptions(valoresUnicosOrdenados(
     cadencias.filter(c => passaFiltrosCadencia(c, f, 'modal')),
     c => c.modal || 'FOB'
+  ));
+  msCUf?.setOptions(valoresUnicosOrdenados(
+    cadencias.filter(c => passaFiltrosCadencia(c, f, 'uf')),
+    valorUfOrigemFiltro
   ));
   msCOrigem?.setOptions(valoresUnicosOrdenados(
     cadencias.filter(c => passaFiltrosCadencia(c, f, 'origem')),
@@ -4754,6 +4776,7 @@ function estadoFiltrosViagem() {
     dtDe: document.getElementById('fDtDe')?.value || '',
     dtAte: document.getElementById('fDtAte')?.value || '',
     produtos: new Set(msVProduto?.getSelected() || []),
+    ufs: new Set(msVUf?.getSelected() || []),
     origens: new Set(msVOrigem?.getSelected() || []),
     destinos: new Set(msVDestino?.getSelected() || []),
     regionais: new Set(msVRegional?.getSelected() || []),
@@ -4771,6 +4794,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
   if (ignorar !== 'programador' && f.programadores.size && !f.programadores.has(v.programador)) return false;
+  if (ignorar !== 'uf' && f.ufs.size && !f.ufs.has(valorUfOrigemFiltro(v))) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
@@ -4821,6 +4845,10 @@ function atualizarOpcoesFiltrosViagem(f, fonte = viagens) {
   msVProduto?.setOptions(valoresUnicosOrdenados(
     fonte.filter(v => passaFiltrosViagem(v, f, 'produto')),
     v => v.produto
+  ));
+  msVUf?.setOptions(valoresUnicosOrdenados(
+    fonte.filter(v => passaFiltrosViagem(v, f, 'uf')),
+    valorUfOrigemFiltro
   ));
   msVOrigem?.setOptions(valoresUnicosOrdenados(
     fonte.filter(v => passaFiltrosViagem(v, f, 'origem')),
@@ -5150,13 +5178,13 @@ function anoPlausivel(dataStr) {
 
 function limparFiltrosCad() {
   ['fCadBusca','fCadCarrDe','fCadCarrAte','fCadDtDe','fCadDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msCProduto?.clear(); msCModal?.clear(); msCOrigem?.clear(); msCDestino?.clear(); msCRegional?.clear();
+  msCProduto?.clear(); msCModal?.clear(); msCUf?.clear(); msCOrigem?.clear(); msCDestino?.clear(); msCRegional?.clear();
   renderPreview();
 }
 
 function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  msVProduto?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVRegional?.clear(); msVProgramador?.clear();
+  msVProduto?.clear(); msVUf?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVRegional?.clear(); msVProgramador?.clear();
   activeFilter.clear();
   activeAgendamento.clear();
   activeDiasCarregamento.clear();
@@ -7334,6 +7362,7 @@ function estadoFiltrosMonitoramento() {
     transp: (document.getElementById('fMonTransp')?.value || '').toLowerCase().trim(),
     frota: document.getElementById('fMonFrota')?.value || '',
     produtos: new Set(msMonProduto?.getSelected() || []),
+    ufs: new Set(msMonUf?.getSelected() || []),
     origens: new Set(msMonOrigem?.getSelected() || []),
     destinos: new Set(msMonDestino?.getSelected() || []),
     regionais: new Set(msMonRegional?.getSelected() || []),
@@ -7343,6 +7372,7 @@ function estadoFiltrosMonitoramento() {
 
 function passaFiltrosMonitoramento(v, f, ignorar = '') {
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
+  if (ignorar !== 'uf' && f.ufs.size && !f.ufs.has(valorUfOrigemFiltro(v))) return false;
   if (ignorar !== 'origem' && f.origens.size && !f.origens.has(valorOrigemFiltro(v))) return false;
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
@@ -7367,6 +7397,9 @@ function atualizarOpcoesFiltrosMonitoramento(monitoradas, f) {
   msMonProduto?.setOptions(valoresUnicosOrdenados(
     monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'produto')), v => v.produto
   ));
+  msMonUf?.setOptions(valoresUnicosOrdenados(
+    monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'uf')), valorUfOrigemFiltro
+  ));
   msMonOrigem?.setOptions(valoresUnicosOrdenados(
     monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'origem')), valorOrigemFiltro
   ));
@@ -7382,7 +7415,7 @@ function limparFiltrosMonitoramento() {
   document.getElementById('fMonBusca').value = '';
   document.getElementById('fMonTransp').value = '';
   document.getElementById('fMonFrota').value = '';
-  msMonProduto?.clear(); msMonOrigem?.clear(); msMonDestino?.clear(); msMonRegional?.clear();
+  msMonProduto?.clear(); msMonUf?.clear(); msMonOrigem?.clear(); msMonDestino?.clear(); msMonRegional?.clear();
   activeIndicadorMon = null;
   activeDiasEntregaMon.clear();
   sincronizarChipsDiaEntregaMon();
@@ -8510,6 +8543,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // initialize multiselects
   msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
+  msVUf      = new MultiSelect('ms-vUf',      'UF Origem', renderViagensTable);
   msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
   msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable);
@@ -8517,10 +8551,12 @@ window.addEventListener('DOMContentLoaded', () => {
   msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
+  msCUf      = new MultiSelect('ms-cUf',      'UF Origem', renderPreview);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
   msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview);
   msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento);
+  msMonUf      = new MultiSelect('ms-monUf',      'UF Origem', renderMonitoramento);
   msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento);
   msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento);
   msMonRegional = new MultiSelect('ms-monRegional', 'Regional', renderMonitoramento);
