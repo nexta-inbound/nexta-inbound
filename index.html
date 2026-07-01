@@ -184,6 +184,9 @@
   }
   .pipe-step.active::after { background: var(--accent); }
   .pipe-step.done::after { background: var(--success); }
+  .pipe-step.clickable { cursor: pointer; }
+  .pipe-step.clickable:hover .pipe-icon { transform: scale(1.1); }
+  .pipe-step.selected .pipe-icon { box-shadow: 0 0 0 3px var(--accent-dim), 0 0 0 1px var(--accent); }
   .pipe-icon {
     width: 28px; height: 28px;
     border-radius: 50%;
@@ -1547,7 +1550,7 @@
       Várias semanas
     </label>
     <div id="ms-semanas" style="display:none"></div>
-    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Recarregar dados das semanas selecionadas (esta visão não atualiza em tempo real)" style="display:none">🔄</button>
+    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora" style="display:none">🔄</button>
   </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
@@ -1567,84 +1570,84 @@
 
 <!-- PIPELINE -->
 <div class="pipeline" id="pipeline">
-  <div class="pipe-step" id="pipe-1">
+  <div class="pipe-step clickable" id="pipe-1" onclick="filtrarPipelineTodos()" title="Ver todas as viagens (limpa os filtros de status)">
     <div class="pipe-icon">📥</div>
     <div>
       <div class="pipe-count" id="cnt-cadencias">0</div>
       <div class="pipe-label">Cadências</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-2">
+  <div class="pipe-step clickable" id="pipe-2" onclick="filtrarPipelineTodos()" title="Ver todas as viagens (limpa os filtros de status)">
     <div class="pipe-icon">🚛</div>
     <div>
       <div class="pipe-count" id="cnt-viagens">0</div>
       <div class="pipe-label">Viagens</div>
     </div>
   </div>
-  <div class="pipe-step cif" id="pipe-cif" title="Viagens CIF: frota do fornecedor, não passam pelo fluxo de transportador">
+  <div class="pipe-step cif clickable" id="pipe-cif" onclick="filtrarPipelineStatus('CIF', event)" title="Viagens CIF: frota do fornecedor, não passam pelo fluxo de transportador — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🔷</div>
     <div>
       <div class="pipe-count" id="cnt-cif">0</div>
       <div class="pipe-label">Viagens CIF</div>
     </div>
   </div>
-  <div class="pipe-step frota" id="pipe-frota" title="Viagens com placa de frota dedicada já atribuída — prontas para o monitoramento">
+  <div class="pipe-step frota clickable" id="pipe-frota" onclick="filtrarPipelineStatus('Frota Dedicada', event)" title="Viagens com placa de frota dedicada já atribuída — prontas para o monitoramento — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🛻</div>
     <div>
       <div class="pipe-count" id="cnt-frota">0</div>
       <div class="pipe-label">Frota Dedicada</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-3" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado">
+  <div class="pipe-step clickable" id="pipe-3" onclick="filtrarPipelineSemTransportador(event)" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">📋</div>
     <div>
       <div class="pipe-count" id="cnt-backlog">0</div>
       <div class="pipe-label">Sem Transportador</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-4">
+  <div class="pipe-step clickable" id="pipe-4" onclick="filtrarPipelineStatus('Ofertado', event)" title="Clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">📤</div>
     <div>
       <div class="pipe-count" id="cnt-ofertadas">0</div>
       <div class="pipe-label">Ofertado</div>
     </div>
   </div>
-  <div class="pipe-step recusado" id="pipe-recusado" title="Recusada pelo transportador — volta ao pool de Sem Transportador (já contada no estágio anterior)">
+  <div class="pipe-step recusado clickable" id="pipe-recusado" onclick="filtrarPipelineStatus('Recusado', event)" title="Recusada pelo transportador — volta ao pool de Sem Transportador (já contada no estágio anterior) — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🔁</div>
     <div>
       <div class="pipe-count" id="cnt-recusadas">0</div>
       <div class="pipe-label">Recusado</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-5">
+  <div class="pipe-step clickable" id="pipe-5" onclick="filtrarPipelineStatus('Aceito', event)" title="Clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🤝</div>
     <div>
       <div class="pipe-count" id="cnt-aceitas">0</div>
       <div class="pipe-label">Aceito</div>
     </div>
   </div>
-  <div class="pipe-step" id="pipe-6">
+  <div class="pipe-step clickable" id="pipe-6" onclick="filtrarPipelineStatus('Placa Enviada', event)" title="Clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🚗</div>
     <div>
       <div class="pipe-count" id="cnt-monitoramento">0</div>
       <div class="pipe-label">Placa Enviada</div>
     </div>
   </div>
-  <div class="pipe-step emandamento" id="pipe-emandamento" title="Viagens em deslocamento/na origem/no destino segundo a Herrlog — ainda não finalizadas">
+  <div class="pipe-step emandamento clickable" id="pipe-emandamento" onclick="filtrarPipelineStatus('Em Andamento', event)" title="Viagens em deslocamento/na origem/no destino segundo a Herrlog — ainda não finalizadas — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🛣️</div>
     <div>
       <div class="pipe-count" id="cnt-emandamento">0</div>
       <div class="pipe-label">Em Andamento</div>
     </div>
   </div>
-  <div class="pipe-step finalizada" id="pipe-finalizada" title="Viagens com chegada confirmada na Herrlog (T5 - Viagem finalizada)">
+  <div class="pipe-step finalizada clickable" id="pipe-finalizada" onclick="filtrarPipelineStatus('Viagem Finalizada', event)" title="Viagens com chegada confirmada na Herrlog (T5 - Viagem finalizada) — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">🏁</div>
     <div>
       <div class="pipe-count" id="cnt-finalizadas">0</div>
       <div class="pipe-label">Viagem Finalizada</div>
     </div>
   </div>
-  <div class="pipe-step cancel" id="pipe-7">
+  <div class="pipe-step cancel clickable" id="pipe-7" onclick="filtrarPipelineStatus('Cancelado', event)" title="Clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">✕</div>
     <div>
       <div class="pipe-count" id="cnt-canceladas">0</div>
@@ -2761,6 +2764,22 @@
   </div>
 </div>
 
+<!-- MODAL: Motivo do Cancelamento -->
+<div class="modal-overlay" id="modalMotivoCancelamento">
+  <div class="modal" style="width:400px;max-width:94vw">
+    <div class="modal-title">Motivo do Cancelamento</div>
+    <div class="modal-sub">Selecione alguma das opções:</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Falta de Produto')">Falta de Produto</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Frota')">Sem Frota</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Necessidade no Destino')">Sem Necessidade no Destino</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="responderMotivoCancelamento(null)">Voltar (não cancelar)</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Novo/Editar Veículo Dedicado -->
 <div class="modal-overlay" id="modalVeiculo">
   <div class="modal" style="width:560px;max-width:96vw">
@@ -2856,13 +2875,33 @@ function nomeTransportadorLogado() {
   return (_authUsuarioAtual?.transportadorNome || '').trim();
 }
 
+// ── MOTIVO DO CANCELAMENTO ──
+// Pede o motivo antes de confirmar o status "Cancelado" (ver salvarStatusInline,
+// salvarViagem e aplicarEmLote) — resolve com o motivo escolhido, ou null se o
+// usuário desistir do cancelamento.
+let _motivoCancelamentoResolve = null;
+
+function pedirMotivoCancelamento() {
+  return new Promise(resolve => {
+    _motivoCancelamentoResolve = resolve;
+    document.getElementById('modalMotivoCancelamento').classList.add('open');
+  });
+}
+
+function responderMotivoCancelamento(motivo) {
+  document.getElementById('modalMotivoCancelamento').classList.remove('open');
+  const resolve = _motivoCancelamentoResolve;
+  _motivoCancelamentoResolve = null;
+  if (resolve) resolve(motivo);
+}
+
 // ── HISTÓRICO DE OFERTAS POR VIAGEM ──
 // usuario (opcional): quem fica registrado como autor do evento. Por padrão é o usuário
 // logado (cobre ações manuais de staff e do próprio transportador); passe um valor
 // explícito para eventos automáticos (ver sincronizarStatusHerrlog), já que ali quem
 // dispara a chamada é o navegador de qualquer staff com a página aberta no momento,
 // não necessariamente quem "decidiu" a mudança.
-function registrarHistoricoOferta(v, evento, usuario) {
+function registrarHistoricoOferta(v, evento, usuario, motivo) {
   if (!Array.isArray(v.historico)) v.historico = [];
   v.historico.push({
     data: new Date().toISOString(),
@@ -2870,6 +2909,7 @@ function registrarHistoricoOferta(v, evento, usuario) {
     transportador: v.transportador || '',
     cnpj: v.transportadorCnpj || '',
     evento,
+    ...(motivo ? { motivo } : {}),
   });
 }
 
@@ -2885,7 +2925,8 @@ function formatarHistoricoItem(h) {
   if (h.usuario) partesQuem.push(esc(h.usuario));
   if (h.transportador) partesQuem.push(esc(h.transportador) + (h.cnpj ? ` <span style="color:var(--text-muted);font-family:monospace;font-size:10px">${esc(h.cnpj)}</span>` : ''));
   const quem = partesQuem.length ? partesQuem.join(' · ') : '—';
-  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} <strong>${esc(h.evento)}</strong> — ${quem} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
+  const motivo = h.motivo ? ` <span style="color:var(--text-dim)">(${esc(h.motivo)})</span>` : '';
+  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} <strong>${esc(h.evento)}</strong>${motivo} — ${quem} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
 
 function renderHistoricoOferta(v) {
@@ -3500,7 +3541,7 @@ function limparSelecao() {
   renderViagensTable();
 }
 
-function aplicarEmLote() {
+async function aplicarEmLote() {
   const status = document.getElementById('bulk-status').value;
   const agendamento = document.getElementById('bulk-agendamento').value;
   const transpRaw = document.getElementById('bulk-transp').value.trim();
@@ -3512,6 +3553,11 @@ function aplicarEmLote() {
   const programador = removerProgramador ? '' : progRaw;
   if (!status && !agendamento && !transpRaw && !progRaw) { alert('Preencha ao menos o status, o agendamento, o transportador ou o programador para aplicar em lote.'); return; }
   if (!selectedViagens.size) return;
+  let motivoCancelamento;
+  if (status === 'Cancelado') {
+    motivoCancelamento = await pedirMotivoCancelamento();
+    if (!motivoCancelamento) return;
+  }
   const arr = viagensAtivo();
   selectedViagens.forEach(idx => {
     const v = arr[idx];
@@ -3531,7 +3577,7 @@ function aplicarEmLote() {
     }
     if (status) v.status = status;
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
-      registrarHistoricoOferta(v, status);
+      registrarHistoricoOferta(v, status, undefined, status === 'Cancelado' ? motivoCancelamento : undefined);
     }
     if (agendamento && agendamento !== agendamentoAnterior) {
       v.statusAgendamento = agendamento;
@@ -3849,6 +3895,7 @@ let semanaAtiva = null;
 let modoMultiSemana = false;
 let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
 let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
+let _unsubsMultiSemana = new Map(); // key da semana -> função de unsubscribe do listener em tempo real dela
 
 // Fonte de dados da tabela de viagens: a semana ativa ou a combinação multi-semana.
 function viagensAtivo() {
@@ -4813,6 +4860,7 @@ function sincronizarChipsStatus() {
       c.classList.toggle('active', activeAgendamento.has(c.dataset.agend));
     }
   });
+  sincronizarPipelineSelecionado();
 }
 
 function filterAgendamento(f) {
@@ -4847,7 +4895,7 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
   if (isTransportador() && v.status === 'Backlog') return false;
   if (isTransportador() && v.status === 'Cancelado') return false;
-  if (activeFilter.size && !activeFilter.has(v.status)) return false;
+  if (ignorar !== 'status' && activeFilter.size && !activeFilter.has(v.status)) return false;
   if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
@@ -4997,10 +5045,17 @@ function renderViagensTable() {
     ? fonte.filter(v => passaFiltrosViagem(v, filtrosViagem, 'indicador'))
     : filtered;
 
+  // Pipeline sempre ignora o próprio filtro de status: senão, clicar num card zera todos
+  // os outros (é o mesmo status que está sendo filtrado) — mesma lógica do paraKpis acima,
+  // mas para o eixo "status" em vez de "indicador".
+  const paraPipeline = activeFilter.size
+    ? fonte.filter(v => passaFiltrosViagem(v, filtrosViagem, 'status'))
+    : filtered;
+
   const idxPorViagem = new Map(fonte.map((v, i) => [v, i]));
   currentFilteredIdxs = filtered.map(v => idxPorViagem.get(v));
   updateKPIs(paraKpis);
-  updatePipeline(filtered);
+  updatePipeline(paraPipeline);
   const tbody = document.getElementById('viagensBody');
   const linhasViagensHtml = filtered.map((v) => {
     const realIdx = idxPorViagem.get(v);
@@ -6370,6 +6425,75 @@ function filterViagens(f) {
   renderViagensTable();
 }
 
+// ── PIPELINE CLICÁVEL ──
+// Os cards do resumo no topo (ver #pipeline) reaproveitam o mesmo filtro de status dos
+// chips da tabela (activeFilter) — clicar num card equivale a clicar no chip
+// correspondente — e trocam para a aba Gerir Viagens, já que é lá que o resultado aparece.
+// Clique normal troca a seleção (só esse status) — é o que a maioria quer ao pular de
+// card em card. Ctrl/Cmd+clique soma ao que já estiver selecionado, para quem realmente
+// quer comparar dois status ao mesmo tempo (ex.: Cancelado + Em Andamento juntos).
+function filtrarPipelineStatus(status, ev) {
+  switchTab(1);
+  activeIndicador = null;
+  if (ev && (ev.ctrlKey || ev.metaKey)) {
+    if (activeFilter.has(status)) activeFilter.delete(status);
+    else activeFilter.add(status);
+  } else {
+    const somenteEsse = activeFilter.size === 1 && activeFilter.has(status);
+    activeFilter = somenteEsse ? new Set() : new Set([status]);
+  }
+  sincronizarChipsStatus();
+  renderViagensTable();
+}
+
+function filtrarPipelineTodos() {
+  switchTab(1);
+  filterViagens('todos');
+}
+
+// "Sem Transportador" no pipeline é a soma de Backlog + Recusado (ver updatePipeline) —
+// não existe como um status único, então clicar liga/desliga os dois de uma vez. Mesma
+// regra de Ctrl/Cmd+clique de filtrarPipelineStatus (soma em vez de trocar).
+function filtrarPipelineSemTransportador(ev) {
+  switchTab(1);
+  activeIndicador = null;
+  const alvo = ['Backlog', 'Recusado'];
+  if (ev && (ev.ctrlKey || ev.metaKey)) {
+    const jaAtivo = alvo.every(s => activeFilter.has(s));
+    alvo.forEach(s => jaAtivo ? activeFilter.delete(s) : activeFilter.add(s));
+  } else {
+    const somenteEsses = activeFilter.size === alvo.length && alvo.every(s => activeFilter.has(s));
+    activeFilter = somenteEsses ? new Set() : new Set(alvo);
+  }
+  sincronizarChipsStatus();
+  renderViagensTable();
+}
+
+// Mantém os cards do pipeline destacados de acordo com o filtro de status atual —
+// chamado de dentro de sincronizarChipsStatus() para não precisar duplicar em cada
+// função que muda activeFilter/activeIndicador.
+const PIPE_STATUS_MAP = {
+  'pipe-cif': ['CIF'],
+  'pipe-frota': ['Frota Dedicada'],
+  'pipe-3': ['Backlog', 'Recusado'],
+  'pipe-4': ['Ofertado'],
+  'pipe-recusado': ['Recusado'],
+  'pipe-5': ['Aceito'],
+  'pipe-6': ['Placa Enviada'],
+  'pipe-emandamento': ['Em Andamento'],
+  'pipe-finalizada': ['Viagem Finalizada'],
+  'pipe-7': ['Cancelado'],
+};
+
+function sincronizarPipelineSelecionado() {
+  Object.entries(PIPE_STATUS_MAP).forEach(([id, statuses]) => {
+    document.getElementById(id)?.classList.toggle('selected', statuses.every(s => activeFilter.has(s)));
+  });
+  const semFiltro = activeFilter.size === 0 && !activeIndicador;
+  document.getElementById('pipe-1')?.classList.toggle('selected', semFiltro);
+  document.getElementById('pipe-2')?.classList.toggle('selected', semFiltro);
+}
+
 // ── MODAL ──
 function openModal(idx) {
   editingIdx = idx;
@@ -6768,7 +6892,7 @@ function badgePlacaConflitante(v) {
       title="Placa ${esc(v.placa)} também alocada em ${esc(ids)} no mesmo período — confira se não é engano do transportador">⚠ Placa em outra viagem</span>`;
 }
 
-function salvarStatusInline(realIdx, novoStatus) {
+async function salvarStatusInline(realIdx, novoStatus) {
   const v = viagensAtivo()[realIdx];
   if (novoStatus === v.status) return;
   if (novoStatus === 'Frota Dedicada') {
@@ -6778,13 +6902,18 @@ function salvarStatusInline(realIdx, novoStatus) {
     ajustarCampoFrotaDedicada();
     return;
   }
+  let motivoCancelamento;
+  if (novoStatus === 'Cancelado') {
+    motivoCancelamento = await pedirMotivoCancelamento();
+    if (!motivoCancelamento) { renderViagensTable(); return; } // mantém o select no status anterior
+  }
   v.status = novoStatus;
   v.veiculoDedicadoId = '';
   if (v.placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
   }
   if (['Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Cancelado'].includes(v.status)) {
-    registrarHistoricoOferta(v, v.status);
+    registrarHistoricoOferta(v, v.status, undefined, motivoCancelamento);
   }
   updatePipeline();
   marcarEAgendar(v);
@@ -6880,7 +7009,7 @@ function salvarAgendamentoInline(realIdx, valor) {
   renderViagensTable();
 }
 
-function salvarViagem() {
+async function salvarViagem() {
   if (editingIdx === null) return;
   const v = viagensAtivo()[editingIdx];
   const statusAnterior = v.status;
@@ -6899,6 +7028,11 @@ function salvarViagem() {
       return;
     }
   }
+  let motivoCancelamento;
+  if (novoStatus === 'Cancelado' && statusAnterior !== 'Cancelado') {
+    motivoCancelamento = await pedirMotivoCancelamento();
+    if (!motivoCancelamento) return; // mantém o modal aberto sem salvar
+  }
   v.transportador     = novoTransportador;
   v.transportadorCnpj = novoTransportador ? novoCnpj : '';
   v.status         = novoStatus;
@@ -6915,7 +7049,7 @@ function salvarViagem() {
   }
   if (v.status !== statusAnterior
     && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(v.status)) {
-    registrarHistoricoOferta(v, v.status);
+    registrarHistoricoOferta(v, v.status, undefined, motivoCancelamento);
   }
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   closeModal();
@@ -7145,6 +7279,7 @@ function updatePipeline(list) {
     pipe2?.parentNode?.insertBefore(pipeBadge, pipe2.nextSibling);
   }
   pipeBadge.style.display = isFiltered ? 'inline' : 'none';
+  sincronizarPipelineSelecionado();
 }
 
 // ── EXPORT ──
@@ -8285,8 +8420,9 @@ function configurarListenerSemana(key) {
 // Combina e permite editar viagens de várias semanas ao mesmo tempo (ver viagensAtivo()).
 // Cada edição é gravada direto na semana de origem da viagem (marcarEAgendar/
 // salvarAlteracoesMultiSemana), sem sobrescrever cadencias/config nem outras viagens
-// daquela semana. Não há listener em tempo real para as semanas que não são a ativa —
-// use 🔄 para buscar mudanças feitas por outra aba/usuário nelas.
+// daquela semana. Cada semana selecionada tem seu próprio listener em tempo real (ver
+// configurarListenersMultiSemana) — mudanças feitas por outra aba/usuário aparecem sem
+// precisar clicar em 🔄 (que continua existindo para forçar uma releitura completa).
 async function onToggleMultiSemana(ativo) {
   document.getElementById('semanaSelect').style.display = ativo ? 'none' : '';
   document.getElementById('btnNovaSemana').style.display = ativo ? 'none' : '';
@@ -8295,6 +8431,7 @@ async function onToggleMultiSemana(ativo) {
   modoMultiSemana = ativo;
   document.body.classList.toggle('multi-semana-mode', ativo);
   if (!ativo) {
+    desativarListenersMultiSemana();
     viagensMultiSemana = [];
     renderizarAbaAtual();
     return;
@@ -8323,6 +8460,7 @@ function selecaoAtualMsSemanas() {
 
 async function carregarViagensMultiSemana(keys) {
   if (!keys.length) {
+    desativarListenersMultiSemana();
     viagensMultiSemana = [];
     renderizarAbaAtual();
     return;
@@ -8341,11 +8479,46 @@ async function carregarViagensMultiSemana(keys) {
       });
     });
     mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
+    configurarListenersMultiSemana(keys);
   } catch (e) {
     console.error('Erro ao carregar viagens multi-semana:', e);
     mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
   }
   renderizarAbaAtual();
+}
+
+// Um listener em tempo real por semana selecionada — cada um substitui só a fatia de
+// viagensMultiSemana daquela semana (nunca mexe nas demais). onValue já dispara uma vez
+// na hora de assinar, com o mesmo estado que acabamos de carregar em carregarViagensMultiSemana
+// (ver primeiraChamada) — sem o guard, cada seleção de semanas re-renderizava a tabela e
+// mostrava "Atualizado por outro usuário" para uma mudança que nem existiu.
+function configurarListenersMultiSemana(keys) {
+  desativarListenersMultiSemana();
+  keys.forEach(key => {
+    let primeiraChamada = true;
+    const unsub = window._fb.ouvirMudancas(key, (payload) => {
+      if (primeiraChamada) { primeiraChamada = false; return; }
+      aplicarMudancaSemanaMultiSemana(key, payload);
+    });
+    _unsubsMultiSemana.set(key, unsub);
+  });
+}
+
+function desativarListenersMultiSemana() {
+  _unsubsMultiSemana.forEach(unsub => unsub());
+  _unsubsMultiSemana.clear();
+}
+
+function aplicarMudancaSemanaMultiSemana(key, payload) {
+  const label = formatarKeyParaLabel(key);
+  const viagensDaSemana = normalizarViagensArray(payload?.viagens)
+    .map(v => ({ ...v, _semanaOrigem: key, _semanaLabel: label }));
+  viagensMultiSemana = viagensMultiSemana.filter(v => v._semanaOrigem !== key).concat(viagensDaSemana);
+  // Índices de viagensMultiSemana podem ter mudado com o merge acima — fechar o modal
+  // evita salvar por cima da viagem errada (mesma cautela do listener de semana única).
+  if (editingIdx !== null) closeModal();
+  renderizarAbaAtual();
+  mostrarStatus('saved', '🔄 Atualizado por outro usuário');
 }
 
 function atualizarMultiSemana() {
