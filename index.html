@@ -1274,6 +1274,13 @@
         callback(snap.exists() ? snap.val() : {});
       });
     },
+    // Usado por processarViagensCanceladasNaHerrlog() para limpar do Firebase a
+    // entrada já processada (statusHerrlog="Cancelado", gravado pelo
+    // monitoramento_tempo_real_herrlog.py) depois que a viagem foi revertida
+    // para "Placa Enviada" no portal.
+    removerMonitoramentoHerrlog: async (idViagem) => {
+      await remove(ref(db, 'monitoramentoHerrlog/' + idViagem));
+    },
     ouvirCadastroHerrlogPlacas: (callback) => {
       return onValue(ref(db, 'cadastroHerrlogPlacas'), (snap) => {
         callback(snap.exists() ? snap.val() : {});
@@ -2005,16 +2012,15 @@
             <span class="table-title">Viagens prontas para importação</span>
             <span class="badge badge-success" id="badge-prontas">0 viagens</span>
           </div>
-          <div class="chip-group" id="exportFilterChips">
-            <div class="chip" id="chipExpTodos" onclick="filterExport('todos',this)">Todos</div>
-            <div class="chip active" id="chipExpAguardando" onclick="filterExport('aguardando',this)" title="Ainda não encontrada no monitoramento da Herrlog — exportada ou não">Aguardando criação na Herrlog</div>
-            <div class="chip" id="chipExpConfirmado" onclick="filterExport('confirmado',this)" title="Confirmado pelo monitoramento Herrlog (extracao_herrlog.py)">Confirmado</div>
-          </div>
         </div>
         <div class="scrollable">
           <table>
             <thead>
               <tr>
+                <th class="col-checkbox" style="width:36px;padding:10px 8px;text-align:center">
+                  <input type="checkbox" id="chk-all-export" onclick="toggleSelectAllExport(this.checked)"
+                    style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
+                </th>
                 <th>ID Viagem</th>
                 <th>Placa</th>
                 <th>Cadastro Placa</th>
@@ -3926,7 +3932,11 @@ let activeDiasCarregamento = new Set(); // offsets D0..D+4 selecionados (vazio =
 let activeIndicador = null;
 let sortColuna = null;
 let sortDir = 'asc';
-let activeFilterExport = 'aguardando';
+// idViagem explicitamente desmarcados na aba Exportar — por padrão tudo que
+// aparece na tabela (viagens ainda não confirmadas na Herrlog) é exportado;
+// desmarcar uma linha aqui retira ela do próximo clique em "Exportar Herrlog"
+// sem mudar o status/monitoramento da viagem.
+let idsExcluidosExport = new Set();
 let activeTab = 0;
 let editingIdx = null;
 let autosaveTimer = null;
@@ -7290,33 +7300,51 @@ function updatePipeline(list) {
 }
 
 // ── EXPORT ──
-function filterExport(f, el) {
-  activeFilterExport = f;
-  document.querySelectorAll('#exportFilterChips .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
+// Elegíveis (placa confirmada) + o subconjunto ainda não confirmado no
+// monitoramento Herrlog — usado tanto pelo render quanto pela seleção "marcar
+// todos" e pela exportação de fato, pra não duplicar o filtro em três lugares.
+function calcularFiltradasExport() {
+  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const filtradas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
+  return { elegiveis, filtradas };
+}
+
+function toggleSelecaoExport(idViagem, checked) {
+  if (checked) idsExcluidosExport.delete(idViagem);
+  else idsExcluidosExport.add(idViagem);
+  renderExport();
+}
+
+function toggleSelectAllExport(checked) {
+  const { filtradas } = calcularFiltradasExport();
+  filtradas.forEach(v => checked ? idsExcluidosExport.delete(v.idViagem) : idsExcluidosExport.add(v.idViagem));
   renderExport();
 }
 
 function renderExport() {
-  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const { elegiveis, filtradas } = calcularFiltradasExport();
   const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  const aguardando  = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // não confirmado na Herrlog (exportado ou não)
-  const confirmadas = elegiveis.filter(v => !!monitoramentoHerrlog[v.idViagem]);
-  const filtradas = activeFilterExport === 'aguardando' ? aguardando
-    : activeFilterExport === 'confirmado' ? confirmadas
-    : elegiveis;
+  const selecionadas = filtradas.filter(v => !idsExcluidosExport.has(v.idViagem));
 
   document.getElementById('badge-prontas').textContent = filtradas.length + ' viagem' + (filtradas.length !== 1 ? 's' : '');
 
-  // Botão sempre habilitado quando há viagens elegíveis — reexportar não tem custo.
-  // O contador reflete exatamente o que será exportado (respeita o filtro ativo).
+  // Botão habilitado só quando há viagens SELECIONADAS (não apenas elegíveis) —
+  // o contador reflete exatamente o que será exportado (filtro + seleção).
   const btnExportar = document.getElementById('btnExportarHerrlog');
-  btnExportar.textContent = `⬇ Exportar Herrlog${filtradas.length ? ` (${filtradas.length})` : ''}`;
-  btnExportar.disabled = filtradas.length === 0;
+  btnExportar.textContent = `⬇ Exportar Herrlog${selecionadas.length ? ` (${selecionadas.length})` : ''}`;
+  btnExportar.disabled = selecionadas.length === 0;
+
+  const chkAll = document.getElementById('chk-all-export');
+  if (chkAll) {
+    const todasSelecionadas = filtradas.length > 0 && filtradas.every(v => !idsExcluidosExport.has(v.idViagem));
+    const algumaSelecionada = filtradas.some(v => !idsExcluidosExport.has(v.idViagem));
+    chkAll.checked = todasSelecionadas;
+    chkAll.indeterminate = algumaSelecionada && !todasSelecionadas;
+  }
 
   const tbody = document.getElementById('exportBody');
   tbody.innerHTML = filtradas.map(v => {
@@ -7325,6 +7353,11 @@ function renderExport() {
     const baseDestino = buscarBaseDaViagem(v);
     return `
       <tr>
+        <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
+          <input type="checkbox" ${idsExcluidosExport.has(v.idViagem) ? '' : 'checked'}
+            onchange="toggleSelecaoExport('${v.idViagem}', this.checked)"
+            style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
+        </td>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
         <td>${renderCadastroPlaca(v.placa)}</td>
@@ -7741,12 +7774,10 @@ function paraSerialExcel(date) {
 function exportarHerrlog() {
   // Sem restrição por herrlogExportadoEm — reexportar quantas vezes precisar não é
   // problema; o filtro "Aguardando criação na Herrlog" já indica o que falta confirmar.
-  // Exporta exatamente o que está sendo exibido pelo filtro ativo (Todos/Aguardando/Confirmado).
-  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
-  const prontas = activeFilterExport === 'aguardando' ? elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem])
-    : activeFilterExport === 'confirmado' ? elegiveis.filter(v => !!monitoramentoHerrlog[v.idViagem])
-    : elegiveis;
-  if (!prontas.length) return alert('Nenhuma viagem com placa confirmada para exportar (considerando o filtro atual).');
+  // Exporta exatamente o que está marcado na tabela (filtro ativo + checkbox de cada linha).
+  const { filtradas } = calcularFiltradasExport();
+  const prontas = filtradas.filter(v => !idsExcluidosExport.has(v.idViagem));
+  if (!prontas.length) return alert('Nenhuma viagem selecionada para exportar (considerando o filtro e a seleção atuais).');
 
   const provisorias = prontas.filter(v => v.pedidoProvisorio);
   if (provisorias.length) {
@@ -8553,11 +8584,48 @@ function configurarListenerMonitoramentoHerrlog() {
   if (window._fbUnsubMonitoramento) { window._fbUnsubMonitoramento(); window._fbUnsubMonitoramento = null; }
   window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog((dados) => {
     monitoramentoHerrlog = dados || {};
+    processarViagensCanceladasNaHerrlog();
     sincronizarStatusHerrlog();
     if (activeTab === 1) renderViagensTable();
     if (activeTab === 2) renderExport();
     if (activeTab === 3) renderMonitoramento();
   });
+}
+
+// O monitoramento_tempo_real_herrlog.py marca statusHerrlog="Cancelado" (em vez de
+// remover a entrada) quando detecta, no datalake, que a viagem foi cancelada na
+// Herrlog. Reagimos ao VALOR atual (não a uma transição vista ao vivo) de propósito:
+// um cliente que abre o portal só depois do cancelamento também precisa detectar e
+// corrigir isso — se dependêssemos de comparar com o estado anterior em memória, um
+// cliente que nunca viu a viagem "antes" (página recém-aberta) nunca saberia que ela
+// estava sendo monitorada, e o status ficaria preso em Em Andamento/Viagem Finalizada
+// para sempre.
+function processarViagensCanceladasNaHerrlog() {
+  const idsCancelados = Object.keys(monitoramentoHerrlog).filter(id => monitoramentoHerrlog[id]?.statusHerrlog === 'Cancelado');
+  if (!idsCancelados.length) return;
+
+  // "Placa Enviada"/"Frota Dedicada" já são elegíveis pra reexportação sozinhos
+  // (ver renderExport) — só "Em Andamento"/"Viagem Finalizada" (promovidos por
+  // sincronizarStatusHerrlog) precisam voltar pra "Placa Enviada" aqui.
+  let alterou = false;
+  viagens.forEach(v => {
+    if (!idsCancelados.includes(v.idViagem)) return;
+    if (['Em Andamento', 'Viagem Finalizada'].includes(v.status)) {
+      v.status = 'Placa Enviada';
+      registrarHistoricoOferta(v, 'Placa Enviada', 'Herrlog (automático)', 'Cancelada na Herrlog — removida do monitoramento');
+      alterou = true;
+    }
+  });
+
+  idsCancelados.forEach(id => {
+    delete monitoramentoHerrlog[id];
+    window._fb.removerMonitoramentoHerrlog(id).catch(e => console.error('Erro ao limpar monitoramento Herrlog cancelado:', e));
+  });
+
+  if (alterou) {
+    updatePipeline();
+    agendarAutosave();
+  }
 }
 
 // Cadastro de placas na Herrlog (node `cadastroHerrlogPlacas`, alimentado pelo
