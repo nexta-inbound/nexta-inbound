@@ -7092,7 +7092,8 @@ function gerarOrdemRetirada(idx) {
   const cidadeDest    = baseDestino?.cidadeCnpj || (v.destino ? v.destino.split(' - ')[0].trim() : '—');
 
   const localCarreg  = [v.origem, v.base].filter(Boolean).join(' - ') || '—';
-  const dtCarreg     = (v.dtCarreg && v.dtCarreg !== '-') ? v.dtCarreg : '—';
+  const dtCarregValor = v.dtCarregProg || v.dtCarreg;
+  const dtCarreg     = (dtCarregValor && dtCarregValor !== '-') ? dtCarregValor : '—';
   const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   const html = `<!DOCTYPE html>
@@ -7213,7 +7214,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
   </div>
   <div class="r">
     <div class="c lbl br w170">ENTREGA :</div>
-    <div class="c val ctr f1">${e(v.dtDesc || '—')}</div>
+    <div class="c val ctr f1">${e(v.dtDescProg || v.dtDesc || '—')}</div>
   </div>
 
   <div class="r"><div class="sec-lbl">OBSERVAÇÕES</div></div>
