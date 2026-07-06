@@ -461,13 +461,18 @@
   select.sel-agend.sel-agend-agendado { color: var(--success); border-color: rgba(54,209,107,0.4); background: var(--success-dim); }
 
   /* ── UTILIZAÇÃO SEMANAL (Veículos Dedicados) ── */
+  .vd-week-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+  .vd-week-btn { padding: 2px 7px; font-size: 9.5px; }
   .vd-week { display: flex; gap: 3px; flex-wrap: wrap; max-width: 260px; }
   .vd-day {
     width: 30px; padding: 3px 0; border-radius: 4px; text-align: center;
     font-size: 9px; line-height: 1.3; border: 1px solid var(--border); color: var(--text-muted);
+    cursor: pointer; transition: transform 0.1s;
   }
+  .vd-day:hover { transform: translateY(-1px); border-color: var(--accent); }
   .vd-day-num { font-size: 11px; font-weight: 700; display: block; }
   .vd-day.busy { background: rgba(20,184,166,0.14); border-color: var(--pet-teal); color: var(--pet-teal); }
+  .vd-day.indisp { background: rgba(255,107,95,0.16); border-color: var(--danger); color: var(--danger); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -2355,6 +2360,33 @@
   </div>
 
   <div id="veiculosContent" style="display:none">
+    <div class="stats-row" style="grid-template-columns:repeat(5, 1fr)" id="kpi-veiculos">
+      <div class="stat-card c-muted clickable" id="kpi-veic-total" onclick="limparFiltroIndicadorVeiculo()" title="Clique para limpar o filtro e ver todos os veículos">
+        <div class="stat-label">🚛 Total de Veículos</div>
+        <div class="stat-val" id="sv-veic-total">0</div>
+        <div class="stat-sub" id="sub-veic-total">cadastrados</div>
+      </div>
+      <div class="stat-card c-success clickable" id="kpi-veic-livres" onclick="filtrarPorIndicadorVeiculo('livres')" title="Clique para filtrar os veículos livres hoje">
+        <div class="stat-label">🟢 Livres Hoje</div>
+        <div class="stat-val" id="sv-veic-livres">0</div>
+        <div class="stat-sub">sem viagem nem indisponibilidade hoje</div>
+      </div>
+      <div class="stat-card c-accent clickable" id="kpi-veic-alocados" onclick="filtrarPorIndicadorVeiculo('alocados')" title="Clique para filtrar os veículos alocados hoje">
+        <div class="stat-label">🔵 Alocados Hoje</div>
+        <div class="stat-val" id="sv-veic-alocados">0</div>
+        <div class="stat-sub">com viagem em carregamento/trânsito hoje</div>
+      </div>
+      <div class="stat-card c-danger clickable" id="kpi-veic-indisp" onclick="filtrarPorIndicadorVeiculo('indisponiveis')" title="Clique para filtrar os veículos com indisponibilidade marcada na semana exibida">
+        <div class="stat-label">🔴 Indisponíveis (semana)</div>
+        <div class="stat-val" id="sv-veic-indisp">0</div>
+        <div class="stat-sub" id="sub-veic-indisp">com ao menos 1 dia marcado indisponível</div>
+      </div>
+      <div class="stat-card c-accent clickable" id="kpi-veic-taxa" onclick="filtrarPorIndicadorVeiculo('utilizados')" title="Clique para filtrar os veículos utilizados em ao menos 1 dia da semana exibida">
+        <div class="stat-label">📈 % Alocação (semana)</div>
+        <div class="stat-val" id="sv-veic-taxa">0%</div>
+        <div class="stat-sub">dias ocupados / dias-veículo na semana</div>
+      </div>
+    </div>
     <div class="table-wrap">
       <div class="table-toolbar">
         <div style="display:flex;align-items:center;gap:10px">
@@ -2843,6 +2875,23 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="fecharModalVeiculo()">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarVeiculo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Indisponibilidade de Veículo Dedicado -->
+<div class="modal-overlay" id="modalIndisponibilidade">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">Indisponibilidade do Veículo</div>
+    <div class="modal-sub" id="indisp-sub">—</div>
+    <div class="modal-field">
+      <div class="modal-label">Motivo (opcional)</div>
+      <input type="text" class="config-input" id="indisp-motivo" placeholder="Ex.: manutenção, quebra, sem motorista...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalIndisponibilidade()">Cancelar</button>
+      <button class="btn btn-danger" id="btnRemoverIndisp" style="display:none" onclick="removerIndisponibilidade()">Remover marcação</button>
+      <button class="btn btn-primary" onclick="confirmarIndisponibilidade()">Marcar Indisponível</button>
     </div>
   </div>
 </div>
@@ -4010,6 +4059,7 @@ let activeFilter = new Set(); // status selecionados (vazio = "Todos")
 let activeAgendamento = new Set(); // status de agendamento selecionados (vazio = "Todos")
 let activeDiasCarregamento = new Set(); // offsets D0..D+4 selecionados (vazio = sem filtro)
 let activeIndicador = null;
+let activeIndicadorVeiculo = null; // indicador ativo nos KPIs da aba Veículos Dedicados
 let sortColuna = null;
 let sortDir = 'asc';
 // idViagem explicitamente desmarcados na aba Exportar — por padrão tudo que
@@ -6064,22 +6114,106 @@ function viagensDoVeiculoNoDia(veiculoId, dia) {
 
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+// Indisponibilidade e' informada manualmente pela equipe interna (ex.: veículo
+// quebrado, sem motorista) — separada de "ocupado" (que vem automático da
+// alocação em viagens). Guardada em vd.indisponibilidades, chaveada por dia ISO.
+function indisponibilidadeNoDia(veiculoId, dia) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  const iso = dia.toISOString().slice(0, 10);
+  return vd?.indisponibilidades?.[iso] || null;
+}
+
+// Usado por salvarViagem() pra bloquear a alocação de um veículo marcado
+// indisponível em algum dia do intervalo de carregamento/descarregamento da viagem.
+function diasIndisponiveisNoIntervalo(veiculoId, ini, fim) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd?.indisponibilidades) return [];
+  const conflitos = [];
+  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    if (vd.indisponibilidades[iso]) conflitos.push({ data: iso, ...vd.indisponibilidades[iso] });
+  }
+  return conflitos;
+}
+
 function renderUtilizacaoSemanal(veiculoId) {
   const dias = diasDaSemanaAtiva();
   if (!dias.length) return '<span style="color:var(--text-muted);font-size:11px">Sem semana ativa</span>';
-  return `<div class="vd-week">${dias.map(d => {
+  const dias_html = dias.map(d => {
     const viagensNoDia = viagensDoVeiculoNoDia(veiculoId, d);
     const ocupado = viagensNoDia.length > 0;
-    const titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre';
-    return `<div class="vd-day ${ocupado ? 'busy' : ''}" title="${esc(titulo)}">
+    const indisp = indisponibilidadeNoDia(veiculoId, d);
+    const iso = d.toISOString().slice(0, 10);
+    let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar indisponibilidade';
+    if (indisp) titulo = `⚠ Indisponível${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
+    return `<div class="vd-day ${indisp ? 'indisp' : (ocupado ? 'busy' : '')}" title="${esc(titulo)}"
+        onclick="abrirModalIndisponibilidade('${veiculoId}', '${iso}')">
         <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${DIAS_SEMANA_ABREV[d.getDay()]}
       </div>`;
-  }).join('')}</div>`;
+  }).join('');
+  return `<div class="vd-week-wrap">
+      <button class="btn btn-secondary btn-sm vd-week-btn" onclick="abrirModalIndisponibilidadeSemana('${veiculoId}')"
+        title="Marcar todos os ${dias.length} dias exibidos como indisponíveis para este veículo">🚫 Semana toda</button>
+      <div class="vd-week">${dias_html}</div>
+    </div>`;
+}
+
+// KPIs sempre calculados sobre a busca (texto), ignorando o próprio filtro de
+// indicador — assim, ao clicar num card, os demais cards continuam mostrando o
+// total real em vez de "congelar" em 0 (mesma lógica de updateKPIs p/ viagens).
+function atualizarKPIsVeiculos(lista) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const dias = diasDaSemanaAtiva();
+
+  const livres      = lista.filter(vd => viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje));
+  const alocados    = lista.filter(vd => viagensDoVeiculoNoDia(vd.id, hoje).length > 0);
+  const indisponiveis = lista.filter(vd => dias.some(d => indisponibilidadeNoDia(vd.id, d)));
+
+  const totalDiasVeiculo  = lista.length * dias.length;
+  const diasOcupadosTotal = lista.reduce((soma, vd) => soma + dias.filter(d => viagensDoVeiculoNoDia(vd.id, d).length > 0).length, 0);
+  const taxaAlocacao = totalDiasVeiculo ? Math.round((diasOcupadosTotal / totalDiasVeiculo) * 100) : 0;
+
+  document.getElementById('sv-veic-total').textContent    = lista.length;
+  document.getElementById('sv-veic-livres').textContent   = livres.length;
+  document.getElementById('sv-veic-alocados').textContent = alocados.length;
+  document.getElementById('sv-veic-indisp').textContent   = indisponiveis.length;
+  document.getElementById('sv-veic-taxa').textContent     = taxaAlocacao + '%';
+  document.getElementById('sub-veic-indisp').textContent = dias.length
+    ? `com ao menos 1 dia indisponível de ${dias.length} exibidos`
+    : 'sem semana ativa';
+
+  const indicadorIds = { livres: 'kpi-veic-livres', alocados: 'kpi-veic-alocados', indisponiveis: 'kpi-veic-indisp', utilizados: 'kpi-veic-taxa' };
+  Object.values(indicadorIds).forEach(id => document.getElementById(id)?.classList.remove('indicador-ativo'));
+  if (activeIndicadorVeiculo) document.getElementById(indicadorIds[activeIndicadorVeiculo])?.classList.add('indicador-ativo');
+}
+
+// Replica, como predicado por veículo, a mesma lógica de cada card (ver
+// atualizarKPIsVeiculos) — clicar no card filtra a tabela exatamente pelo que ele exibe.
+function testeIndicadorVeiculo(key, vd) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const dias = diasDaSemanaAtiva();
+  switch (key) {
+    case 'livres':        return viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje);
+    case 'alocados':      return viagensDoVeiculoNoDia(vd.id, hoje).length > 0;
+    case 'indisponiveis': return dias.some(d => indisponibilidadeNoDia(vd.id, d));
+    case 'utilizados':    return dias.some(d => viagensDoVeiculoNoDia(vd.id, d).length > 0);
+    default: return true;
+  }
+}
+
+function filtrarPorIndicadorVeiculo(key) {
+  activeIndicadorVeiculo = activeIndicadorVeiculo === key ? null : key;
+  renderVeiculosTable();
+}
+
+function limparFiltroIndicadorVeiculo() {
+  activeIndicadorVeiculo = null;
+  renderVeiculosTable();
 }
 
 function renderVeiculosTable() {
   const busca = (document.getElementById('fVeiculosBusca')?.value || '').toLowerCase().trim();
-  const filtered = veiculosDedicados.filter(vd =>
+  const buscaFiltrados = veiculosDedicados.filter(vd =>
     !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
       .join(' ').toLowerCase().includes(busca)
   );
@@ -6088,6 +6222,12 @@ function renderVeiculosTable() {
   document.getElementById('veiculosEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('veiculosContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
+
+  atualizarKPIsVeiculos(buscaFiltrados);
+
+  const filtered = activeIndicadorVeiculo
+    ? buscaFiltrados.filter(vd => testeIndicadorVeiculo(activeIndicadorVeiculo, vd))
+    : buscaFiltrados;
 
   document.getElementById('badge-veiculos').textContent =
     filtered.length < veiculosDedicados.length
@@ -6152,6 +6292,7 @@ async function salvarVeiculo() {
 
   const isNovo = editingVeiculoIdx === null || editingVeiculoIdx === undefined;
   const registro = {
+    ...(isNovo ? {} : veiculosDedicados[editingVeiculoIdx]),
     id: isNovo ? gerarIdVeiculoDedicado() : veiculosDedicados[editingVeiculoIdx].id,
     transportador,
     placaCavalo,
@@ -6176,9 +6317,85 @@ async function removerVeiculo(idx) {
   await persistirVeiculosDedicados();
 }
 
+// ── INDISPONIBILIDADE DO VEÍCULO DEDICADO ──
+let _indispAlvo = null; // { veiculoId, dias: [iso, ...] }
+
+// Clique num dia individual do calendário — abre o modal só para aquele dia.
+function abrirModalIndisponibilidade(veiculoId, dia) {
+  if (isTransportador()) return;
+  abrirModalIndisponibilidadeDias(veiculoId, [dia]);
+}
+
+// Botão "🚫 Semana toda" — aplica de uma vez a todos os dias exibidos no
+// calendário daquele veículo, em vez de clicar dia a dia.
+function abrirModalIndisponibilidadeSemana(veiculoId) {
+  if (isTransportador()) return;
+  const dias = diasDaSemanaAtiva().map(d => d.toISOString().slice(0, 10));
+  if (!dias.length) return;
+  abrirModalIndisponibilidadeDias(veiculoId, dias);
+}
+
+function abrirModalIndisponibilidadeDias(veiculoId, dias) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd || !dias.length) return;
+  _indispAlvo = { veiculoId, dias };
+  const unico = dias.length === 1;
+  const existente = unico ? (vd.indisponibilidades?.[dias[0]] || null) : null;
+  const fmtCurta = iso => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const dataFmt = unico
+    ? new Date(dias[0] + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })
+    : `${dias.length} dias exibidos (${fmtCurta(dias[0])} a ${fmtCurta(dias[dias.length - 1])})`;
+  const algumJaMarcado = dias.some(iso => vd.indisponibilidades?.[iso]);
+  document.getElementById('indisp-sub').textContent = `${vd.placaCavalo} · ${vd.transportador} — ${dataFmt}`;
+  document.getElementById('indisp-motivo').value = existente?.motivo || '';
+  document.getElementById('btnRemoverIndisp').style.display = algumJaMarcado ? '' : 'none';
+  document.getElementById('modalIndisponibilidade').classList.add('open');
+  setTimeout(() => document.getElementById('indisp-motivo').focus(), 100);
+}
+
+function fecharModalIndisponibilidade() {
+  document.getElementById('modalIndisponibilidade').classList.remove('open');
+  _indispAlvo = null;
+}
+
+async function confirmarIndisponibilidade() {
+  if (!_indispAlvo) return;
+  const { veiculoId, dias } = _indispAlvo;
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd) return;
+
+  const diasComViagem = dias.filter(iso => viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00')).length > 0);
+  if (diasComViagem.length) {
+    const lista = diasComViagem.map(iso => {
+      const vs = viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00'));
+      return `${new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')}: ${vs.map(v => `${v.idViagem} · ${v.destino}`).join(', ')}`;
+    }).join('\n');
+    if (!confirm(`${diasComViagem.length} dia(s) já têm viagem(ns) alocada(s) a este veículo:\n\n${lista}\n\nMarcar como indisponível mesmo assim? (isso não cancela as viagens já alocadas — só bloqueia novas alocações nesses dias)`)) return;
+  }
+
+  const motivo = document.getElementById('indisp-motivo').value.trim();
+  if (!vd.indisponibilidades) vd.indisponibilidades = {};
+  const registroBase = { motivo, usuario: _authUsuarioAtual?.nome || '', criadoEm: new Date().toISOString() };
+  dias.forEach(iso => { vd.indisponibilidades[iso] = { ...registroBase }; });
+  fecharModalIndisponibilidade();
+  renderVeiculosTable();
+  await persistirVeiculosDedicados();
+}
+
+async function removerIndisponibilidade() {
+  if (!_indispAlvo) return;
+  const { veiculoId, dias } = _indispAlvo;
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (vd?.indisponibilidades) dias.forEach(iso => delete vd.indisponibilidades[iso]);
+  fecharModalIndisponibilidade();
+  renderVeiculosTable();
+  await persistirVeiculosDedicados();
+}
+
 function limparFiltrosVeiculos() {
   const el = document.getElementById('fVeiculosBusca');
   if (el) el.value = '';
+  activeIndicadorVeiculo = null;
   renderVeiculosTable();
 }
 
@@ -6448,17 +6665,23 @@ function popularSelectCnpjsTransportador(selectId, nomeApelido, valorAtual) {
   }
 }
 
-function popularSelectVeiculosDedicados(selectId, valorAtual, nomeTransportador) {
+function popularSelectVeiculosDedicados(selectId, valorAtual, nomeTransportador, viagemAtual) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   const lista = nomeTransportador
     ? veiculosDedicados.filter(vd => vd.transportador === nomeTransportador)
     : veiculosDedicados;
+  // Sinaliza (sem bloquear aqui) veículos com indisponibilidade marcada dentro da
+  // janela de carregamento/descarregamento desta viagem — o bloqueio de fato
+  // acontece em salvarViagem(), que é a validação autoritativa.
+  const ini = viagemAtual ? parseDMY(viagemAtual.dtCarregProg || viagemAtual.dtCarreg) : null;
+  const fim = ini ? (parseDMY(viagemAtual.dtDescProg || viagemAtual.dtDesc) || ini) : null;
   sel.innerHTML = `<option value="">${lista.length ? 'Selecione o veículo...' : (nomeTransportador ? 'Nenhum veículo cadastrado para este transportador' : 'Nenhum veículo cadastrado')}</option>`;
   lista.forEach(vd => {
     const opt = document.createElement('option');
     opt.value = vd.id;
-    opt.textContent = `${vd.placaCavalo} · ${vd.transportador}${vd.nomeMotorista ? ' · ' + vd.nomeMotorista : ''}`;
+    const conflitos = ini ? diasIndisponiveisNoIntervalo(vd.id, ini, fim) : [];
+    opt.textContent = `${vd.placaCavalo} · ${vd.transportador}${vd.nomeMotorista ? ' · ' + vd.nomeMotorista : ''}${conflitos.length ? ' ⚠ indisponível' : ''}`;
     sel.appendChild(opt);
   });
   sel.value = lista.some(vd => vd.id === valorAtual) ? valorAtual : '';
@@ -6469,9 +6692,10 @@ function ajustarCampoFrotaDedicada() {
   document.getElementById('campo-veiculo-dedicado').style.display = isFrota ? '' : 'none';
   document.getElementById('row-transp-status').style.gridTemplateColumns = isFrota ? '1.1fr 1.1fr 0.9fr 1.3fr' : '1.2fr 1.3fr 1fr';
   if (isFrota) {
-    const atual = editingIdx !== null ? viagensAtivo()[editingIdx]?.veiculoDedicadoId : '';
+    const viagemAtual = editingIdx !== null ? viagensAtivo()[editingIdx] : null;
+    const atual = viagemAtual?.veiculoDedicadoId || '';
     const transportadorAtual = document.getElementById('m-transportador').value;
-    popularSelectVeiculosDedicados('m-veiculo-dedicado', atual, transportadorAtual);
+    popularSelectVeiculosDedicados('m-veiculo-dedicado', atual, transportadorAtual, viagemAtual);
   }
   ['m-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-nomeMotorista', 'm-cpfMotorista'].forEach(id => {
     document.getElementById(id).readOnly = isFrota;
@@ -6480,7 +6704,8 @@ function ajustarCampoFrotaDedicada() {
 
 function atualizarVeiculosDedicadosDoTransportador(nomeTransportador) {
   if (document.getElementById('m-status').value !== 'Frota Dedicada') return;
-  popularSelectVeiculosDedicados('m-veiculo-dedicado', document.getElementById('m-veiculo-dedicado').value, nomeTransportador);
+  const viagemAtual = editingIdx !== null ? viagensAtivo()[editingIdx] : null;
+  popularSelectVeiculosDedicados('m-veiculo-dedicado', document.getElementById('m-veiculo-dedicado').value, nomeTransportador, viagemAtual);
 }
 
 function aplicarVeiculoDedicadoSelecionado(veiculoId) {
@@ -7114,6 +7339,17 @@ async function salvarViagem() {
   if (novoStatus === 'Frota Dedicada' && !novoVeiculoId) {
     alert('Selecione o veículo dedicado que vai atender esta viagem.');
     return;
+  }
+  if (novoStatus === 'Frota Dedicada' && novoVeiculoId) {
+    const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
+    const fim = parseDMY(v.dtDescProg || v.dtDesc) || ini;
+    const conflitos = ini ? diasIndisponiveisNoIntervalo(novoVeiculoId, ini, fim) : [];
+    if (conflitos.length) {
+      const vd = veiculosDedicados.find(x => x.id === novoVeiculoId);
+      const lista = conflitos.map(c => `${new Date(c.data + 'T00:00:00').toLocaleDateString('pt-BR')}${c.motivo ? ' — ' + c.motivo : ''}`).join('\n');
+      alert(`O veículo ${vd?.placaCavalo || ''} está marcado como indisponível em:\n\n${lista}\n\nEscolha outro veículo ou libere a marcação em "Veículos Dedicados".`);
+      return;
+    }
   }
   const novoTransportador = document.getElementById('m-transportador').value;
   const novoCnpj = document.getElementById('m-transportador-cnpj').value;
