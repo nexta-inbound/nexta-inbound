@@ -911,6 +911,7 @@
     max-width: 520px;
     max-height: 92vh;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--surface);
     border: 1px solid rgba(141,200,48,0.22);
     border-radius: 14px;
@@ -956,6 +957,7 @@
   .login-admin-user {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
     padding: 10px 12px;
@@ -1076,6 +1078,7 @@
   body.transportador-mode #chipCancelado,
   body.transportador-mode #wrapProgramadorFiltro,
   body.transportador-mode #campo-programador,
+  body.transportador-mode #btnMinhaAssinatura,
   body.transportador-mode #chipSepAgend,
   body.transportador-mode .chip-agend,
   body.transportador-mode .col-data-desejada,
@@ -1458,6 +1461,7 @@
 
     <div class="login-admin-subtitle">Usuários cadastrados no Firebase</div>
     <div class="login-admin-users" id="adminUsersList"></div>
+    <input type="file" id="adminAssinaturaInput" accept="image/png,image/jpeg" style="display:none" onchange="adminProcessarAssinatura(this.files[0])">
 
     <div id="adminResetSenhaBox" style="display:none;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px;margin-bottom:14px">
       <strong style="color:var(--accent);font-size:12px;display:block;margin-bottom:6px">🔑 Comando para definir a nova senha</strong>
@@ -1573,6 +1577,7 @@
   <div class="header-user" id="headerUser" style="display:none">
     <div class="header-user-avatar" id="headerUserAvatar">?</div>
     <span class="header-user-name" id="headerUserName">Usuário</span>
+    <button class="header-logout" id="btnMinhaAssinatura" onclick="abrirUploadAssinaturaPropria()" title="Cadastrar minha assinatura (usada na Ordem de Carregamento em PDF)">🖊️</button>
     <button class="header-logout" onclick="abrirTrocarSenhaModal()" title="Trocar senha">🔑</button>
     <button class="header-logout" id="btnAdmin" onclick="abrirAdminModal()" title="Gerenciar usuários" style="display:none">⚙</button>
     <button class="header-logout" onclick="fazerLogout()" title="Sair">✕</button>
@@ -2991,6 +2996,7 @@ async function carregarUsuariosFirebase(mostrarFeedback = false) {
       admin: !!p.admin,
       tipo: p.tipo || 'staff',
       transportadorNome: p.transportadorNome || '',
+      assinatura: p.assinatura || '',
     }));
     _usuariosAtivos = lista;
     if (mostrarFeedback && info) info.textContent = lista.length + ' usuário(s) carregado(s).';
@@ -3170,13 +3176,15 @@ function renderAdminUsuarios() {
         ? ` <span class="badge badge-accent">🚚 ${esc(u.transportadorNome)}</span>`
         : ` <span class="badge badge-danger">⚠ vínculo "${esc(u.transportadorNome)}" não encontrado</span>`;
     }
+    const assinaturaStyle = u.assinatura ? 'color:var(--success);border-color:rgba(54,209,107,0.4);background:var(--success-dim)' : '';
     return `
     <div class="login-admin-user">
-      <div>
+      <div style="min-width:0">
         <strong>${esc(u.nome || u.uid)}${badge}</strong>
         <span style="font-family:monospace;font-size:10px">UID: ${esc(u.uid)}</span>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0">
+        <button class="btn btn-secondary btn-sm" style="${assinaturaStyle}" onclick="adminAbrirUploadAssinatura('${esc(u.uid)}')" title="${u.assinatura ? 'Assinatura cadastrada — clique para substituir' : 'Cadastrar assinatura'} (usada na Ordem de Carregamento em PDF)">🖊️</button>
         <button class="btn btn-secondary btn-sm" onclick="adminPedirResetSenha('${esc(u.uid)}')" title="Gera o comando para definir uma nova senha para este usuário">🔑 Resetar senha</button>
         <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario('${esc(u.uid)}')" ${u.uid === _authUsuarioAtual?.uid ? 'disabled title="Você não pode remover o próprio usuário logado"' : ''}>Remover</button>
       </div>
@@ -3243,6 +3251,78 @@ async function adminRemoverUsuario(uid) {
   } catch (e) {
     info.textContent = 'Erro ao remover perfil: ' + e.message;
     console.error('adminRemoverUsuario:', e);
+  }
+}
+
+// ── ASSINATURA DO PROGRAMADOR (usada no rodapé da Ordem de Carregamento) ──
+let _adminUidAssinaturaAlvo = null;
+
+function adminAbrirUploadAssinatura(uid) {
+  if (!_authUsuarioAtual?.admin) return;
+  _adminUidAssinaturaAlvo = uid;
+  const input = document.getElementById('adminAssinaturaInput');
+  input.value = '';
+  input.click();
+}
+
+// Autoatendimento: qualquer usuário staff (programador) cadastra a própria
+// assinatura sem depender do admin — mesmo fluxo de upload/redimensionamento,
+// só que travado no próprio UID da sessão.
+function abrirUploadAssinaturaPropria() {
+  if (!_authUsuarioAtual || _authUsuarioAtual.tipo === 'transportador') return;
+  _adminUidAssinaturaAlvo = _authUsuarioAtual.uid;
+  const input = document.getElementById('adminAssinaturaInput');
+  input.value = '';
+  input.click();
+}
+
+// Redimensiona no navegador antes de gravar no Realtime Database: uma foto de
+// celular passa fácil de 3-4MB, o que é pesado demais pra um campo de perfil
+// carregado em toda tela admin. 260x100 é suficiente pro tamanho impresso no PDF.
+function redimensionarAssinatura(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Arquivo não é uma imagem válida.'));
+      img.onload = () => {
+        const maxW = 260, maxH = 100;
+        const escala = Math.min(maxW / img.width, maxH / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * escala));
+        canvas.height = Math.max(1, Math.round(img.height * escala));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function adminProcessarAssinatura(file) {
+  const uid = _adminUidAssinaturaAlvo;
+  const info = document.getElementById('adminInfo');
+  if (!file || !uid) return;
+  if (!window._fb?.salvarPerfil) {
+    mostrarStatus('', 'Firebase não está pronto. Tente novamente em alguns segundos.');
+    if (info) info.textContent = 'Firebase não está pronto. Tente novamente em alguns segundos.';
+    return;
+  }
+  const u = _usuariosAtivos.find(x => x.uid === uid);
+  if (!u) return;
+  try {
+    const base64 = await redimensionarAssinatura(file);
+    await window._fb.salvarPerfil(uid, { nome: u.nome, admin: u.admin, tipo: u.tipo, transportadorNome: u.transportadorNome, assinatura: base64 });
+    u.assinatura = base64;
+    renderAdminUsuarios();
+    if (info) info.textContent = `Assinatura de "${u.nome}" salva.`;
+    mostrarStatus('saved', `Assinatura de "${u.nome}" salva.`);
+  } catch (e) {
+    if (info) info.textContent = 'Erro ao salvar assinatura: ' + e.message;
+    mostrarStatus('', 'Erro ao salvar assinatura: ' + e.message);
+    console.error('adminProcessarAssinatura:', e);
   }
 }
 
@@ -6259,7 +6339,7 @@ async function salvarTransportador() {
         for (const u of perfisAfetados) {
           u.transportadorNome = nomeFantasia;
           if (window._fb?.salvarPerfil) {
-            await window._fb.salvarPerfil(u.uid, { nome: u.nome, admin: u.admin, tipo: u.tipo, transportadorNome: u.transportadorNome });
+            await window._fb.salvarPerfil(u.uid, { nome: u.nome, admin: u.admin, tipo: u.tipo, transportadorNome: u.transportadorNome, assinatura: u.assinatura || '' });
           }
         }
         if (viagensAfetadas) agendarAutosave();
@@ -7096,6 +7176,12 @@ function gerarOrdemRetirada(idx) {
   const dtCarreg     = (dtCarregValor && dtCarregValor !== '-') ? dtCarregValor : '—';
   const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
+  // Assinatura do programador alocado na viagem — cadastrada pelo admin em
+  // "Gerenciar Usuários" (upload único, reaproveitado em todas as ordens dele).
+  // Sem assinatura cadastrada, imprime a linha em branco pra assinar a caneta.
+  const progUser    = _usuariosAtivos.find(u => u.nome === v.programador);
+  const assinaturaImg = progUser?.assinatura || '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -7128,6 +7214,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 .conf-row{display:flex;border-top:1px solid #000}
 .conf-cell{flex:1;padding:8px 14px;text-align:center;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.4px}
 .conf-line{margin-bottom:4px;border-bottom:1px solid #000;height:28px}
+.visto-box{width:100%;padding:10px 10px 8px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.visto-img{max-width:220px;max-height:70px;object-fit:contain}
+.visto-linha{width:220px;height:60px;border-bottom:1px solid #000}
+.visto-nome{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;border-top:1px solid #000;padding-top:4px;width:240px;text-align:center}
 @media print{@page{size:A4;margin:8mm}body{padding:0}.doc{width:100%}}
 </style>
 </head>
@@ -7219,6 +7309,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 
   <div class="r"><div class="sec-lbl">OBSERVAÇÕES</div></div>
   <div class="r"><div class="obs-box">${e(v.obs || '')}</div></div>
+
+  <div class="r"><div class="sec-lbl">VISTO PROGRAMAÇÃO</div></div>
+  <div class="r">
+    <div class="visto-box">
+      ${assinaturaImg ? `<img class="visto-img" src="${assinaturaImg}">` : '<div class="visto-linha"></div>'}
+      <div class="visto-nome">${e(v.programador || '—')}</div>
+    </div>
+  </div>
 
 </div>
 <script>window.onload=()=>window.print();<\/script>
