@@ -3935,6 +3935,8 @@ let semanaAtiva = null;
 // ── MULTI-SEMANA (visão combinada e editável — ver ativarMultiSemana) ──
 let modoMultiSemana = false;
 let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
+let cadenciasMultiSemanaCount = 0; // soma de cadencias.length das semanas selecionadas (só contagem, não editável combinada)
+let _cadenciasCountPorSemana = new Map(); // key da semana -> cadencias.length dela (permite recalcular a soma quando um listener atualiza só uma semana)
 let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
 let _unsubsMultiSemana = new Map(); // key da semana -> função de unsubscribe do listener em tempo real dela
 
@@ -7451,9 +7453,10 @@ function updatePipeline(list) {
   list = list || viagens;
   const isFiltered = list.length < viagens.length;
 
-  // Cadências e Viagens: sempre totais globais (em modo multi-semana, cadências não
-  // são combinadas entre semanas — só viagens — por isso fica "—" em vez de um total errado)
-  document.getElementById('cnt-cadencias').textContent = modoMultiSemana ? '—' : cadencias.length;
+  // Cadências e Viagens: sempre totais globais. Em modo multi-semana, cadências somam
+  // cadenciasMultiSemanaCount (calculado em carregarViagensMultiSemana a partir das
+  // semanas selecionadas no multi-select) — não são editáveis combinadas, só contadas.
+  document.getElementById('cnt-cadencias').textContent = modoMultiSemana ? cadenciasMultiSemanaCount : cadencias.length;
   document.getElementById('cnt-viagens').textContent   = modoMultiSemana ? viagensMultiSemana.length : viagens.length;
 
   // Status: refletem a lista recebida (filtrada ou total)
@@ -8706,6 +8709,9 @@ async function carregarViagensMultiSemana(keys) {
   if (!keys.length) {
     desativarListenersMultiSemana();
     viagensMultiSemana = [];
+    _cadenciasCountPorSemana = new Map();
+    cadenciasMultiSemanaCount = 0;
+    updatePipeline(viagensAtivo());
     renderizarAbaAtual();
     return;
   }
@@ -8713,6 +8719,7 @@ async function carregarViagensMultiSemana(keys) {
   try {
     const payloads = await Promise.all(keys.map(key => window._fb.carregar(key)));
     viagensMultiSemana = [];
+    _cadenciasCountPorSemana = new Map();
     keys.forEach((key, i) => {
       const payload = payloads[i];
       // O Firebase RTDB devolve `viagens` como objeto (chaveado por idViagem) sempre que
@@ -8721,13 +8728,20 @@ async function carregarViagensMultiSemana(keys) {
       normalizarViagensArray(payload?.viagens).forEach(v => {
         viagensMultiSemana.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
       });
+      _cadenciasCountPorSemana.set(key, (payload?.cadencias || []).length);
     });
+    cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
     mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
     configurarListenersMultiSemana(keys);
   } catch (e) {
     console.error('Erro ao carregar viagens multi-semana:', e);
     mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
   }
+  // updatePipeline aqui garante os totais (Cadências/Viagens) mesmo em abas que não
+  // chamam updatePipeline sozinhas (ex.: Transportadores/Bases/Fornecedores); renderizarAbaAtual
+  // roda depois e, nas abas que filtram (Gerir Viagens/Exportar/Monitoramento), refina
+  // os contadores de status com a lista já filtrada.
+  updatePipeline(viagensAtivo());
   renderizarAbaAtual();
 }
 
@@ -8758,9 +8772,12 @@ function aplicarMudancaSemanaMultiSemana(key, payload) {
   const viagensDaSemana = normalizarViagensArray(payload?.viagens)
     .map(v => ({ ...v, _semanaOrigem: key, _semanaLabel: label }));
   viagensMultiSemana = viagensMultiSemana.filter(v => v._semanaOrigem !== key).concat(viagensDaSemana);
+  _cadenciasCountPorSemana.set(key, (payload?.cadencias || []).length);
+  cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
   // Índices de viagensMultiSemana podem ter mudado com o merge acima — fechar o modal
   // evita salvar por cima da viagem errada (mesma cautela do listener de semana única).
   if (editingIdx !== null) closeModal();
+  updatePipeline(viagensAtivo());
   renderizarAbaAtual();
   mostrarStatus('saved', '🔄 Atualizado por outro usuário');
 }
