@@ -2820,6 +2820,7 @@
     <div class="modal-sub">Selecione alguma das opções:</div>
     <div style="display:flex;flex-direction:column;gap:8px">
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Falta de Produto')">Falta de Produto</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Mudança de Origem')">Mudança de Origem</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Frota')">Sem Frota</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Necessidade no Destino')">Sem Necessidade no Destino</button>
     </div>
@@ -4790,6 +4791,8 @@ function reconciliarViagensComCadencias(grupos, cap) {
         });
         resumo.mantidas++;
       } else {
+        const criadoEm = new Date().toISOString();
+        const criadoPor = _authUsuarioAtual?.nome || '';
         novasViagens.push({
           ...baseViagem,
           dtCarregProg: g.dtCarreg,
@@ -4800,7 +4803,10 @@ function reconciliarViagensComCadencias(grupos, cap) {
           statusAgendamento: 'Não Agendado',
           transportador: '',
           placa: '',
-          obs: ''
+          obs: '',
+          criadoEm,
+          criadoPor,
+          historicoProgramacao: [{ data: criadoEm, usuario: criadoPor, evento: 'Viagem criada' }],
         });
         resumo.criadas++;
       }
