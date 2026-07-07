@@ -1070,13 +1070,9 @@
   body.transportador-mode #tabBtn7,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
-  body.transportador-mode #btnLimparSessao,
-  body.transportador-mode #sepMultiSemana,
-  body.transportador-mode #lblMultiSemana,
   body.transportador-mode #ms-semanas,
   body.transportador-mode #btnAtualizarMultiSemana,
   body.transportador-mode #bulkBar,
-  body.transportador-mode #wrapImportarRetorno,
   body.transportador-mode #fTransp,
   body.transportador-mode #chipBacklog,
   body.transportador-mode #chipCif,
@@ -1092,13 +1088,6 @@
     display: none !important;
   }
   body:not(.transportador-mode) #bulkBarTransportador {
-    display: none !important;
-  }
-
-  /* ── VISUALIZAÇÃO MULTI-SEMANA (consulta e edição combinadas) ── */
-  /* "Importar Retorno de Oferta" continua escondido: a planilha de retorno é sempre
-     de uma única semana, e essa visão mistura viagens de várias semanas na mesma tabela. */
-  body.multi-semana-mode #wrapImportarRetorno {
     display: none !important;
   }
 
@@ -1561,23 +1550,15 @@
   </div>
   <div class="header-sub">Logística Inbound — Programação Semanal</div>
   <div class="semana-selector" id="semanaSelectorWrap" style="display:none">
-    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semana:</span>
-    <select class="filter-select" id="semanaSelect" onchange="trocarSemana(this.value)" style="font-size:12px;font-weight:600;color:var(--accent);border-color:var(--accent)"></select>
-    <button class="btn-reset" id="btnNovaSemana" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
-    <span class="filter-sep" style="opacity:.4" id="sepMultiSemana">|</span>
-    <label id="lblMultiSemana" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap">
-      <input type="checkbox" id="chkMultiSemana" onchange="onToggleMultiSemana(this.checked)" style="cursor:pointer">
-      Várias semanas
-    </label>
-    <div id="ms-semanas" style="display:none"></div>
-    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora" style="display:none">🔄</button>
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semanas Selecionadas:</span>
+    <div id="ms-semanas"></div>
+    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora">🔄</button>
   </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
       <div class="save-dot"></div>
       <span id="saveText">Sem sessão salva</span>
     </div>
-    <button class="btn-reset" id="btnLimparSessao" onclick="limparSessao()" title="Apagar sessão salva e começar do zero">🗑 Limpar sessão</button>
   </div>
   <div class="header-user" id="headerUser" style="display:none">
     <div class="header-user-avatar" id="headerUserAvatar">?</div>
@@ -1698,6 +1679,12 @@
       <div class="section-title">Importar Cadência Semanal</div>
       <div class="section-sub">Faça upload do Excel exportado do sistema de abastecimento</div>
     </div>
+  </div>
+
+  <div id="semanaImportWrap" style="display:none;align-items:center;gap:8px;margin-bottom:16px">
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semana da importação:</span>
+    <select class="filter-select" id="semanaSelect" onchange="trocarSemana(this.value)" style="font-size:12px;font-weight:600;color:var(--accent);border-color:var(--accent)"></select>
+    <button class="btn-reset" id="btnNovaSemana" onclick="novaSemana()" style="border-color:var(--accent);color:var(--accent);white-space:nowrap">＋ Nova</button>
   </div>
 
   <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
@@ -1876,10 +1863,6 @@
             <div class="chip chip-agend" data-agend="Sem Grades" onclick="filterAgendamento('Sem Grades')" title="Filtro de Agendamento — clique para somar/remover">Sem Grades</div>
             <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
-        </div>
-        <div id="wrapImportarRetorno">
-          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInputRetorno').click()" title="Importa uma planilha de oferta preenchida pelo transportador (Aceita?, Placa, Motorista...)">📥 Importar Retorno de Oferta</button>
-          <input type="file" id="fileInputRetorno" accept=".xlsx,.xls,.csv" style="display:none">
         </div>
       </div>
       <div class="filter-bar">
@@ -3475,11 +3458,16 @@ class MultiSelect {
   // onOpen (opcional): roda a cada abertura do painel, antes de exibi-lo — usado pelo
   // seletor de semanas para buscar a lista atualizada (ex.: semana criada depois que o
   // modo multi-semana já estava ligado) sem precisar desmarcar/marcar o checkbox de novo.
-  constructor(containerId, placeholder, onChange, onOpen) {
+  // comTodos (opcional): mostra uma opção "Todos" no topo do painel — enquanto ativa
+  // (allMode), setOptions() mantém tudo selecionado automaticamente conforme opções novas
+  // aparecem (ex.: semana nova criada), em vez de exigir que o usuário reselecione.
+  constructor(containerId, placeholder, onChange, onOpen, comTodos = false) {
     this.el       = document.getElementById(containerId);
     this.ph       = placeholder;
     this.onChange = onChange;
     this.onOpen   = onOpen;
+    this.comTodos = comTodos;
+    this.allMode  = false;
     this.selected = new Set();
     this.options  = [];
     this._build();
@@ -3488,14 +3476,20 @@ class MultiSelect {
   setOptions(opts) {
     const inalterado = this.options.length === opts.length && this.options.every((v, i) => v === opts[i]);
     this.options = opts;
-    this.selected = new Set([...this.selected].filter(v => opts.includes(v)));
+    this.selected = this.allMode ? new Set(opts) : new Set([...this.selected].filter(v => opts.includes(v)));
     if (!inalterado) this._renderPanel();
     this._renderLabel();
   }
   getSelected() { return [...this.selected]; }
-  clear() { this.selected.clear(); this._renderPanel(); this._renderLabel(); }
+  clear() { this.allMode = false; this.selected.clear(); this._renderPanel(); this._renderLabel(); }
   _toggle(v) {
+    this.allMode = false;
     this.selected.has(v) ? this.selected.delete(v) : this.selected.add(v);
+    this._renderPanel(); this._renderLabel(); this.onChange();
+  }
+  _toggleTodos() {
+    this.allMode = !(this.options.length > 0 && this.selected.size === this.options.length);
+    this.selected = this.allMode ? new Set(this.options) : new Set();
     this._renderPanel(); this._renderLabel(); this.onChange();
   }
   _closePanel() { this._panel.style.display = 'none'; }
@@ -3534,6 +3528,8 @@ class MultiSelect {
   _renderLabel() {
     if (this.selected.size === 0) {
       this._label.textContent = this.ph; this._label.style.color = '';
+    } else if (this.comTodos && this.options.length > 0 && this.selected.size === this.options.length) {
+      this._label.textContent = 'Todos'; this._label.style.color = 'var(--accent)';
     } else {
       this._label.textContent = this.selected.size === 1 ? [...this.selected][0] : `${this.selected.size} selecionados`;
       this._label.style.color = 'var(--accent)';
@@ -3545,6 +3541,20 @@ class MultiSelect {
     if (this.options.length === 0) {
       wrap.innerHTML = '<div style="padding:12px 14px;font-size:11px;color:var(--text-muted)">Sem opções</div>';
       return;
+    }
+    if (this.comTodos) {
+      const todasMarcadas = this.selected.size === this.options.length;
+      const divTodos = document.createElement('div');
+      divTodos.style.cssText = 'padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;transition:background 0.1s;border-bottom:1px solid var(--border);margin-bottom:2px';
+      divTodos.innerHTML = `
+        <span style="width:14px;height:14px;border:1.5px solid ${todasMarcadas?'var(--accent)':'var(--border)'};border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${todasMarcadas?'var(--accent)':'transparent'}">
+          ${todasMarcadas?'<span style="color:#1A2A0D;font-size:9px;font-weight:800">✓</span>':''}
+        </span>
+        <span>Todos</span>`;
+      divTodos.addEventListener('mouseenter', () => divTodos.style.background = 'rgba(141,200,48,0.12)');
+      divTodos.addEventListener('mouseleave', () => divTodos.style.background = '');
+      divTodos.addEventListener('click', e => { e.stopPropagation(); this._toggleTodos(); });
+      wrap.appendChild(divTodos);
     }
     this.options.forEach(opt => {
       const checked = this.selected.has(opt);
@@ -3917,123 +3927,12 @@ function enviarOfertaPorEmail() {
   }
 }
 
-function processarRetornoOferta(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    try {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-      let headerIdx = -1;
-      for (let i = 0; i < rows.length; i++) {
-        if (String(rows[i][0] || '').trim() === 'ID Viagem') { headerIdx = i; break; }
-      }
-      if (headerIdx === -1) {
-        alert('Não foi possível encontrar o cabeçalho "ID Viagem" na planilha. Verifique se é o arquivo de oferta gerado pelo sistema.');
-        return;
-      }
-
-      const headers = rows[headerIdx].map(h => String(h).trim());
-      const col = nome => headers.indexOf(nome);
-      const idx = {
-        idViagem:           col('ID Viagem'),
-        transportador:      col('Transportadora'),
-        aceita:             col('Aceita? (Sim/Não)'),
-        placa:         col('Placa'),
-        placaCarreta1: col('Placa Carreta 1'),
-        placaCarreta2: col('Placa Carreta 2'),
-        nomeMotorista: col('Nome Motorista'),
-        cpfMotorista:  col('CPF Motorista'),
-      };
-
-      const campoTexto = (r, chave, upper) => {
-        if (idx[chave] < 0) return '';
-        const v = String(r[idx[chave]] || '').trim();
-        return upper ? v.toUpperCase() : v;
-      };
-
-      let atualizadas = 0;
-      const naoEncontradas = [];
-
-      for (let i = headerIdx + 1; i < rows.length; i++) {
-        const r = rows[i];
-        const idViagem = String(r[idx.idViagem] || '').trim();
-        if (!idViagem) continue;
-
-        const v = viagens.find(vv => vv.idViagem === idViagem);
-        if (!v) { naoEncontradas.push(idViagem); continue; }
-
-        const [nomeLinhaTransp, cnpjLinhaTransp] = campoTexto(r, 'transportador', false).split(/\r?\n/).map(s => s.trim());
-        let transportadorPlanilha = nomeLinhaTransp || '';
-        if (cnpjLinhaTransp) {
-          for (const t of transportadores) {
-            const entry = t.cnpjs.find(c => c.cnpj === cnpjLinhaTransp);
-            if (entry) { transportadorPlanilha = t.nomeFantasia; v.transportadorCnpj = entry.cnpj; break; }
-          }
-        }
-        if (transportadorPlanilha && transportadorPlanilha !== v.transportador) {
-          v.transportador = transportadorPlanilha;
-        }
-
-        const aceita = campoTexto(r, 'aceita', false).toLowerCase();
-
-        if (aceita.startsWith('n')) {
-          registrarHistoricoOferta(v, 'Recusado');
-          v.status = 'Recusado';
-          v.transportador = '';
-          v.placa = '';
-          v.placaCarreta1 = '';
-          v.placaCarreta2 = '';
-          v.nomeMotorista = '';
-          v.cpfMotorista = '';
-          atualizadas++;
-          continue;
-        }
-
-        const placa = campoTexto(r, 'placa', true);
-        if (placa) v.placa = placa;
-        const placaCarreta1 = campoTexto(r, 'placaCarreta1', true);
-        if (placaCarreta1) v.placaCarreta1 = placaCarreta1;
-        const placaCarreta2 = campoTexto(r, 'placaCarreta2', true);
-        if (placaCarreta2) v.placaCarreta2 = placaCarreta2;
-        const nomeMotorista = campoTexto(r, 'nomeMotorista', false);
-        if (nomeMotorista) v.nomeMotorista = nomeMotorista;
-        const cpfMotorista = campoTexto(r, 'cpfMotorista', false);
-        if (cpfMotorista) v.cpfMotorista = cpfMotorista;
-
-        if (aceita.startsWith('s')) {
-          v.status = v.placa ? 'Placa Enviada' : 'Aceito';
-          registrarHistoricoOferta(v, v.status);
-        }
-
-        atualizadas++;
-      }
-
-      updatePipeline();
-      agendarAutosave();
-      renderViagensTable();
-
-      mostrarStatus('saved', `${atualizadas} ${pluralViagem(atualizadas)} atualizada${atualizadas !== 1 ? 's' : ''} a partir da planilha`);
-      if (naoEncontradas.length) {
-        alert(`Atenção: ${naoEncontradas.length} ID(s) da planilha não foram encontrados na programação atual:\n${naoEncontradas.join(', ')}`);
-      }
-    } catch (err) {
-      alert('Erro ao ler o arquivo: ' + err.message);
-      console.error(err);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
 // ── STATE ──
 let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
 
-// ── MULTI-SEMANA (visão combinada e editável — ver onToggleMultiSemana) ──
+// ── MULTI-SEMANA (visão combinada e editável — ver ativarMultiSemana) ──
 let modoMultiSemana = false;
 let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
 let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
@@ -4204,30 +4103,6 @@ function aplicarPayload(payload) {
 function carregarSessao() {
   // Firebase async — retorna false aqui, carga real acontece em firebase-ready
   return false;
-}
-
-function limparSessao() {
-  if (!semanaAtiva) return;
-  if (!confirm('Tem certeza? Isso apagará esta semana permanentemente.')) return;
-  const executar = () => {
-    if (modoMultiSemana) desativarMultiSemana();
-    semanaAtiva = null;
-    cadencias = [];
-    viagens = [];
-    document.getElementById('previewSection').style.display = 'none';
-    document.getElementById('semanaSelectorWrap').style.display = 'none';
-    updatePipeline();
-    renderViagensTable();
-    switchTab(0);
-    mostrarStatus('', 'Semana apagada');
-    carregarListaSemanas();
-  };
-  if (window._fb) {
-    window._fb.limpar(semanaAtiva).then(executar).catch(executar);
-  } else {
-    localStorage.removeItem(STORAGE_KEY);
-    executar();
-  }
 }
 
 function agendarAutosave() {
@@ -8592,11 +8467,6 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
   processarArquivo(e.target.files[0]);
 });
 
-document.getElementById('fileInputRetorno').addEventListener('change', function(e) {
-  processarRetornoOferta(e.target.files[0]);
-  e.target.value = '';
-});
-
 const zone = document.getElementById('uploadZone');
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
 zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
@@ -8737,6 +8607,8 @@ async function carregarListaSemanas() {
   });
   const wrap = document.getElementById('semanaSelectorWrap');
   wrap.style.display = semanas.length > 0 ? 'flex' : 'none';
+  const wrapImport = document.getElementById('semanaImportWrap');
+  wrapImport.style.display = semanas.length > 0 ? 'flex' : 'none';
 }
 
 // Carrega o payload da semana adequado ao papel do usuario, uma vez (sem listener).
@@ -8802,31 +8674,24 @@ function configurarListenerSemana(key) {
 // daquela semana. Cada semana selecionada tem seu próprio listener em tempo real (ver
 // configurarListenersMultiSemana) — mudanças feitas por outra aba/usuário aparecem sem
 // precisar clicar em 🔄 (que continua existindo para forçar uma releitura completa).
-async function onToggleMultiSemana(ativo) {
-  document.getElementById('semanaSelect').style.display = ativo ? 'none' : '';
-  document.getElementById('btnNovaSemana').style.display = ativo ? 'none' : '';
-  document.getElementById('ms-semanas').style.display = ativo ? '' : 'none';
-  document.getElementById('btnAtualizarMultiSemana').style.display = ativo ? '' : 'none';
-  modoMultiSemana = ativo;
-  document.body.classList.toggle('multi-semana-mode', ativo);
-  if (!ativo) {
-    desativarListenersMultiSemana();
-    viagensMultiSemana = [];
-    renderizarAbaAtual();
-    return;
-  }
+// semanaSelect/btnNovaSemana não dependem do modo multi-semana (ver switchTab): eles
+// só aparecem na aba Importar Cadência, que sempre grava na `semanaAtiva` (single-week)
+// independente do filtro "Todos"/específicas usado em Gerir Viagens e afins.
+// Sempre ativo (uma vez que existam semanas) e sempre parte de "Todos" selecionado —
+// quem quiser uma semana específica desmarca as demais no multi-select.
+async function ativarMultiSemana() {
+  modoMultiSemana = true;
   await atualizarOpcoesMsSemanas();
-  const labelAtual = formatarKeyParaLabel(semanaAtiva);
-  msSemanas.selected = new Set(_semanaLabelParaKey.has(labelAtual) ? [labelAtual] : []);
+  msSemanas.allMode = true;
+  msSemanas.selected = new Set(_semanaLabelParaKey.keys());
   msSemanas._renderPanel();
   msSemanas._renderLabel();
   await carregarViagensMultiSemana(selecaoAtualMsSemanas());
 }
 
-// Busca a lista de semanas na hora (não só quando o checkbox é ligado) — chamada também
-// a cada abertura do painel (ver onOpen no construtor do MultiSelect), para que uma
-// semana criada depois de já estar em modo multi-semana apareça pra seleção sem precisar
-// desmarcar/marcar o checkbox de novo. setOptions já preserva a seleção atual.
+// Busca a lista de semanas na hora (não só na ativação) — chamada também a cada abertura
+// do painel (ver onOpen no construtor do MultiSelect), para que uma semana criada depois
+// já apareça pra seleção sem precisar reabrir o painel manualmente.
 async function atualizarOpcoesMsSemanas() {
   const semanas = await window._fb.listarSemanas();
   _semanaLabelParaKey = new Map(semanas.map(key => [formatarKeyParaLabel(key), key]));
@@ -8911,11 +8776,6 @@ function renderizarAbaAtual() {
   else if (activeTab === 2) renderExport();
   else if (activeTab === 3) renderMonitoramento();
   else if (activeTab === 7) renderVeiculosTable();
-}
-
-function desativarMultiSemana() {
-  document.getElementById('chkMultiSemana').checked = false;
-  onToggleMultiSemana(false);
 }
 
 // Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` —
@@ -9051,18 +8911,21 @@ function confirmarNovaSemana() {
     erro.textContent = 'Use o formato DD/MM/AAAA em ambos os campos.'; return;
   }
   const key = gerarKeySemana(ini, fim);
-  // Sai da visão multi-semana antes de criar: ela combina dados de outras semanas e, se
-  // ficasse ativa, mostraria a lista antiga em vez da semana nova (vazia) recém-criada.
-  if (modoMultiSemana) desativarMultiSemana();
   cadencias = []; viagens = []; semanaAtiva = key;
   document.getElementById('previewSection').style.display = 'none';
   updatePipeline(); renderViagensTable(); switchTab(0);
   salvarSessao(true);
   window._fb.marcarSemanaDisponivel(key);
   setTimeout(() => {
-    carregarListaSemanas().then(() => {
+    carregarListaSemanas().then(async () => {
       document.getElementById('semanaSelect').value = key;
       configurarListenerSemana(key);
+      // Modo multi-semana continua sempre ligado — só precisa puxar a lista de novo pra
+      // semana recém-criada entrar na seleção "Todos" já combinada em Gerir Viagens/afins.
+      if (modoMultiSemana) {
+        await atualizarOpcoesMsSemanas();
+        await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+      }
     });
   }, 600);
   document.getElementById('novaSemanaOverlay')?.remove();
@@ -9105,6 +8968,14 @@ await carregarUsuariosFirebase();
   if (viagens.length > 0) switchTab(1);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
+  // Padrão: abre já com todas as semanas combinadas ("Todos"), pra dar uma visão geral de
+  // cara — quem quiser uma semana específica desmarca as demais no multi-select depois.
+  // A aba Importar Cadência continua usando o seletor único (semanaAtiva) normalmente.
+  // Transportador não participa: sem permissão de leitura no node de sessões completo
+  // (ver comentário em carregarPayloadSemana) e o controle já fica oculto no CSS dele.
+  if (!isTransportador()) {
+    await ativarMultiSemana();
+  }
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
     console.error('iniciarFirebase error:', err);
@@ -9122,7 +8993,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
   msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable);
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable);
-  msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas);
+  msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas, true);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
   msCUf      = new MultiSelect('ms-cUf',      'UF Origem', renderPreview);
