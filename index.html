@@ -472,7 +472,9 @@
   .vd-day:hover { transform: translateY(-1px); border-color: var(--accent); }
   .vd-day-num { font-size: 11px; font-weight: 700; display: block; }
   .vd-day.busy { background: rgba(20,184,166,0.14); border-color: var(--pet-teal); color: var(--pet-teal); }
-  .vd-day.indisp { background: rgba(255,107,95,0.16); border-color: var(--danger); color: var(--danger); }
+  .vd-day.status-I { background: rgba(255,107,95,0.16); border-color: var(--danger); color: var(--danger); }
+  .vd-day.status-M { background: rgba(249,115,22,0.18); border-color: var(--pet-yellow); color: var(--pet-yellow); }
+  .vd-day.status-FO, .vd-day.status-RF, .vd-day.status-R { background: rgba(124,58,237,0.16); border-color: var(--pet-purple); color: var(--pet-purple); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -2864,16 +2866,27 @@
 <!-- MODAL: Indisponibilidade de Veículo Dedicado -->
 <div class="modal-overlay" id="modalIndisponibilidade">
   <div class="modal" style="width:420px">
-    <div class="modal-title">Indisponibilidade do Veículo</div>
+    <div class="modal-title">Status do Veículo no Dia</div>
     <div class="modal-sub" id="indisp-sub">—</div>
     <div class="modal-field">
-      <div class="modal-label">Motivo (opcional)</div>
-      <input type="text" class="config-input" id="indisp-motivo" placeholder="Ex.: manutenção, quebra, sem motorista...">
+      <div class="modal-label">Status</div>
+      <select class="config-input" id="indisp-status">
+        <option value="" disabled>Selecione o status...</option>
+        <option value="FO">FO - Folga</option>
+        <option value="I">I - Indisponível</option>
+        <option value="M">M - Manutenção</option>
+        <option value="RF">RF - Retorno Filial</option>
+        <option value="R">R - Retorno</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Observação (opcional)</div>
+      <input type="text" class="config-input" id="indisp-motivo" placeholder="Ex.: quebra, sem motorista...">
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="fecharModalIndisponibilidade()">Cancelar</button>
-      <button class="btn btn-danger" id="btnRemoverIndisp" style="display:none" onclick="removerIndisponibilidade()">Remover marcação</button>
-      <button class="btn btn-primary" onclick="confirmarIndisponibilidade()">Marcar Indisponível</button>
+      <button class="btn btn-danger" id="btnRemoverIndisp" style="display:none" onclick="removerIndisponibilidade()">Marcar como Disponível</button>
+      <button class="btn btn-primary" onclick="confirmarIndisponibilidade()">Salvar</button>
     </div>
   </div>
 </div>
@@ -5982,6 +5995,23 @@ function diasDaSemanaAtiva() {
   return [...diasMap.values()].sort((a, b) => a - b);
 }
 
+// Fim da ocupação: enquanto a viagem não está de fato em andamento, usa a programação
+// estática (dtDescProg/dtDesc). A partir do momento que ela entra em "Em Andamento" ou
+// "Viagem Finalizada", a Herrlog já tem uma data real (chegada ou ETA) mais confiável e
+// passa a valer sempre — inclusive pra encurtar (chegou antes) ou esticar (atrasada e
+// ainda rodando) a ocupação em relação à data programada. `ini` é o piso de segurança:
+// nunca deixa o fim ficar antes do início por causa de um ETA incoerente.
+function fimOcupacaoVeiculo(v, ini, fimProgramado) {
+  if (!['Em Andamento', 'Viagem Finalizada'].includes(v.status)) return fimProgramado;
+  const mon = monitoramentoHerrlog[v.idViagem];
+  const etaIso = mon?.chegadaReal || mon?.etaDestino;
+  if (!etaIso) return fimProgramado;
+  const etaData = new Date(etaIso);
+  if (isNaN(etaData.getTime())) return fimProgramado;
+  etaData.setHours(0, 0, 0, 0);
+  return etaData < ini ? ini : etaData;
+}
+
 function viagensDoVeiculoNoDia(veiculoId, dia) {
   const d0 = new Date(dia); d0.setHours(0, 0, 0, 0);
   return (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => {
@@ -5990,12 +6020,18 @@ function viagensDoVeiculoNoDia(veiculoId, dia) {
     if (!ini) return false;
     const fim = parseDMY(v.dtDescProg || v.dtDesc) || ini;
     const a = new Date(ini); a.setHours(0, 0, 0, 0);
-    const b = new Date(fim); b.setHours(0, 0, 0, 0);
+    const b = fimOcupacaoVeiculo(v, a, new Date(fim.getFullYear(), fim.getMonth(), fim.getDate()));
     return d0 >= a && d0 <= b;
   });
 }
 
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+// Status possíveis de indisponibilidade de um veículo dedicado num dia — "D" (Disponível)
+// não entra aqui: é o estado padrão (sem registro em vd.indisponibilidades), não algo
+// que se marca. Registros antigos (antes desse campo existir) não têm `status` — cai no
+// fallback 'I' abaixo pra continuar mostrando um código coerente.
+const STATUS_VEICULO_LABELS = { FO: 'Folga', I: 'Indisponível', M: 'Manutenção', RF: 'Retorno Filial', R: 'Retorno' };
 
 // Indisponibilidade e' informada manualmente pela equipe interna (ex.: veículo
 // quebrado, sem motorista) — separada de "ocupado" (que vem automático da
@@ -6027,11 +6063,13 @@ function renderUtilizacaoSemanal(veiculoId) {
     const ocupado = viagensNoDia.length > 0;
     const indisp = indisponibilidadeNoDia(veiculoId, d);
     const iso = d.toISOString().slice(0, 10);
-    let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar indisponibilidade';
-    if (indisp) titulo = `⚠ Indisponível${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
-    return `<div class="vd-day ${indisp ? 'indisp' : (ocupado ? 'busy' : '')}" title="${esc(titulo)}"
+    let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar um status';
+    const statusCodigo = indisp ? (indisp.status || 'I') : '';
+    const statusLabel = STATUS_VEICULO_LABELS[statusCodigo] || 'Indisponível';
+    if (indisp) titulo = `${statusCodigo} - ${statusLabel}${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
+    return `<div class="vd-day ${indisp ? 'status-' + statusCodigo : (ocupado ? 'busy' : '')}" title="${esc(titulo)}"
         onclick="abrirModalIndisponibilidade('${veiculoId}', '${iso}')">
-        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${DIAS_SEMANA_ABREV[d.getDay()]}
+        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${indisp ? esc(statusCodigo) : DIAS_SEMANA_ABREV[d.getDay()]}
       </div>`;
   }).join('');
   return `<div class="vd-week-wrap">
@@ -6230,10 +6268,11 @@ function abrirModalIndisponibilidadeDias(veiculoId, dias) {
     : `${dias.length} dias exibidos (${fmtCurta(dias[0])} a ${fmtCurta(dias[dias.length - 1])})`;
   const algumJaMarcado = dias.some(iso => vd.indisponibilidades?.[iso]);
   document.getElementById('indisp-sub').textContent = `${vd.placaCavalo} · ${vd.transportador} — ${dataFmt}`;
+  document.getElementById('indisp-status').value = existente?.status || '';
   document.getElementById('indisp-motivo').value = existente?.motivo || '';
   document.getElementById('btnRemoverIndisp').style.display = algumJaMarcado ? '' : 'none';
   document.getElementById('modalIndisponibilidade').classList.add('open');
-  setTimeout(() => document.getElementById('indisp-motivo').focus(), 100);
+  setTimeout(() => document.getElementById('indisp-status').focus(), 100);
 }
 
 function fecharModalIndisponibilidade() {
@@ -6253,12 +6292,14 @@ async function confirmarIndisponibilidade() {
       const vs = viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00'));
       return `${new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')}: ${vs.map(v => `${v.idViagem} · ${v.destino}`).join(', ')}`;
     }).join('\n');
-    if (!confirm(`${diasComViagem.length} dia(s) já têm viagem(ns) alocada(s) a este veículo:\n\n${lista}\n\nMarcar como indisponível mesmo assim? (isso não cancela as viagens já alocadas — só bloqueia novas alocações nesses dias)`)) return;
+    if (!confirm(`${diasComViagem.length} dia(s) já têm viagem(ns) alocada(s) a este veículo:\n\n${lista}\n\nMarcar mesmo assim? (isso não cancela as viagens já alocadas — só bloqueia novas alocações nesses dias)`)) return;
   }
 
+  const status = document.getElementById('indisp-status').value;
+  if (!status) { alert('Selecione um status (Folga, Indisponível, Manutenção, Retorno Filial ou Retorno).'); return; }
   const motivo = document.getElementById('indisp-motivo').value.trim();
   if (!vd.indisponibilidades) vd.indisponibilidades = {};
-  const registroBase = { motivo, usuario: _authUsuarioAtual?.nome || '', criadoEm: new Date().toISOString() };
+  const registroBase = { status, motivo, usuario: _authUsuarioAtual?.nome || '', criadoEm: new Date().toISOString() };
   dias.forEach(iso => { vd.indisponibilidades[iso] = { ...registroBase }; });
   fecharModalIndisponibilidade();
   renderVeiculosTable();
