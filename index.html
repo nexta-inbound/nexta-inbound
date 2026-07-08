@@ -7538,9 +7538,16 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
 // STATUS_SOMENTE_AUTOMATICO, que os mantém fora das opções manuais do select de status.
 const STATUS_HERRLOG_FINALIZADA = 'T5 - Viagem finalizada';
 
+// Roda sobre viagensAtivo() (não `viagens` isolado) porque, com a visão multi-semana
+// sempre ativa (ver ativarMultiSemana), `viagens` fica parado na 1ª semana carregada no
+// boot e nunca mais é o que está em tela nem o que é salvo — sincronizar só nele deixava
+// a promoção Em Andamento/Viagem Finalizada presa em memória e nunca gravada no Firebase.
+// marcarEAgendar() cuida de marcar a viagem certa (viagensAlteradasMultiSemana, por
+// _semanaOrigem) e disparar o autosave no modo certo — mesmo mecanismo de qualquer edição
+// manual da tabela.
 function sincronizarStatusHerrlog() {
   let alterou = false;
-  viagens.forEach(v => {
+  viagensAtivo().forEach(v => {
     const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
     if (!statusHerrlog) return;
     const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
@@ -7549,12 +7556,10 @@ function sincronizarStatusHerrlog() {
     if (!podeAvancar || v.status === novoStatus) return;
     v.status = novoStatus;
     registrarHistoricoOferta(v, novoStatus, 'Herrlog (automático)');
+    marcarEAgendar(v);
     alterou = true;
   });
-  if (alterou) {
-    updatePipeline();
-    agendarAutosave();
-  }
+  if (alterou) updatePipeline(viagensAtivo());
   return alterou;
 }
 
@@ -9297,6 +9302,11 @@ function configurarListenerMonitoramentoHerrlog() {
 // cliente que nunca viu a viagem "antes" (página recém-aberta) nunca saberia que ela
 // estava sendo monitorada, e o status ficaria preso em Em Andamento/Viagem Finalizada
 // para sempre.
+// Mesmo motivo de viagensAtivo()/marcarEAgendar() explicado em sincronizarStatusHerrlog():
+// iterar só `viagens` (parado na 1ª semana do boot) fazia o node monitoramentoHerrlog ser
+// removido do Firebase (idsCancelados.forEach abaixo, que roda sempre) sem que o status da
+// viagem tivesse de fato voltado pra "Placa Enviada" — ela ficava presa em "Em Andamento"
+// para sempre e, pior, sem nenhum rastro no monitoramento pra explicar o motivo.
 function processarViagensCanceladasNaHerrlog() {
   const idsCancelados = Object.keys(monitoramentoHerrlog).filter(id => monitoramentoHerrlog[id]?.statusHerrlog === 'Cancelado');
   if (!idsCancelados.length) return;
@@ -9305,11 +9315,12 @@ function processarViagensCanceladasNaHerrlog() {
   // (ver renderExport) — só "Em Andamento"/"Viagem Finalizada" (promovidos por
   // sincronizarStatusHerrlog) precisam voltar pra "Placa Enviada" aqui.
   let alterou = false;
-  viagens.forEach(v => {
+  viagensAtivo().forEach(v => {
     if (!idsCancelados.includes(v.idViagem)) return;
     if (['Em Andamento', 'Viagem Finalizada'].includes(v.status)) {
       v.status = 'Placa Enviada';
       registrarHistoricoOferta(v, 'Placa Enviada', 'Herrlog (automático)', 'Cancelada na Herrlog — removida do monitoramento');
+      marcarEAgendar(v);
       alterou = true;
     }
   });
@@ -9319,10 +9330,7 @@ function processarViagensCanceladasNaHerrlog() {
     window._fb.removerMonitoramentoHerrlog(id).catch(e => console.error('Erro ao limpar monitoramento Herrlog cancelado:', e));
   });
 
-  if (alterou) {
-    updatePipeline();
-    agendarAutosave();
-  }
+  if (alterou) updatePipeline(viagensAtivo());
 }
 
 // Cadastro de placas na Herrlog (node `cadastroHerrlogPlacas`, alimentado pelo
