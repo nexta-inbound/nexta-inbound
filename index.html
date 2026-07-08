@@ -1070,6 +1070,7 @@
   body.transportador-mode #tabBtn5,
   body.transportador-mode #tabBtn6,
   body.transportador-mode #tabBtn7,
+  body.transportador-mode #tabBtn8,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #bulkBar,
@@ -1368,6 +1369,13 @@
     },
     salvarFornecedores: async (lista) => {
       await set(ref(db, 'fornecedores'), lista);
+    },
+    carregarLeadtimes: async () => {
+      const snap = await get(ref(db, 'leadtimes'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarLeadtimes: async (lista) => {
+      await set(ref(db, 'leadtimes'), lista);
     },
     carregarVeiculosDedicados: async () => {
       const snap = await get(ref(db, 'veiculosDedicados'));
@@ -1668,6 +1676,7 @@
   <div class="tab" id="tabBtn5" onclick="switchTab(5)">⑥ Bases</div>
   <div class="tab" id="tabBtn6" onclick="switchTab(6)">⑦ Fornecedores</div>
   <div class="tab" id="tabBtn7" onclick="switchTab(7)">⑧ Veículos Dedicados</div>
+  <div class="tab" id="tabBtn8" onclick="switchTab(8)">⑨ Leadtime</div>
 </div>
 
 <div class="main">
@@ -2316,6 +2325,7 @@
               <th>UF</th>
               <th style="white-space:normal">CNPJ</th>
               <th style="white-space:normal">Cód. SAP</th>
+              <th style="white-space:normal">Carregamento (h)</th>
               <th class="col-acao" style="text-align:center">Ações</th>
             </tr>
           </thead>
@@ -2400,6 +2410,61 @@
             </tr>
           </thead>
           <tbody id="veiculosBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 9: LEADTIME ===== -->
+<div class="tab-content" id="tab-8">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Cadastro de Leadtime</div>
+      <div class="section-sub">Tempo de viagem entre origem e destino (horas), usado como referência de leadtime</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInputLeadtime').click()" title='Importa planilha .xlsx · Colunas: Origem CIDADE, Origem UF, Destino CIDADE, Destino UF, Leadtime sem T2 (horas)'>📥 Importar Planilha</button>
+      <button class="btn btn-primary" onclick="abrirModalLeadtime(null)">＋ Novo Leadtime</button>
+    </div>
+  </div>
+  <input type="file" id="fileInputLeadtime" accept=".xlsx,.xls" style="display:none">
+
+  <div id="leadtimeEmpty" class="empty-state">
+    <div class="empty-icon">⏱️</div>
+    <div class="empty-text">Nenhum leadtime cadastrado</div>
+    <div class="empty-sub">Importe a planilha acima ou clique em "+ Novo Leadtime"</div>
+  </div>
+
+  <div id="leadtimeContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Leadtime</span>
+          <span class="badge badge-accent" id="badge-leadtime">0 cadastrados</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fLeadtimeBusca"
+            placeholder="🔍  Cidade ou UF de origem/destino..."
+            oninput="renderLeadtimeTable()">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fLeadtimeBusca').value=''; renderLeadtimeTable()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table>
+          <thead>
+            <tr>
+              <th style="white-space:normal">Origem Cidade</th>
+              <th>Origem UF</th>
+              <th style="white-space:normal">Destino Cidade</th>
+              <th>Destino UF</th>
+              <th style="white-space:normal">Leadtime (h)</th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="leadtimeBody"></tbody>
         </table>
       </div>
     </div>
@@ -2789,9 +2854,58 @@
       </div>
     </div>
 
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Tempo médio de carregamento (horas)</div>
+        <input type="number" class="config-input" id="forn-tempoCarregamento" min="0" step="0.5" placeholder="4">
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="fecharModalFornecedor()">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarFornecedor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Leadtime Origem/Destino -->
+<div class="modal-overlay" id="modalLeadtime">
+  <div class="modal" style="width:480px;max-width:96vw">
+    <div class="modal-title" id="leadtime-modal-title">Novo Leadtime</div>
+    <div class="modal-sub">Tempo de viagem entre origem e destino, usado como referência de leadtime</div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Origem Cidade *</div>
+        <input type="text" class="config-input" id="lt-origemCidade" placeholder="ALTO ARAGUAIA">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Origem UF *</div>
+        <input type="text" class="config-input" id="lt-origemUf" placeholder="MT" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Destino Cidade *</div>
+        <input type="text" class="config-input" id="lt-destinoCidade" placeholder="BETIM">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Destino UF *</div>
+        <input type="text" class="config-input" id="lt-destinoUf" placeholder="MG" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Leadtime (horas) *</div>
+      <input type="number" class="config-input" id="lt-leadtimeHoras" min="0" step="0.01" placeholder="51.44">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalLeadtime()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarLeadtime()">Salvar</button>
     </div>
   </div>
 </div>
@@ -3992,6 +4106,11 @@ let editingTranspIdx = null;
 let bases = [];
 let fornecedores = [];
 let editingFornecedorIdx = null;
+// Tempo médio de carregamento assumido quando o fornecedor não tem valor próprio
+// cadastrado (fornecedores antigos, importados sem essa coluna etc.).
+const TEMPO_CARREGAMENTO_PADRAO_HORAS = 4;
+let leadtimes = []; // { origemCidade, origemUf, destinoCidade, destinoUf, leadtimeHoras }
+let editingLeadtimeIdx = null;
 let veiculosDedicados = [];
 let editingVeiculoIdx = null;
 
@@ -4181,6 +4300,7 @@ function switchTab(i) {
   if (i === 5) renderBasesTable();
   if (i === 6) renderFornecedoresTable();
   if (i === 7) renderVeiculosTable();
+  if (i === 8) renderLeadtimeTable();
 }
 
 // ── SAMPLE DATA ──
@@ -4683,7 +4803,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
       } else {
         const criadoEm = new Date().toISOString();
         const criadoPor = _authUsuarioAtual?.nome || '';
-        novasViagens.push({
+        const nova = {
           ...baseViagem,
           dtCarregProg: g.dtCarreg,
           dtDescProg: g.dtDesc,
@@ -4697,7 +4817,20 @@ function reconciliarViagensComCadencias(grupos, cap) {
           criadoEm,
           criadoPor,
           historicoProgramacao: [{ data: criadoEm, usuario: criadoPor, evento: 'Viagem criada' }],
-        });
+        };
+        // Se existir leadtime cadastrado pra rota (origem x destino), a descarga já nasce
+        // calculada a partir do carregamento em vez de copiar a data desejada da cadência.
+        // Sem leadtime cadastrado (rota ainda não padronizada/cadastrada), mantém dtDesc
+        // da cadência como sempre — recalcularDescargaPorLeadtime não altera nada nesse caso.
+        const leadtimeHoras = recalcularDescargaPorLeadtime(nova);
+        if (leadtimeHoras !== null) {
+          nova.historicoProgramacao.push({
+            data: criadoEm,
+            usuario: criadoPor,
+            evento: `Descarga calculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${nova.dtDescProg} ${nova.horaDescProg}`,
+          });
+        }
+        novasViagens.push(nova);
         resumo.criadas++;
       }
     }
@@ -5108,6 +5241,7 @@ function renderViagensTable() {
     const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
     const horaCarreg = v.horaCarregProg || '12:00';
     const horaDesc   = v.horaDescProg   || '12:00';
+    const semLeadtime = buscarLeadtimeHorasParaViagem(v) === null;
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -5149,11 +5283,10 @@ function renderViagensTable() {
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
             <span class="filter-sep" style="font-size:10px">↓</span>
-            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)"
+            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond);opacity:0.7;cursor:not-allowed"
               value="${progDesc === '-' ? '' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}" placeholder="DD/MM HH:mm" maxlength="11"
-              onblur="salvarDataProgramacaoInline(${realIdx}, 'desc', this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()"
-              ${isTransportador() ? 'disabled' : ''}>
+              disabled title="Calculado automaticamente a partir do carregamento + leadtime (Fornecedores + aba Leadtime) — não editável diretamente">
+            ${semLeadtime ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="Sem leadtime cadastrado para Origem × Destino desta viagem — a descarga não é calculada automaticamente. Cadastre a rota na aba Leadtime (casando as cidades de Fornecedores e Bases) e reedite o carregamento.">⚠</span>` : ''}
           </div>
         </td>
         <td style="max-width:86px" data-label="Vol (m³)">
@@ -5850,6 +5983,14 @@ async function carregarFornecedoresFirebase() {
   } catch (e) { console.error('Erro ao carregar fornecedores:', e); }
 }
 
+async function carregarLeadtimesFirebase() {
+  if (!window._fb?.carregarLeadtimes) return;
+  try {
+    const raw = await window._fb.carregarLeadtimes();
+    leadtimes = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+  } catch (e) { console.error('Erro ao carregar leadtimes:', e); }
+}
+
 function renderFornecedoresTable() {
   const busca = (document.getElementById('fFornecedoresBusca')?.value || '').toLowerCase().trim();
   const filtered = fornecedores.filter(f =>
@@ -5876,6 +6017,7 @@ function renderFornecedoresTable() {
       <td>${esc(f.uf)}</td>
       <td style="font-family:monospace;white-space:normal">${esc(f.cnpj)}</td>
       <td style="white-space:normal">${esc(f.codSap)}</td>
+      <td style="white-space:normal">${esc(f.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS)}</td>
       <td class="col-acao">
         <div style="display:flex;gap:4px;justify-content:center">
           <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFornecedor(${realIdx})">✏️</button>
@@ -5897,6 +6039,7 @@ function abrirModalFornecedor(idx) {
   document.getElementById('forn-uf').value = f.uf || '';
   document.getElementById('forn-cnpj').value = f.cnpj || '';
   document.getElementById('forn-codSap').value = f.codSap || '';
+  document.getElementById('forn-tempoCarregamento').value = f.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS;
   document.getElementById('modalFornecedor').classList.add('open');
   setTimeout(() => document.getElementById('forn-origem').focus(), 100);
 }
@@ -5926,10 +6069,14 @@ async function salvarFornecedor() {
     return;
   }
 
+  const tempoCarregamentoInput = parseFloat(document.getElementById('forn-tempoCarregamento').value);
   const registro = {
     origem, baseAtendimento, cidade, uf,
     cnpj:   document.getElementById('forn-cnpj').value.trim(),
     codSap: document.getElementById('forn-codSap').value.trim(),
+    tempoCarregamentoHoras: isNaN(tempoCarregamentoInput) || tempoCarregamentoInput < 0
+      ? TEMPO_CARREGAMENTO_PADRAO_HORAS
+      : tempoCarregamentoInput,
   };
 
   const isNovo = editingFornecedorIdx === null || editingFornecedorIdx === undefined;
@@ -5953,6 +6100,187 @@ async function persistirFornecedores() {
   try {
     await window._fb.salvarFornecedores(fornecedores);
   } catch (e) { console.error('Erro ao salvar fornecedores:', e); }
+}
+
+// ── CADASTRO DE LEADTIME (origem/destino) ──
+function renderLeadtimeTable() {
+  const busca = (document.getElementById('fLeadtimeBusca')?.value || '').toLowerCase().trim();
+  const filtered = leadtimes.filter(l =>
+    !busca || [l.origemCidade, l.origemUf, l.destinoCidade, l.destinoUf].join(' ').toLowerCase().includes(busca)
+  );
+
+  const isEmpty = leadtimes.length === 0;
+  document.getElementById('leadtimeEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('leadtimeContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) return;
+
+  document.getElementById('badge-leadtime').textContent =
+    filtered.length < leadtimes.length
+      ? `${filtered.length} de ${leadtimes.length} cadastrados`
+      : `${leadtimes.length} cadastrado${leadtimes.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('leadtimeBody').innerHTML = filtered.map(l => {
+    const realIdx = leadtimes.indexOf(l);
+    return `
+    <tr>
+      <td style="white-space:normal">${esc(l.origemCidade)}</td>
+      <td>${esc(l.origemUf)}</td>
+      <td style="white-space:normal">${esc(l.destinoCidade)}</td>
+      <td>${esc(l.destinoUf)}</td>
+      <td style="white-space:normal">${esc(Number(l.leadtimeHoras).toFixed(2))}</td>
+      <td class="col-acao">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalLeadtime(${realIdx})">✏️</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerLeadtime(${realIdx})">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalLeadtime(idx) {
+  editingLeadtimeIdx = idx;
+  const isNovo = idx === null || idx === undefined;
+  document.getElementById('leadtime-modal-title').textContent = isNovo ? 'Novo Leadtime' : 'Editar Leadtime';
+  const l = isNovo ? {} : leadtimes[idx];
+  document.getElementById('lt-origemCidade').value = l.origemCidade || '';
+  document.getElementById('lt-origemUf').value = l.origemUf || '';
+  document.getElementById('lt-destinoCidade').value = l.destinoCidade || '';
+  document.getElementById('lt-destinoUf').value = l.destinoUf || '';
+  document.getElementById('lt-leadtimeHoras').value = l.leadtimeHoras ?? '';
+  document.getElementById('modalLeadtime').classList.add('open');
+  setTimeout(() => document.getElementById('lt-origemCidade').focus(), 100);
+}
+
+function fecharModalLeadtime() {
+  document.getElementById('modalLeadtime').classList.remove('open');
+  editingLeadtimeIdx = null;
+}
+
+async function salvarLeadtime() {
+  const origemCidade = document.getElementById('lt-origemCidade').value.trim();
+  const origemUf = document.getElementById('lt-origemUf').value.trim();
+  const destinoCidade = document.getElementById('lt-destinoCidade').value.trim();
+  const destinoUf = document.getElementById('lt-destinoUf').value.trim();
+  const leadtimeHoras = parseFloat(document.getElementById('lt-leadtimeHoras').value);
+  if (!origemCidade || !origemUf || !destinoCidade || !destinoUf) {
+    alert('Preencha Origem Cidade/UF e Destino Cidade/UF.');
+    return;
+  }
+  if (isNaN(leadtimeHoras) || leadtimeHoras < 0) {
+    alert('Informe um leadtime (horas) válido.');
+    return;
+  }
+
+  const duplicado = leadtimes.findIndex((l, i) =>
+    i !== editingLeadtimeIdx &&
+    l.origemCidade.toLowerCase() === origemCidade.toLowerCase() &&
+    l.origemUf.toLowerCase() === origemUf.toLowerCase() &&
+    l.destinoCidade.toLowerCase() === destinoCidade.toLowerCase() &&
+    l.destinoUf.toLowerCase() === destinoUf.toLowerCase()
+  );
+  if (duplicado !== -1) {
+    alert(`Já existe um leadtime cadastrado para "${origemCidade}/${origemUf}" → "${destinoCidade}/${destinoUf}".`);
+    return;
+  }
+
+  const registro = { origemCidade, origemUf, destinoCidade, destinoUf, leadtimeHoras };
+  const isNovo = editingLeadtimeIdx === null || editingLeadtimeIdx === undefined;
+  if (isNovo) leadtimes.push(registro);
+  else leadtimes[editingLeadtimeIdx] = registro;
+  fecharModalLeadtime();
+  renderLeadtimeTable();
+  await persistirLeadtimes();
+}
+
+async function removerLeadtime(idx) {
+  const l = leadtimes[idx];
+  if (!confirm(`Remover o leadtime "${l.origemCidade}/${l.origemUf}" → "${l.destinoCidade}/${l.destinoUf}" do cadastro?`)) return;
+  leadtimes.splice(idx, 1);
+  renderLeadtimeTable();
+  await persistirLeadtimes();
+}
+
+async function persistirLeadtimes() {
+  if (!window._fb?.salvarLeadtimes) return;
+  try {
+    await window._fb.salvarLeadtimes(leadtimes);
+  } catch (e) { console.error('Erro ao salvar leadtimes:', e); }
+}
+
+// ── Upload xlsx Leadtime (layout: Origem CIDADE, Origem UF, Destino CIDADE, Destino UF, Leadtime sem T2 (horas)) ──
+function processarArquivoLeadtime(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      let headerIdx = -1;
+      for (let i = 0; i < rows.length; i++) {
+        const first = String(rows[i][0] || '').trim().toLowerCase();
+        if (first === 'origem cidade') { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        alert('Não foi possível encontrar o cabeçalho da planilha.\nVerifique se a coluna "Origem CIDADE" existe.');
+        return;
+      }
+
+      const headers = rows[headerIdx].map(h => String(h).trim().toLowerCase());
+      const col = (nome) => headers.indexOf(nome.toLowerCase());
+
+      const idxOrigemCidade = col('Origem CIDADE');
+      const idxOrigemUf     = col('Origem UF');
+      const idxDestinoCidade= col('Destino CIDADE');
+      const idxDestinoUf    = col('Destino UF');
+      const idxLeadtime     = headers.findIndex(h => h.startsWith('leadtime'));
+
+      let importados = 0, atualizados = 0;
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const origemCidade = String(r[idxOrigemCidade] || '').trim();
+        const destinoCidade = String(r[idxDestinoCidade] || '').trim();
+        if (!origemCidade || !destinoCidade) continue;
+
+        const leadtimeHoras = parseFloat(String(r[idxLeadtime] ?? '').replace(',', '.'));
+        if (isNaN(leadtimeHoras)) continue;
+
+        const registro = {
+          origemCidade,
+          origemUf:      String(r[idxOrigemUf] || '').trim().toUpperCase(),
+          destinoCidade,
+          destinoUf:     String(r[idxDestinoUf] || '').trim().toUpperCase(),
+          leadtimeHoras,
+        };
+
+        const existenteIdx = leadtimes.findIndex(l =>
+          l.origemCidade.toLowerCase() === registro.origemCidade.toLowerCase() &&
+          l.origemUf.toLowerCase() === registro.origemUf.toLowerCase() &&
+          l.destinoCidade.toLowerCase() === registro.destinoCidade.toLowerCase() &&
+          l.destinoUf.toLowerCase() === registro.destinoUf.toLowerCase()
+        );
+        if (existenteIdx >= 0) { leadtimes[existenteIdx] = registro; atualizados++; }
+        else { leadtimes.push(registro); importados++; }
+      }
+
+      if (importados === 0 && atualizados === 0) {
+        alert('Nenhuma linha de dados válida encontrada na planilha.');
+        return;
+      }
+
+      renderLeadtimeTable();
+      persistirLeadtimes();
+
+      mostrarStatus('saved', `${importados} novo(s) e ${atualizados} atualizado(s) a partir de "${file.name}"`);
+    } catch(err) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // ── CADASTRO DE VEÍCULOS DEDICADOS ──
@@ -7010,6 +7338,19 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     usuario: _authUsuarioAtual?.nome || '',
     evento: `Data de ${tipo === 'carreg' ? 'Carregamento' : 'Descarga'} ajustada: ${anterior === '-' ? '—' : anterior + ' ' + horaAnterior} → ${novo === '-' ? '—' : novo + ' ' + novaHora}`,
   });
+  // Carregamento é o gatilho: descarga passa a ser derivada dele + leadtime cadastrado
+  // (tempo de carregamento do fornecedor + leadtime origem→destino), não editada à mão.
+  // Sem leadtime cadastrado pra rota, a descarga permanece manual (nada é sobrescrito).
+  if (tipo === 'carreg' && novo !== '-') {
+    const leadtimeHoras = recalcularDescargaPorLeadtime(v);
+    if (leadtimeHoras !== null) {
+      v.historicoProgramacao.push({
+        data: new Date().toISOString(),
+        usuario: _authUsuarioAtual?.nome || '',
+        evento: `Descarga recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
+      });
+    }
+  }
   if (['Aceito', 'Placa Enviada'].includes(v.status)) {
     v.alertaProgramacao = true;
   }
@@ -8019,6 +8360,74 @@ function buscarBaseDaViagem(v) {
     || null;
 }
 
+// ── LEADTIME APLICADO À PROGRAMAÇÃO ──
+// Leadtime total = tempo médio de carregamento do fornecedor (aba Fornecedores) + leadtime
+// de viagem (aba Leadtime). O casamento com a aba Leadtime é feito por cidade/UF real
+// (Fornecedores.cidade/uf → Leadtime.origemCidade/UF, Bases.cidade/estado →
+// Leadtime.destinoCidade/UF) — não pelo nome comercial de origem/destino da cadência, que
+// pode divergir do nome da cidade (por isso a padronização de nomes é importante aqui).
+function buscarLeadtimeHorasParaViagem(v) {
+  const fornecedor = buscarFornecedorDaViagem(v);
+  const base = buscarBaseDaViagem(v);
+  if (!fornecedor || !base) return null;
+  const norm = s => String(s || '').trim().toLowerCase();
+  const registro = leadtimes.find(l =>
+    norm(l.origemCidade) === norm(fornecedor.cidade) &&
+    norm(l.origemUf) === norm(fornecedor.uf) &&
+    norm(l.destinoCidade) === norm(base.cidade) &&
+    norm(l.destinoUf) === norm(base.estado)
+  );
+  if (!registro) return null;
+  const tempoCarregamento = fornecedor.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS;
+  return tempoCarregamento + registro.leadtimeHoras;
+}
+
+// Regras de ajuste do horário de descarga calculado (todas em cascata — um empurrão pode
+// cair num dia que também precisa de ajuste, ex.: sábado 19h → domingo 8h → segunda 8h):
+//  - depois das 18h            → empurra pro dia seguinte às 8h
+//  - domingo (qualquer hora)   → segunda às 8h
+//  - sábado a partir das 12h   → segunda às 8h
+function ajustarDataHoraDescarga(dt) {
+  const d = new Date(dt);
+  if (d.getHours() >= 18) {
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+  }
+  if (d.getDay() === 0) {
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+  } else if (d.getDay() === 6 && d.getHours() >= 12) {
+    d.setDate(d.getDate() + 2);
+    d.setHours(8, 0, 0, 0);
+  }
+  return d;
+}
+
+function formatarDataHoraProg(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return { data: `${dd}/${mm}/${d.getFullYear()}`, hora: `${hh}:${mi}` };
+}
+
+// Recalcula e aplica dtDescProg/horaDescProg a partir do carregamento + leadtime. Só age
+// quando existe leadtime cadastrado pra rota (origem x destino) — sem isso, a descarga
+// continua manual (comportamento anterior), em vez de forçar um valor arbitrário.
+// Retorna as horas de leadtime aplicadas, ou null se não achou rota cadastrada.
+function recalcularDescargaPorLeadtime(v) {
+  const inicio = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg);
+  if (!inicio) return null;
+  const leadtimeHoras = buscarLeadtimeHorasParaViagem(v);
+  if (leadtimeHoras === null) return null;
+  const bruto = new Date(inicio.getTime() + leadtimeHoras * 3600000);
+  const ajustado = ajustarDataHoraDescarga(bruto);
+  const { data, hora } = formatarDataHoraProg(ajustado);
+  v.dtDescProg = data;
+  v.horaDescProg = hora;
+  return leadtimeHoras;
+}
+
 function parseDataHora(dataStr, horaStr) {
   const d = parseDMY(dataStr);
   if (!d) return null;
@@ -8608,6 +9017,11 @@ document.getElementById('fileInputFornecedores').addEventListener('change', func
   e.target.value = '';
 });
 
+document.getElementById('fileInputLeadtime').addEventListener('change', function(e) {
+  processarArquivoLeadtime(e.target.files[0]);
+  e.target.value = '';
+});
+
 document.getElementById('modalOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
@@ -8628,6 +9042,9 @@ document.getElementById('modalTrocarSenha').addEventListener('click', function(e
 });
 document.getElementById('modalFornecedor').addEventListener('click', function(e) {
   if (e.target === this) fecharModalFornecedor();
+});
+document.getElementById('modalLeadtime').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalLeadtime();
 });
 
 // ── INIT: restaurar sessão ao abrir ──
@@ -9019,6 +9436,7 @@ await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
   await carregarBasesFirebase();
   await carregarFornecedoresFirebase();
+  await carregarLeadtimesFirebase();
   await carregarVeiculosDedicadosFirebase();
   configurarListenerMonitoramentoHerrlog();
   configurarListenerCadastroHerrlogPlacas();
