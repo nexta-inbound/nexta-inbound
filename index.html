@@ -1070,8 +1070,6 @@
   body.transportador-mode #tabBtn7,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
-  body.transportador-mode #ms-semanas,
-  body.transportador-mode #btnAtualizarMultiSemana,
   body.transportador-mode #bulkBar,
   body.transportador-mode #fTransp,
   body.transportador-mode #chipBacklog,
@@ -3724,8 +3722,10 @@ async function aplicarEmLote() {
     }
     if (removerProgramador) {
       v.programador = '';
+      v.assinaturaProgramador = '';
     } else if (programador) {
       v.programador = programador;
+      v.assinaturaProgramador = _usuariosAtivos.find(u => u.nome === programador)?.assinatura || '';
     }
     if (status) v.status = status;
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
@@ -7258,6 +7258,10 @@ async function salvarViagem() {
   v.cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   v.obs            = document.getElementById('m-obs').value;
   v.programador    = document.getElementById('m-programador').value;
+  // Snapshot da assinatura na própria viagem: transportador não tem permissão de ler o
+  // node `perfis` inteiro (ver gerarOrdemRetirada), então a Ordem de Carregamento gerada
+  // por ele precisa da assinatura já embutida aqui, não buscada em _usuariosAtivos na hora.
+  v.assinaturaProgramador = _usuariosAtivos.find(u => u.nome === v.programador)?.assinatura || '';
   v.veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
   if (v.placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
@@ -7297,9 +7301,15 @@ function gerarOrdemRetirada(idx) {
 
   // Assinatura do programador alocado na viagem — cadastrada pelo admin em
   // "Gerenciar Usuários" (upload único, reaproveitado em todas as ordens dele).
-  // Sem assinatura cadastrada, imprime a linha em branco pra assinar a caneta.
-  const progUser    = _usuariosAtivos.find(u => u.nome === v.programador);
-  const assinaturaImg = progUser?.assinatura || '';
+  // v.assinaturaProgramador é o snapshot gravado na viagem quando o programador foi
+  // definido (ver salvamento do modal/bulk apply) — necessário porque transportador não
+  // tem permissão de ler o node `perfis` inteiro pra buscar em _usuariosAtivos na hora
+  // de gerar a própria Ordem de Carregamento. Viagens antigas (sem o snapshot) caem no
+  // fallback via _usuariosAtivos, que só staff tem carregado.
+  // Sem assinatura disponível, imprime a linha em branco pra assinar a caneta.
+  const assinaturaImg = v.assinaturaProgramador
+    || _usuariosAtivos.find(u => u.nome === v.programador)?.assinatura
+    || '';
 
   const html = `<!DOCTYPE html>
 <html>
@@ -8716,8 +8726,13 @@ async function carregarViagensMultiSemana(keys) {
     return;
   }
   mostrarStatus('saving', 'Carregando semanas selecionadas...');
+  const transportador = isTransportador();
   try {
-    const payloads = await Promise.all(keys.map(key => window._fb.carregar(key)));
+    // Transportador não lê o node `sessoes/<semana>` inteiro (sem permissão — ver regras
+    // do Firebase): busca só a própria fatia de viagens via query indexada, sem cadencias.
+    const payloads = await Promise.all(keys.map(key => transportador
+      ? window._fb.carregarViagensTransportador(key, nomeTransportadorLogado()).then(viagensObj => ({ viagens: viagensObj }))
+      : window._fb.carregar(key)));
     viagensMultiSemana = [];
     _cadenciasCountPorSemana = new Map();
     keys.forEach((key, i) => {
@@ -8752,12 +8767,18 @@ async function carregarViagensMultiSemana(keys) {
 // mostrava "Atualizado por outro usuário" para uma mudança que nem existiu.
 function configurarListenersMultiSemana(keys) {
   desativarListenersMultiSemana();
+  const transportador = isTransportador();
   keys.forEach(key => {
     let primeiraChamada = true;
-    const unsub = window._fb.ouvirMudancas(key, (payload) => {
-      if (primeiraChamada) { primeiraChamada = false; return; }
-      aplicarMudancaSemanaMultiSemana(key, payload);
-    });
+    const unsub = transportador
+      ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), (viagensObj) => {
+          if (primeiraChamada) { primeiraChamada = false; return; }
+          aplicarMudancaSemanaMultiSemana(key, { viagens: viagensObj });
+        })
+      : window._fb.ouvirMudancas(key, (payload) => {
+          if (primeiraChamada) { primeiraChamada = false; return; }
+          aplicarMudancaSemanaMultiSemana(key, payload);
+        });
     _unsubsMultiSemana.set(key, unsub);
   });
 }
@@ -8988,11 +9009,9 @@ await carregarUsuariosFirebase();
   // Padrão: abre já com todas as semanas combinadas ("Todos"), pra dar uma visão geral de
   // cara — quem quiser uma semana específica desmarca as demais no multi-select depois.
   // A aba Importar Cadência continua usando o seletor único (semanaAtiva) normalmente.
-  // Transportador não participa: sem permissão de leitura no node de sessões completo
-  // (ver comentário em carregarPayloadSemana) e o controle já fica oculto no CSS dele.
-  if (!isTransportador()) {
-    await ativarMultiSemana();
-  }
+  // Transportador participa também: carregarViagensMultiSemana/configurarListenersMultiSemana
+  // já usam a query restrita (carregarViagensTransportador/ouvirViagensTransportador) pra ele.
+  await ativarMultiSemana();
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
     console.error('iniciarFirebase error:', err);
