@@ -7120,10 +7120,10 @@ function ajustarModalParaTipoUsuario(v) {
 }
 
 function closeModal() {
-  if (isTransportador() && editingIdx !== null && viagens[editingIdx]?.alertaProgramacao) {
-    viagens[editingIdx].alertaProgramacao = false;
-    viagensAlteradas.add(viagens[editingIdx].idViagem);
-    agendarAutosave();
+  const vAtual = editingIdx !== null ? viagensAtivo()[editingIdx] : null;
+  if (isTransportador() && vAtual?.alertaProgramacao) {
+    vAtual.alertaProgramacao = false;
+    marcarEAgendar(vAtual);
     renderViagensTable();
   }
   document.getElementById('modalOverlay').classList.remove('open');
@@ -7150,11 +7150,12 @@ function _aplicarRecusaViagem(v) {
 function aceitarOfertaTransportador(idx) {
   const i = idx !== undefined ? idx : editingIdx;
   if (i === null || i === undefined) return;
-  _aplicarAceiteViagem(viagens[i]);
-  viagensAlteradas.add(viagens[i].idViagem);
+  const v = viagensAtivo()[i];
+  if (!v) return;
+  _aplicarAceiteViagem(v);
   if (editingIdx === i) closeModal();
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
@@ -7162,45 +7163,46 @@ function recusarOfertaTransportador(idx) {
   const i = idx !== undefined ? idx : editingIdx;
   if (i === null || i === undefined) return;
   if (!confirm('Recusar esta oferta? A viagem sairá de sua lista e voltará para o time interno reatribuir.')) return;
-  _aplicarRecusaViagem(viagens[i]);
-  viagensAlteradas.add(viagens[i].idViagem);
+  const v = viagensAtivo()[i];
+  if (!v) return;
+  _aplicarRecusaViagem(v);
   if (editingIdx === i) closeModal();
   updatePipeline();
-  agendarAutosave();
+  marcarEAgendar(v);
   renderViagensTable();
 }
 
 function aceitarOfertasSelecionadasTransportador() {
   if (!selectedViagens.size) return;
+  const fonte = viagensAtivo();
   const idxs = [...selectedViagens];
-  const elegiveis = idxs.filter(i => viagens[i]?.status === 'Ofertado');
+  const elegiveis = idxs.filter(i => fonte[i]?.status === 'Ofertado');
   if (!elegiveis.length) {
     alert('Nenhuma das viagens selecionadas está com status "Ofertado" para aceitar.');
     return;
   }
   const ignoradas = idxs.length - elegiveis.length;
-  elegiveis.forEach(i => { _aplicarAceiteViagem(viagens[i]); viagensAlteradas.add(viagens[i].idViagem); });
+  elegiveis.forEach(i => { _aplicarAceiteViagem(fonte[i]); marcarEAgendar(fonte[i]); });
   selectedViagens.clear();
   updatePipeline();
-  agendarAutosave();
   renderViagensTable();
   mostrarStatus('saved', `${elegiveis.length} oferta(s) aceita(s)${ignoradas ? ` · ${ignoradas} ignorada(s) (status diferente de Ofertado)` : ''}`);
 }
 
 function recusarOfertasSelecionadasTransportador() {
   if (!selectedViagens.size) return;
+  const fonte = viagensAtivo();
   const idxs = [...selectedViagens];
-  const elegiveis = idxs.filter(i => ['Ofertado','Aceito'].includes(viagens[i]?.status));
+  const elegiveis = idxs.filter(i => ['Ofertado','Aceito'].includes(fonte[i]?.status));
   if (!elegiveis.length) {
     alert('Nenhuma das viagens selecionadas pode ser recusada (apenas Ofertado ou Aceito).');
     return;
   }
   const ignoradas = idxs.length - elegiveis.length;
   if (!confirm(`Recusar ${elegiveis.length} oferta(s) selecionada(s)? Elas voltarão para o time interno reatribuir.${ignoradas ? `\n\n${ignoradas} viagem(ns) selecionada(s) será(ão) ignorada(s) (status não permite recusa).` : ''}`)) return;
-  elegiveis.forEach(i => { _aplicarRecusaViagem(viagens[i]); viagensAlteradas.add(viagens[i].idViagem); });
+  elegiveis.forEach(i => { _aplicarRecusaViagem(fonte[i]); marcarEAgendar(fonte[i]); });
   selectedViagens.clear();
   updatePipeline();
-  agendarAutosave();
   renderViagensTable();
   mostrarStatus('saved', `${elegiveis.length} oferta(s) recusada(s)`);
 }
