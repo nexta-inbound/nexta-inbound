@@ -7651,7 +7651,14 @@ async function salvarViagem() {
   // node `perfis` inteiro (ver gerarOrdemRetirada), então a Ordem de Carregamento gerada
   // por ele precisa da assinatura já embutida aqui, não buscada em _usuariosAtivos na hora.
   v.assinaturaProgramador = _usuariosAtivos.find(u => u.nome === v.programador)?.assinatura || '';
-  v.veiculoDedicadoId = novoStatus === 'Frota Dedicada' ? novoVeiculoId : '';
+  // Preserva o vínculo com o veículo dedicado quando o status atual é uma promoção
+  // automática (Em Andamento/Viagem Finalizada) originada de "Frota Dedicada" — senão
+  // salvar o modal sem trocar o status (ex.: só editar obs) zera veiculoDedicadoId e a
+  // viagem some do grid semanal em "Veículos Dedicados" (ver badgeFrotaDedicada).
+  const preservaVeiculoDedicado = v.veiculoDedicadoId && STATUS_SOMENTE_AUTOMATICO.includes(novoStatus);
+  v.veiculoDedicadoId = novoStatus === 'Frota Dedicada'
+    ? novoVeiculoId
+    : (preservaVeiculoDedicado ? v.veiculoDedicadoId : '');
   if (v.placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
   }
