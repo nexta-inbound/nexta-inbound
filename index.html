@@ -1189,7 +1189,7 @@
 <!-- ── FIREBASE ── -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, get, update, onValue, remove, runTransaction, query, orderByChild, equalTo }
+  import { getDatabase, ref, set, get, update, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, runTransaction, query, orderByChild, equalTo }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -1237,11 +1237,6 @@
       await remove(ref(db, 'sessoes/' + key));
       await remove(ref(db, 'semanasDisponiveis/' + key));
     },
-    ouvirMudancas: (key, callback) => {
-      return onValue(ref(db, 'sessoes/' + key), (snap) => {
-        if (snap.exists()) callback(snap.val());
-      });
-    },
     // Transportador não tem mais leitura do node `sessoes/<semana>` inteiro (ver
     // regras do Firebase) — só pode consultar a própria fatia via query indexada
     // em `transportador`, exigida pela regra `.read` daquele path.
@@ -1250,22 +1245,63 @@
       const snap = await get(q);
       return snap.exists() ? snap.val() : {};
     },
-    ouvirViagensTransportador: (key, nomeTransportador, callback) => {
+    // Listeners granulares em `viagens` (ver ouvirViagens abaixo) — por que não onValue:
+    // onValue manda o valor INTEIRO do node toda vez que qualquer coisa dentro dele muda,
+    // então um listener em `sessoes/<key>` (ou até só em `sessoes/<key>/viagens`) reenvia
+    // a semana inteira a cada edição de UM campo de UMA viagem. onChildAdded/Changed/Removed
+    // são resolvidos pelo próprio servidor por diff de valor — só descem o registro que de
+    // fato mudou, não importa se a escrita foi um update() pontual ou um set() grande no
+    // node pai. Isso é o que estava estourando a cota de download do plano gratuito.
+    ouvirViagens: (key, { onAdded, onChanged, onRemoved }) => {
+      const r = ref(db, 'sessoes/' + key + '/viagens');
+      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
+      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
+      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
+      return () => { u1(); u2(); u3(); };
+    },
+    // Mesma ideia acima, mas restrita à fatia do transportador (mesma query indexada
+    // usada em carregarViagensTransportador) — se um registro deixar de casar com o
+    // filtro (ex.: reatribuído a outro transportador), o Firebase dispara onRemoved
+    // sozinho, mesmo sem o node ter sido de fato apagado.
+    ouvirViagensTransportador: (key, nomeTransportador, { onAdded, onChanged, onRemoved }) => {
       const q = query(ref(db, 'sessoes/' + key + '/viagens'), orderByChild('transportador'), equalTo(nomeTransportador));
-      return onValue(q, (snap) => {
-        callback(snap.exists() ? snap.val() : {});
-      });
+      const u1 = onChildAdded(q, (snap) => onAdded(snap.key, snap.val()));
+      const u2 = onChildChanged(q, (snap) => onChanged(snap.key, snap.val()));
+      const u3 = onChildRemoved(q, (snap) => onRemoved(snap.key));
+      return () => { u1(); u2(); u3(); };
+    },
+    // cadencias/config em paths próprios (não em `sessoes/<key>` inteiro) — assim editar
+    // uma viagem não reaciona esses listeners, e vice-versa.
+    ouvirCadencias: (key, callback) => {
+      return onValue(ref(db, 'sessoes/' + key + '/cadencias'), (snap) => callback(normalizarViagensArray(snap.val())));
+    },
+    ouvirConfig: (key, callback) => {
+      return onValue(ref(db, 'sessoes/' + key + '/config'), (snap) => callback(snap.exists() ? snap.val() : {}));
     },
     // Grava só os registros (idViagem) alterados, via update multi-path — nunca a
     // sessão inteira: transportador não tem mais permissão de escrita em
     // `cadencias`/`config`, e não tem como conhecer o array completo pra
-    // sobrescrever sem destruir viagens de outras transportadoras.
-    salvarViagensTransportador: async (key, viagensPorId) => {
+    // sobrescrever sem destruir viagens de outras transportadoras. Staff usa a mesma
+    // função (ver salvarSessao/salvarAlteracoesMultiSemana) pelo mesmo motivo: escrever
+    // só o que mudou evita que duas pessoas editando viagens diferentes ao mesmo tempo
+    // se atropelem, e evita reescrever (e redistribuir a quem está ouvindo) a semana
+    // inteira por causa de um campo.
+    salvarViagensParciais: async (key, viagensPorId) => {
       const updates = {};
       Object.entries(viagensPorId).forEach(([id, v]) => {
         updates['sessoes/' + key + '/viagens/' + id] = v;
       });
       await update(ref(db), updates);
+    },
+    // Cadências/config mudam raramente (import de cadência, capCaminhao) — ao contrário
+    // de viagens, não vale a pena granularizar por item; grava os dois paths de uma vez,
+    // sem tocar em `viagens` (preserva o mesmo motivo do salvarViagensParciais acima).
+    salvarCadenciasEConfig: async (key, cadencias, config) => {
+      await update(ref(db), {
+        ['sessoes/' + key + '/cadencias']: cadencias,
+        ['sessoes/' + key + '/config']: config,
+        ['sessoes/' + key + '/savedAt']: new Date().toISOString(),
+      });
     },
     ouvirMonitoramentoHerrlog: (callback) => {
       return onValue(ref(db, 'monitoramentoHerrlog'), (snap) => {
@@ -4149,11 +4185,10 @@ async function salvarAlteracoesMultiSemana() {
   });
   mostrarStatus('saving', 'Salvando...');
   try {
-    // Reaproveita o update multi-path já usado para o papel transportador (ver
-    // window._fb.salvarViagensTransportador) — grava só os IDs alterados, sem tocar
-    // cadencias/config/demais viagens da semana (não temos essas outras informações
-    // em memória aqui, então uma gravação da sessão inteira as apagaria).
-    await Promise.all([...porSemana].map(([semana, porId]) => window._fb.salvarViagensTransportador(semana, porId)));
+    // update multi-path (ver window._fb.salvarViagensParciais) — grava só os IDs
+    // alterados, sem tocar cadencias/config/demais viagens da semana (não temos essas
+    // outras informações em memória aqui, então uma gravação da sessão inteira as apagaria).
+    await Promise.all([...porSemana].map(([semana, porId]) => window._fb.salvarViagensParciais(semana, porId)));
     mostrarStatusSalvo();
   } catch (e) {
     console.error('Erro ao salvar viagens (multi-semana):', e);
@@ -4166,6 +4201,12 @@ async function salvarAlteracoesMultiSemana() {
 // tabela de viagens, para que a marcação por semana não precise ser duplicada em cada uma.
 function marcarEAgendar(v) {
   if (modoMultiSemana && v?._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
+  // Fallback pro modo semana-única (hoje raro na prática — modoMultiSemana fica ligado o
+  // tempo todo pra quem já tem semana — mas cobre salvarSessao() fora do modo multi-semana,
+  // ex.: logo após confirmarNovaSemana()): mesma marcação usada pelo transportador em
+  // salvarSessao(), agora também pro staff, pra nunca reescrever a sessão inteira por uma
+  // edição pontual.
+  else if (v?.idViagem) viagensAlteradas.add(v.idViagem);
   agendarAutosave();
 }
 
@@ -4177,16 +4218,14 @@ function normalizarViagensArray(viagensRaw) {
 
 // ── PERSISTÊNCIA ──
 function salvarSessao(silencioso = false) {
-  const payload = {
-    cadencias,
-    viagens,
-    config: {
-      capCaminhao: document.getElementById('capCaminhao').value,
-    },
-    savedAt: new Date().toISOString()
-  };
   if (!window._fb) {
     // fallback localStorage enquanto Firebase não carrega
+    const payload = {
+      cadencias,
+      viagens,
+      config: { capCaminhao: document.getElementById('capCaminhao').value },
+      savedAt: new Date().toISOString()
+    };
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch(e) {}
     if (!silencioso) mostrarStatus('saved', 'Salvo localmente');
     return;
@@ -4203,7 +4242,7 @@ function salvarSessao(silencioso = false) {
     });
     if (!Object.keys(viagensPorId).length) { viagensAlteradas.clear(); return; }
     mostrarStatus('saving', 'Salvando...');
-    window._fb.salvarViagensTransportador(semanaAtiva, viagensPorId)
+    window._fb.salvarViagensParciais(semanaAtiva, viagensPorId)
       .then(() => {
         idsParaSalvar.forEach(id => viagensAlteradas.delete(id));
         mostrarStatusSalvo();
@@ -4212,11 +4251,26 @@ function salvarSessao(silencioso = false) {
     return;
   }
 
+  // Staff/admin: cadencias/config são gravadas sempre (paths pequenos, mudam pouco — ver
+  // window._fb.salvarCadenciasEConfig) e as viagens só são regravadas se de fato mudaram
+  // (viagensAlteradas, ver marcarEAgendar) — nunca mais a sessão inteira de uma vez só, que
+  // sobrescrevia edições concorrentes de outro admin em viagens diferentes e obrigava os
+  // listeners a rebaixar a semana inteira pra todo mundo a cada save (ver
+  // configurarListenerSemana/configurarListenersMultiSemana).
+  const idsParaSalvar = [...viagensAlteradas];
+  const viagensPorId = {};
+  idsParaSalvar.forEach(id => {
+    const v = viagens.find(x => x.idViagem === id);
+    if (v) viagensPorId[id] = v;
+  });
   mostrarStatus('saving', 'Salvando...');
-  window._fb.salvar(semanaAtiva, { ...payload, viagens: Object.fromEntries(viagens.map(v => [v.idViagem, v])) })
+  Promise.all([
+    window._fb.salvarCadenciasEConfig(semanaAtiva, cadencias, { capCaminhao: document.getElementById('capCaminhao').value }),
+    Object.keys(viagensPorId).length ? window._fb.salvarViagensParciais(semanaAtiva, viagensPorId) : Promise.resolve(),
+  ])
     .then(() => {
-      if (!silencioso) mostrarStatusSalvo();
-      else mostrarStatusSalvo();
+      idsParaSalvar.forEach(id => viagensAlteradas.delete(id));
+      mostrarStatusSalvo();
     })
     .catch(() => mostrarStatus('saving', 'Erro ao salvar'));
 }
@@ -7395,9 +7449,9 @@ function salvarVolumeInline(realIdx, valorInput) {
 const STATUS_SEM_CONFLITO_PLACA = ['Cancelado', 'Recusado'];
 
 function janelaViagem(v) {
-  const inicio = parseDMY(v.dtCarregProg) || parseDMY(v.dtCarreg);
+  const inicio = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg);
   if (!inicio) return null;
-  const fim = parseDMY(v.dtDescProg) || parseDMY(v.dtDesc) || inicio;
+  const fim = parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg) || inicio;
   return { inicio, fim: fim < inicio ? inicio : fim };
 }
 
@@ -8588,9 +8642,19 @@ async function salvarExportacaoPorSemana(prontas, timestamp) {
       const payload = await window._fb.carregar(semana);
       if (!payload) continue;
       const viagensArr = normalizarViagensArray(payload.viagens);
-      viagensArr.forEach(v => { if (ids.has(v.idViagem)) v.herrlogExportadoEm = timestamp; });
-      payload.viagens = Object.fromEntries(viagensArr.map(v => [v.idViagem, v]));
-      await window._fb.salvar(semana, payload);
+      // Grava só as viagens de fato marcadas (salvarViagensParciais), não a sessão
+      // inteira dessa semana — mesmo motivo do resto do autosave (ver salvarSessao):
+      // um set() da sessão inteira reescreveria por cima de qualquer edição concorrente
+      // nessa semana e forçaria os listeners de quem estiver com ela aberta a rebaixar
+      // tudo de novo.
+      const viagensPorId = {};
+      viagensArr.forEach(v => {
+        if (ids.has(v.idViagem)) {
+          v.herrlogExportadoEm = timestamp;
+          viagensPorId[v.idViagem] = v;
+        }
+      });
+      if (Object.keys(viagensPorId).length) await window._fb.salvarViagensParciais(semana, viagensPorId);
     } catch (e) {
       console.error(`Falha ao registrar exportação na semana ${semana}:`, e);
     }
@@ -9161,24 +9225,86 @@ function trocarSemana(key) {
   return carregamento;
 }
 
+// Listener em tempo real da semana ativa (viagens + cadencias + config), granular por
+// registro (ver ouvirViagens/ouvirCadencias/ouvirConfig em window._fb) em vez de reler a
+// sessão inteira a cada mudança — era essa releitura completa a cada edição de UM campo de
+// UMA viagem que estava consumindo a cota de download do Firebase (ver conversa que levou a
+// esta mudança). O resultado local (cadencias/viagens) só é realmente consumido pela aba
+// Importar Cadência e por gerarViagens() — o restante (Gerir Viagens/Exportar/Monitoramento)
+// lê de viagensMultiSemana (ver viagensAtivo/configurarListenersMultiSemana) — mas o listener
+// em si roda sempre, então precisa ser barato independente de quem está usando o quê.
 function configurarListenerSemana(key) {
   if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
-  let primeira = true;
-  const aoMudar = (payload) => {
-    if (primeira) { primeira = false; return; }
-    aplicarPayload(payload);
-    sincronizarStatusHerrlog();
-    if (editingIdx !== null) closeModal();
-    if (activeTab === 0 && cadencias.length > 0) renderPreview();
-    if (activeTab === 1) renderViagensTable();
-    if (activeTab === 2) renderExport();
-    if (activeTab === 3) renderMonitoramento();
-    updatePipeline();
-    mostrarStatus('saved', '🔄 Atualizado por outro usuário');
+
+  // IDs já presentes em `viagens` no momento de assinar (carregados por
+  // carregarPayloadSemana/trocarSemana pouco antes) — o onChildAdded do Firebase sempre
+  // reentrega o estado atual de cada filho já existente ao assinar, não só mudanças
+  // futuras. Sem essa lista, cada reentrega dessas seria tratada como "mudança de outro
+  // usuário" (toast + fechar modal indevidos logo ao trocar de semana).
+  const idsConhecidos = new Set(viagens.map(v => v.idViagem));
+
+  let refreshTimer = null;
+  let precisaToast = false;
+  function agendarRefresh(mostrarToast) {
+    if (mostrarToast) precisaToast = true;
+    clearTimeout(refreshTimer);
+    // Pequeno atraso pra agrupar uma rajada de eventos (ex.: ação em lote em várias
+    // viagens) num único refresh, em vez de um re-render por registro.
+    refreshTimer = setTimeout(() => {
+      sincronizarStatusHerrlog();
+      if (editingIdx !== null) closeModal();
+      if (activeTab === 0 && cadencias.length > 0) renderPreview();
+      if (activeTab === 1) renderViagensTable();
+      if (activeTab === 2) renderExport();
+      if (activeTab === 3) renderMonitoramento();
+      updatePipeline();
+      if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
+      precisaToast = false;
+    }, 200);
+  }
+
+  const aplicarViagemLocal = (id, dados) => {
+    const idx = viagens.findIndex(v => v.idViagem === id);
+    if (idx >= 0) viagens[idx] = dados; else viagens.push(dados);
   };
-  window._fbUnsub = isTransportador()
-    ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), (viagensObj) => aoMudar({ viagens: viagensObj, savedAt: new Date().toISOString() }))
-    : window._fb.ouvirMudancas(key, aoMudar);
+  const removerViagemLocal = (id) => {
+    const idx = viagens.findIndex(v => v.idViagem === id);
+    if (idx >= 0) viagens.splice(idx, 1);
+  };
+  const handlersViagens = {
+    onAdded: (id, dados) => {
+      const conhecida = idsConhecidos.has(id);
+      idsConhecidos.delete(id);
+      aplicarViagemLocal(id, dados);
+      agendarRefresh(!conhecida);
+    },
+    onChanged: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true); },
+    onRemoved: (id) => { removerViagemLocal(id); agendarRefresh(true); },
+  };
+  const unsubViagens = isTransportador()
+    ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), handlersViagens)
+    : window._fb.ouvirViagens(key, handlersViagens);
+
+  // cadencias/config: transportador não tem permissão de leitura nesses paths (ver regras
+  // do Firebase) — só assina pra staff/admin.
+  let unsubCad = () => {};
+  let unsubCfg = () => {};
+  if (!isTransportador()) {
+    let primeiraCad = true;
+    unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
+      cadencias = novasCadencias;
+      if (primeiraCad) { primeiraCad = false; return; }
+      agendarRefresh(true);
+    });
+    let primeiraCfg = true;
+    unsubCfg = window._fb.ouvirConfig(key, (cfg) => {
+      if (cfg && cfg.capCaminhao != null) document.getElementById('capCaminhao').value = cfg.capCaminhao;
+      if (primeiraCfg) { primeiraCfg = false; return; }
+      agendarRefresh(true);
+    });
+  }
+
+  window._fbUnsub = () => { unsubViagens(); unsubCad(); unsubCfg(); };
 }
 
 // ── VISUALIZAÇÃO MULTI-SEMANA ──
@@ -9261,47 +9387,84 @@ async function carregarViagensMultiSemana(keys) {
   renderizarAbaAtual();
 }
 
-// Um listener em tempo real por semana selecionada — cada um substitui só a fatia de
-// viagensMultiSemana daquela semana (nunca mexe nas demais). onValue já dispara uma vez
-// na hora de assinar, com o mesmo estado que acabamos de carregar em carregarViagensMultiSemana
-// (ver primeiraChamada) — sem o guard, cada seleção de semanas re-renderizava a tabela e
-// mostrava "Atualizado por outro usuário" para uma mudança que nem existiu.
+// Um listener em tempo real por semana selecionada — cada um mexe só na fatia de
+// viagensMultiSemana daquela semana (nunca nas demais). Granular por registro (mesmo
+// motivo/mecanismo de configurarListenerSemana, ver comentário lá): com "Todos" selecionado
+// por padrão, isso significa um listener full-node por semana existente pra CADA admin
+// conectado — era a maior fonte de consumo da cota de download (qualquer edição, de
+// qualquer semana, por qualquer pessoa, baixava a semana inteira pra todo mundo).
 function configurarListenersMultiSemana(keys) {
   desativarListenersMultiSemana();
   const transportador = isTransportador();
   keys.forEach(key => {
-    let primeiraChamada = true;
-    const unsub = transportador
-      ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), (viagensObj) => {
-          if (primeiraChamada) { primeiraChamada = false; return; }
-          aplicarMudancaSemanaMultiSemana(key, { viagens: viagensObj });
-        })
-      : window._fb.ouvirMudancas(key, (payload) => {
-          if (primeiraChamada) { primeiraChamada = false; return; }
-          aplicarMudancaSemanaMultiSemana(key, payload);
-        });
-    _unsubsMultiSemana.set(key, unsub);
+    const label = formatarKeyParaLabel(key);
+    // Mesmo motivo do idsConhecidos em configurarListenerSemana: onChildAdded reentrega
+    // o estado já conhecido (carregado por carregarViagensMultiSemana pouco antes) ao
+    // assinar — sem isso, essa reentrega apareceria como "outro usuário mudou algo".
+    const idsConhecidos = new Set(
+      viagensMultiSemana.filter(v => v._semanaOrigem === key).map(v => v.idViagem)
+    );
+
+    let refreshTimer = null;
+    let precisaToast = false;
+    function agendarRefresh(mostrarToast) {
+      if (mostrarToast) precisaToast = true;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        // Índices de viagensMultiSemana podem ter mudado com o merge — fechar o modal
+        // evita salvar por cima da viagem errada (mesma cautela da semana única).
+        if (editingIdx !== null) closeModal();
+        updatePipeline(viagensAtivo());
+        renderizarAbaAtual();
+        if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
+        precisaToast = false;
+      }, 200);
+    }
+
+    const aplicarLocal = (id, dados) => {
+      const idx = viagensMultiSemana.findIndex(v => v.idViagem === id && v._semanaOrigem === key);
+      const registro = { ...dados, _semanaOrigem: key, _semanaLabel: label };
+      if (idx >= 0) viagensMultiSemana[idx] = registro; else viagensMultiSemana.push(registro);
+    };
+    const removerLocal = (id) => {
+      const idx = viagensMultiSemana.findIndex(v => v.idViagem === id && v._semanaOrigem === key);
+      if (idx >= 0) viagensMultiSemana.splice(idx, 1);
+    };
+    const handlers = {
+      onAdded: (id, dados) => {
+        const conhecida = idsConhecidos.has(id);
+        idsConhecidos.delete(id);
+        aplicarLocal(id, dados);
+        agendarRefresh(!conhecida);
+      },
+      onChanged: (id, dados) => { aplicarLocal(id, dados); agendarRefresh(true); },
+      onRemoved: (id) => { removerLocal(id); agendarRefresh(true); },
+    };
+
+    const unsubViagens = transportador
+      ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), handlers)
+      : window._fb.ouvirViagens(key, handlers);
+
+    // Transportador não lê cadencias (sem permissão — ver regras do Firebase); pra ele o
+    // contador fica no valor inicial (0) já setado por carregarViagensMultiSemana.
+    let unsubCad = () => {};
+    if (!transportador) {
+      let primeiraCad = true;
+      unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
+        _cadenciasCountPorSemana.set(key, novasCadencias.length);
+        cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
+        if (primeiraCad) { primeiraCad = false; return; }
+        agendarRefresh(true);
+      });
+    }
+
+    _unsubsMultiSemana.set(key, () => { unsubViagens(); unsubCad(); });
   });
 }
 
 function desativarListenersMultiSemana() {
   _unsubsMultiSemana.forEach(unsub => unsub());
   _unsubsMultiSemana.clear();
-}
-
-function aplicarMudancaSemanaMultiSemana(key, payload) {
-  const label = formatarKeyParaLabel(key);
-  const viagensDaSemana = normalizarViagensArray(payload?.viagens)
-    .map(v => ({ ...v, _semanaOrigem: key, _semanaLabel: label }));
-  viagensMultiSemana = viagensMultiSemana.filter(v => v._semanaOrigem !== key).concat(viagensDaSemana);
-  _cadenciasCountPorSemana.set(key, (payload?.cadencias || []).length);
-  cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
-  // Índices de viagensMultiSemana podem ter mudado com o merge acima — fechar o modal
-  // evita salvar por cima da viagem errada (mesma cautela do listener de semana única).
-  if (editingIdx !== null) closeModal();
-  updatePipeline(viagensAtivo());
-  renderizarAbaAtual();
-  mostrarStatus('saved', '🔄 Atualizado por outro usuário');
 }
 
 function atualizarMultiSemana() {
