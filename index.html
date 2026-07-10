@@ -8425,6 +8425,35 @@ function formatarDataHoraProg(d) {
   return { data: `${dd}/${mm}/${d.getFullYear()}`, hora: `${hh}:${mi}` };
 }
 
+// Conta quantos domingos existem entre o dia de início (exclusive) e o dia de fim (inclusive)
+// de uma viagem. Usado pra aplicar a folga dominical do motorista: cada domingo "dentro" do
+// trajeto soma 1 dia de viagem, porque o motorista não roda aos domingos.
+function contarDomingosNoIntervalo(inicio, fim) {
+  const d = new Date(inicio);
+  d.setHours(0, 0, 0, 0);
+  const fimDia = new Date(fim);
+  fimDia.setHours(0, 0, 0, 0);
+  let count = 0;
+  while (d < fimDia) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() === 0) count++;
+  }
+  return count;
+}
+
+// Soma 24h ao leadtime bruto pra cada domingo que cair entre o carregamento e a descarga
+// (folga do motorista). A soma pode empurrar a chegada pra depois de outro domingo, por
+// isso repete até o número de domingos encontrados parar de crescer (ponto fixo).
+function aplicarFolgaDominical(inicio, leadtimeHoras) {
+  let bruto = new Date(inicio.getTime() + leadtimeHoras * 3600000);
+  while (true) {
+    const domingos = contarDomingosNoIntervalo(inicio, bruto);
+    const novoBruto = new Date(inicio.getTime() + (leadtimeHoras + domingos * 24) * 3600000);
+    if (novoBruto.getTime() === bruto.getTime()) return novoBruto;
+    bruto = novoBruto;
+  }
+}
+
 // Recalcula e aplica dtDescProg/horaDescProg a partir do carregamento + leadtime. Só age
 // quando existe leadtime cadastrado pra rota (origem x destino) — sem isso, a descarga
 // continua manual (comportamento anterior), em vez de forçar um valor arbitrário.
@@ -8434,7 +8463,7 @@ function recalcularDescargaPorLeadtime(v) {
   if (!inicio) return null;
   const leadtimeHoras = buscarLeadtimeHorasParaViagem(v);
   if (leadtimeHoras === null) return null;
-  const bruto = new Date(inicio.getTime() + leadtimeHoras * 3600000);
+  const bruto = aplicarFolgaDominical(inicio, leadtimeHoras);
   const ajustado = ajustarDataHoraDescarga(bruto);
   const { data, hora } = formatarDataHoraProg(ajustado);
   v.dtDescProg = data;
