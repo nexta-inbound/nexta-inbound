@@ -2050,6 +2050,10 @@
             <span class="table-title">Viagens prontas para importação</span>
             <span class="badge badge-success" id="badge-prontas">0 viagens</span>
           </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">👤 Programador</span>
+            <div id="ms-eProgramador"></div>
+          </div>
         </div>
         <div class="scrollable">
           <table>
@@ -3735,7 +3739,7 @@ class MultiSelect {
 }
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
-let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador;
+let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEProgramador;
 let msSemanas;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
@@ -7979,13 +7983,21 @@ function updatePipeline(list) {
 }
 
 // ── EXPORT ──
-// Elegíveis (placa confirmada) + o subconjunto ainda não confirmado no
-// monitoramento Herrlog — usado tanto pelo render quanto pela seleção "marcar
-// todos" e pela exportação de fato, pra não duplicar o filtro em três lugares.
+// Elegíveis (placa confirmada) + o subconjunto ainda não confirmado no monitoramento
+// Herrlog, filtrado por Programador (ms-eProgramador, mesmo filtro/mesma lógica da aba
+// Gerir Viagens — ver valorProgramadorFiltro) — usado tanto pelo render quanto pela
+// seleção "marcar todos" e pela exportação de fato, pra não duplicar o filtro em três
+// lugares. `elegiveis` fica de fora do filtro de programador de propósito: é ele que
+// decide se a tela mostra o estado vazio, e não queremos escondê-la (junto com o
+// próprio filtro) só porque o programador selecionado não tem nada pendente agora.
 function calcularFiltradasExport() {
   const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
-  const filtradas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
-  return { elegiveis, filtradas };
+  const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
+  const programadores = new Set(msEProgramador?.getSelected() || []);
+  const filtradas = programadores.size
+    ? naoConfirmadas.filter(v => programadores.has(valorProgramadorFiltro(v)))
+    : naoConfirmadas;
+  return { elegiveis, naoConfirmadas, filtradas };
 }
 
 function toggleSelecaoExport(idViagem, checked) {
@@ -8001,11 +8013,13 @@ function toggleSelectAllExport(checked) {
 }
 
 function renderExport() {
-  const { elegiveis, filtradas } = calcularFiltradasExport();
+  const { elegiveis, naoConfirmadas, filtradas } = calcularFiltradasExport();
   const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
+
+  msEProgramador?.setOptions(valoresUnicosOrdenados(naoConfirmadas, valorProgramadorFiltro));
 
   const selecionadas = filtradas.filter(v => !idsExcluidosExport.has(v.idViagem));
 
@@ -9697,6 +9711,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
   msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable);
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable);
+  msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport);
   msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas, true);
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
