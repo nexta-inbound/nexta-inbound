@@ -9387,7 +9387,15 @@ function selecaoAtualMsSemanas() {
   return (msSemanas?.getSelected() || []).map(label => _semanaLabelParaKey.get(label)).filter(Boolean);
 }
 
-async function carregarViagensMultiSemana(keys) {
+// keys = seleção desejada inteira (todas as semanas marcadas no multi-select), não só a
+// que mudou — por isso a função calcula o diff contra o que já está carregado/assinado
+// (_unsubsMultiSemana) em vez de recarregar tudo: reler+reassinar uma semana que já estava
+// selecionada e não mudou é banda jogada fora (era isso que estourava a cota — qualquer
+// clique no filtro de semanas, com "Todos" marcado por padrão, baixava a seleção inteira de
+// novo, listener incluído, mesmo pras semanas que já estavam ali antes do clique).
+// force=true (usado só pelo botão 🔄/atualizarMultiSemana) ignora o diff de propósito —
+// é o escape hatch explícito pra forçar uma releitura completa mesmo sem mudança de seleção.
+async function carregarViagensMultiSemana(keys, force = false) {
   if (!keys.length) {
     desativarListenersMultiSemana();
     viagensMultiSemana = [];
@@ -9397,17 +9405,48 @@ async function carregarViagensMultiSemana(keys) {
     renderizarAbaAtual();
     return;
   }
+
+  const keysNovasSet = new Set(keys);
+  const removidas = force ? [..._unsubsMultiSemana.keys()] : [..._unsubsMultiSemana.keys()].filter(k => !keysNovasSet.has(k));
+  const adicionadas = force ? keys : keys.filter(k => !_unsubsMultiSemana.has(k));
+
+  if (!removidas.length && !adicionadas.length) {
+    // Seleção idêntica à já carregada (ex.: reabrir o painel sem mudar nada) — nada pra
+    // buscar nem assinar de novo.
+    updatePipeline(viagensAtivo());
+    renderizarAbaAtual();
+    return;
+  }
+
+  removidas.forEach(key => {
+    _unsubsMultiSemana.get(key)?.();
+    _unsubsMultiSemana.delete(key);
+    _cadenciasCountPorSemana.delete(key);
+  });
+  if (removidas.length) {
+    const removidasSet = new Set(removidas);
+    viagensMultiSemana = viagensMultiSemana.filter(v => !removidasSet.has(v._semanaOrigem));
+  }
+
+  if (!adicionadas.length) {
+    cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
+    mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
+    updatePipeline(viagensAtivo());
+    renderizarAbaAtual();
+    return;
+  }
+
   mostrarStatus('saving', 'Carregando semanas selecionadas...');
   const transportador = isTransportador();
   try {
     // Transportador não lê o node `sessoes/<semana>` inteiro (sem permissão — ver regras
     // do Firebase): busca só a própria fatia de viagens via query indexada, sem cadencias.
-    const payloads = await Promise.all(keys.map(key => transportador
+    // Só busca as semanas de `adicionadas` — as que já estavam selecionadas ficam com os
+    // dados que já tinham (mantidos em tempo real pelo listener delas, nunca derrubado).
+    const payloads = await Promise.all(adicionadas.map(key => transportador
       ? window._fb.carregarViagensTransportador(key, nomeTransportadorLogado()).then(viagensObj => ({ viagens: viagensObj }))
       : window._fb.carregar(key)));
-    viagensMultiSemana = [];
-    _cadenciasCountPorSemana = new Map();
-    keys.forEach((key, i) => {
+    adicionadas.forEach((key, i) => {
       const payload = payloads[i];
       // O Firebase RTDB devolve `viagens` como objeto (chaveado por idViagem) sempre que
       // há gaps nos índices — não dá pra assumir array como em outros pontos do código,
@@ -9419,7 +9458,7 @@ async function carregarViagensMultiSemana(keys) {
     });
     cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
     mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
-    configurarListenersMultiSemana(keys);
+    configurarListenersMultiSemana(adicionadas);
   } catch (e) {
     console.error('Erro ao carregar viagens multi-semana:', e);
     mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
@@ -9434,12 +9473,14 @@ async function carregarViagensMultiSemana(keys) {
 
 // Um listener em tempo real por semana selecionada — cada um mexe só na fatia de
 // viagensMultiSemana daquela semana (nunca nas demais). Granular por registro (mesmo
-// motivo/mecanismo de configurarListenerSemana, ver comentário lá): com "Todos" selecionado
-// por padrão, isso significa um listener full-node por semana existente pra CADA admin
-// conectado — era a maior fonte de consumo da cota de download (qualquer edição, de
-// qualquer semana, por qualquer pessoa, baixava a semana inteira pra todo mundo).
+// motivo/mecanismo de configurarListenerSemana, ver comentário lá).
+// `keys` aqui é só o diff (semanas recém-adicionadas à seleção — ver carregarViagensMultiSemana),
+// não a seleção inteira: as semanas que já estavam selecionadas mantêm o listener que já
+// tinham, sem ser derrubado e reassinado à toa. Reassinar sem necessidade era a maior fonte
+// de consumo da cota de download (qualquer clique no filtro de semanas, com "Todos" marcado
+// por padrão, derrubava e recriava o listener full-node de cada semana selecionada — não só
+// da que mudou — pra CADA admin conectado).
 function configurarListenersMultiSemana(keys) {
-  desativarListenersMultiSemana();
   const transportador = isTransportador();
   keys.forEach(key => {
     const label = formatarKeyParaLabel(key);
@@ -9513,7 +9554,10 @@ function desativarListenersMultiSemana() {
 }
 
 function atualizarMultiSemana() {
-  carregarViagensMultiSemana(selecaoAtualMsSemanas());
+  // force=true: este é o botão 🔄 — o escape hatch explícito pra releitura completa mesmo
+  // sem mudança de seleção (ver carregarViagensMultiSemana). Cliques no multi-select em si
+  // não passam por aqui e continuam incrementais.
+  carregarViagensMultiSemana(selecaoAtualMsSemanas(), true);
 }
 
 // Aplica a visão multi-semana à aba que estiver aberta no momento (Gerir Viagens,
