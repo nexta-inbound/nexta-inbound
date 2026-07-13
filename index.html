@@ -474,7 +474,7 @@
   .vd-day.busy { background: rgba(20,184,166,0.14); border-color: var(--pet-teal); color: var(--pet-teal); }
   .vd-day.status-I { background: rgba(255,107,95,0.16); border-color: var(--danger); color: var(--danger); }
   .vd-day.status-M { background: rgba(249,115,22,0.18); border-color: var(--pet-yellow); color: var(--pet-yellow); }
-  .vd-day.status-FO, .vd-day.status-RF, .vd-day.status-R { background: rgba(124,58,237,0.16); border-color: var(--pet-purple); color: var(--pet-purple); }
+  .vd-day.status-DSR, .vd-day.status-RF, .vd-day.status-RV { background: rgba(124,58,237,0.16); border-color: var(--pet-purple); color: var(--pet-purple); }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -3026,11 +3026,11 @@
       <div class="modal-label">Status</div>
       <select class="config-input" id="indisp-status">
         <option value="" disabled>Selecione o status...</option>
-        <option value="FO">FO - Folga</option>
+        <option value="DSR">DSR - Descanso Semanal Remunerado</option>
         <option value="I">I - Indisponível</option>
         <option value="M">M - Manutenção</option>
-        <option value="RF">RF - Retorno Filial</option>
-        <option value="R">R - Retorno</option>
+        <option value="RV">RV - Retorno Vazio (ordem Nexta)</option>
+        <option value="RF">RF - Retorno Filial (vazio por conta da transportadora)</option>
       </select>
     </div>
     <div class="modal-field">
@@ -6341,12 +6341,32 @@ function processarArquivoLeadtime(file) {
   reader.readAsArrayBuffer(file);
 }
 
+// Renomeação de siglas do status diário (FO→DSR, R→RV) — converte os registros já
+// salvos no Firebase pro código novo. Roda uma única vez por veículo: assim que a
+// carga encontra e corrige algum código antigo, regrava a lista completa (ver
+// carregarVeiculosDedicadosFirebase) pra não precisar traduzir de novo nas próximas cargas.
+const MIGRACAO_STATUS_VEICULO = { FO: 'DSR', R: 'RV' };
+function migrarStatusVeiculoAntigo(lista) {
+  let alterou = false;
+  lista.forEach(vd => {
+    if (!vd.indisponibilidades) return;
+    Object.values(vd.indisponibilidades).forEach(reg => {
+      if (reg?.status && MIGRACAO_STATUS_VEICULO[reg.status]) {
+        reg.status = MIGRACAO_STATUS_VEICULO[reg.status];
+        alterou = true;
+      }
+    });
+  });
+  return alterou;
+}
+
 // ── CADASTRO DE VEÍCULOS DEDICADOS ──
 async function carregarVeiculosDedicadosFirebase() {
   if (!window._fb?.carregarVeiculosDedicados) return;
   try {
     const raw = await window._fb.carregarVeiculosDedicados();
     veiculosDedicados = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+    if (migrarStatusVeiculoAntigo(veiculosDedicados)) await persistirVeiculosDedicados();
   } catch (e) { console.error('Erro ao carregar veículos dedicados:', e); }
 }
 
@@ -6413,11 +6433,13 @@ function viagensDoVeiculoNoDia(veiculoId, dia) {
 
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-// Status possíveis de indisponibilidade de um veículo dedicado num dia — "D" (Disponível)
+// Status possíveis de indisponibilidade de um veículo dedicado num dia — "Disponível"
 // não entra aqui: é o estado padrão (sem registro em vd.indisponibilidades), não algo
 // que se marca. Registros antigos (antes desse campo existir) não têm `status` — cai no
 // fallback 'I' abaixo pra continuar mostrando um código coerente.
-const STATUS_VEICULO_LABELS = { FO: 'Folga', I: 'Indisponível', M: 'Manutenção', RF: 'Retorno Filial', R: 'Retorno' };
+// Códigos antigos FO/R (pré-migração) são convertidos para DSR/RV ao carregar — ver
+// migrarStatusVeiculoAntigo() em carregarVeiculosDedicadosFirebase().
+const STATUS_VEICULO_LABELS = { DSR: 'Descanso Semanal Remunerado', I: 'Indisponível', M: 'Manutenção', RV: 'Retorno Vazio', RF: 'Retorno Filial' };
 
 // Indisponibilidade e' informada manualmente pela equipe interna (ex.: veículo
 // quebrado, sem motorista) — separada de "ocupado" (que vem automático da
@@ -6682,7 +6704,7 @@ async function confirmarIndisponibilidade() {
   }
 
   const status = document.getElementById('indisp-status').value;
-  if (!status) { alert('Selecione um status (Folga, Indisponível, Manutenção, Retorno Filial ou Retorno).'); return; }
+  if (!status) { alert('Selecione um status (DSR, Indisponível, Manutenção, Retorno Vazio ou Retorno Filial).'); return; }
   const motivo = document.getElementById('indisp-motivo').value.trim();
   if (!vd.indisponibilidades) vd.indisponibilidades = {};
   const registroBase = { status, motivo, usuario: _authUsuarioAtual?.nome || '', criadoEm: new Date().toISOString() };
