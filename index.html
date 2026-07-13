@@ -5300,6 +5300,10 @@ function renderViagensTable() {
     const horaCarreg = v.horaCarregProg || '12:00';
     const horaDesc   = v.horaDescProg   || '12:00';
     const semLeadtime = buscarLeadtimeHorasParaViagem(v) === null;
+    // Descarga é travada (calculada via leadtime) na maioria dos status. Em viagens CIF
+    // (frete por conta do cliente/destino) a Nexta não controla o transporte até a
+    // descarga, então libera o ajuste manual da data — mesmo padrão do carregamento.
+    const descEditavel = v.status === 'CIF' && !isTransportador();
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -5341,10 +5345,13 @@ function renderViagensTable() {
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
             <span class="filter-sep" style="font-size:10px">↓</span>
-            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond);opacity:0.7;cursor:not-allowed"
+            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)${descEditavel ? '' : ';opacity:0.7;cursor:not-allowed'}"
               value="${progDesc === '-' ? '' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}" placeholder="DD/MM HH:mm" maxlength="11"
-              disabled title="Calculado automaticamente a partir do carregamento + leadtime (Fornecedores + aba Leadtime) — não editável diretamente">
-            ${semLeadtime ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="Sem leadtime cadastrado para Origem × Destino desta viagem — a descarga não é calculada automaticamente. Cadastre a rota na aba Leadtime (casando as cidades de Fornecedores e Bases) e reedite o carregamento.">⚠</span>` : ''}
+              onblur="salvarDataProgramacaoInline(${realIdx}, 'desc', this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              ${descEditavel ? '' : 'disabled'}
+              title="${descEditavel ? 'Viagem CIF — data de descarga editável manualmente' : 'Calculado automaticamente a partir do carregamento + leadtime (Fornecedores + aba Leadtime) — não editável diretamente'}">
+            ${(!descEditavel && semLeadtime) ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="Sem leadtime cadastrado para Origem × Destino desta viagem — a descarga não é calculada automaticamente. Cadastre a rota na aba Leadtime (casando as cidades de Fornecedores e Bases) e reedite o carregamento.">⚠</span>` : ''}
           </div>
         </td>
         <td style="max-width:86px" data-label="Vol (m³)">
@@ -7423,6 +7430,8 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   // Carregamento é o gatilho: descarga passa a ser derivada dele + leadtime cadastrado
   // (tempo de carregamento do fornecedor + leadtime origem→destino), não editada à mão.
   // Sem leadtime cadastrado pra rota, a descarga permanece manual (nada é sobrescrito).
+  // Em viagens CIF isso também vale — reajustar o carregamento recalcula a descarga
+  // normalmente; o usuário pode reajustá-la manualmente depois (campo liberado só pra CIF).
   if (tipo === 'carreg' && novo !== '-') {
     const leadtimeHoras = recalcularDescargaPorLeadtime(v);
     if (leadtimeHoras !== null) {
