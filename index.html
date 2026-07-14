@@ -1357,13 +1357,20 @@
       let proximoSeq = 1;
       if (semId > 0) {
         const contadorRef = ref(db, 'contadoresViagem/' + prefixo);
-        const result = await runTransaction(contadorRef, atual => {
-          if (atual == null) return; // aborta a transacao - contador nao foi semeado ainda
-          return atual + semId;
-        });
-        if (!result.committed) {
+        // Checagem de existência é uma leitura direta (get), não a transação: dentro de
+        // runTransaction, a 1ª chamada da função de update pode receber `null` como
+        // "palpite" otimista antes do SDK confirmar o valor real do servidor (documentado
+        // pelo próprio Firebase) — abortar nesse `null` cancelava a transação ANTES dela
+        // sequer checar o servidor, mesmo com o contador já existindo. get() não tem essa
+        // ambiguidade: reflete o valor real do servidor.
+        const jaExiste = (await get(contadorRef)).exists();
+        if (!jaExiste) {
           throw new Error(`Contador de IDs ("contadoresViagem/${prefixo}") ainda não existe. Rode migrar_contador_viagens.py --aplicar antes de gerar viagens com este prefixo.`);
         }
+        // Não aborta mais em `null` — se a 1ª chamada vier com o palpite otimista, o
+        // Firebase reconcilia sozinho com o valor real assim que ele chega e re-executa
+        // esta função automaticamente (mecanismo normal de retry da transação).
+        const result = await runTransaction(contadorRef, atual => (atual || 0) + semId);
         proximoSeq = result.snapshot.val() - semId + 1;
       }
 
