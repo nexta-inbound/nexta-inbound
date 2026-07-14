@@ -1336,54 +1336,49 @@
     // desde a Track B de isolamento por transportador - ver regras do Firebase.
     // Le/retorna nesse mesmo formato; quem chama normaliza pra array antes de
     // aplicarPayload(), igual aos demais pontos de leitura de sessao.
+    //
+    // IDs unicos via contador dedicado em `contadoresViagem/<prefixo>` - runTransaction
+    // so' nesse node pequeno, nunca mais na raiz `sessoes` inteira. A versao anterior
+    // baixava TODAS as semanas e TODAS as viagens (com a assinatura do programador em
+    // base64 embutida em cada uma - ver assinaturaProgramador) so' pra descobrir o
+    // proximo numero livre; um unico clique em "Gerar Viagens" chegou a consumir ~40MB
+    // nisso, e o custo so' cresce com o historico. idViagem so' e' atribuido aqui em
+    // todo o sistema (nunca digitado manualmente em nenhuma tela) - por isso uma viagem
+    // que ja' chega com idViagem preservado e' unica por construcao, sem precisar checar
+    // colisao contra o resto do banco.
+    // O contador precisa ja' existir antes da primeira chamada com um prefixo -
+    // semeado uma unica vez, offline, por migrar_contador_viagens.py --aplicar (calcula
+    // o maior sequencial ja' usado no historico e grava contadoresViagem/<prefixo> com
+    // ele). Sem isso, aborta com erro em vez de arriscar gerar um ID que colide com o
+    // que ja existe.
     salvarComViagensUnicas: async (key, payload, viagensBase, prefixo = 'NXT') => {
-      const sessoesRef = ref(db, 'sessoes');
-      const result = await runTransaction(sessoesRef, sessoes => {
-        sessoes = sessoes || {};
-        const re = new RegExp('^' + prefixo + '-(\\d+)$');
-        let maiorSeq = 0;
+      const semId = viagensBase.filter(v => !String(v?.idViagem || '').trim()).length;
 
-        Object.entries(sessoes).forEach(([sessaoKey, sessao]) => {
-          if (sessaoKey === key) return;
-          Object.values(sessao?.viagens || {}).forEach(v => {
-            const m = String(v?.idViagem || '').match(re);
-            if (m) maiorSeq = Math.max(maiorSeq, parseInt(m[1], 10) || 0);
-          });
+      let proximoSeq = 1;
+      if (semId > 0) {
+        const contadorRef = ref(db, 'contadoresViagem/' + prefixo);
+        const result = await runTransaction(contadorRef, atual => {
+          if (atual == null) return; // aborta a transacao - contador nao foi semeado ainda
+          return atual + semId;
         });
+        if (!result.committed) {
+          throw new Error(`Contador de IDs ("contadoresViagem/${prefixo}") ainda não existe. Rode migrar_contador_viagens.py --aplicar antes de gerar viagens com este prefixo.`);
+        }
+        proximoSeq = result.snapshot.val() - semId + 1;
+      }
 
-        const usados = new Set();
-        Object.entries(sessoes).forEach(([sessaoKey, sessao]) => {
-          if (sessaoKey === key) return;
-          Object.values(sessao?.viagens || {}).forEach(v => {
-            if (v?.idViagem) usados.add(String(v.idViagem));
-          });
-        });
-
-        viagensBase.forEach(v => {
-          const m = String(v?.idViagem || '').match(re);
-          if (m) maiorSeq = Math.max(maiorSeq, parseInt(m[1], 10) || 0);
-        });
-
-        const viagensComId = viagensBase.map(v => {
-          const atual = String(v?.idViagem || '').trim();
-          if (atual && !usados.has(atual)) {
-            usados.add(atual);
-            return v;
-          }
-          let novoId;
-          do {
-            maiorSeq++;
-            novoId = `${prefixo}-${String(maiorSeq).padStart(6, '0')}`;
-          } while (usados.has(novoId));
-          usados.add(novoId);
-          return { ...v, idViagem: novoId };
-        });
-
-        sessoes[key] = { ...payload, viagens: Object.fromEntries(viagensComId.map(v => [v.idViagem, v])) };
-        return sessoes;
+      let cursor = proximoSeq;
+      const viagensComId = viagensBase.map(v => {
+        const atual = String(v?.idViagem || '').trim();
+        if (atual) return v;
+        const novoId = `${prefixo}-${String(cursor).padStart(6, '0')}`;
+        cursor++;
+        return { ...v, idViagem: novoId };
       });
-      if (!result.committed) throw new Error('Gravação das viagens não confirmada.');
-      return result.snapshot.val()?.[key] || { ...payload, viagens: Object.fromEntries(viagensBase.map(v => [v.idViagem, v])) };
+
+      const sessaoSalva = { ...payload, viagens: Object.fromEntries(viagensComId.map(v => [v.idViagem, v])) };
+      await set(ref(db, 'sessoes/' + key), sessaoSalva);
+      return sessaoSalva;
     },
     carregarTransportadores: async () => {
       const snap = await get(ref(db, 'transportadores'));
