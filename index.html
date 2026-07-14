@@ -1455,6 +1455,27 @@
     listarPerfis: async () => {
       const snap = await get(ref(db, 'perfis'));
       return snap.exists() ? snap.val() : {};
+    },
+    // Assinaturas dos programadores num node próprio, separado de `perfis` (que tem dado
+    // sensível - admin, tipo - e o transportador não pode ler). Uma imagem de carimbo pra
+    // PDF não é dado sensível, então aqui a leitura é liberada pra qualquer autenticado
+    // (ver regras do Firebase) - a Ordem de Carregamento busca direto daqui, sem precisar
+    // embutir uma cópia em cada viagem (isso duplicava a mesma imagem em toda viagem do
+    // programador e inchava toda ressincronização completa - F5, troca de semana etc.).
+    // Lista, não mapa chaveado por nome, pelo mesmo motivo de cadastroHerrlogPlacas/Clientes:
+    // nome pode ter caractere inválido como chave do RTDB.
+    ouvirAssinaturasProgramadores: (callback) => {
+      return onValue(ref(db, 'assinaturasProgramadores'), (snap) => {
+        callback(snap.exists() ? snap.val() : []);
+      });
+    },
+    salvarAssinaturaProgramador: async (nome, assinatura) => {
+      const snap = await get(ref(db, 'assinaturasProgramadores'));
+      const bruto = snap.val();
+      const lista = Array.isArray(bruto) ? bruto : Object.values(bruto || {});
+      const idx = lista.findIndex(a => a?.nome === nome);
+      if (idx >= 0) lista[idx] = { nome, assinatura }; else lista.push({ nome, assinatura });
+      await set(ref(db, 'assinaturasProgramadores'), lista);
     }
   };
 
@@ -1916,6 +1937,7 @@
         <div class="filter-row">
           <input type="text" class="filter-input fi-wide" id="fBusca"
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
+            title="Cole ou digite várias placas/IDs separados por vírgula ou espaço para buscar mais de um de uma vez"
             oninput="renderViagensTable()">
           <div id="ms-vProduto"></div>
           <div id="ms-vUf" class="ms-narrow"></div>
@@ -3535,6 +3557,10 @@ async function adminProcessarAssinatura(file) {
   try {
     const base64 = await redimensionarAssinatura(file);
     await window._fb.salvarPerfil(uid, { nome: u.nome, admin: u.admin, tipo: u.tipo, transportadorNome: u.transportadorNome, assinatura: base64 });
+    // Também grava em `assinaturasProgramadores` (node separado, leitura liberada pra
+    // qualquer autenticado) - é dali que gerarOrdemRetirada() busca, não mais de uma
+    // cópia embutida em cada viagem (ver comentário em window._fb.salvarAssinaturaProgramador).
+    await window._fb.salvarAssinaturaProgramador(u.nome, base64);
     u.assinatura = base64;
     renderAdminUsuarios();
     if (info) info.textContent = `Assinatura de "${u.nome}" salva.`;
@@ -3911,10 +3937,10 @@ async function aplicarEmLote() {
     }
     if (removerProgramador) {
       v.programador = '';
-      v.assinaturaProgramador = '';
     } else if (programador) {
       v.programador = programador;
-      v.assinaturaProgramador = _usuariosAtivos.find(u => u.nome === programador)?.assinatura || '';
+      // Assinatura não é mais embutida aqui — gerarOrdemRetirada() busca em
+      // assinaturasProgramadores (node próprio) pelo nome, na hora de gerar o PDF.
     }
     if (status) v.status = status;
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
@@ -4138,6 +4164,7 @@ let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ati
 let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
 let cadastroHerrlogClientes = {}; // { [codigoExterno]: true } — fornecedores/bases com cadastro ativo na Herrlog (tabela Cliente do datalake)
 let cadastroHerrlogClientesCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
+let assinaturasProgramadores = []; // [{ nome, assinatura }] — ver window._fb.ouvirAssinaturasProgramadores
 let activeFilterMonStatus = new Set(); // filtro de estado (Status Herrlog) na aba Monitoramento — vazio = Todos
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
 let activeIndicadorMon = null; // card de KPI clicado na aba Monitoramento (vsProgramacao/vsDesejada)
@@ -5198,9 +5225,16 @@ function filterAgendamento(f) {
 }
 
 // ── VIAGENS TABLE ──
+// Permite colar várias placas/IDs de uma vez na mesma caixa de busca (ex.: vindas de uma
+// coluna do Excel ou de uma lista no WhatsApp), separadas por vírgula, ponto-e-vírgula ou
+// espaço/quebra de linha — cada termo é casado com OR (basta bater em um deles).
+function tokensBusca(busca) {
+  return busca.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+}
+
 function estadoFiltrosViagem() {
   return {
-    busca: (document.getElementById('fBusca')?.value || '').toLowerCase().trim(),
+    buscaTermos: tokensBusca((document.getElementById('fBusca')?.value || '').toLowerCase().trim()),
     transp: (document.getElementById('fTransp')?.value || '').toLowerCase().trim(),
     carrDe: document.getElementById('fCarrDe')?.value || '',
     carrAte: document.getElementById('fCarrAte')?.value || '',
@@ -5230,9 +5264,9 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (ignorar !== 'destino' && f.destinos.size && !f.destinos.has(v.destino)) return false;
   if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
-  if (f.busca) {
+  if (f.buscaTermos.length) {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
-    if (!hay.includes(f.busca)) return false;
+    if (!f.buscaTermos.some(t => hay.includes(t))) return false;
   }
   // Casa pela data desejada OU pela data de programação (o que foi ajustado manualmente
   // no Agendamento) — assim a viagem não "desaparece" do filtro só porque foi reagendada
@@ -7958,10 +7992,9 @@ async function salvarViagem() {
   v.cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   v.obs            = document.getElementById('m-obs').value;
   v.programador    = document.getElementById('m-programador').value;
-  // Snapshot da assinatura na própria viagem: transportador não tem permissão de ler o
-  // node `perfis` inteiro (ver gerarOrdemRetirada), então a Ordem de Carregamento gerada
-  // por ele precisa da assinatura já embutida aqui, não buscada em _usuariosAtivos na hora.
-  v.assinaturaProgramador = _usuariosAtivos.find(u => u.nome === v.programador)?.assinatura || '';
+  // Assinatura não é mais embutida aqui — gerarOrdemRetirada() busca em
+  // assinaturasProgramadores (node próprio, liberado pra qualquer autenticado) pelo
+  // nome, na hora de gerar o PDF, em vez de carregar uma cópia junto com a viagem.
   // Preserva o vínculo com o veículo dedicado quando o status atual é uma promoção
   // automática (Em Andamento/Viagem Finalizada) originada de "Frota Dedicada" — senão
   // salvar o modal sem trocar o status (ex.: só editar obs) zera veiculoDedicadoId e a
@@ -8008,14 +8041,14 @@ function gerarOrdemRetirada(idx) {
 
   // Assinatura do programador alocado na viagem — cadastrada pelo admin em
   // "Gerenciar Usuários" (upload único, reaproveitado em todas as ordens dele).
-  // v.assinaturaProgramador é o snapshot gravado na viagem quando o programador foi
-  // definido (ver salvamento do modal/bulk apply) — necessário porque transportador não
-  // tem permissão de ler o node `perfis` inteiro pra buscar em _usuariosAtivos na hora
-  // de gerar a própria Ordem de Carregamento. Viagens antigas (sem o snapshot) caem no
-  // fallback via _usuariosAtivos, que só staff tem carregado.
+  // Busca em assinaturasProgramadores (node próprio, liberado pra qualquer autenticado
+  // — ver window._fb.ouvirAssinaturasProgramadores), não mais numa cópia embutida na
+  // viagem: era essa cópia (repetida em toda viagem do mesmo programador) que inchava
+  // toda ressincronização completa do app. v.assinaturaProgramador (campo antigo) só
+  // sobrevive em viagens gravadas antes desta mudança e ainda não migradas.
   // Sem assinatura disponível, imprime a linha em branco pra assinar a caneta.
-  const assinaturaImg = v.assinaturaProgramador
-    || _usuariosAtivos.find(u => u.nome === v.programador)?.assinatura
+  const assinaturaImg = assinaturasProgramadores.find(a => a?.nome === v.programador)?.assinatura
+    || v.assinaturaProgramador
     || '';
 
   const html = `<!DOCTYPE html>
@@ -9857,6 +9890,19 @@ function configurarListenerCadastroHerrlogClientes() {
   });
 }
 
+// Assinaturas dos programadores (node `assinaturasProgramadores`, fora de `perfis` -
+// liberado pra qualquer autenticado, inclusive transportador, ver window._fb). Listener
+// único e independente da semana ativa, igual ao cadastro Herrlog acima - o node é
+// pequeno (uma entrada por pessoa que assina, não por viagem), então mantê-lo sempre
+// sincronizado localmente é barato e evita gerarOrdemRetirada() precisar buscar sob
+// demanda a cada PDF.
+function configurarListenerAssinaturasProgramadores() {
+  if (window._fbUnsubAssinaturas) { window._fbUnsubAssinaturas(); window._fbUnsubAssinaturas = null; }
+  window._fbUnsubAssinaturas = window._fb.ouvirAssinaturasProgramadores((dados) => {
+    assinaturasProgramadores = Array.isArray(dados) ? dados : Object.values(dados || {});
+  });
+}
+
 function novaSemana() {
   const hoje = new Date();
   const fmt = (d) => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -9939,6 +9985,7 @@ await carregarUsuariosFirebase();
   configurarListenerMonitoramentoHerrlog();
   configurarListenerCadastroHerrlogPlacas();
   configurarListenerCadastroHerrlogClientes();
+  configurarListenerAssinaturasProgramadores();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
