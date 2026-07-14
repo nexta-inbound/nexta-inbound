@@ -2432,6 +2432,11 @@
           <input type="text" class="filter-input fi-wide" id="fVeiculosBusca"
             placeholder="🔍  Transportador, placa, motorista, CPF..."
             oninput="renderVeiculosTable()">
+          <select class="filter-select" id="fVeiculosStatus" onchange="renderVeiculosTable()" title="Filtrar por status de vigência na frota dedicada">
+            <option value="">Status: Todos</option>
+            <option value="ativos">🟢 Ativos</option>
+            <option value="inativos">⚪ Inativos / Agendados</option>
+          </select>
           <button class="btn btn-secondary btn-sm" onclick="limparFiltrosVeiculos()" style="align-self:center;margin-left:2px">✕ Limpar</button>
         </div>
       </div>
@@ -2445,6 +2450,7 @@
               <th>Carreta 2</th>
               <th style="white-space:normal">Motorista</th>
               <th>CPF</th>
+              <th>Status</th>
               <th style="white-space:normal;min-width:260px">Utilização na Semana</th>
               <th class="col-acao" style="text-align:center">Ações</th>
             </tr>
@@ -3008,6 +3014,17 @@
         <input type="text" class="config-input" id="veiculo-cpfMotorista" placeholder="000.000.000-00" maxlength="14"
           oninput="this.value = mascaraCPF(this.value)">
       </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Vigência na Frota Dedicada</span>
+        <button type="button" class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px" onclick="adicionarPeriodoVigencia()">＋ Período</button>
+      </div>
+      <div id="veiculo-vigencias-hint" style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:none">
+        Sem período registrado — veículo tratado como sempre ativo (sem restrição de data na aderência/calendário).
+      </div>
+      <div id="veiculo-vigencias-list" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
 
     <div class="modal-actions">
@@ -4153,6 +4170,7 @@ let leadtimes = []; // { origemCidade, origemUf, destinoCidade, destinoUf, leadt
 let editingLeadtimeIdx = null;
 let veiculosDedicados = [];
 let editingVeiculoIdx = null;
+let _editingVigencias = []; // rascunho editável dos períodos de vigência do modal Novo/Editar Veículo
 
 const STORAGE_KEY = 'nexta_cadencia_sessao';
 
@@ -6440,6 +6458,45 @@ function viagensDoVeiculoNoDia(veiculoId, dia) {
 
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+// Vigência do veículo na frota dedicada — vd.vigencias: [{ entrada: 'YYYY-MM-DD', saida: 'YYYY-MM-DD'|null }, ...]
+// Sem o campo (cadastros antigos, migrados antes desse recurso existir) = sempre ativo,
+// sem restrição de data — preserva o comportamento anterior sem precisar de migração.
+function veiculoAtivoNoDia(vd, dia) {
+  if (!vd?.vigencias?.length) return true;
+  const iso = dia.toISOString().slice(0, 10);
+  return vd.vigencias.some(vg => vg.entrada <= iso && (!vg.saida || iso <= vg.saida));
+}
+
+// Só os dias da semana ativa em que o veículo de fato está na operação — usado pra não
+// desenhar/considerar dias antes da entrada ou depois da saída no calendário e nos KPIs.
+function diasAtivosDoVeiculo(vd) {
+  return diasDaSemanaAtiva().filter(d => veiculoAtivoNoDia(vd, d));
+}
+
+// Estado atual do veículo frente à(s) vigência(s) cadastrada(s) — usado pro badge de
+// status na tabela e pro filtro Ativos/Inativos.
+function statusVigenciaVeiculo(vd) {
+  if (!vd?.vigencias?.length) return { estado: 'ativo' };
+  const hojeIso = new Date().toISOString().slice(0, 10);
+  const ordenadas = [...vd.vigencias].sort((a, b) => a.entrada.localeCompare(b.entrada));
+  const atual = ordenadas.find(vg => vg.entrada <= hojeIso && (!vg.saida || vg.saida >= hojeIso));
+  if (atual) return { estado: 'ativo', desde: atual.entrada };
+  const futura = ordenadas.find(vg => vg.entrada > hojeIso);
+  if (futura) return { estado: 'agendado', em: futura.entrada };
+  const ultima = ordenadas[ordenadas.length - 1];
+  return { estado: 'inativo', desde: ultima?.saida };
+}
+
+function badgeStatusVeiculo(vd) {
+  const s = statusVigenciaVeiculo(vd);
+  const fmt = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+  const historico = (vd.vigencias || []).map(vg => `${fmt(vg.entrada)} → ${vg.saida ? fmt(vg.saida) : 'atual'}`).join('\n')
+    || 'Sem período registrado — sempre ativo';
+  if (s.estado === 'ativo') return `<span class="badge badge-success" title="${esc(historico)}">🟢 Ativo${s.desde ? ' desde ' + fmt(s.desde) : ''}</span>`;
+  if (s.estado === 'agendado') return `<span class="badge badge-warn" title="${esc(historico)}">🟡 Entra ${fmt(s.em)}</span>`;
+  return `<span class="badge" style="color:var(--text-muted);background:var(--panel-soft)" title="${esc(historico)}">⚪ Inativo${s.desde ? ' desde ' + fmt(s.desde) : ''}</span>`;
+}
+
 // Status possíveis de indisponibilidade de um veículo dedicado num dia — "Disponível"
 // não entra aqui: é o estado padrão (sem registro em vd.indisponibilidades), não algo
 // que se marca. Registros antigos (antes desse campo existir) não têm `status` — cai no
@@ -6471,8 +6528,16 @@ function diasIndisponiveisNoIntervalo(veiculoId, ini, fim) {
 }
 
 function renderUtilizacaoSemanal(veiculoId) {
-  const dias = diasDaSemanaAtiva();
-  if (!dias.length) return '<span style="color:var(--text-muted);font-size:11px">Sem semana ativa</span>';
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  const todosDias = diasDaSemanaAtiva();
+  if (!todosDias.length) return '<span style="color:var(--text-muted);font-size:11px">Sem semana ativa</span>';
+  const dias = diasAtivosDoVeiculo(vd);
+  if (!dias.length) {
+    const s = statusVigenciaVeiculo(vd);
+    const fmt = iso => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const msg = s.estado === 'agendado' ? `Entra em ${fmt(s.em)}` : `Fora de operação${s.desde ? ' desde ' + fmt(s.desde) : ''}`;
+    return `<span style="color:var(--text-muted);font-size:11px">${esc(msg)}</span>`;
+  }
   const dias_html = dias.map(d => {
     const viagensNoDia = viagensDoVeiculoNoDia(veiculoId, d);
     const ocupado = viagensNoDia.length > 0;
@@ -6501,12 +6566,19 @@ function atualizarKPIsVeiculos(lista) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const dias = diasDaSemanaAtiva();
 
-  const livres      = lista.filter(vd => viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje));
+  const livres      = lista.filter(vd => veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje));
   const alocados    = lista.filter(vd => viagensDoVeiculoNoDia(vd.id, hoje).length > 0);
-  const indisponiveis = lista.filter(vd => dias.some(d => indisponibilidadeNoDia(vd.id, d)));
+  const indisponiveis = lista.filter(vd => dias.some(d => veiculoAtivoNoDia(vd, d) && indisponibilidadeNoDia(vd.id, d)));
 
-  const totalDiasVeiculo  = lista.length * dias.length;
-  const diasOcupadosTotal = lista.reduce((soma, vd) => soma + dias.filter(d => viagensDoVeiculoNoDia(vd.id, d).length > 0).length, 0);
+  // Dias-veículo considerados só contam a partir da entrada e até a saída de cada
+  // veículo (vd.vigencias) — evita que período fora da operação puxe a % de alocação
+  // pra baixo artificialmente.
+  let totalDiasVeiculo = 0, diasOcupadosTotal = 0;
+  lista.forEach(vd => {
+    const diasVd = dias.filter(d => veiculoAtivoNoDia(vd, d));
+    totalDiasVeiculo += diasVd.length;
+    diasOcupadosTotal += diasVd.filter(d => viagensDoVeiculoNoDia(vd.id, d).length > 0).length;
+  });
   const taxaAlocacao = totalDiasVeiculo ? Math.round((diasOcupadosTotal / totalDiasVeiculo) * 100) : 0;
 
   document.getElementById('sv-veic-total').textContent    = lista.length;
@@ -6527,9 +6599,9 @@ function atualizarKPIsVeiculos(lista) {
 // atualizarKPIsVeiculos) — clicar no card filtra a tabela exatamente pelo que ele exibe.
 function testeIndicadorVeiculo(key, vd) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const dias = diasDaSemanaAtiva();
+  const dias = diasDaSemanaAtiva().filter(d => veiculoAtivoNoDia(vd, d));
   switch (key) {
-    case 'livres':        return viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje);
+    case 'livres':        return veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje);
     case 'alocados':      return viagensDoVeiculoNoDia(vd.id, hoje).length > 0;
     case 'indisponiveis': return dias.some(d => indisponibilidadeNoDia(vd.id, d));
     case 'utilizados':    return dias.some(d => viagensDoVeiculoNoDia(vd.id, d).length > 0);
@@ -6549,10 +6621,15 @@ function limparFiltroIndicadorVeiculo() {
 
 function renderVeiculosTable() {
   const busca = (document.getElementById('fVeiculosBusca')?.value || '').toLowerCase().trim();
-  const buscaFiltrados = veiculosDedicados.filter(vd =>
-    !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
-      .join(' ').toLowerCase().includes(busca)
-  );
+  const statusFiltro = document.getElementById('fVeiculosStatus')?.value || '';
+  const buscaFiltrados = veiculosDedicados.filter(vd => {
+    const matchBusca = !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
+      .join(' ').toLowerCase().includes(busca);
+    if (!matchBusca) return false;
+    if (!statusFiltro) return true;
+    const estado = statusVigenciaVeiculo(vd).estado;
+    return statusFiltro === 'ativos' ? estado === 'ativo' : estado !== 'ativo';
+  });
 
   const isEmpty = veiculosDedicados.length === 0;
   document.getElementById('veiculosEmpty').style.display = isEmpty ? 'block' : 'none';
@@ -6580,6 +6657,7 @@ function renderVeiculosTable() {
       <td style="font-family:monospace">${esc(vd.placaCarreta2) || '—'}</td>
       <td style="white-space:normal">${esc(vd.nomeMotorista) || '—'}</td>
       <td style="font-family:monospace">${esc(vd.cpfMotorista) || '—'}</td>
+      <td>${badgeStatusVeiculo(vd)}</td>
       <td>${renderUtilizacaoSemanal(vd.id)}</td>
       <td class="col-acao">
         <div style="display:flex;gap:4px;justify-content:center">
@@ -6602,6 +6680,10 @@ function abrirModalVeiculo(idx) {
   document.getElementById('veiculo-placaCarreta2').value = vd.placaCarreta2 || '';
   document.getElementById('veiculo-nomeMotorista').value = vd.nomeMotorista || '';
   document.getElementById('veiculo-cpfMotorista').value = vd.cpfMotorista || '';
+  _editingVigencias = isNovo
+    ? [{ entrada: new Date().toISOString().slice(0, 10), saida: null }]
+    : (vd.vigencias || []).map(vg => ({ ...vg }));
+  renderVigenciasModal();
   document.getElementById('modalVeiculo').classList.add('open');
   setTimeout(() => document.getElementById('veiculo-transportador').focus(), 100);
 }
@@ -6609,6 +6691,41 @@ function abrirModalVeiculo(idx) {
 function fecharModalVeiculo() {
   document.getElementById('modalVeiculo').classList.remove('open');
   editingVeiculoIdx = null;
+  _editingVigencias = [];
+}
+
+// ── VIGÊNCIA NA FROTA DEDICADA (entrada/saída/retorno do modal Novo/Editar Veículo) ──
+function renderVigenciasModal() {
+  const wrap = document.getElementById('veiculo-vigencias-list');
+  document.getElementById('veiculo-vigencias-hint').style.display = _editingVigencias.length ? 'none' : 'block';
+  wrap.innerHTML = _editingVigencias.map((vg, i) => `
+    <div class="modal-row" style="grid-template-columns:1fr 1fr auto;align-items:end;gap:8px">
+      <div class="modal-field" style="margin:0">
+        <div class="modal-label" style="font-size:10px;margin-bottom:3px">Entrada</div>
+        <input type="date" class="config-input" value="${vg.entrada || ''}" onchange="atualizarPeriodoVigencia(${i}, 'entrada', this.value)">
+      </div>
+      <div class="modal-field" style="margin:0">
+        <div class="modal-label" style="font-size:10px;margin-bottom:3px">Saída (vazio = ainda ativo)</div>
+        <input type="date" class="config-input" value="${vg.saida || ''}" onchange="atualizarPeriodoVigencia(${i}, 'saida', this.value)">
+      </div>
+      <button type="button" class="btn btn-danger btn-sm" style="padding:6px 10px" onclick="removerPeriodoVigencia(${i})" title="Remover este período">✕</button>
+    </div>
+  `).join('');
+}
+
+function adicionarPeriodoVigencia() {
+  _editingVigencias.push({ entrada: new Date().toISOString().slice(0, 10), saida: null });
+  renderVigenciasModal();
+}
+
+function atualizarPeriodoVigencia(idx, campo, valor) {
+  if (!_editingVigencias[idx]) return;
+  _editingVigencias[idx][campo] = valor || null;
+}
+
+function removerPeriodoVigencia(idx) {
+  _editingVigencias.splice(idx, 1);
+  renderVigenciasModal();
 }
 
 async function salvarVeiculo() {
@@ -6626,6 +6743,32 @@ async function salvarVeiculo() {
     return;
   }
 
+  // Vigência: períodos sem sobreposição, ordenados por entrada; um período sem data de
+  // saída (ainda ativo) não pode ser seguido de outro período (não há como já ter
+  // "voltado" antes de ter "saído").
+  const vigenciasOrdenadas = _editingVigencias
+    .filter(vg => vg.entrada)
+    .map(vg => ({ ...vg }))
+    .sort((a, b) => a.entrada.localeCompare(b.entrada));
+  for (let i = 0; i < vigenciasOrdenadas.length; i++) {
+    const atual = vigenciasOrdenadas[i];
+    if (atual.saida && atual.saida < atual.entrada) {
+      alert(`Período com data de saída (${atual.saida}) anterior à entrada (${atual.entrada}).`);
+      return;
+    }
+    const prox = vigenciasOrdenadas[i + 1];
+    if (prox) {
+      if (!atual.saida) {
+        alert('Um período sem data de saída (ainda ativo) não pode ser seguido de outro período. Informe a data de saída antes de registrar um retorno.');
+        return;
+      }
+      if (prox.entrada <= atual.saida) {
+        alert(`Períodos sobrepostos: ${atual.entrada} → ${atual.saida} e ${prox.entrada} → ${prox.saida || 'atual'}.`);
+        return;
+      }
+    }
+  }
+
   const isNovo = editingVeiculoIdx === null || editingVeiculoIdx === undefined;
   const registro = {
     ...(isNovo ? {} : veiculosDedicados[editingVeiculoIdx]),
@@ -6637,6 +6780,8 @@ async function salvarVeiculo() {
     nomeMotorista: document.getElementById('veiculo-nomeMotorista').value.trim(),
     cpfMotorista: document.getElementById('veiculo-cpfMotorista').value.trim(),
   };
+  if (vigenciasOrdenadas.length) registro.vigencias = vigenciasOrdenadas;
+  else delete registro.vigencias;
 
   if (isNovo) veiculosDedicados.push(registro);
   else veiculosDedicados[editingVeiculoIdx] = registro;
@@ -6666,7 +6811,8 @@ function abrirModalIndisponibilidade(veiculoId, dia) {
 // calendário daquele veículo, em vez de clicar dia a dia.
 function abrirModalIndisponibilidadeSemana(veiculoId) {
   if (isTransportador()) return;
-  const dias = diasDaSemanaAtiva().map(d => d.toISOString().slice(0, 10));
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  const dias = diasAtivosDoVeiculo(vd).map(d => d.toISOString().slice(0, 10));
   if (!dias.length) return;
   abrirModalIndisponibilidadeDias(veiculoId, dias);
 }
@@ -6734,6 +6880,8 @@ async function removerIndisponibilidade() {
 function limparFiltrosVeiculos() {
   const el = document.getElementById('fVeiculosBusca');
   if (el) el.value = '';
+  const st = document.getElementById('fVeiculosStatus');
+  if (st) st.value = '';
   activeIndicadorVeiculo = null;
   renderVeiculosTable();
 }
@@ -9174,30 +9322,8 @@ document.getElementById('fileInputLeadtime').addEventListener('change', function
   e.target.value = '';
 });
 
-document.getElementById('modalOverlay').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
-});
-document.getElementById('modalNovaCad').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalNovaCad();
-});
-document.getElementById('modalGrupo').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalGrupo();
-});
-document.getElementById('adminModal').addEventListener('click', function(e) {
-  if (e.target === this) fecharAdminModal();
-});
-document.getElementById('modalTransportador').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalTransportador();
-});
-document.getElementById('modalTrocarSenha').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalTrocarSenha();
-});
-document.getElementById('modalFornecedor').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalFornecedor();
-});
-document.getElementById('modalLeadtime').addEventListener('click', function(e) {
-  if (e.target === this) fecharModalLeadtime();
-});
+// Clicar fora NÃO fecha os modais de edição — só Cancelar/Salvar (ou X), pra evitar
+// perder dados preenchidos por um clique acidental fora da janela.
 
 // ── INIT: restaurar sessão ao abrir ──
 
