@@ -2561,13 +2561,13 @@
       <div class="modal-field">
         <div class="modal-label">Origem</div>
         <select class="config-input" id="nc-origem"
-          onchange="popularSelectBaseFornecedor('nc-base', this.value, ''); atualizarCnpjOrigemNovaCad();">
+          onchange="popularSelectBaseFornecedor('nc-base', this.value, ''); atualizarCnpjOrigemNovaCad(); tentarPreencherDataPorLeadtimeCadencia();">
           <option value="">Selecione a origem...</option>
         </select>
       </div>
       <div class="modal-field">
         <div class="modal-label">Base de Atendimento</div>
-        <select class="config-input" id="nc-base" onchange="atualizarCnpjOrigemNovaCad()">
+        <select class="config-input" id="nc-base" onchange="atualizarCnpjOrigemNovaCad(); tentarPreencherDataPorLeadtimeCadencia();">
           <option value="">Selecione a origem primeiro</option>
         </select>
       </div>
@@ -2588,7 +2588,7 @@
 
     <div class="modal-field">
       <div class="modal-label">Destino / Base *</div>
-      <select class="config-input" id="nc-destino" onchange="atualizarCnpjDestinoNovaCad()">
+      <select class="config-input" id="nc-destino" onchange="atualizarCnpjDestinoNovaCad(); tentarPreencherDataPorLeadtimeCadencia();">
         <option value="">Selecione o destino...</option>
       </select>
     </div>
@@ -2596,11 +2596,13 @@
     <div class="modal-row">
       <div class="modal-field">
         <div class="modal-label">Dt Carregamento</div>
-        <input type="text" class="config-input" id="nc-dtcarreg" placeholder="DD/MM/AAAA ou -">
+        <input type="date" class="config-input" id="nc-dtcarreg" onchange="marcarAncoraDataCadencia('carreg')"
+          title="Preencha esta data para calcular a Dt Descarga automaticamente pelo leadtime da rota">
       </div>
       <div class="modal-field">
         <div class="modal-label">Dt Descarga *</div>
-        <input type="text" class="config-input" id="nc-dtdesc" placeholder="DD/MM/AAAA">
+        <input type="date" class="config-input" id="nc-dtdesc" onchange="marcarAncoraDataCadencia('desc')"
+          title="Preencha esta data para calcular a Dt Carregamento automaticamente pelo leadtime da rota">
       </div>
     </div>
 
@@ -4537,7 +4539,7 @@ function renderPreview() {
     ? `${cadFiltradas.length} de ${cadencias.length} linhas`
     : `${cadencias.length} linhas`;
   document.getElementById('badge-linhas').textContent = mostrando;
-  document.getElementById('badge-viagens-prev').textContent = totalViagensCount + ' viagens a gerar';
+  document.getElementById('badge-viagens-prev').textContent = totalViagensCount + ' viagens';
   document.getElementById('cnt-cadencias').textContent = cadencias.length;
 
   const tbody = document.getElementById('previewBody');
@@ -4720,7 +4722,76 @@ function atualizarCnpjDestinoNovaCad() {
   document.getElementById('nc-cnpjDestino').value = b?.cnpj || '';
 }
 
+// "YYYY-MM-DD" (formato nativo do <input type="date">) <-> "DD/MM/AAAA" (formato usado
+// no resto do app — cadencias/viagens, parseDMY, anoPlausivel etc.).
+function isoParaDMY(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function somarDiasIso(iso, dias) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+// Leadtime da rota selecionada (Origem/Base -> Destino), em dias — mesmo cadastro e mesma
+// regra de casamento por cidade/UF usados na programação de viagens (fornecedor.cidade/uf
+// -> Leadtime.origemCidade/UF, base.cidade/estado -> Leadtime.destinoCidade/UF, ver
+// buscarLeadtimeHorasParaViagem). A programação trabalha em horas; aqui a cadência só tem
+// data (sem hora) — arredonda sempre pra cima (nunca subestima o trânsito).
+function buscarLeadtimeDiasNovaCad() {
+  const stub = {
+    origem:  document.getElementById('nc-origem').value,
+    base:    document.getElementById('nc-base').value,
+    destino: document.getElementById('nc-destino').value,
+  };
+  const horas = buscarLeadtimeHorasParaViagem(stub);
+  return horas === null ? null : Math.ceil(horas / 24);
+}
+
+// Ano plausível pro valor ISO ("YYYY-MM-DD") de um <input type="date"> — mesmo espírito
+// de anoPlausivel() (que trabalha em DD/MM/AAAA). Necessário aqui porque o Chrome dispara
+// `change` a cada dígito digitado no segmento de ano, inclusive em estados intermediários
+// (ex.: ao digitar "2026" dígito a dígito, passa por "0002", "0020", "0202") — sem esse
+// filtro, um desses valores transitórios acaba sendo usado pra calcular a outra data.
+function anoIsoPlausivel(iso) {
+  if (!iso) return true;
+  const ano = parseInt(iso.slice(0, 4), 10);
+  if (!ano) return true;
+  const atual = new Date().getFullYear();
+  return ano >= atual - 1 && ano <= atual + 2;
+}
+
+// Qual das duas datas foi a última editada manualmente pelo usuário — essa vira a
+// "âncora" e a outra é recalculada a partir dela sempre que algo muda (a própria âncora,
+// ou Origem/Base/Destino). Resetado a cada abertura do modal (abrirModalNovaCadencia).
+let _ncDataAncora = null; // 'carreg' | 'desc' | null
+
+function marcarAncoraDataCadencia(campo) {
+  _ncDataAncora = campo;
+  tentarPreencherDataPorLeadtimeCadencia();
+}
+
+// Recalcula a data não-âncora a partir da âncora + leadtime da rota. Roda a cada
+// interação (mudar Origem/Base/Destino ou editar a própria data âncora) — se o usuário
+// trocar a rota depois de já ter as duas datas preenchidas, a não-âncora é atualizada
+// de novo em vez de ficar presa no valor calculado pra rota anterior.
+function tentarPreencherDataPorLeadtimeCadencia() {
+  if (!_ncDataAncora) return; // nenhuma das duas datas foi editada manualmente ainda
+  const elCarreg = document.getElementById('nc-dtcarreg');
+  const elDesc   = document.getElementById('nc-dtdesc');
+  const valorAncora = _ncDataAncora === 'carreg' ? elCarreg.value : elDesc.value;
+  if (!valorAncora || !anoIsoPlausivel(valorAncora)) return; // vazia ou ano ainda sendo digitado
+  const dias = buscarLeadtimeDiasNovaCad();
+  if (dias === null) return;
+  if (_ncDataAncora === 'carreg') elDesc.value = somarDiasIso(valorAncora, dias);
+  else elCarreg.value = somarDiasIso(valorAncora, -dias);
+}
+
 function abrirModalNovaCadencia() {
+  _ncDataAncora = null;
   ['nc-id','nc-dtcarreg','nc-dtdesc','nc-volume'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -4746,8 +4817,8 @@ function salvarNovaCadencia() {
   const produto = document.getElementById('nc-produto').value.trim();
   const origem  = document.getElementById('nc-origem').value.trim();
   const destino = document.getElementById('nc-destino').value.trim();
-  const dtCarreg = document.getElementById('nc-dtcarreg').value.trim() || '-';
-  const dtDesc  = document.getElementById('nc-dtdesc').value.trim();
+  const dtCarreg = isoParaDMY(document.getElementById('nc-dtcarreg').value) || '-';
+  const dtDesc  = isoParaDMY(document.getElementById('nc-dtdesc').value);
   const volume  = parseFloat(document.getElementById('nc-volume').value) || 0;
   if (!id || !produto || !destino || !dtDesc || !volume) {
     alert('Preencha os campos obrigatórios: ID, Produto, Destino, Dt Descarga e Volume.');
