@@ -6635,6 +6635,18 @@ function diasIndisponiveisNoIntervalo(veiculoId, ini, fim) {
   return conflitos;
 }
 
+// Usado por salvarViagem() pra bloquear a alocação de um veículo fora da vigência
+// (inativo, ou ainda não entrou na frota) em algum dia do intervalo da viagem.
+function diasForaDaVigenciaNoIntervalo(veiculoId, ini, fim) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd) return [];
+  const dias = [];
+  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
+    if (!veiculoAtivoNoDia(vd, d)) dias.push(new Date(d));
+  }
+  return dias;
+}
+
 function renderUtilizacaoSemanal(veiculoId) {
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   const todosDias = diasDaSemanaAtiva();
@@ -7263,20 +7275,28 @@ function popularSelectCnpjsTransportador(selectId, nomeApelido, valorAtual) {
 function popularSelectVeiculosDedicados(selectId, valorAtual, nomeTransportador, viagemAtual) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
-  const lista = nomeTransportador
+  const doTransportador = nomeTransportador
     ? veiculosDedicados.filter(vd => vd.transportador === nomeTransportador)
     : veiculosDedicados;
+  const ini = viagemAtual ? parseDMY(viagemAtual.dtCarregProg || viagemAtual.dtCarreg) : null;
+  const fim = ini ? (parseDMY(viagemAtual.dtDescProg || viagemAtual.dtDesc) || ini) : null;
+  // Só entram na lista veículos com vigência cobrindo todo o período de carregamento/
+  // descarregamento — evita oferecer um veículo inativo na frota dedicada pra alocação.
+  // O veículo já vinculado à viagem continua aparecendo mesmo fora da vigência (com o
+  // aviso ⚠) pra não sumir da tela sem o usuário perceber que precisa trocar.
+  const lista = ini
+    ? doTransportador.filter(vd => vd.id === valorAtual || diasForaDaVigenciaNoIntervalo(vd.id, ini, fim).length === 0)
+    : doTransportador;
   // Sinaliza (sem bloquear aqui) veículos com indisponibilidade marcada dentro da
   // janela de carregamento/descarregamento desta viagem — o bloqueio de fato
   // acontece em salvarViagem(), que é a validação autoritativa.
-  const ini = viagemAtual ? parseDMY(viagemAtual.dtCarregProg || viagemAtual.dtCarreg) : null;
-  const fim = ini ? (parseDMY(viagemAtual.dtDescProg || viagemAtual.dtDesc) || ini) : null;
-  sel.innerHTML = `<option value="">${lista.length ? 'Selecione o veículo...' : (nomeTransportador ? 'Nenhum veículo cadastrado para este transportador' : 'Nenhum veículo cadastrado')}</option>`;
+  sel.innerHTML = `<option value="">${lista.length ? 'Selecione o veículo...' : (nomeTransportador ? 'Nenhum veículo disponível para este transportador no período' : 'Nenhum veículo disponível no período')}</option>`;
   lista.forEach(vd => {
     const opt = document.createElement('option');
     opt.value = vd.id;
     const conflitos = ini ? diasIndisponiveisNoIntervalo(vd.id, ini, fim) : [];
-    opt.textContent = `${vd.placaCavalo} · ${vd.transportador}${vd.nomeMotorista ? ' · ' + vd.nomeMotorista : ''}${conflitos.length ? ' ⚠ indisponível' : ''}`;
+    const foraVigencia = ini ? diasForaDaVigenciaNoIntervalo(vd.id, ini, fim) : [];
+    opt.textContent = `${vd.placaCavalo} · ${vd.transportador}${vd.nomeMotorista ? ' · ' + vd.nomeMotorista : ''}${foraVigencia.length ? ' ⚠ inativo no período' : ''}${conflitos.length ? ' ⚠ indisponível' : ''}`;
     sel.appendChild(opt);
   });
   sel.value = lista.some(vd => vd.id === valorAtual) ? valorAtual : '';
@@ -7960,6 +7980,13 @@ async function salvarViagem() {
   if (novoStatus === 'Frota Dedicada' && novoVeiculoId) {
     const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
     const fim = parseDMY(v.dtDescProg || v.dtDesc) || ini;
+    const foraVigencia = ini ? diasForaDaVigenciaNoIntervalo(novoVeiculoId, ini, fim) : [];
+    if (foraVigencia.length) {
+      const vd = veiculosDedicados.find(x => x.id === novoVeiculoId);
+      const lista = foraVigencia.map(d => d.toLocaleDateString('pt-BR')).join(', ');
+      alert(`O veículo ${vd?.placaCavalo || ''} não está ativo na frota dedicada em: ${lista}.\n\nEscolha outro veículo ou ajuste a vigência em "Veículos Dedicados".`);
+      return;
+    }
     const conflitos = ini ? diasIndisponiveisNoIntervalo(novoVeiculoId, ini, fim) : [];
     if (conflitos.length) {
       const vd = veiculosDedicados.find(x => x.id === novoVeiculoId);
