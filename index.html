@@ -1667,7 +1667,7 @@
       <div class="pipe-label">Frota Dedicada</div>
     </div>
   </div>
-  <div class="pipe-step clickable" id="pipe-3" onclick="filtrarPipelineSemTransportador(event)" title="Backlog + Recusado: cargas que ainda precisam de transportador alocado — clique para filtrar (Ctrl+clique para somar a outro filtro)">
+  <div class="pipe-step clickable" id="pipe-3" onclick="filtrarPipelineSemTransportador(event)" title="Sem Programação + Recusado: cargas que ainda precisam de transportador alocado — clique para filtrar (Ctrl+clique para somar a outro filtro)">
     <div class="pipe-icon">📋</div>
     <div>
       <div class="pipe-count" id="cnt-backlog">0</div>
@@ -1881,7 +1881,7 @@
       <div class="stat-card c-muted clickable" id="kpi-vol-pendente" onclick="filtrarPorIndicador('vol-pendente')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label" id="lbl-vol-pendente">📦 Volume Pendente</div>
         <div class="stat-val" id="sv-vol-pendente">0</div>
-        <div class="stat-sub" id="sub-vol-pendente">m³ no pool Sem Transportador (Backlog + Recusado)</div>
+        <div class="stat-sub" id="sub-vol-pendente">m³ no pool Sem Transportador (Sem Programação + Recusado)</div>
       </div>
       <div class="stat-card c-accent clickable" id="kpi-vol-ofertado" onclick="filtrarPorIndicador('vol-ofertado')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">📤 Ofertado</div>
@@ -1913,7 +1913,7 @@
           <span class="table-title">Programação de Viagens</span>
           <div class="chip-group" id="filterChips">
             <div class="chip active" id="chipTodos" data-status="todos" onclick="filterViagens('todos')" title="Limpa a seleção de status">Todos</div>
-            <div class="chip" id="chipBacklog" data-status="Backlog" onclick="filterViagens('Backlog')" title="Clique para somar/remover este status à seleção">Backlog</div>
+            <div class="chip" id="chipBacklog" data-status="Backlog" onclick="filterViagens('Backlog')" title="Clique para somar/remover este status à seleção">Sem Programação</div>
             <div class="chip" data-status="Ofertado" onclick="filterViagens('Ofertado')" title="Clique para somar/remover este status à seleção">Ofertadas</div>
             <div class="chip" data-status="Recusado" onclick="filterViagens('Recusado')" title="Clique para somar/remover este status à seleção">Recusadas</div>
             <div class="chip" data-status="Aceito" onclick="filterViagens('Aceito')" title="Clique para somar/remover este status à seleção">Aceitas</div>
@@ -1978,7 +1978,7 @@
         <span class="filter-sep">Status:</span>
         <select class="filter-select" id="bulk-status" style="padding:5px 10px">
           <option value="">Manter atual</option>
-          <option value="Backlog">Backlog</option>
+          <option value="Backlog">Sem Programação</option>
           <option value="Ofertado">Ofertado</option>
           <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
@@ -2125,7 +2125,7 @@
       </div>
     </div>
 
-    <div class="kpi-group-label">📅 Aderência à Data Programação</div>
+    <div class="kpi-group-label">📅 Aderência à Data Programação <span class="badge badge-accent" id="badge-mon-total-prog">0 viagens</span></div>
     <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
       <div class="stat-card c-success clickable" id="kpi-mon-noprazo-prog" onclick="filtrarPorIndicadorMon('noprazo-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ No Prazo</div>
@@ -2149,7 +2149,7 @@
       </div>
     </div>
 
-    <div class="kpi-group-label">🎯 Aderência à Data Desejada</div>
+    <div class="kpi-group-label">🎯 Aderência à Data Desejada <span class="badge badge-accent" id="badge-mon-total-des">0 viagens</span></div>
     <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
       <div class="stat-card c-success clickable" id="kpi-mon-noprazo-des" onclick="filtrarPorIndicadorMon('noprazo-des')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ No Prazo</div>
@@ -2699,7 +2699,7 @@
       <div class="modal-field">
         <div class="modal-label">Status</div>
         <select class="config-input" id="m-status" onchange="ajustarCampoFrotaDedicada()">
-          <option value="Backlog">Backlog</option>
+          <option value="Backlog">Sem Programação</option>
           <option value="Ofertado">Ofertado</option>
           <option value="Recusado">Recusado</option>
           <option value="Aceito">Aceito</option>
@@ -3319,7 +3319,7 @@ function aplicarRestricoesPorTipo(usuario) {
   if (tabGerir) tabGerir.textContent = transportador ? '🚚 Minhas Cargas' : '② Gerir Viagens';
 
   document.getElementById('lbl-vol-pendente').textContent = transportador ? '📦 Volume Total' : '📦 Volume Pendente';
-  document.getElementById('sub-vol-pendente').textContent = transportador ? 'm³ alocados a você (exceto Cancelado)' : 'm³ no pool Sem Transportador (Backlog + Recusado)';
+  document.getElementById('sub-vol-pendente').textContent = transportador ? 'm³ alocados a você (exceto Cancelado)' : 'm³ no pool Sem Transportador (Sem Programação + Recusado)';
 
   document.getElementById('lbl-taxa').textContent = transportador ? '✅ Taxa de Aceite' : '📈 Taxa de Alocação';
   document.getElementById('sub-taxa').textContent = transportador ? 'Aceitas / ofertadas a você' : 'Viagens fora do pool Sem Transportador';
@@ -7782,6 +7782,11 @@ function viagensComPlacaConflitante(viagemAtual, placa) {
 
 const OPCOES_STATUS = ['Backlog', 'Ofertado', 'Recusado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF', 'Cancelado'];
 
+// Label exibido ao usuário para cada status — o valor interno ('Backlog') se mantém
+// igual em todo o código/dados já salvos; só o texto na tela virou "Sem Programação".
+const LABEL_STATUS = { 'Backlog': 'Sem Programação' };
+function labelStatus(status) { return LABEL_STATUS[status] || status; }
+
 // Statuses que nunca podem ser escolhidos manualmente no select — cada um tem uma
 // fonte de verdade própria: Em Andamento/Viagem Finalizada vêm da Herrlog
 // (sincronizarStatusHerrlog); CIF vem do Tipo de Frete da cadência de origem
@@ -7810,7 +7815,7 @@ function renderSeletorStatus(v, realIdx) {
   // e mesmo assim ficam "disabled" para não poderem ser escolhidas manualmente.
   const opcoes = OPCOES_STATUS
     .filter(op => !STATUS_SOMENTE_AUTOMATICO.includes(op) || op === v.status)
-    .map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''} ${STATUS_SOMENTE_AUTOMATICO.includes(op) ? 'disabled' : ''}>${op}</option>`)
+    .map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''} ${STATUS_SOMENTE_AUTOMATICO.includes(op) ? 'disabled' : ''}>${labelStatus(op)}</option>`)
     .join('');
   let html = `<select class="placa-input sel-status ${claseStatus(v.status)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
       onchange="salvarStatusInline(${realIdx}, this.value)" ${transportador ? 'disabled' : ''}>
@@ -8658,13 +8663,18 @@ function renderMonitoramento() {
   // KPIs sempre calculados ignorando o próprio filtro de indicador: assim, ao clicar
   // num card, os demais cards do grupo continuam mostrando o total real (não "congelam"
   // em 0 só porque a tabela foi restrita ao card clicado) — mesma lógica de Gerir Viagens.
+  // Precisa aplicar também o filtro de estado (chips Todos/T1.../T5...) — senão os cards
+  // ficam com o total geral enquanto a tabela abaixo já está restrita ao estado clicado.
+  const passaStatusMon = v => activeFilterMonStatus.size === 0 || activeFilterMonStatus.has(monitoramentoHerrlog[v.idViagem]?.statusHerrlog);
   const paraKpis = (activeIndicadorMon
     ? monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'indicador'))
     : monitoradas.filter(v => passaFiltrosMonitoramento(v, f))
-  ).map(calcularLinhaMonitoramento);
+  ).filter(passaStatusMon).map(calcularLinhaMonitoramento);
 
   const totalProg = comDado(paraKpis, 'vsProgramacao');
   const totalDes  = comDado(paraKpis, 'vsDesejada');
+  document.getElementById('badge-mon-total-prog').textContent = totalProg + ' viagem' + (totalProg !== 1 ? 's' : '');
+  document.getElementById('badge-mon-total-des').textContent  = totalDes + ' viagem' + (totalDes !== 1 ? 's' : '');
 
   // Aderência = % de viagens NÃO atrasadas (no-prazo + adiantado contam como
   // dentro do compromisso — só atraso quebra a aderência à data de referência).
