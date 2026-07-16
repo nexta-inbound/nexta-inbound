@@ -3831,8 +3831,11 @@ function editarGrupo(idxs) {
         </div>
       </div>`;
     sec.innerHTML = `
-      <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">
-        Pedido ${i+1} — <span style="color:var(--accent);font-family:var(--font-cond)">${esc(c.id)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">
+          Pedido ${i+1} — <span style="color:var(--accent);font-family:var(--font-cond)">${esc(c.id)}</span>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="removerPedidoDoGrupo(${idx})" title="Remover este pedido do agrupamento">✕ Remover</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         ${roField('ID Pedido', c.id)}
@@ -3879,6 +3882,25 @@ function salvarGrupo() {
     cadencias[idx].modal    = document.getElementById(`ge-modal-${i}`).value === 'CIF' ? 'CIF' : 'FOB';
   });
   fecharModalGrupo();
+  renderPreview();
+  agendarAutosave();
+}
+
+// Remove um pedido específico de dentro do agrupamento (o grupo em si não é uma entidade
+// própria — é só a exibição de várias linhas de cadência com mesma rota/período; excluir
+// aqui exclui a linha real em `cadencias`). Reajusta editingGrupoIdxs porque splice desloca
+// pra baixo em 1 todo índice depois do removido. Com 1 pedido ou menos restando, fecha o
+// modal — o preview volta a mostrar a linha remanescente como registro simples, com o
+// editar/excluir normal de linha única.
+function removerPedidoDoGrupo(idx) {
+  if (!confirm('Remover este pedido do agrupamento (exclui a linha da cadência)?')) return;
+  cadencias.splice(idx, 1);
+  editingGrupoIdxs = editingGrupoIdxs.filter(i => i !== idx).map(i => i > idx ? i - 1 : i);
+  if (editingGrupoIdxs.length > 1) {
+    editarGrupo(editingGrupoIdxs);
+  } else {
+    fecharModalGrupo();
+  }
   renderPreview();
   agendarAutosave();
 }
@@ -4380,7 +4402,13 @@ function carregarSessao() {
 }
 
 function agendarAutosave() {
-  if (modoMultiSemana) { agendarAutosaveMultiSemana(); return; }
+  // modoMultiSemana fica ligado o tempo todo (ver ativarMultiSemana) — mas isso cobre só
+  // as viagens (viagensMultiSemana/viagensAlteradasMultiSemana). `cadencias` é sempre da
+  // semana única ativa (só usada por Importar Cadência/gerarViagens) e só é persistida por
+  // salvarSessao() → salvarCadenciasEConfig; sem rodar esse caminho também, qualquer edição
+  // de cadência (excluir linha, editar grupo etc.) nunca ia pro Firebase, só ficava em
+  // memória até a próxima releitura da semana apagar a mudança.
+  if (modoMultiSemana) agendarAutosaveMultiSemana();
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     if (cadencias.length > 0 || viagens.length > 0) {
@@ -9517,8 +9545,13 @@ function aplicarImportacaoCadencias(linhasArquivo, file, substituirTudo) {
     cadencias = linhasArquivo;
     novas = linhasArquivo.length;
   } else {
+    // Id (Pedido MIS) sozinho não é chave única — o mesmo pedido pode aparecer em várias
+    // linhas da planilha, uma por janela de carregamento/descarga diferente (cadência
+    // recorrente ao longo da semana). Casar só por id fazia a 2ª linha em diante do mesmo
+    // pedido sobrescrever a anterior (mesmo dentro do mesmo arquivo), perdendo as janelas
+    // intermediárias — por isso o id+dtCarreg+dtDesc juntos identificam a linha de fato.
     linhasArquivo.forEach(nova => {
-      const idx = cadencias.findIndex(c => c.id === nova.id);
+      const idx = cadencias.findIndex(c => c.id === nova.id && c.dtCarreg === nova.dtCarreg && c.dtDesc === nova.dtDesc);
       if (idx !== -1) { cadencias[idx] = nova; atualizadas++; }
       else { cadencias.push(nova); novas++; }
     });
