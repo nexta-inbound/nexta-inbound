@@ -1932,6 +1932,7 @@
             <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
         </div>
+        <button class="btn btn-secondary btn-sm" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento e Descarga das viagens elegíveis, recuando quando necessário e recalculando a descarga via leadtime. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
       </div>
       <div class="filter-bar">
         <div class="filter-row">
@@ -2390,6 +2391,7 @@
               <th style="white-space:normal">CNPJ</th>
               <th style="white-space:normal">Cód. SAP</th>
               <th style="white-space:normal">Carregamento (h)</th>
+              <th style="white-space:normal">Janela de Carregamento</th>
               <th class="col-acao" style="text-align:center">Ações</th>
             </tr>
           </thead>
@@ -2930,6 +2932,21 @@
       <div class="modal-field">
         <div class="modal-label">Tempo médio de carregamento (horas)</div>
         <input type="number" class="config-input" id="forn-tempoCarregamento" min="0" step="0.5" placeholder="4">
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field" style="grid-column:1/-1">
+        <div class="modal-label">Janela de Carregamento</div>
+        <div class="chip-group" id="forn-diasCarregamento">
+          <div class="chip" data-dia="0" onclick="toggleDiaCarregamentoFornecedor(0)">Dom</div>
+          <div class="chip" data-dia="1" onclick="toggleDiaCarregamentoFornecedor(1)">Seg</div>
+          <div class="chip" data-dia="2" onclick="toggleDiaCarregamentoFornecedor(2)">Ter</div>
+          <div class="chip" data-dia="3" onclick="toggleDiaCarregamentoFornecedor(3)">Qua</div>
+          <div class="chip" data-dia="4" onclick="toggleDiaCarregamentoFornecedor(4)">Qui</div>
+          <div class="chip" data-dia="5" onclick="toggleDiaCarregamentoFornecedor(5)">Sex</div>
+          <div class="chip" data-dia="6" onclick="toggleDiaCarregamentoFornecedor(6)">Sáb</div>
+        </div>
       </div>
     </div>
 
@@ -4198,6 +4215,21 @@ let editingFornecedorIdx = null;
 // Tempo médio de carregamento assumido quando o fornecedor não tem valor próprio
 // cadastrado (fornecedores antigos, importados sem essa coluna etc.).
 const TEMPO_CARREGAMENTO_PADRAO_HORAS = 4;
+// Janela de carregamento: dias da semana (0=Dom ... 6=Sáb) em que o fornecedor está
+// aberto para carregar. Padrão de segunda a sexta — exceto origem própria (SIM/Nexta),
+// que carrega sábado também. Mesma lógica do tempo de carregamento acima: vale pra
+// fornecedor novo e pros já cadastrados sem essa customização ainda, até o usuário
+// personalizar caso a caso.
+const DIAS_CARREGAMENTO_PADRAO_GERAL = [1, 2, 3, 4, 5];
+const DIAS_CARREGAMENTO_PADRAO_PROPRIA = [1, 2, 3, 4, 5, 6];
+function origemPropria(origem) {
+  const o = String(origem || '').trim().toUpperCase();
+  return o.startsWith('SIM') || o.startsWith('NEXTA');
+}
+function diasCarregamentoPadrao(origem) {
+  return origemPropria(origem) ? DIAS_CARREGAMENTO_PADRAO_PROPRIA : DIAS_CARREGAMENTO_PADRAO_GERAL;
+}
+let fornecedorDiasSelecionados = new Set(DIAS_CARREGAMENTO_PADRAO_GERAL);
 let leadtimes = []; // { origemCidade, origemUf, destinoCidade, destinoUf, leadtimeHoras }
 let editingLeadtimeIdx = null;
 let veiculosDedicados = [];
@@ -4931,6 +4963,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
     const n = Math.ceil(g.volume / cap);
     const volPorViagem = +(g.volume / n).toFixed(1);
     const cadOrigem = g.ids.join(' / ');
+    const dtCarregProgPadrao = ajustarCarregamentoParaJanela(g.dtCarreg, g);
 
     for (let i = 1; i <= n; i++) {
       const anterior = existentes[i - 1];
@@ -4960,7 +4993,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
           cadenciaOrigem: travado ? anterior.cadenciaOrigem : baseViagem.cadenciaOrigem,
           pedidoProvisorio: travado ? false : baseViagem.pedidoProvisorio,
           volume: anterior.volumeAjustadoManualmente ? anterior.volume : baseViagem.volume,
-          dtCarregProg: anterior.dtCarregProg || g.dtCarreg,
+          dtCarregProg: anterior.dtCarregProg || dtCarregProgPadrao,
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           horaCarregProg: anterior.horaCarregProg || '12:00',
           horaDescProg:   anterior.horaDescProg   || '12:00',
@@ -4982,7 +5015,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
         const criadoPor = _authUsuarioAtual?.nome || '';
         const nova = {
           ...baseViagem,
-          dtCarregProg: g.dtCarreg,
+          dtCarregProg: dtCarregProgPadrao,
           dtDescProg: g.dtDesc,
           horaCarregProg: '12:00',
           horaDescProg: '12:00',
@@ -4995,6 +5028,13 @@ function reconciliarViagensComCadencias(grupos, cap) {
           criadoPor,
           historicoProgramacao: [{ data: criadoEm, usuario: criadoPor, evento: 'Viagem criada' }],
         };
+        if (dtCarregProgPadrao !== g.dtCarreg) {
+          nova.historicoProgramacao.push({
+            data: criadoEm,
+            usuario: criadoPor,
+            evento: `Carregamento antecipado para ${dtCarregProgPadrao} — origem não carrega em ${g.dtCarreg} (Fornecedores > Janela de Carregamento)`,
+          });
+        }
         // Se existir leadtime cadastrado pra rota (origem x destino), a descarga já nasce
         // calculada a partir do carregamento em vez de copiar a data desejada da cadência.
         // Sem leadtime cadastrado (rota ainda não padronizada/cadastrada), mantém dtDesc
@@ -6182,6 +6222,43 @@ async function carregarLeadtimesFirebase() {
   } catch (e) { console.error('Erro ao carregar leadtimes:', e); }
 }
 
+function renderChipsJanelaCarregamentoTabela(f) {
+  const dias = f.diasCarregamento ?? diasCarregamentoPadrao(f.origem);
+  const labels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const realIdx = fornecedores.indexOf(f);
+  return `<div class="chip-group">${labels.map((lbl, i) =>
+    `<span class="chip${dias.includes(i) ? ' active' : ''}" onclick="toggleDiaCarregamentoInline(${realIdx}, ${i})" title="Clique pra ativar/desativar este dia">${lbl}</span>`
+  ).join('')}</div>`;
+}
+
+// Editar direto na tabela (sem abrir o modal) — mesmo dado que a Janela de Carregamento
+// do modal, só que grava na hora; mantém a mesma trava de não poder zerar todos os dias.
+async function toggleDiaCarregamentoInline(idx, dia) {
+  const f = fornecedores[idx];
+  const dias = new Set(f.diasCarregamento ?? diasCarregamentoPadrao(f.origem));
+  if (dias.has(dia)) {
+    if (dias.size === 1) { alert('Mantenha ao menos um dia ativo na Janela de Carregamento.'); return; }
+    dias.delete(dia);
+  } else {
+    dias.add(dia);
+  }
+  f.diasCarregamento = [...dias].sort((a, b) => a - b);
+  renderFornecedoresTable();
+  await persistirFornecedores();
+}
+
+function toggleDiaCarregamentoFornecedor(dia) {
+  if (fornecedorDiasSelecionados.has(dia)) fornecedorDiasSelecionados.delete(dia);
+  else fornecedorDiasSelecionados.add(dia);
+  renderChipsDiaCarregamentoFornecedor();
+}
+
+function renderChipsDiaCarregamentoFornecedor() {
+  document.querySelectorAll('#forn-diasCarregamento .chip').forEach(c => {
+    c.classList.toggle('active', fornecedorDiasSelecionados.has(+c.dataset.dia));
+  });
+}
+
 function renderFornecedoresTable() {
   const busca = (document.getElementById('fFornecedoresBusca')?.value || '').toLowerCase().trim();
   const filtered = fornecedores.filter(f =>
@@ -6209,6 +6286,7 @@ function renderFornecedoresTable() {
       <td style="font-family:monospace;white-space:normal">${esc(f.cnpj)}</td>
       <td style="white-space:normal">${esc(f.codSap)}</td>
       <td style="white-space:normal">${esc(f.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS)}</td>
+      <td style="white-space:normal">${renderChipsJanelaCarregamentoTabela(f)}</td>
       <td class="col-acao">
         <div style="display:flex;gap:4px;justify-content:center">
           <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFornecedor(${realIdx})">✏️</button>
@@ -6231,6 +6309,8 @@ function abrirModalFornecedor(idx) {
   document.getElementById('forn-cnpj').value = f.cnpj || '';
   document.getElementById('forn-codSap').value = f.codSap || '';
   document.getElementById('forn-tempoCarregamento').value = f.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS;
+  fornecedorDiasSelecionados = new Set(f.diasCarregamento ?? diasCarregamentoPadrao(f.origem));
+  renderChipsDiaCarregamentoFornecedor();
   document.getElementById('modalFornecedor').classList.add('open');
   setTimeout(() => document.getElementById('forn-origem').focus(), 100);
 }
@@ -6259,6 +6339,10 @@ async function salvarFornecedor() {
     alert(`A combinação "${origem}" / "${baseAtendimento}" já está cadastrada.`);
     return;
   }
+  if (!fornecedorDiasSelecionados.size) {
+    alert('Selecione ao menos um dia na Janela de Carregamento.');
+    return;
+  }
 
   const tempoCarregamentoInput = parseFloat(document.getElementById('forn-tempoCarregamento').value);
   const registro = {
@@ -6268,6 +6352,7 @@ async function salvarFornecedor() {
     tempoCarregamentoHoras: isNaN(tempoCarregamentoInput) || tempoCarregamentoInput < 0
       ? TEMPO_CARREGAMENTO_PADRAO_HORAS
       : tempoCarregamentoInput,
+    diasCarregamento: [...fornecedorDiasSelecionados].sort((a, b) => a - b),
   };
 
   const isNovo = editingFornecedorIdx === null || editingFornecedorIdx === undefined;
@@ -7905,7 +7990,8 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
 // para promover o status automaticamente, sem depender de ação manual:
 //   Placa Enviada / Frota Dedicada → Em Andamento (qualquer ciclo != T5, já confirmado na Herrlog)
 //                                  → Viagem Finalizada (ciclo T5)
-//   Em Andamento                  → Viagem Finalizada (ciclo T5)
+//   Em Andamento                  ⇄ Viagem Finalizada (troca nos dois sentidos, seguindo
+//                                    o ciclo real — nenhum dos dois é escolhido manualmente)
 // "Em Andamento" e "Viagem Finalizada" são exclusivos dessa sincronização — ver
 // STATUS_SOMENTE_AUTOMATICO, que os mantém fora das opções manuais do select de status.
 const STATUS_HERRLOG_FINALIZADA = 'T5 - Viagem finalizada';
@@ -7923,9 +8009,15 @@ function sincronizarStatusHerrlog() {
     const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
     if (!statusHerrlog) return;
     const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
-    const podeAvancar = ['Placa Enviada', 'Frota Dedicada'].includes(v.status)
-      || (v.status === 'Em Andamento' && novoStatus === 'Viagem Finalizada');
-    if (!podeAvancar || v.status === novoStatus) return;
+    // Placa Enviada/Frota Dedicada só avançam pra automático (nunca voltam a estado
+    // manual). Já entre Em Andamento e Viagem Finalizada — ambos 100% automáticos,
+    // ninguém escolhe isso manualmente — a sincronização acompanha o ciclo real da
+    // Herrlog nos dois sentidos. Sem isso, um T5 prematuro (ruído/GPS) que depois a
+    // Herrlog corrige de volta pra T4 deixava a viagem presa em "Viagem Finalizada"
+    // enquanto a coluna Status Herrlog do Monitoramento já mostrava T4 — divergência
+    // que só dava pra corrigir manualmente.
+    const podeSincronizar = ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status);
+    if (!podeSincronizar || v.status === novoStatus) return;
     v.status = novoStatus;
     registrarHistoricoOferta(v, novoStatus, 'Herrlog (automático)');
     marcarEAgendar(v);
@@ -8308,8 +8400,16 @@ function updatePipeline(list) {
 // lugares. `elegiveis` fica de fora do filtro de programador de propósito: é ele que
 // decide se a tela mostra o estado vazio, e não queremos escondê-la (junto com o
 // próprio filtro) só porque o programador selecionado não tem nada pendente agora.
+// Só entram na exportação viagens com agendamento confirmado — "Agendado" ou "Usina de
+// Fila" — as demais (Não Agendado, Segurando Grade, Sem Saldo, Sem Grades) ainda não têm
+// carregamento garantido e não devem ser criadas no monitoramento da Herrlog.
+const AGENDAMENTOS_EXPORTAVEIS = ['Agendado', 'Usina de Fila'];
+
 function calcularFiltradasExport() {
-  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa);
+  const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v =>
+    ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa
+    && AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado')
+  );
   const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
   const programadores = new Set(msEProgramador?.getSelected() || []);
   const filtradas = programadores.size
@@ -8757,6 +8857,76 @@ function buscarFornecedorDaViagem(v) {
     || fornecedores.find(f => f.origem === v.origem)
     || (v.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(v.cnpjOrigem)))
     || null;
+}
+
+// Usado por reconciliarViagensComCadencias() ao criar uma viagem nova a partir da
+// cadência: recua a data de carregamento, dia a dia, até cair num dia que o fornecedor
+// da origem efetivamente carrega (Fornecedores > Janela de Carregamento) — ex.: origem
+// não carrega sexta-feira, cadência pede carregamento numa sexta → programação já nasce
+// na quinta. Não mexe em dtCarreg (Data Desejada, referência original da cadência) nem
+// na aplicação do leadtime em si — recalcularDescargaPorLeadtime roda depois, do mesmo
+// jeito de sempre, só que a partir dessa data de carregamento já ajustada.
+function ajustarCarregamentoParaJanela(dataStr, g) {
+  const fornecedor = buscarFornecedorDaViagem(g);
+  const dias = fornecedor?.diasCarregamento ?? diasCarregamentoPadrao(g.origem);
+  if (dias.length === 7) return dataStr; // sem restrição de dia — nada a ajustar
+  const d = parseDMY(dataStr);
+  if (!d) return dataStr;
+  for (let i = 0; i < 7 && !dias.includes(d.getDay()); i++) {
+    d.setDate(d.getDate() - 1);
+  }
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+// Ação manual (botão "🔄 Reprocessar Janela de Carregamento" em Gerir Viagens) — aplica
+// retroativamente a Janela de Carregamento do fornecedor às viagens que já existiam antes
+// dessa regra existir (reconciliarViagensComCadencias só ajusta viagem nova; reimportar a
+// cadência preserva dtCarregProg já setado, ver comentário lá). Cada usuário decide quando
+// disparar; nada roda sozinho num reimport.
+// Fora do escopo: Agendado/Usina de Fila (compromisso já confirmado com a base — mesma
+// trava usada em AGENDAMENTOS_EXPORTAVEIS) e viagens que já saíram do plano puro (Placa
+// Enviada em diante) — mudar a data de carregamento nesse ponto já afeta motorista/placa
+// definidos ou a viagem em si já em curso/concluída.
+const STATUS_FORA_DO_REPROCESSAMENTO_JANELA = ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'Cancelado'];
+
+function reprocessarJanelaCarregamentoRetroativo() {
+  const elegiveis = viagensAtivo().filter(v =>
+    !STATUS_FORA_DO_REPROCESSAMENTO_JANELA.includes(v.status)
+    && !AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado')
+  );
+  if (!confirm(`Isso vai reavaliar a Data de Carregamento de ${elegiveis.length} viagem(ns) elegível(is) contra a Janela de Carregamento de cada fornecedor, recuando a data quando necessário e recalculando a descarga via leadtime.\n\nNão mexe em Agendado/Usina de Fila nem em Placa Enviada/Frota Dedicada/Em Andamento/Viagem Finalizada/Cancelado.\n\nConfirma?`)) return;
+
+  let ajustadas = 0;
+  elegiveis.forEach(v => {
+    const atual = v.dtCarregProg || v.dtCarreg;
+    const ajustado = ajustarCarregamentoParaJanela(atual, v);
+    if (ajustado === atual) return;
+    v.dtCarregProg = ajustado;
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    const agora = new Date().toISOString();
+    const usuario = _authUsuarioAtual?.nome || '';
+    v.historicoProgramacao.push({
+      data: agora, usuario,
+      evento: `Carregamento antecipado para ${ajustado} — reprocessamento retroativo da Janela de Carregamento (era ${atual})`,
+    });
+    const leadtimeHoras = recalcularDescargaPorLeadtime(v);
+    if (leadtimeHoras !== null) {
+      v.historicoProgramacao.push({
+        data: agora, usuario,
+        evento: `Descarga recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
+      });
+    }
+    marcarEAgendar(v);
+    ajustadas++;
+  });
+
+  if (ajustadas) {
+    updatePipeline(viagensAtivo());
+    renderViagensTable();
+  }
+  mostrarStatus('saved', ajustadas ? `${ajustadas} viagem(ns) ajustada(s) pela Janela de Carregamento` : 'Nenhuma viagem precisou de ajuste');
 }
 
 function buscarBaseDaViagem(v) {
@@ -9435,8 +9605,13 @@ function processarArquivoFornecedores(file) {
           f.origem.toLowerCase() === origem.toLowerCase() &&
           f.baseAtendimento.toLowerCase() === baseAtendimento.toLowerCase()
         );
-        if (existenteIdx >= 0) { fornecedores[existenteIdx] = registro; atualizados++; }
-        else { fornecedores.push(registro); importados++; }
+        // Mescla (não substitui) num fornecedor já cadastrado — a planilha "dados origens"
+        // não tem colunas de tempo/janela de carregamento, então sobrescrever o registro
+        // inteiro apagaria essa customização a cada reimportação.
+        if (existenteIdx >= 0) { fornecedores[existenteIdx] = { ...fornecedores[existenteIdx], ...registro }; atualizados++; }
+        // Fornecedor novo já nasce com a Janela de Carregamento padrão gravada explicitamente
+        // (em vez de depender do fallback em runtime) — mesmo racional do botão "Gravar Janela Padrão".
+        else { fornecedores.push({ ...registro, diasCarregamento: diasCarregamentoPadrao(origem) }); importados++; }
       }
 
       if (importados === 0 && atualizados === 0) {
@@ -9733,6 +9908,11 @@ async function carregarViagensMultiSemana(keys, force = false) {
     console.error('Erro ao carregar viagens multi-semana:', e);
     mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
   }
+  // As viagens acabaram de vir direto do Firebase (com o status gravado da última vez
+  // que sincronizarStatusHerrlog rodou) — sem reaplicar aqui, uma correção pendente
+  // (ex.: Em Andamento ⇄ Viagem Finalizada) só apareceria na tela quando a Herrlog
+  // empurrasse uma atualização nova pro node monitoramentoHerrlog, e não já neste load.
+  sincronizarStatusHerrlog();
   // updatePipeline aqui garante os totais (Cadências/Viagens) mesmo em abas que não
   // chamam updatePipeline sozinhas (ex.: Transportadores/Bases/Fornecedores); renderizarAbaAtual
   // roda depois e, nas abas que filtram (Gerir Viagens/Exportar/Monitoramento), refina
@@ -9770,6 +9950,11 @@ function configurarListenersMultiSemana(keys) {
         // Índices de viagensMultiSemana podem ter mudado com o merge — fechar o modal
         // evita salvar por cima da viagem errada (mesma cautela da semana única).
         if (editingIdx !== null) closeModal();
+        // Mesmo motivo do sincronizarStatusHerrlog() em configurarListenerSemana: sem
+        // isso aqui, uma correção de status (Em Andamento ⇄ Viagem Finalizada) só pegava
+        // quando o node monitoramentoHerrlog em si mudasse — nunca quando fosse a viagem
+        // (`sessoes/<semana>/viagens/<id>`) que mudasse por outro caminho.
+        sincronizarStatusHerrlog();
         updatePipeline(viagensAtivo());
         renderizarAbaAtual();
         if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
