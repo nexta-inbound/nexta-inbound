@@ -612,6 +612,20 @@
   .filter-input::placeholder { color: var(--text-muted); }
   .filter-input.fi-wide { width: 240px; }
   .filter-input.fi-date { width: 60px; text-align: center; }
+  .btn-cal {
+    background: var(--panel);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 6px;
+  }
+  .btn-cal:hover { border-color: var(--accent); }
+  /* Input nativo type=date usado só para abrir o seletor de calendário do navegador —
+     o valor exibido ao usuário continua no campo de texto DD/MM ao lado. Fica no fluxo
+     normal (não position:absolute) para o popup do calendário abrir ancorado no botão 📅. */
+  .fi-date-picker { width: 1px; height: 1px; padding: 0; margin: 0; border: 0; opacity: 0; pointer-events: none; overflow: hidden; }
   .filter-sep { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
   /* UF Origem só guarda siglas de 2 letras — não precisa do mesmo min-width dos demais
      multiselects (Produto, Origem, Destino...), que exibem nomes bem mais longos. O
@@ -1952,15 +1966,33 @@
           <div style="display:flex;flex-direction:column;gap:4px">
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
-              <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInput()" title="Carregamento De (ano atual)">
+              <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento De (ano atual)">
+              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrDe','fCarrDePicker')" title="Abrir calendário">📅</button>
+              <input type="date" id="fCarrDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrDe','fCarrDePicker', onCarregamentoManualInput)">
               <span class="filter-sep">—</span>
-              <input type="text" class="filter-input fi-date" id="fCarrAte" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInput()" title="Carregamento Até (ano atual)">
+              <input type="text" class="filter-input fi-date" id="fCarrAte" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento Até (ano atual)">
+              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrAte','fCarrAtePicker')" title="Abrir calendário">📅</button>
+              <input type="date" id="fCarrAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrAte','fCarrAtePicker', onCarregamentoManualInput)">
+              <select class="filter-select" id="fCarrModo" style="padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de carregamento considerar no filtro acima">
+                <option value="todas">Todas</option>
+                <option value="desejada">Data Desejada</option>
+                <option value="programacao">Data Programação</option>
+              </select>
             </div>
             <div style="display:flex;gap:5px;align-items:center">
               <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↓</span>
-              <input type="text" class="filter-input fi-date" id="fDtDe" placeholder="DD/MM" maxlength="5" oninput="renderViagensTable()" title="Descarga De (ano atual)">
+              <input type="text" class="filter-input fi-date" id="fDtDe" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga De (ano atual)">
+              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtDe','fDtDePicker')" title="Abrir calendário">📅</button>
+              <input type="date" id="fDtDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtDe','fDtDePicker', renderViagensTable)">
               <span class="filter-sep">—</span>
-              <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTable()" title="Descarga Até (ano atual)">
+              <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga Até (ano atual)">
+              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtAte','fDtAtePicker')" title="Abrir calendário">📅</button>
+              <input type="date" id="fDtAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtAte','fDtAtePicker', renderViagensTable)">
+              <select class="filter-select" id="fDtModo" style="padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de descarga considerar no filtro acima">
+                <option value="todas">Todas</option>
+                <option value="desejada">Data Desejada</option>
+                <option value="programacao">Data Programação</option>
+              </select>
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center">✕ Limpar</button>
@@ -2264,7 +2296,7 @@
       <div class="filter-bar">
         <div class="filter-row">
           <input type="text" class="filter-input fi-wide" id="fTranspBusca"
-            placeholder="🔍  Código SAP, razão social, nome fantasia, e-mail, CNPJ..."
+            placeholder="🔍  Código SAP, razão social, nome fantasia, e-mail, telefone, CNPJ..."
             oninput="renderTransportadoresTable()">
           <button class="btn btn-secondary btn-sm" onclick="limparFiltrosTransp()" style="align-self:center;margin-left:2px">✕ Limpar</button>
         </div>
@@ -2275,6 +2307,7 @@
             <tr>
               <th>Apelido</th>
               <th>E-mail</th>
+              <th>Telefone/WhatsApp</th>
               <th>CNPJs vinculados</th>
               <th style="width:88px;min-width:88px;text-align:center">Ações</th>
             </tr>
@@ -2799,6 +2832,13 @@
       </div>
     </div>
 
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Telefone(s) / WhatsApp</div>
+        <input type="text" class="config-input" id="transp-telefone" placeholder="31999999999, 31988887777">
+      </div>
+    </div>
+
     <div class="modal-label" style="margin-top:6px">CNPJs vinculados a este apelido *</div>
     <div id="transp-cnpjs-lista" style="overflow-y:auto;flex:1;margin:8px 0;display:flex;flex-direction:column;gap:8px"></div>
     <button class="btn btn-secondary btn-sm" onclick="adicionarLinhaCnpj()" style="align-self:flex-start">＋ Adicionar CNPJ</button>
@@ -3008,6 +3048,7 @@
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Falta de Produto')">Falta de Produto</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Mudança de Origem')">Mudança de Origem</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Mudança de Destino')">Mudança de Destino</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Planejamento Incorreto')">Planejamento Incorreto</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Frota')">Sem Frota</button>
       <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoCancelamento('Sem Necessidade no Destino')">Sem Necessidade no Destino</button>
     </div>
@@ -5306,8 +5347,10 @@ function estadoFiltrosViagem() {
     transp: (document.getElementById('fTransp')?.value || '').toLowerCase().trim(),
     carrDe: document.getElementById('fCarrDe')?.value || '',
     carrAte: document.getElementById('fCarrAte')?.value || '',
+    carrModo: document.getElementById('fCarrModo')?.value || 'todas',
     dtDe: document.getElementById('fDtDe')?.value || '',
     dtAte: document.getElementById('fDtAte')?.value || '',
+    dtModo: document.getElementById('fDtModo')?.value || 'todas',
     produtos: new Set(msVProduto?.getSelected() || []),
     ufs: new Set(msVUf?.getSelected() || []),
     origens: new Set(msVOrigem?.getSelected() || []),
@@ -5336,32 +5379,38 @@ function passaFiltrosViagem(v, f, ignorar = '') {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
     if (!f.buscaTermos.some(t => hay.includes(t))) return false;
   }
-  // Casa pela data desejada OU pela data de programação (o que foi ajustado manualmente
-  // no Agendamento) — assim a viagem não "desaparece" do filtro só porque foi reagendada
-  // para fora da janela original, nem deixa de aparecer na nova janela.
+  // Por padrão (modo "todas") casa pela data desejada OU pela data de programação (o que
+  // foi ajustado manualmente no Agendamento) — assim a viagem não "desaparece" do filtro só
+  // porque foi reagendada para fora da janela original, nem deixa de aparecer na nova janela.
+  // Os seletores de modo (fCarrModo/fDtModo) permitem restringir a apenas uma das duas datas.
   if (activeDiasCarregamento.size) {
     const bateCarreg = (campo) => {
       const d = parseDMY(campo);
       return !!d && [...activeDiasCarregamento].some(n => mesmoDiaCalendario(d, diaCarregamentoDate(n)));
     };
-    if (!bateCarreg(v.dtCarreg) && !bateCarreg(v.dtCarregProg)) return false;
+    const modo = f.carrModo || 'todas';
+    const okDesejada = modo !== 'programacao' && bateCarreg(v.dtCarreg);
+    const okProgramada = modo !== 'desejada' && bateCarreg(v.dtCarregProg);
+    if (!okDesejada && !okProgramada) return false;
   }
   if (f.carrDe || f.carrAte) {
     const de = parseDMSemAno(f.carrDe);
     const ate = parseDMSemAno(f.carrAte);
-    if (!passaFiltroDeData(v.dtCarreg, v.dtCarregProg, de, ate)) return false;
+    if (!passaFiltroDeData(v.dtCarreg, v.dtCarregProg, de, ate, f.carrModo)) return false;
   }
   if (f.dtDe || f.dtAte) {
     const de = parseDMSemAno(f.dtDe);
     const ate = parseDMSemAno(f.dtAte);
-    if (!passaFiltroDeData(v.dtDesc, v.dtDescProg, de, ate)) return false;
+    if (!passaFiltroDeData(v.dtDesc, v.dtDescProg, de, ate, f.dtModo)) return false;
   }
   return true;
 }
 
-// Casa pela data desejada OU pela programação. Se nenhuma das duas tiver uma data válida,
-// não exclui (mesmo comportamento permissivo do filtro original quando o campo está vazio).
-function passaFiltroDeData(desejada, programada, de, ate) {
+// modo: 'todas' casa pela data desejada OU pela programação (comportamento original);
+// 'desejada'/'programacao' restringe a apenas um dos dois campos. Em qualquer modo, se o
+// campo relevante não tiver uma data válida, não exclui (comportamento permissivo já
+// existente quando o campo está vazio).
+function passaFiltroDeData(desejada, programada, de, ate, modo = 'todas') {
   const dentro = (campo) => {
     const d = parseDMY(campo);
     if (!d) return null;
@@ -5369,6 +5418,14 @@ function passaFiltroDeData(desejada, programada, de, ate) {
     if (ate && d > new Date(ate.getFullYear(), ate.getMonth(), ate.getDate(), 23, 59)) return false;
     return true;
   };
+  if (modo === 'desejada') {
+    const r = dentro(desejada);
+    return r === true || r === null;
+  }
+  if (modo === 'programacao') {
+    const r = dentro(programada);
+    return r === true || r === null;
+  }
   const r1 = dentro(desejada);
   const r2 = dentro(programada);
   return r1 === true || r2 === true || (r1 === null && r2 === null);
@@ -5661,6 +5718,7 @@ function limparFiltrosCad() {
 
 function limparFiltros() {
   ['fBusca','fTransp','fCarrDe','fCarrAte','fDtDe','fDtAte'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['fCarrModo','fDtModo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = 'todas'; });
   msVProduto?.clear(); msVUf?.clear(); msVOrigem?.clear(); msVDestino?.clear(); msVRegional?.clear(); msVProgramador?.clear();
   activeFilter.clear();
   activeAgendamento.clear();
@@ -5703,6 +5761,53 @@ function onCarregamentoManualInput() {
     sincronizarChipsDiaCarregamento();
   }
   renderViagensTable();
+}
+
+// Só dispara `fn` depois que o usuário para de digitar por `espera` ms — evita refiltrar/
+// re-renderizar a tabela a cada tecla dos campos de data (DD/MM), que é pesado com muitas linhas.
+function debounce(fn, espera = 400) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), espera);
+  };
+}
+const onCarregamentoManualInputDebounced = debounce(onCarregamentoManualInput);
+const renderViagensTableDebounced = debounce(renderViagensTable);
+
+// ── Calendário nos filtros de data ──
+// Cada campo DD/MM tem um <input type="date"> irmão (invisível) que só existe para acionar o
+// seletor nativo do navegador; a data escolhida é convertida de volta para DD/MM (sem ano,
+// mesma convenção do filtro manual) e aplicada no campo de texto visível.
+function isoParaDMSemAno(iso) {
+  const [, mm, dd] = (iso || '').split('-');
+  return (dd && mm) ? `${dd}/${mm}` : '';
+}
+
+function dmSemAnoParaIso(valor) {
+  const d = parseDMSemAno(valor);
+  if (!d) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function abrirCalendarioData(idTexto, idPicker) {
+  const picker = document.getElementById(idPicker);
+  const texto = document.getElementById(idTexto);
+  if (!picker) return;
+  picker.value = dmSemAnoParaIso(texto?.value);
+  if (typeof picker.showPicker === 'function') picker.showPicker();
+  else { picker.focus(); picker.click(); }
+}
+
+function aplicarDataCalendario(idTexto, idPicker, callback) {
+  const picker = document.getElementById(idPicker);
+  const texto = document.getElementById(idTexto);
+  if (!picker || !texto || !picker.value) return;
+  texto.value = isoParaDMSemAno(picker.value);
+  callback();
 }
 
 // ── TRANSPORTADORES ──
@@ -7122,7 +7227,7 @@ function limparFiltrosVeiculos() {
 function renderTransportadoresTable() {
   const busca = (document.getElementById('fTranspBusca')?.value || '').toLowerCase().trim();
   const filtered = transportadores.filter(t =>
-    !busca || [t.nomeFantasia, t.email, ...t.cnpjs.flatMap(c => [c.codSap, c.razaoSocial, c.cnpj])]
+    !busca || [t.nomeFantasia, t.email, t.telefone, ...t.cnpjs.flatMap(c => [c.codSap, c.razaoSocial, c.cnpj])]
       .join(' ').toLowerCase().includes(busca)
   );
 
@@ -7146,6 +7251,7 @@ function renderTransportadoresTable() {
       <tr>
         <td class="cell-truncate" style="font-family:var(--font-cond);font-size:14px;font-weight:700;color:var(--accent)">${esc(t.nomeFantasia)}</td>
         <td class="cell-truncate" style="color:var(--text-dim)">${esc(t.email || '—')}</td>
+        <td class="cell-truncate" style="color:var(--text-dim);font-family:monospace">${esc(t.telefone || '—')}</td>
         <td style="font-size:11px;line-height:1.7">${cnpjsHtml}</td>
         <td style="text-align:center">
           <div style="display:flex;gap:4px;justify-content:center">
@@ -7194,11 +7300,13 @@ function abrirModalTransportador(idx) {
   if (isNovo) {
     document.getElementById('transp-fantasia').value = '';
     document.getElementById('transp-email').value = '';
+    document.getElementById('transp-telefone').value = '';
     _transpCnpjsEdicao = [{ codSap: '', razaoSocial: '', cnpj: '' }];
   } else {
     const t = transportadores[idx];
     document.getElementById('transp-fantasia').value = t.nomeFantasia || '';
     document.getElementById('transp-email').value = t.email || '';
+    document.getElementById('transp-telefone').value = t.telefone || '';
     _transpCnpjsEdicao = t.cnpjs.map(c => ({ ...c }));
     if (!_transpCnpjsEdicao.length) _transpCnpjsEdicao.push({ codSap: '', razaoSocial: '', cnpj: '' });
   }
@@ -7221,9 +7329,22 @@ function normalizarEmails(str) {
   )].join(', ');
 }
 
+// Guarda só dígitos (DDD+número, sem +55) — mesmo formato exigido por
+// NextaWhatsApp.enviar_contato() no envio automático de alertas.
+function normalizarTelefones(str) {
+  return [...new Set(
+    String(str || '')
+      .split(/[,;]+/)
+      .map(t => t.replace(/\D/g, ''))
+      .map(t => (t.length > 11 && t.startsWith('55')) ? t.slice(2) : t)
+      .filter(Boolean)
+  )].join(', ');
+}
+
 async function salvarTransportador() {
   const nomeFantasia = document.getElementById('transp-fantasia').value.trim();
   const email = normalizarEmails(document.getElementById('transp-email').value);
+  const telefone = normalizarTelefones(document.getElementById('transp-telefone').value);
   if (!nomeFantasia) {
     alert('Preencha o apelido / nome fantasia do transportador.');
     return;
@@ -7285,7 +7406,7 @@ async function salvarTransportador() {
     }
   }
 
-  const registro = { nomeFantasia, email, cnpjs: cnpjsPreenchidos };
+  const registro = { nomeFantasia, email, telefone, cnpjs: cnpjsPreenchidos };
   if (isNovo) transportadores.push(registro);
   else transportadores[editingTranspIdx] = registro;
   fecharModalTransportador();
