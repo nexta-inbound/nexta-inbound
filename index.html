@@ -597,6 +597,11 @@
   }
   .filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .filter-row-dates { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  /* Grid (não flex) para os filtros ↑Carregamento/↓Descarga: cada campo tem uma coluna fixa
+     (rótulo, de, calendário, —, até, calendário, modo), o que permite os chips D0..D+4 (linha 1)
+     ficarem centralizados exatamente sobre o intervalo de datas (colunas 2 a 6), sem incluir o
+     rótulo ↑/↓ nem o seletor de modo — algo que um flex empilhado não consegue alinhar com precisão. */
+  .date-filter-grid { display: grid; grid-template-columns: auto auto auto auto auto auto auto; column-gap: 5px; row-gap: 4px; align-items: center; }
   .filter-input {
     background: var(--panel);
     border: 1.5px solid var(--border);
@@ -1963,46 +1968,44 @@
             placeholder="🚚 Transportador..." style="width:150px"
             oninput="renderViagensTable()">
           <div class="filter-row-dates" style="margin-left:auto">
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <div style="display:flex;gap:5px;align-items:center">
-              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↑</span>
-              <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento De (ano atual)">
-              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrDe','fCarrDePicker')" title="Abrir calendário">📅</button>
-              <input type="date" id="fCarrDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrDe','fCarrDePicker', onCarregamentoManualInput)">
-              <span class="filter-sep">—</span>
-              <input type="text" class="filter-input fi-date" id="fCarrAte" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento Até (ano atual)">
-              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrAte','fCarrAtePicker')" title="Abrir calendário">📅</button>
-              <input type="date" id="fCarrAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrAte','fCarrAtePicker', onCarregamentoManualInput)">
-              <select class="filter-select" id="fCarrModo" style="padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de carregamento considerar no filtro acima">
-                <option value="todas">Todas</option>
-                <option value="desejada">Data Desejada</option>
-                <option value="programacao">Data Programação</option>
-              </select>
-            </div>
-            <div style="display:flex;gap:5px;align-items:center">
-              <span class="filter-sep" style="font-size:10px;width:10px;text-align:center">↓</span>
-              <input type="text" class="filter-input fi-date" id="fDtDe" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga De (ano atual)">
-              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtDe','fDtDePicker')" title="Abrir calendário">📅</button>
-              <input type="date" id="fDtDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtDe','fDtDePicker', renderViagensTable)">
-              <span class="filter-sep">—</span>
-              <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga Até (ano atual)">
-              <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtAte','fDtAtePicker')" title="Abrir calendário">📅</button>
-              <input type="date" id="fDtAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtAte','fDtAtePicker', renderViagensTable)">
-              <select class="filter-select" id="fDtModo" style="padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de descarga considerar no filtro acima">
-                <option value="todas">Todas</option>
-                <option value="desejada">Data Desejada</option>
-                <option value="programacao">Data Programação</option>
-              </select>
-            </div>
-          </div>
-          <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center">✕ Limpar</button>
-          <div class="chip-group" id="diaCarregChips" style="align-self:center">
+          <div class="date-filter-grid">
+            <div class="chip-group" id="diaCarregChips" style="grid-row:1;grid-column:2 / 7;justify-self:center">
             <div class="chip" data-dia="0" onclick="filtrarDiaCarregamento(0)" title="Carregamento = hoje">D0</div>
             <div class="chip" data-dia="1" onclick="filtrarDiaCarregamento(1)" title="Carregamento = amanhã">D+1</div>
             <div class="chip" data-dia="2" onclick="filtrarDiaCarregamento(2)" title="Carregamento = hoje + 2 dias">D+2</div>
             <div class="chip" data-dia="3" onclick="filtrarDiaCarregamento(3)" title="Carregamento = hoje + 3 dias">D+3</div>
             <div class="chip" data-dia="4" onclick="filtrarDiaCarregamento(4)" title="Carregamento = hoje + 4 dias">D+4</div>
+            </div>
+
+            <span class="filter-sep" style="grid-row:2;grid-column:1;font-size:10px;text-align:center">↑</span>
+            <input type="text" class="filter-input fi-date" id="fCarrDe" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento De (ano atual)" style="grid-row:2;grid-column:2">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrDe','fCarrDePicker')" title="Abrir calendário" style="grid-row:2;grid-column:3">📅</button>
+            <input type="date" id="fCarrDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrDe','fCarrDePicker', onCarregamentoManualInput)" style="grid-row:2;grid-column:3">
+            <span class="filter-sep" style="grid-row:2;grid-column:4">—</span>
+            <input type="text" class="filter-input fi-date" id="fCarrAte" placeholder="DD/MM" maxlength="5" oninput="onCarregamentoManualInputDebounced()" title="Carregamento Até (ano atual)" style="grid-row:2;grid-column:5">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioData('fCarrAte','fCarrAtePicker')" title="Abrir calendário" style="grid-row:2;grid-column:6">📅</button>
+            <input type="date" id="fCarrAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fCarrAte','fCarrAtePicker', onCarregamentoManualInput)" style="grid-row:2;grid-column:6">
+            <select class="filter-select" id="fCarrModo" style="grid-row:2;grid-column:7;padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de carregamento considerar no filtro acima">
+                <option value="todas">Todas</option>
+                <option value="desejada">Data Desejada</option>
+                <option value="programacao">Data Programação</option>
+            </select>
+
+            <span class="filter-sep" style="grid-row:3;grid-column:1;font-size:10px;text-align:center">↓</span>
+            <input type="text" class="filter-input fi-date" id="fDtDe" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga De (ano atual)" style="grid-row:3;grid-column:2">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtDe','fDtDePicker')" title="Abrir calendário" style="grid-row:3;grid-column:3">📅</button>
+            <input type="date" id="fDtDePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtDe','fDtDePicker', renderViagensTable)" style="grid-row:3;grid-column:3">
+            <span class="filter-sep" style="grid-row:3;grid-column:4">—</span>
+            <input type="text" class="filter-input fi-date" id="fDtAte" placeholder="DD/MM" maxlength="5" oninput="renderViagensTableDebounced()" title="Descarga Até (ano atual)" style="grid-row:3;grid-column:5">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioData('fDtAte','fDtAtePicker')" title="Abrir calendário" style="grid-row:3;grid-column:6">📅</button>
+            <input type="date" id="fDtAtePicker" class="fi-date-picker" tabindex="-1" onchange="aplicarDataCalendario('fDtAte','fDtAtePicker', renderViagensTable)" style="grid-row:3;grid-column:6">
+            <select class="filter-select" id="fDtModo" style="grid-row:3;grid-column:7;padding:4px 6px;font-size:11px" onchange="renderViagensTable()" title="Qual data de descarga considerar no filtro acima">
+                <option value="todas">Todas</option>
+                <option value="desejada">Data Desejada</option>
+                <option value="programacao">Data Programação</option>
+            </select>
           </div>
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltros()" style="align-self:center">✕ Limpar</button>
           </div>
         </div>
       </div>
@@ -2147,14 +2150,14 @@
   <div id="monitoramentoEmpty" class="empty-state">
     <div class="empty-icon">📡</div>
     <div class="empty-text">Nenhuma viagem monitorada ainda</div>
-    <div class="empty-sub">Viagens aparecem aqui quando têm placa confirmada (Placa Enviada/Frota Dedicada) e já foram encontradas no monitoramento da Herrlog</div>
+    <div class="empty-sub">Viagens aparecem aqui quando têm placa confirmada (Placa Enviada/Frota Dedicada) e já foram encontradas no monitoramento da Herrlog, ou quando são viagens CIF (acompanhadas manualmente)</div>
   </div>
 
   <div id="monitoramentoContent" style="display:none">
     <div class="section-header">
       <div>
         <div class="section-title">Monitoramento Herrlog</div>
-        <div class="section-sub">Viagens com placa confirmada já rastreadas pela Herrlog — comparação entre Data Desejada, Data Programação e ETA Real</div>
+        <div class="section-sub">Visibilidade aderência chegada real vs programado e desejado por abastecimento</div>
       </div>
     </div>
 
@@ -2219,6 +2222,11 @@
           <input type="text" class="filter-input fi-wide" id="fMonBusca"
             placeholder="🔍  ID viagem, Pedido MIS, placa..."
             oninput="renderMonitoramento()">
+          <select class="filter-select" id="fMonFrete" onchange="renderMonitoramento()" title="Filtrar por Tipo de Frete">
+            <option value="">Frete: Todos</option>
+            <option value="FOB">FOB</option>
+            <option value="CIF">CIF</option>
+          </select>
           <div id="ms-monProduto"></div>
           <div id="ms-monUf" class="ms-narrow"></div>
           <div id="ms-monOrigem"></div>
@@ -2248,6 +2256,7 @@
             <tr>
               <th class="th-sortable" data-col="idViagem" onclick="ordenarColunaMon('idViagem')">ID Viagem<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="placa" onclick="ordenarColunaMon('placa')">Placa<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="frete" onclick="ordenarColunaMon('frete')" title="Tipo de Frete — CIF é frota do fornecedor, acompanhada manualmente por telefone">Frete<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="produto" onclick="ordenarColunaMon('produto')">Produto<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="origem" onclick="ordenarColunaMon('origem')">Origem<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="destino" onclick="ordenarColunaMon('destino')">Destino<span class="sort-arrow"></span></th>
@@ -2256,10 +2265,10 @@
               <th class="th-sortable" style="white-space:normal" data-col="frotaDedicada" onclick="ordenarColunaMon('frotaDedicada')">Frota Dedicada<span class="sort-arrow"></span></th>
               <th class="col-data-desejada th-sortable" data-col="dataDesejada" onclick="ordenarColunaMon('dataDesejada')">Data Desejada<span class="sort-arrow"></span></th>
               <th class="col-data-programacao th-sortable" data-col="dataProgramacao" onclick="ordenarColunaMon('dataProgramacao')">Data Programação<span class="sort-arrow"></span></th>
-              <th class="col-eta-herrlog th-sortable" data-col="etaReal" onclick="ordenarColunaMon('etaReal')">ETA Real (Herrlog)<span class="sort-arrow"></span></th>
+              <th class="col-eta-herrlog th-sortable" data-col="etaReal" onclick="ordenarColunaMon('etaReal')" title="Automático via Herrlog, ou digitado manualmente em viagens CIF">ETA Real<span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="vsProgramacao" onclick="ordenarColunaMon('vsProgramacao')">vs Programação<span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="vsDesejada" onclick="ordenarColunaMon('vsDesejada')">vs Desejada<span class="sort-arrow"></span></th>
-              <th class="th-sortable" data-col="statusHerrlog" onclick="ordenarColunaMon('statusHerrlog')">Status Herrlog<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="statusHerrlog" onclick="ordenarColunaMon('statusHerrlog')" title="Automático via Herrlog, ou digitado manualmente em viagens CIF">Status<span class="sort-arrow"></span></th>
             </tr>
           </thead>
           <tbody id="monitoramentoBody"></tbody>
@@ -8145,6 +8154,22 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
 // STATUS_SOMENTE_AUTOMATICO, que os mantém fora das opções manuais do select de status.
 const STATUS_HERRLOG_FINALIZADA = 'T5 - Viagem finalizada';
 
+// Mesmo CicloLogistico (T1..T5) que a Herrlog usa (ver CICLO_LABELS em
+// nexta_extractors/extractors/herrlog/herrlog_datalake.py) — reaproveitado como as opções
+// do status manual de viagens CIF, já que o fornecedor descreve o andamento por telefone
+// nos mesmos termos do ciclo real. Nasce em branco (ver renderStatusCelulaMon) — ninguém
+// assume automaticamente que já está "Programado" até o usuário confirmar por telefone.
+const STATUS_MANUAL_CIF_OPCOES = [
+  'T1 - Programado',
+  'T1 - Em deslocamento para Origem',
+  'T2 - Espera para carregamento',
+  'T2 - Na Origem',
+  'T3 - Em deslocamento para Destino',
+  'T4 - Espera para descarga',
+  'T4 - No Destino',
+  'T5 - Viagem finalizada',
+];
+
 // Roda sobre viagensAtivo() (não `viagens` isolado) porque, com a visão multi-semana
 // sempre ativa (ver ativarMultiSemana), `viagens` fica parado na 1ª semana carregada no
 // boot e nunca mais é o que está em tela nem o que é salvo — sincronizar só nele deixava
@@ -8729,14 +8754,36 @@ function filterMonitoramentoStatus(idx) {
   renderMonitoramento();
 }
 
+// Viagens CIF não passam pela Herrlog (frota é do fornecedor) — o ETA e o status vêm de
+// uma ligação para o fornecedor e são digitados manualmente (etaManualData/etaManualHora/
+// statusManual na própria viagem). Por isso `mon` pode não existir para elas.
+function etaManualParaIso(v) {
+  const d = parseDMY(v.etaManualData);
+  if (!d) return null;
+  const [hh, mm] = (v.etaManualHora || '12:00').split(':').map(Number);
+  d.setHours(hh || 0, mm || 0, 0, 0);
+  return d.toISOString();
+}
+
 function calcularLinhaMonitoramento(v) {
-  const mon = monitoramentoHerrlog[v.idViagem];
-  const etaIso = mon.chegadaReal || mon.etaDestino || null;
+  const mon = monitoramentoHerrlog[v.idViagem] || {};
+  const etaManualIso = etaManualParaIso(v);
+  const etaIso = etaManualIso || mon.chegadaReal || mon.etaDestino || null;
   return {
     v, mon, etaIso,
+    manual: !!etaManualIso,
     vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
     vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
   };
+}
+
+// Status "efetivo" pra fins de filtro/ordenação/exibição: automático (Herrlog) quando
+// existir, senão o manual (viagens CIF) — sem inventar um default quando a viagem CIF
+// ainda não teve o status informado por telefone (fica em branco até o usuário escolher).
+// Sem isso, os chips de filtro (montados só a partir de mon.statusHerrlog) nunca enxergavam
+// o status digitado manualmente — parecia que o valor escolhido no select não tinha sido salvo.
+function statusExibidoMon(v, mon) {
+  return mon.statusHerrlog || v.statusManual || '';
 }
 
 // Replica, como predicado por viagem, a mesma lógica de cada card de KPI da
@@ -8785,6 +8832,7 @@ function estadoFiltrosMonitoramento() {
     busca: (document.getElementById('fMonBusca')?.value || '').toLowerCase().trim(),
     transp: (document.getElementById('fMonTransp')?.value || '').toLowerCase().trim(),
     frota: document.getElementById('fMonFrota')?.value || '',
+    frete: document.getElementById('fMonFrete')?.value || '',
     produtos: new Set(msMonProduto?.getSelected() || []),
     ufs: new Set(msMonUf?.getSelected() || []),
     origens: new Set(msMonOrigem?.getSelected() || []),
@@ -8803,6 +8851,7 @@ function passaFiltrosMonitoramento(v, f, ignorar = '') {
   if (f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
   if (f.frota === 'sim' && !v.veiculoDedicadoId) return false;
   if (f.frota === 'nao' && v.veiculoDedicadoId) return false;
+  if (f.frete && (v.modal || 'FOB') !== f.frete) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
   if (f.busca) {
     const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
@@ -8839,6 +8888,7 @@ function limparFiltrosMonitoramento() {
   document.getElementById('fMonBusca').value = '';
   document.getElementById('fMonTransp').value = '';
   document.getElementById('fMonFrota').value = '';
+  document.getElementById('fMonFrete').value = '';
   msMonProduto?.clear(); msMonUf?.clear(); msMonOrigem?.clear(); msMonDestino?.clear(); msMonRegional?.clear();
   activeIndicadorMon = null;
   activeDiasEntregaMon.clear();
@@ -8852,6 +8902,7 @@ function valorOrdenacaoMon(l, coluna) {
   switch (coluna) {
     case 'idViagem':        return v.idViagem || '';
     case 'placa':           return v.placa || '';
+    case 'frete':           return v.modal === 'CIF' ? 1 : 0;
     case 'produto':         return v.produto || '';
     case 'origem':          return v.origem || '';
     case 'destino':         return v.destino || '';
@@ -8863,7 +8914,7 @@ function valorOrdenacaoMon(l, coluna) {
     case 'etaReal':         return l.etaIso ? new Date(l.etaIso) : new Date(8640000000000000);
     case 'vsProgramacao':   return l.vsProgramacao in ordemAderencia ? ordemAderencia[l.vsProgramacao] : 99;
     case 'vsDesejada':      return l.vsDesejada in ordemAderencia ? ordemAderencia[l.vsDesejada] : 99;
-    case 'statusHerrlog':   return mon.statusHerrlog || '';
+    case 'statusHerrlog':   return statusExibidoMon(v, mon);
     default: return '';
   }
 }
@@ -8895,7 +8946,12 @@ function atualizarSetasOrdenacaoMon() {
 }
 
 function renderMonitoramento() {
-  const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status) && monitoramentoHerrlog[v.idViagem]);
+  // Viagens CIF nunca têm monitoramentoHerrlog (frota é do fornecedor, fora do rastreio
+  // automático) — entram sempre, independente de já terem ETA/status manual preenchido.
+  const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v =>
+    (['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status) && monitoramentoHerrlog[v.idViagem])
+    || v.status === 'CIF'
+  );
   const isEmpty = monitoradas.length === 0;
   document.getElementById('monitoramentoEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('monitoramentoContent').style.display = isEmpty ? 'none' : 'block';
@@ -8914,7 +8970,7 @@ function renderMonitoramento() {
   // em 0 só porque a tabela foi restrita ao card clicado) — mesma lógica de Gerir Viagens.
   // Precisa aplicar também o filtro de estado (chips Todos/T1.../T5...) — senão os cards
   // ficam com o total geral enquanto a tabela abaixo já está restrita ao estado clicado.
-  const passaStatusMon = v => activeFilterMonStatus.size === 0 || activeFilterMonStatus.has(monitoramentoHerrlog[v.idViagem]?.statusHerrlog);
+  const passaStatusMon = v => activeFilterMonStatus.size === 0 || activeFilterMonStatus.has(statusExibidoMon(v, monitoramentoHerrlog[v.idViagem] || {}));
   const paraKpis = (activeIndicadorMon
     ? monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'indicador'))
     : monitoradas.filter(v => passaFiltrosMonitoramento(v, f))
@@ -8952,8 +9008,8 @@ function renderMonitoramento() {
   // ── Tabela: aplica todos os filtros, inclusive o indicador clicado ──
   let linhas = monitoradas.filter(v => passaFiltrosMonitoramento(v, f)).map(calcularLinhaMonitoramento);
 
-  // ── Filtro por estado da viagem (Status Herrlog) ──
-  _monEstadosAtual = [...new Set(linhas.map(l => l.mon.statusHerrlog).filter(Boolean))].sort();
+  // ── Filtro por estado da viagem (Status Herrlog automático + manual de CIF) ──
+  _monEstadosAtual = [...new Set(linhas.map(l => statusExibidoMon(l.v, l.mon)).filter(Boolean))].sort();
   // Remove da seleção estados que não existem mais neste render (evita filtro "presa" num estado que desapareceu).
   [...activeFilterMonStatus].forEach(e => { if (!_monEstadosAtual.includes(e)) activeFilterMonStatus.delete(e); });
 
@@ -8961,7 +9017,7 @@ function renderMonitoramento() {
   chipsWrap.innerHTML = `<div class="chip ${activeFilterMonStatus.size === 0 ? 'active' : ''}" onclick="filterMonitoramentoStatus(-1)">Todos</div>` +
     _monEstadosAtual.map((e, i) => `<div class="chip ${activeFilterMonStatus.has(e) ? 'active' : ''}" onclick="filterMonitoramentoStatus(${i})">${esc(e)}</div>`).join('');
 
-  let linhasFiltradas = activeFilterMonStatus.size === 0 ? linhas : linhas.filter(l => activeFilterMonStatus.has(l.mon.statusHerrlog));
+  let linhasFiltradas = activeFilterMonStatus.size === 0 ? linhas : linhas.filter(l => activeFilterMonStatus.has(statusExibidoMon(l.v, l.mon)));
 
   if (sortColunaMon) {
     const dir = sortDirMon === 'asc' ? 1 : -1;
@@ -8972,11 +9028,13 @@ function renderMonitoramento() {
   document.getElementById('badge-monitoramento').textContent = linhasFiltradas.length + ' viagem' + (linhasFiltradas.length !== 1 ? 's' : '');
 
   const tbody = document.getElementById('monitoramentoBody');
-  tbody.innerHTML = linhasFiltradas.map(({ v, mon, vsProgramacao, vsDesejada }) => {
+  tbody.innerHTML = linhasFiltradas.map((l) => {
+    const { v, mon, vsProgramacao, vsDesejada } = l;
     return `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
+        <td>${renderBadgeFrete(v)}</td>
         <td>${prodTag(v.produto)}</td>
         <td>${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
         <td>${esc(v.destino)}</td>
@@ -8985,13 +9043,181 @@ function renderMonitoramento() {
         <td>${badgeFrotaDedicada(v)}</td>
         <td class="cell-periodo col-data-desejada">${fmtShort(v.dtDesc)}</td>
         <td class="cell-periodo col-data-programacao">${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}</td>
-        <td class="cell-periodo col-eta-herrlog">${renderEtaHerrlog(mon)}</td>
+        <td class="cell-periodo col-eta-herrlog">${renderEtaCelulaMon(v, mon)}</td>
         <td>${badgeAderencia(vsProgramacao)}</td>
         <td>${badgeAderencia(vsDesejada)}</td>
-        <td style="font-size:12px;color:var(--text-dim)">${esc(mon.statusHerrlog || '—')}</td>
+        <td style="font-size:12px;color:var(--text-dim)">${renderStatusCelulaMon(v, mon)}</td>
       </tr>
     `;
   }).join('');
+}
+
+function renderBadgeFrete(v) {
+  return v.modal === 'CIF'
+    ? '<span class="badge" style="color:var(--pet-blue);background:rgba(34,85,204,0.14)" title="CIF — frota do fornecedor, ETA e status informados manualmente">CIF</span>'
+    : '<span class="badge badge-accent" title="FOB — rastreado automaticamente pela Herrlog">FOB</span>';
+}
+
+// Viagens CIF não têm rastreio automático — o campo fica editável (texto DD/MM HH:mm, sem
+// ano — mesmo padrão de exibição de Data Programação em Gerir Viagens, via fmtShort) para
+// registrar o que o fornecedor informou por telefone, com um botão 📅 que abre o seletor
+// nativo de data+hora do navegador como alternativa à digitação. Internamente o ano
+// completo continua guardado em v.etaManualData (precisa dele pra comparar entre anos).
+// Demais viagens continuam somente leitura, vindas da Herrlog (ver renderEtaHerrlog).
+function renderEtaCelulaMon(v, mon) {
+  if (v.status !== 'CIF') return renderEtaHerrlog(mon);
+  const valorAtual = v.etaManualData ? `${fmtShort(v.etaManualData)} ${v.etaManualHora || '12:00'}` : '';
+  const idPicker = `eta-picker-${v.idViagem}`;
+  return `
+    <input class="placa-input" style="width:100%;text-transform:none;font-family:var(--font-cond)"
+      value="${esc(valorAtual)}" placeholder="DD/MM HH:mm" maxlength="11"
+      onblur="salvarEtaManualInline('${esc(v.idViagem)}', this.value)"
+      onkeydown="if(event.key==='Enter')this.blur()"
+      title="ETA informado por telefone pelo fornecedor (viagem CIF) — não vem da Herrlog">
+    <div style="display:flex;gap:4px;align-items:center;margin-top:2px">
+      <button type="button" class="btn-cal" onclick="abrirCalendarioEtaManual('${esc(v.idViagem)}')" title="Abrir calendário e hora">📅</button>
+      <input type="datetime-local" id="${idPicker}" class="fi-date-picker" tabindex="-1"
+        onchange="aplicarCalendarioEtaManual('${esc(v.idViagem)}', this.value)">
+      <span style="font-size:9px;color:var(--text-muted)">📞 manual</span>
+    </div>
+  `;
+}
+
+function renderStatusCelulaMon(v, mon) {
+  if (v.status !== 'CIF') return esc(mon.statusHerrlog || '—');
+  const atual = statusExibidoMon(v, mon);
+  return `
+    <select class="filter-select" style="font-size:12px;padding:4px 6px;width:100%;min-width:170px"
+      onchange="salvarStatusManualInline('${esc(v.idViagem)}', this.value)"
+      title="Status informado por telefone pelo fornecedor (viagem CIF) — não vem da Herrlog">
+      <option value="" ${atual === '' ? 'selected' : ''}>— selecione —</option>
+      ${STATUS_MANUAL_CIF_OPCOES.map(op => `<option value="${esc(op)}" ${op === atual ? 'selected' : ''}>${esc(op)}</option>`).join('')}
+    </select>
+  `;
+}
+
+function salvarEtaManualInline(idViagem, valorInput) {
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  if (!v) return;
+  const anterior = v.etaManualData || '-';
+  const horaAnterior = v.etaManualHora || '12:00';
+  const valor = valorInput.trim();
+
+  let novo, novaHora;
+  if (!valor) {
+    novo = '-';
+    novaHora = '12:00';
+  } else {
+    const [parteData, parteHora] = valor.split(/\s+/);
+    const partes = (parteData || '').split('/');
+    const ano = (anterior !== '-' ? anterior.split('/')[2] : null) || String(new Date().getFullYear());
+    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : parteData;
+    if (!parseDMY(novo)) {
+      alert('Data inválida. Use o formato DD/MM HH:mm.');
+      renderMonitoramento();
+      return;
+    }
+    if (!anoPlausivel(novo)) {
+      alert(`Ano da data parece incorreto (${novo}) — verifique se não é um erro de digitação.`);
+      renderMonitoramento();
+      return;
+    }
+    if (parteHora) {
+      const m = parteHora.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m || +m[1] > 23 || +m[2] > 59) {
+        alert('Horário inválido. Use o formato HH:mm (ex: 14:30).');
+        renderMonitoramento();
+        return;
+      }
+      novaHora = `${m[1].padStart(2,'0')}:${m[2]}`;
+    } else {
+      novaHora = horaAnterior;
+    }
+  }
+  if (novo === anterior && novaHora === horaAnterior) return;
+  v.etaManualData = novo === '-' ? '' : novo;
+  v.etaManualHora = novo === '-' ? '' : novaHora;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `ETA informado por telefone (CIF): ${anterior === '-' ? '—' : anterior + ' ' + horaAnterior} → ${novo === '-' ? '—' : novo + ' ' + novaHora}`,
+  });
+  marcarEAgendar(v);
+  renderMonitoramento();
+}
+
+// ── Calendário no ETA manual (CIF) ──
+// <input type="datetime-local"> irmão (invisível) que só existe para acionar o seletor
+// nativo de data+hora do navegador — mesmo mecanismo dos filtros de data em Gerir Viagens
+// (ver abrirCalendarioData), mas aqui com hora incluída (a Herrlog dá minuto exato, então o
+// ETA informado por telefone também guarda hora, não só o dia).
+function dmyHoraParaDatetimeLocal(dataStr, horaStr) {
+  const d = parseDMY(dataStr);
+  if (!d) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hora = /^\d{1,2}:\d{2}$/.test(horaStr || '') ? horaStr.padStart(5, '0') : '12:00';
+  return `${yyyy}-${mm}-${dd}T${hora}`;
+}
+
+function datetimeLocalParaDMYHora(valor) {
+  const m = (valor || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [, yyyy, mm, dd, hh, mi] = m;
+  return { data: `${dd}/${mm}/${yyyy}`, hora: `${hh}:${mi}` };
+}
+
+function abrirCalendarioEtaManual(idViagem) {
+  const picker = document.getElementById(`eta-picker-${idViagem}`);
+  if (!picker) return;
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  picker.value = dmyHoraParaDatetimeLocal(v?.etaManualData, v?.etaManualHora);
+  if (typeof picker.showPicker === 'function') picker.showPicker();
+  else { picker.focus(); picker.click(); }
+}
+
+function aplicarCalendarioEtaManual(idViagem, valorPicker) {
+  const partes = datetimeLocalParaDMYHora(valorPicker);
+  if (!partes) return;
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  if (!v) return;
+  const anterior = v.etaManualData || '-';
+  const horaAnterior = v.etaManualHora || '12:00';
+  if (!anoPlausivel(partes.data)) {
+    alert(`Ano da data parece incorreto (${partes.data}) — verifique o calendário.`);
+    renderMonitoramento();
+    return;
+  }
+  if (partes.data === anterior && partes.hora === horaAnterior) return;
+  v.etaManualData = partes.data;
+  v.etaManualHora = partes.hora;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `ETA informado por telefone (CIF): ${anterior === '-' ? '—' : anterior + ' ' + horaAnterior} → ${partes.data} ${partes.hora}`,
+  });
+  marcarEAgendar(v);
+  renderMonitoramento();
+}
+
+function salvarStatusManualInline(idViagem, valorInput) {
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  if (!v) return;
+  const anterior = v.statusManual || '';
+  const novo = valorInput.trim();
+  if (anterior === novo) return;
+  v.statusManual = novo;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Status informado por telefone (CIF): ${anterior || '—'} → ${novo || '—'}`,
+  });
+  marcarEAgendar(v);
+  renderMonitoramento();
 }
 
 // ── EXPORT HERRLOG (modelo Importador Herrlog: abas Viagens + Eventos de Viagem) ──
