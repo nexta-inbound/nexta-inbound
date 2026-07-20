@@ -1322,10 +1322,19 @@
         ['sessoes/' + key + '/savedAt']: new Date().toISOString(),
       });
     },
-    ouvirMonitoramentoHerrlog: (callback) => {
-      return onValue(ref(db, 'monitoramentoHerrlog'), (snap) => {
-        callback(snap.exists() ? snap.val() : {});
-      });
+    // Granular (onChildAdded/Changed/Removed), não onValue: o monitoramento_tempo_real_herrlog.py
+    // roda a cada 60s e grava só o que mudou de verdade (kmRestante/etaDestino/etc de UMA
+    // viagem) - mas onValue reenviaria o node `monitoramentoHerrlog` INTEIRO (todas as
+    // viagens monitoradas) pra cada cliente conectado a cada uma dessas gravações, mesmo
+    // tendo mudado só um registro. Com caminhão em movimento mudando km a cada ciclo, isso
+    // virava um consumo de fundo constante o dia inteiro (mesmo padrão que já resolvemos em
+    // `viagens` - ver ouvirViagens - só que aqui era o node que faltava a mesma correção).
+    ouvirMonitoramentoHerrlog: ({ onAdded, onChanged, onRemoved }) => {
+      const r = ref(db, 'monitoramentoHerrlog');
+      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
+      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
+      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
+      return () => { u1(); u2(); u3(); };
     },
     // Usado por processarViagensCanceladasNaHerrlog() para limpar do Firebase a
     // entrada já processada (statusHerrlog="Cancelado", gravado pelo
@@ -8177,9 +8186,18 @@ const STATUS_MANUAL_CIF_OPCOES = [
 // marcarEAgendar() cuida de marcar a viagem certa (viagensAlteradasMultiSemana, por
 // _semanaOrigem) e disparar o autosave no modo certo — mesmo mecanismo de qualquer edição
 // manual da tabela.
-function sincronizarStatusHerrlog() {
+// idsFiltro (opcional): quando informado, só verifica essas viagens (por idViagem) em vez
+// de varrer viagensAtivo() inteiro. Usado pelos listeners em tempo real (ver agendarRefresh
+// em configurarListenerSemana/configurarListenersMultiSemana), que já sabem exatamente qual
+// registro acabou de mudar — não precisam reescanear tudo a cada edição de qualquer um. Sem
+// filtro (login, troca de semana, semana nova carregada no multi-semana, ou quando o node
+// monitoramentoHerrlog em si muda — ver configurarListenerMonitoramentoHerrlog), varre tudo;
+// esses gatilhos são raros o bastante (não um por edição) pra isso ser barato.
+function sincronizarStatusHerrlog(idsFiltro) {
+  const filtro = idsFiltro && idsFiltro.length ? new Set(idsFiltro) : null;
   let alterou = false;
   viagensAtivo().forEach(v => {
+    if (filtro && !filtro.has(v.idViagem)) return;
     const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
     if (!statusHerrlog) return;
     const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
@@ -10115,13 +10133,20 @@ function configurarListenerSemana(key) {
 
   let refreshTimer = null;
   let precisaToast = false;
-  function agendarRefresh(mostrarToast) {
+  let idsParaSincronizar = new Set();
+  function agendarRefresh(mostrarToast, idAlterado) {
     if (mostrarToast) precisaToast = true;
+    if (idAlterado) idsParaSincronizar.add(idAlterado);
     clearTimeout(refreshTimer);
     // Pequeno atraso pra agrupar uma rajada de eventos (ex.: ação em lote em várias
     // viagens) num único refresh, em vez de um re-render por registro.
     refreshTimer = setTimeout(() => {
-      sincronizarStatusHerrlog();
+      // Só verifica as viagens que de fato mudaram nesta rajada, não viagensAtivo() inteiro
+      // — sincronizarStatusHerrlog() já roda sozinho a cada ciclo do monitoramentoHerrlog
+      // (ver configurarListenerMonitoramentoHerrlog); aqui é só rede de segurança contra uma
+      // edição concorrente sobrescrever por acidente o status de UMA viagem específica.
+      if (idsParaSincronizar.size) sincronizarStatusHerrlog([...idsParaSincronizar]);
+      idsParaSincronizar = new Set();
       if (editingIdx !== null) closeModal();
       if (activeTab === 0 && cadencias.length > 0) renderPreview();
       if (activeTab === 1) renderViagensTable();
@@ -10146,9 +10171,9 @@ function configurarListenerSemana(key) {
       const conhecida = idsConhecidos.has(id);
       idsConhecidos.delete(id);
       aplicarViagemLocal(id, dados);
-      agendarRefresh(!conhecida);
+      agendarRefresh(!conhecida, id);
     },
-    onChanged: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true); },
+    onChanged: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true, id); },
     onRemoved: (id) => { removerViagemLocal(id); agendarRefresh(true); },
   };
   const unsubViagens = isTransportador()
@@ -10323,18 +10348,22 @@ function configurarListenersMultiSemana(keys) {
 
     let refreshTimer = null;
     let precisaToast = false;
-    function agendarRefresh(mostrarToast) {
+    let idsParaSincronizar = new Set();
+    function agendarRefresh(mostrarToast, idAlterado) {
       if (mostrarToast) precisaToast = true;
+      if (idAlterado) idsParaSincronizar.add(idAlterado);
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         // Índices de viagensMultiSemana podem ter mudado com o merge — fechar o modal
         // evita salvar por cima da viagem errada (mesma cautela da semana única).
         if (editingIdx !== null) closeModal();
-        // Mesmo motivo do sincronizarStatusHerrlog() em configurarListenerSemana: sem
-        // isso aqui, uma correção de status (Em Andamento ⇄ Viagem Finalizada) só pegava
-        // quando o node monitoramentoHerrlog em si mudasse — nunca quando fosse a viagem
-        // (`sessoes/<semana>/viagens/<id>`) que mudasse por outro caminho.
-        sincronizarStatusHerrlog();
+        // Só verifica as viagens que de fato mudaram nesta rajada, não viagensAtivo()
+        // inteiro — sincronizarStatusHerrlog() já roda sozinho a cada ciclo do
+        // monitoramentoHerrlog (ver configurarListenerMonitoramentoHerrlog); aqui é só
+        // rede de segurança contra uma edição concorrente sobrescrever por acidente o
+        // status de UMA viagem específica.
+        if (idsParaSincronizar.size) sincronizarStatusHerrlog([...idsParaSincronizar]);
+        idsParaSincronizar = new Set();
         updatePipeline(viagensAtivo());
         renderizarAbaAtual();
         if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
@@ -10356,9 +10385,9 @@ function configurarListenersMultiSemana(keys) {
         const conhecida = idsConhecidos.has(id);
         idsConhecidos.delete(id);
         aplicarLocal(id, dados);
-        agendarRefresh(!conhecida);
+        agendarRefresh(!conhecida, id);
       },
-      onChanged: (id, dados) => { aplicarLocal(id, dados); agendarRefresh(true); },
+      onChanged: (id, dados) => { aplicarLocal(id, dados); agendarRefresh(true, id); },
       onRemoved: (id) => { removerLocal(id); agendarRefresh(true); },
     };
 
@@ -10404,18 +10433,34 @@ function renderizarAbaAtual() {
   else if (activeTab === 7) renderVeiculosTable();
 }
 
-// Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` —
-// alimentado pelo extracao_herrlog.py a cada ciclo). Independente da semana
-// ativa, por isso o listener e' configurado uma unica vez.
+// Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` — alimentado a
+// cada ~60s pelo monitoramento_tempo_real_herrlog.py, granular por registro). Independente
+// da semana ativa, por isso o listener e' configurado uma unica vez. Debounce (200ms, mesmo
+// padrao dos listeners de viagens) agrupa uma rajada de gravacoes (varios caminhoes
+// atualizando km no mesmo ciclo) num unico refresh, e sincronizarStatusHerrlog() so' verifica
+// as viagens cujo monitoramento de fato mudou nesta rajada — nao viagensAtivo() inteiro.
 function configurarListenerMonitoramentoHerrlog() {
   if (window._fbUnsubMonitoramento) { window._fbUnsubMonitoramento(); window._fbUnsubMonitoramento = null; }
-  window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog((dados) => {
-    monitoramentoHerrlog = dados || {};
-    processarViagensCanceladasNaHerrlog();
-    sincronizarStatusHerrlog();
-    if (activeTab === 1) renderViagensTable();
-    if (activeTab === 2) renderExport();
-    if (activeTab === 3) renderMonitoramento();
+
+  let refreshTimer = null;
+  let idsAlterados = new Set();
+  function agendarRefresh(id) {
+    if (id) idsAlterados.add(id);
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      processarViagensCanceladasNaHerrlog();
+      if (idsAlterados.size) sincronizarStatusHerrlog([...idsAlterados]);
+      idsAlterados = new Set();
+      if (activeTab === 1) renderViagensTable();
+      if (activeTab === 2) renderExport();
+      if (activeTab === 3) renderMonitoramento();
+    }, 200);
+  }
+
+  window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog({
+    onAdded: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
+    onChanged: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
+    onRemoved: (id) => { delete monitoramentoHerrlog[id]; agendarRefresh(); },
   });
 }
 
