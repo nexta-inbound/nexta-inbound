@@ -5839,13 +5839,13 @@ function mascaraCNPJ(v) {
 
 function normalizarTransportador(t) {
   if (Array.isArray(t.cnpjs)) {
-    return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', cnpjs: t.cnpjs };
+    return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', telefone: t.telefone || '', cnpjs: t.cnpjs };
   }
   // Compatibilidade com cadastro antigo (1 CNPJ direto no registro, sem lista `cnpjs`)
   const cnpjs = (t.codSap || t.razaoSocial || t.cnpj)
     ? [{ codSap: t.codSap || '', razaoSocial: t.razaoSocial || '', cnpj: t.cnpj || '' }]
     : [];
-  return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', cnpjs };
+  return { nomeFantasia: t.nomeFantasia || t.razaoSocial || '', email: t.email || '', telefone: t.telefone || '', cnpjs };
 }
 
 async function carregarTransportadoresFirebase() {
