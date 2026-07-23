@@ -558,6 +558,62 @@
   .empty-text { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-dim); }
   .empty-sub { font-size: 12px; }
 
+  /* ── PERFORMANCE ── */
+  .perf-body { padding: 16px 20px; }
+  .perf-note { font-size: 11px; color: var(--text-muted); margin-top: -4px; margin-bottom: 2px; }
+  .perf-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  .perf-bars { display: flex; flex-direction: column; gap: 10px; }
+  .perf-bar-row { display: grid; grid-template-columns: 170px 1fr 96px; align-items: center; gap: 10px; }
+  .perf-bar-label { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .perf-bar-track { background: var(--panel-soft); border-radius: 6px; height: 18px; overflow: hidden; border: 1px solid var(--border); }
+  .perf-bar-fill { display: flex; height: 100%; }
+  .perf-bar-seg { height: 100%; }
+  .perf-bar-seg:not(:last-child) { border-right: 2px solid var(--surface); }
+  .perf-bar-value { font-family: var(--font-cond); font-weight: 700; font-size: 12px; text-align: right; color: var(--text); white-space: nowrap; }
+  .perf-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .perf-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+  .perf-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .perf-map-svg { width: 100%; height: auto; max-height: 560px; display: block; }
+  .perf-map-label { font-family: var(--font-cond); font-size: 11px; font-weight: 700; fill: var(--text-dim); }
+  .perf-mapa-flex { display: flex; gap: 20px; align-items: flex-start; padding: 16px 20px; }
+  .perf-mapa-col { flex: 1 1 38%; min-width: 0; }
+  .perf-rotas-col { flex: 1 1 62%; min-width: 0; }
+  @media (max-width: 900px) {
+    .perf-mapa-flex { flex-direction: column; }
+  }
+  .perf-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .perf-grid-2 .table-wrap { margin-top: 0; }
+  .perf-grid-2 .perf-bar-row { grid-template-columns: 130px 1fr 76px; }
+  @media (max-width: 900px) {
+    .perf-grid-2 { grid-template-columns: 1fr; }
+  }
+  .perf-th-filtro-btn { margin-left: 4px; cursor: pointer; color: var(--text-muted); font-size: 10px; }
+  .perf-th-filtro-btn:hover { color: var(--accent); }
+  .perf-th-filtro-btn.ativo { color: var(--accent); text-shadow: 0 0 6px rgba(141,200,48,0.6); }
+
+  /* Aderência ao BID — tabela transportadora × regional (Meta editável / Real / Δ) */
+  .perf-meta-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .perf-meta-table th, .perf-meta-table td { padding: 6px 8px; text-align: center; border: 1px solid var(--border); }
+  .perf-meta-table thead th { background: var(--panel-soft); font-family: var(--font-cond); font-weight: 700; color: var(--text-dim); position: sticky; top: 0; z-index: 2; }
+  .perf-meta-table .perf-meta-grupo { border-left: 2px solid var(--border-dk); }
+  .perf-meta-table .perf-meta-th-transp { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 3; min-width: 150px; }
+  .perf-meta-table thead .perf-meta-th-transp { z-index: 4; }
+  .perf-meta-input {
+    width: 48px; background: var(--panel-soft); border: 1px solid var(--border-dk); border-radius: 4px;
+    color: var(--text); text-align: center; font-family: var(--font); font-size: 12px; padding: 3px 2px; outline: none;
+    -moz-appearance: textfield;
+  }
+  /* Remove as setinhas nativas do <input type=number>: no Chrome/Windows elas pintam um
+     retângulo claro atrás dos botões +/- que, num campo estreito de 48px, dominava a
+     célula inteira e parecia um input branco "quebrado" no tema escuro. */
+  .perf-meta-input::-webkit-outer-spin-button,
+  .perf-meta-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .perf-meta-input::placeholder { color: var(--text-muted); }
+  .perf-meta-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(141,200,48,0.12); }
+  .perf-meta-delta { display: inline-block; min-width: 44px; font-weight: 700; border-radius: 4px; padding: 2px 5px; }
+  .perf-meta-total-cell { color: var(--text); font-weight: 600; }
+  .perf-meta-total-grupo { border-left: 2px solid var(--accent) !important; background: rgba(141,200,48,0.06); }
+
   /* ── ALERT ── */
   .alert {
     padding: 12px 16px;
@@ -1090,6 +1146,7 @@
   body.transportador-mode #tabBtn6,
   body.transportador-mode #tabBtn7,
   body.transportador-mode #tabBtn8,
+  body.transportador-mode #tabBtn9,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #bulkBar,
@@ -1104,11 +1161,104 @@
   body.transportador-mode .chip-agend,
   body.transportador-mode .col-data-desejada,
   body.transportador-mode .col-pedido-mis,
-  body.transportador-mode .col-agendamento {
+  body.transportador-mode .col-agendamento,
+  body.transportador-mode #kpiToggleHeader,
+  body.transportador-mode #kpiCardsWrap,
+  body.transportador-mode #btnReprocessarJanela,
+  body.transportador-mode #fCarrModo,
+  body.transportador-mode #fDtModo,
+  body.transportador-mode #chipOfertado,
+  body.transportador-mode #chipRecusado,
+  body.transportador-mode #chipAceito,
+  body.transportador-mode .col-checkbox {
     display: none !important;
   }
-  body:not(.transportador-mode) #bulkBarTransportador {
+  body:not(.transportador-mode) #bulkBarTransportador,
+  body:not(.transportador-mode) #painelTransportadorCards {
     display: none !important;
+  }
+
+  /* ── CARDS DO TRANSPORTADOR (Ofertadas / Placas Pendentes) ──
+     Substituem, para o transportador, a antiga lista/tabela desses dois status — ver
+     renderCardsOfertadasTransportador()/renderCardsPlacasPendentesTransportador(). A
+     tabela abaixo continua existindo só para Placa Enviada/Frota Dedicada/Em Andamento/
+     Viagem Finalizada (ver exclusão de status em passaFiltrosViagem). */
+  .transp-search-wrap { position: relative; max-width: 420px; margin-bottom: 18px; }
+  .transp-search-wrap input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px 10px 36px; color: var(--text); font-size: 13px; font-family: var(--font);
+  }
+  .transp-search-wrap input::placeholder { color: var(--text-muted); }
+  .transp-search-wrap input:focus { outline: none; border-color: var(--accent); }
+  .transp-search-ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.6; font-size: 13px; }
+
+  /* Lado a lado a partir de 900px — cada coluna com rolagem própria (~2 cards visíveis),
+     assim o transportador vê Ofertadas e Placas Pendentes juntos sem precisar rolar a
+     página inteira. Em telas estreitas continua empilhado, sem altura fixa. */
+  .transp-cols { display: flex; flex-direction: column; gap: 22px; }
+  @media (min-width: 900px) {
+    .transp-cols { flex-direction: row; align-items: flex-start; gap: 24px; }
+    .transp-cols > .transp-section { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
+    .transp-cols .transp-grid {
+      grid-template-columns: 1fr;
+      max-height: 720px;
+      overflow-y: auto;
+      padding-right: 6px;
+      margin-right: -6px;
+    }
+    .transp-cols .transp-grid::-webkit-scrollbar { width: 8px; }
+    .transp-cols .transp-grid::-webkit-scrollbar-track { background: transparent; }
+    .transp-cols .transp-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .transp-cols .transp-grid::-webkit-scrollbar-thumb:hover { background: var(--border-dk); }
+  }
+  /* Só a partir daqui cabem 2 cards por linha dentro de cada seção sem espremer — abaixo
+     disso (900–1300px) cada seção fica com 1 card por linha mesmo estando lado a lado. */
+  @media (min-width: 1300px) {
+    .transp-cols .transp-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .transp-section { margin-bottom: 22px; }
+  .transp-section-head { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding-bottom: 10px; }
+  .transp-section-head .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .transp-section-head h3 {
+    font-family: var(--font-cond); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text);
+  }
+  .transp-section-head .count {
+    font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--panel);
+    border: 1px solid var(--border); padding: 1px 8px; border-radius: 20px;
+  }
+  .transp-section-head .sub { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+  .transp-section-head .chev { color: var(--text-muted); font-size: 11px; transition: transform 0.18s; margin-left: 4px; }
+  .transp-section.transp-collapsed .chev { transform: rotate(-90deg); }
+  .transp-section.transp-collapsed .transp-grid, .transp-section.transp-collapsed .transp-empty { display: none; }
+
+  .transp-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 560px) { .transp-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); } }
+
+  .transp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .transp-card.transp-urg-backlog { border-left: 3px solid var(--danger); }
+  .transp-card.transp-urg-critico { border-left: 3px solid var(--accent2); }
+  .transp-card.transp-urg-alerta  { border-left: 3px solid #E8D24A; }
+  .transp-card.transp-urg-atencao { border-left: 3px solid var(--success); }
+
+  .transp-card-top { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px 0; }
+  .transp-card-body { padding: 10px 14px 4px; }
+  .transp-prod-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .transp-rota { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .transp-rota .pt { flex: 1; min-width: 0; }
+  .transp-rota .cidade { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transp-rota .arrow { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
+  .transp-datas { display: flex; gap: 14px; padding: 9px 0; border-top: 1px dashed var(--border); }
+  .transp-datas .d { flex: 1; min-width: 0; }
+  .transp-datas .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .transp-datas .val { font-size: 12.5px; font-weight: 600; font-family: var(--font-cond); }
+  .transp-card-actions { display: flex; gap: 8px; padding: 10px 14px 14px; }
+  .transp-card-actions .btn { flex: 1; justify-content: center; }
+  .transp-card-actions .btn.btn-icon-only { flex: 0 0 auto; width: 40px; padding: 5px 0; }
+  .transp-empty { text-align: center; padding: 22px 14px; color: var(--text-muted); font-size: 12.5px; border: 1px dashed var(--border); border-radius: 10px; }
+
+  @media (max-width: 760px) {
+    body.transportador-mode .transp-search-wrap { max-width: none; }
   }
 
   /* ── VISÃO TRANSPORTADOR EM CELULAR ── */
@@ -1450,6 +1600,16 @@
     salvarVeiculosDedicados: async (lista) => {
       await set(ref(db, 'veiculosDedicados'), lista);
     },
+    // Metas de share (BID) por transportadora × regional — aba Performance. Lista (não
+    // mapa chaveado), mesmo motivo de leadtimes/veiculosDedicados: nome de transportadora
+    // pode ter caractere inválido como chave do RTDB.
+    carregarMetasShareRegional: async () => {
+      const snap = await get(ref(db, 'metasShareRegional'));
+      return snap.exists() ? snap.val() : null;
+    },
+    salvarMetasShareRegional: async (lista) => {
+      await set(ref(db, 'metasShareRegional'), lista);
+    },
     // ── Firebase Authentication ──
     login: async (email, senha) => {
       return await signInWithEmailAndPassword(auth, email, senha);
@@ -1764,6 +1924,7 @@
   <div class="tab" id="tabBtn6" onclick="switchTab(6)">⑦ Fornecedores</div>
   <div class="tab" id="tabBtn7" onclick="switchTab(7)">⑧ Veículos Dedicados</div>
   <div class="tab" id="tabBtn8" onclick="switchTab(8)">⑨ Leadtime</div>
+  <div class="tab" id="tabBtn9" onclick="switchTab(9)">⑩ Performance</div>
 </div>
 
 <div class="main">
@@ -1869,6 +2030,39 @@
   </div>
 
   <div id="viagensContent" style="display:none">
+    <div id="painelTransportadorCards">
+      <div class="transp-search-wrap">
+        <span class="transp-search-ic">🔍</span>
+        <input type="text" id="fBuscaTransp" placeholder="Buscar por ID, pedido ou placa..." oninput="renderViagensTable()">
+      </div>
+
+      <div class="transp-cols">
+        <div class="transp-section" id="secOfertadasTransp">
+          <div class="transp-section-head" onclick="toggleSecaoTransp('secOfertadasTransp')">
+            <span class="dot" style="background:var(--accent2)"></span>
+            <h3>Cargas ofertadas</h3>
+            <span class="count" id="countOfertadasTransp">0</span>
+            <span class="sub">aguardando sua resposta</span>
+            <span class="chev">▾</span>
+          </div>
+          <div class="transp-grid" id="cardsOfertadasTransp"></div>
+          <div class="transp-empty" id="emptyOfertadasTransp" style="display:none">Nenhuma carga ofertada no momento.</div>
+        </div>
+
+        <div class="transp-section" id="secPlacasTransp">
+          <div class="transp-section-head" onclick="toggleSecaoTransp('secPlacasTransp')">
+            <span class="dot" style="background:var(--danger)"></span>
+            <h3>Placas pendentes</h3>
+            <span class="count" id="countPlacasTransp">0</span>
+            <span class="sub">mais urgente primeiro</span>
+            <span class="chev">▾</span>
+          </div>
+          <div class="transp-grid" id="cardsPlacasTransp"></div>
+          <div class="transp-empty" id="emptyPlacasTransp" style="display:none">Nenhuma viagem aguardando placa.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="kpi-toggle-header" id="kpiToggleHeader" onclick="toggleKpisViagens()">
       <div style="display:flex;align-items:center;gap:10px">
         <div id="wrapProgramadorFiltro" style="display:flex;align-items:center;gap:10px">
@@ -1942,9 +2136,9 @@
           <div class="chip-group" id="filterChips">
             <div class="chip active" id="chipTodos" data-status="todos" onclick="filterViagens('todos')" title="Limpa a seleção de status">Todos</div>
             <div class="chip" id="chipBacklog" data-status="Backlog" onclick="filterViagens('Backlog')" title="Clique para somar/remover este status à seleção">Sem Programação</div>
-            <div class="chip" data-status="Ofertado" onclick="filterViagens('Ofertado')" title="Clique para somar/remover este status à seleção">Ofertadas</div>
-            <div class="chip" data-status="Recusado" onclick="filterViagens('Recusado')" title="Clique para somar/remover este status à seleção">Recusadas</div>
-            <div class="chip" data-status="Aceito" onclick="filterViagens('Aceito')" title="Clique para somar/remover este status à seleção">Aceitas</div>
+            <div class="chip" id="chipOfertado" data-status="Ofertado" onclick="filterViagens('Ofertado')" title="Clique para somar/remover este status à seleção">Ofertadas</div>
+            <div class="chip" id="chipRecusado" data-status="Recusado" onclick="filterViagens('Recusado')" title="Clique para somar/remover este status à seleção">Recusadas</div>
+            <div class="chip" id="chipAceito" data-status="Aceito" onclick="filterViagens('Aceito')" title="Clique para somar/remover este status à seleção">Aceitas</div>
             <div class="chip" data-status="Placa Enviada" onclick="filterViagens('Placa Enviada')" title="Clique para somar/remover este status à seleção">Placa Enviada</div>
             <div class="chip" data-status="Frota Dedicada" onclick="filterViagens('Frota Dedicada')" title="Clique para somar/remover este status à seleção">Frota Dedicada</div>
             <div class="chip" data-status="Em Andamento" onclick="filterViagens('Em Andamento')" title="Clique para somar/remover este status à seleção">Em Andamento</div>
@@ -1960,7 +2154,7 @@
             <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento e Descarga das viagens elegíveis, recuando quando necessário e recalculando a descarga via leadtime. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
+        <button class="btn btn-secondary btn-sm" id="btnReprocessarJanela" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento e Descarga das viagens elegíveis, recuando quando necessário e recalculando a descarga via leadtime. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
       </div>
       <div class="filter-bar">
         <div class="filter-row">
@@ -2589,6 +2783,154 @@
           </thead>
           <tbody id="leadtimeBody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB 10: PERFORMANCE ===== -->
+<div class="tab-content" id="tab-9">
+  <div id="performanceEmpty" class="empty-state">
+    <div class="empty-icon">📊</div>
+    <div class="empty-text">Nenhuma viagem no período selecionado</div>
+    <div class="empty-sub">Carregue uma semana (ou ligue o modo multi-semana) com viagens para ver o overview de performance</div>
+  </div>
+
+  <div id="performanceContent" style="display:none">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Performance de Transporte</div>
+        <div class="section-sub">Overview da operação — malha, transportadoras, aceite e pontualidade</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-row">
+        <div id="ms-perfRegional"></div>
+        <div id="ms-perfUf" class="ms-narrow"></div>
+        <div id="ms-perfProduto"></div>
+        <div id="ms-perfModal" class="ms-narrow"></div>
+        <div id="ms-perfTipoOp" class="ms-narrow"></div>
+        <input type="text" class="filter-input" id="fPerfTransp"
+          placeholder="🚚 Transportador..." style="width:170px"
+          oninput="renderPerformance()">
+        <button class="btn btn-secondary btn-sm" onclick="limparFiltrosPerf()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+      </div>
+    </div>
+
+    <div class="stats-row" style="grid-template-columns:repeat(6, 1fr)">
+      <div class="stat-card">
+        <div class="stat-label">📦 Viagens</div>
+        <div class="stat-val" id="sv-perf-viagens">0</div>
+        <div class="stat-sub" id="sub-perf-viagens">no período filtrado</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🛢️ Volume</div>
+        <div class="stat-val" id="sv-perf-volume">0</div>
+        <div class="stat-sub">m³ transportados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🚚 Transportadoras</div>
+        <div class="stat-val" id="sv-perf-transportadoras">0</div>
+        <div class="stat-sub">ativas no período</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-label">✅ Taxa de Aceite</div>
+        <div class="stat-val" id="sv-perf-aceite">—</div>
+        <div class="stat-sub">aceites ÷ (aceites + recusas)</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-label">🎯 No Prazo</div>
+        <div class="stat-val" id="sv-perf-noprazo">—</div>
+        <div class="stat-sub">vs. Data Desejada</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">⏱️ Resposta Média</div>
+        <div class="stat-val" id="sv-perf-resposta">—</div>
+        <div class="stat-sub">horas até aceitar/recusar</div>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:6px">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">🗺️ Malha Logística</span>
+          <span class="badge badge-accent" id="badge-perf-rotas">0 rotas</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnLimparSelecaoRotas" onclick="limparSelecaoRotasMalha()" style="display:none">✕ Limpar seleção</button>
+      </div>
+      <div class="perf-mapa-flex">
+        <div id="perfMapaWrap" class="perf-mapa-col"></div>
+        <div class="perf-rotas-col">
+          <div class="perf-note" style="padding-top:0">Clique no ▾ do cabeçalho pra ordenar/filtrar a coluna.</div>
+          <div class="scrollable" style="max-height:460px">
+            <table id="perfRotasTable">
+              <thead>
+                <tr>
+                  <th data-col="origem">Origem (UF)<span class="sort-arrow"></span><span class="perf-th-filtro-btn" data-col="origem" onclick="abrirFiltroColunaRotas(event, 'origem')" title="Ordenar/filtrar">▾</span></th>
+                  <th data-col="destino">Destino (UF)<span class="sort-arrow"></span><span class="perf-th-filtro-btn" data-col="destino" onclick="abrirFiltroColunaRotas(event, 'destino')" title="Ordenar/filtrar">▾</span></th>
+                  <th class="th-sortable" data-col="viagens" onclick="ordenarColunaRotas('viagens')">Viagens<span class="sort-arrow"></span></th>
+                  <th class="th-sortable" data-col="volume" onclick="ordenarColunaRotas('volume')">Volume (m³)<span class="sort-arrow"></span></th>
+                  <th data-col="transportadoras" style="white-space:normal">Transportadoras<span class="sort-arrow"></span><span class="perf-th-filtro-btn" data-col="transportadoras" onclick="abrirFiltroColunaRotas(event, 'transportadoras')" title="Ordenar/filtrar">▾</span></th>
+                </tr>
+              </thead>
+              <tbody id="perfRotasBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="painelFiltroRotas" class="ms-panel" style="display:none;position:fixed;min-width:220px;max-width:300px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:400;box-shadow:0 8px 28px rgba(0,0,0,0.5);max-height:280px;overflow-y:auto">
+      <div class="ms-opts" id="painelFiltroRotasOpts"></div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:20px">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">📊 Share de Participação por Regional</span>
+        </div>
+      </div>
+      <div id="perfShareRegionalWrap" class="perf-body"></div>
+    </div>
+
+    <div class="perf-grid-2" style="margin-top:20px">
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">✅ Taxa de Aceite por Transportadora</span>
+          </div>
+        </div>
+        <div class="perf-note" style="padding:0 20px">Conta recusa explícita do transportador. Realocação silenciosa pelo analista (troca de transportador sem recusa) ainda não é rastreada — em desenvolvimento.</div>
+        <div id="perfTaxaAceiteWrap" class="perf-body"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">🎯 Entregas no Prazo por Transportadora</span>
+          </div>
+        </div>
+        <div id="perfAderenciaWrap" class="perf-body"></div>
+      </div>
+    </div>
+
+    <div class="perf-grid-2" style="margin-top:20px">
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">⏱️ Tempo Médio de Resposta à Oferta</span>
+          </div>
+        </div>
+        <div id="perfTempoRespostaWrap" class="perf-body"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">🚚 Performance de Envio de Placa</span>
+          </div>
+        </div>
+        <div id="perfEnvioPlacaWrap" class="perf-body"></div>
       </div>
     </div>
   </div>
@@ -3771,6 +4113,15 @@ class MultiSelect {
   }
   getSelected() { return [...this.selected]; }
   clear() { this.allMode = false; this.selected.clear(); this._renderPanel(); this._renderLabel(); }
+  // Predefine a seleção (ex.: default "FOB" no filtro de Tipo de Frete da Performance) sem
+  // depender de setOptions() já ter rodado — não filtra contra this.options porque, na
+  // hora da construção, options ainda está vazio (só chega no primeiro render dos dados);
+  // o próximo setOptions() já faz a interseção normal e descarta valor que não existir.
+  setSelected(vals) {
+    this.allMode = false;
+    this.selected = new Set(vals);
+    this._renderPanel(); this._renderLabel();
+  }
   _toggle(v) {
     this.allMode = false;
     this.selected.has(v) ? this.selected.delete(v) : this.selected.add(v);
@@ -3867,6 +4218,7 @@ let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEPr
 let msSemanas;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
+let msPerfRegional, msPerfUf, msPerfProduto, msPerfModal, msPerfTipoOp;
 
 // ── MODAL GRUPO ──
 let editingGrupoIdxs = [];
@@ -4315,6 +4667,7 @@ let leadtimes = []; // { origemCidade, origemUf, destinoCidade, destinoUf, leadt
 let editingLeadtimeIdx = null;
 let veiculosDedicados = [];
 let editingVeiculoIdx = null;
+let metasShareRegional = []; // { transportador, regional, meta } — aba Performance, Aderência ao BID
 let _editingVigencias = []; // rascunho editável dos períodos de vigência do modal Novo/Editar Veículo
 
 const STORAGE_KEY = 'nexta_cadencia_sessao';
@@ -4528,6 +4881,7 @@ function switchTab(i) {
   if (i === 6) renderFornecedoresTable();
   if (i === 7) renderVeiculosTable();
   if (i === 8) renderLeadtimeTable();
+  if (i === 9) renderPerformance();
 }
 
 // ── SAMPLE DATA ──
@@ -5383,6 +5737,10 @@ function passaFiltrosViagem(v, f, ignorar = '') {
   if (isTransportador() && (v.transportador || '').trim() !== nomeTransportadorLogado()) return false;
   if (isTransportador() && v.status === 'Backlog') return false;
   if (isTransportador() && v.status === 'Cancelado') return false;
+  // Ofertado/Aceito têm seus próprios blocos de cards (ver painelTransportadorCards) —
+  // não duplicar essas linhas na tabela de baixo (Placa Enviada/Frota Dedicada/Em
+  // Andamento/Finalizada).
+  if (isTransportador() && ['Ofertado', 'Aceito'].includes(v.status)) return false;
   if (ignorar !== 'status' && activeFilter.size && !activeFilter.has(v.status)) return false;
   if (activeAgendamento.size && !activeAgendamento.has(v.statusAgendamento || 'Não Agendado')) return false;
   if (ignorar !== 'indicador' && f.indicadorTest && !f.indicadorTest(v)) return false;
@@ -5519,8 +5877,163 @@ function atualizarSetasOrdenacao() {
   });
 }
 
+// ── CARDS DO TRANSPORTADOR (Ofertadas / Placas Pendentes) ──
+// Ver painelTransportadorCards no HTML e a exclusão de Ofertado/Aceito em
+// passaFiltrosViagem — essas duas telas substituem, só para o transportador, a
+// linha de tabela desses dois status.
+function toggleSecaoTransp(id) {
+  document.getElementById(id).classList.toggle('transp-collapsed');
+}
+
+function termosBuscaTransp() {
+  const q = (document.getElementById('fBuscaTransp')?.value || '').toLowerCase().trim();
+  return q ? q.split(/[\s,]+/).filter(Boolean) : [];
+}
+
+function passaBuscaTransp(v, termos) {
+  if (!termos.length) return true;
+  const hay = [v.idViagem, v.cadenciaOrigem, v.placa].join(' ').toLowerCase();
+  return termos.some(t => hay.includes(t));
+}
+
+function viagensTransportadorPorStatus(status) {
+  const fonte = viagensAtivo();
+  const nome = nomeTransportadorLogado();
+  const termos = termosBuscaTransp();
+  const itens = [];
+  fonte.forEach((v, i) => {
+    if ((v.transportador || '').trim() !== nome) return;
+    if (v.status !== status) return;
+    if (!passaBuscaTransp(v, termos)) return;
+    itens.push({ v, i });
+  });
+  return itens;
+}
+
+// Mesma escada de severidade dos KPIs internos (ver updateKPIs/testeIndicador), calculada
+// sobre a Data Desejada (v.dtCarreg) — assim a ordenação de "mais urgente primeiro" usa o
+// mesmo critério que o resto do app já usa para Backlog/Crítico/Alerta/Atenção.
+const ORDEM_URGENCIA_TRANSP = { backlog: 0, critico: 1, alerta: 2, atencao: 3 };
+function bucketUrgenciaTransportador(v) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
+  const d = parseDMY(v.dtCarreg);
+  if (!d) return 'atencao';
+  if (d < hoje) return 'backlog';
+  if (d.getTime() === hoje.getTime()) return 'critico';
+  if (d <= d2) return 'alerta';
+  return 'atencao';
+}
+
+function urgenciaLabelTransportador(v, bucket) {
+  const dataFmt = fmtShort(v.dtCarregProg || v.dtCarreg);
+  const hora = v.horaCarregProg || '12:00';
+  const icone = { backlog: '🔴', critico: '🟠', alerta: '🟡', atencao: '🟢' }[bucket];
+  const texto = {
+    backlog: `Venceu — carregava em ${dataFmt}`,
+    critico: `Carrega hoje, ${hora}`,
+    alerta:  `Carrega em ${dataFmt}, ${hora}`,
+    atencao: `Carrega em ${dataFmt}`,
+  }[bucket];
+  return `${icone} ${texto}`;
+}
+
+function renderCardsOfertadasTransportador() {
+  const wrap = document.getElementById('cardsOfertadasTransp');
+  if (!wrap) return;
+  const itens = viagensTransportadorPorStatus('Ofertado');
+  itens.sort((a, b) => (parseDMY(a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarreg) || new Date(8640000000000000)));
+
+  document.getElementById('countOfertadasTransp').textContent = itens.length;
+  document.getElementById('emptyOfertadasTransp').style.display = itens.length ? 'none' : 'block';
+
+  wrap.innerHTML = itens.map(({ v, i }) => {
+    const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
+    const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
+    const horaCarreg = v.horaCarregProg || '12:00';
+    const horaDesc   = v.horaDescProg   || '12:00';
+    return `
+      <div class="transp-card">
+        <div class="transp-card-top">
+          <span class="badge badge-warn">📤 Ofertado</span>
+          <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-cond)">${esc(v.idViagem)}</span>
+        </div>
+        <div class="transp-card-body">
+          <div class="transp-prod-row">
+            ${prodTag(v.produto)}
+            <span style="font-family:var(--font-cond);font-weight:700">${v.volume} <span style="font-size:10px;color:var(--text-muted);font-weight:500">m³</span></span>
+          </div>
+          <div class="transp-rota">
+            <div class="pt"><div class="cidade" title="${esc(v.origem)}">${esc(v.origem)}${v.base ? ` <span style="color:var(--text-muted)">(${esc(v.base)})</span>` : ''}</div></div>
+            <span class="arrow">→</span>
+            <div class="pt" style="text-align:right"><div class="cidade" title="${esc(v.destino)}">${esc(v.destino)}</div></div>
+          </div>
+          <div class="transp-datas">
+            <div class="d"><div class="lbl">↑ Carregamento</div><div class="val">${fmtShort(progCarreg)} ${horaCarreg}</div></div>
+            <div class="d"><div class="lbl">↓ Descarga</div><div class="val">${fmtShort(progDesc)} ${horaDesc}</div></div>
+          </div>
+          ${renderSeletorCnpjTransportador(v, i)}
+        </div>
+        <div class="transp-card-actions">
+          <button class="btn btn-danger btn-sm" onclick="recusarOfertaTransportador(${i})">✕ Recusar</button>
+          <button class="btn btn-success btn-sm" onclick="aceitarOfertaTransportador(${i})">✓ Aceitar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCardsPlacasPendentesTransportador() {
+  const wrap = document.getElementById('cardsPlacasTransp');
+  if (!wrap) return;
+  const itens = viagensTransportadorPorStatus('Aceito');
+  itens.forEach(item => { item.urgencia = bucketUrgenciaTransportador(item.v); });
+  itens.sort((a, b) => ORDEM_URGENCIA_TRANSP[a.urgencia] - ORDEM_URGENCIA_TRANSP[b.urgencia]
+    || (parseDMY(a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarreg) || new Date(8640000000000000)));
+
+  document.getElementById('countPlacasTransp').textContent = itens.length;
+  document.getElementById('emptyPlacasTransp').style.display = itens.length ? 'none' : 'block';
+
+  wrap.innerHTML = itens.map(({ v, i, urgencia }) => {
+    const progCarreg = v.dtCarregProg || v.dtCarreg || '-';
+    const progDesc   = v.dtDescProg   || v.dtDesc   || '-';
+    const horaCarreg = v.horaCarregProg || '12:00';
+    const horaDesc   = v.horaDescProg   || '12:00';
+    return `
+      <div class="transp-card transp-urg-${urgencia}">
+        <div class="transp-card-top">
+          <span style="font-size:11px;font-weight:700">${urgenciaLabelTransportador(v, urgencia)}</span>
+          <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-cond)">${esc(v.idViagem)}</span>
+        </div>
+        <div class="transp-card-body">
+          <div class="transp-prod-row">${prodTag(v.produto)}</div>
+          <div class="transp-rota">
+            <div class="pt"><div class="cidade" title="${esc(v.origem)}">${esc(v.origem)}</div></div>
+            <span class="arrow">→</span>
+            <div class="pt" style="text-align:right"><div class="cidade" title="${esc(v.destino)}">${esc(v.destino)}</div></div>
+          </div>
+          <div class="transp-datas">
+            <div class="d"><div class="lbl">↑ Carregamento</div><div class="val">${fmtShort(progCarreg)} ${horaCarreg}</div></div>
+            <div class="d"><div class="lbl">↓ Descarga</div><div class="val">${fmtShort(progDesc)} ${horaDesc}</div></div>
+          </div>
+          ${renderSeletorCnpjTransportador(v, i)}
+        </div>
+        <div class="transp-card-actions">
+          <button class="btn btn-primary btn-sm" onclick="openModal(${i})">🚚 Registrar placa</button>
+          <button class="btn btn-secondary btn-sm btn-icon-only" title="Ordem de retirada" onclick="gerarOrdemRetirada(${i})">📄</button>
+          <button class="btn btn-danger btn-sm btn-icon-only" title="Recusar oferta" onclick="recusarOfertaTransportador(${i})">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderViagensTable() {
   const fonte = viagensAtivo();
+  if (isTransportador()) {
+    renderCardsOfertadasTransportador();
+    renderCardsPlacasPendentesTransportador();
+  }
   const isEmpty = fonte.length === 0;
   document.getElementById('viagensEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('viagensContent').style.display = isEmpty ? 'none' : 'block';
@@ -6371,6 +6884,21 @@ async function carregarLeadtimesFirebase() {
     const raw = await window._fb.carregarLeadtimes();
     leadtimes = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
   } catch (e) { console.error('Erro ao carregar leadtimes:', e); }
+}
+
+async function carregarMetasShareRegionalFirebase() {
+  if (!window._fb?.carregarMetasShareRegional) return;
+  try {
+    const raw = await window._fb.carregarMetasShareRegional();
+    metasShareRegional = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+  } catch (e) { console.error('Erro ao carregar metas de share regional:', e); }
+}
+
+async function persistirMetasShareRegional() {
+  if (!window._fb?.salvarMetasShareRegional) return;
+  try {
+    await window._fb.salvarMetasShareRegional(metasShareRegional);
+  } catch (e) { console.error('Erro ao salvar metas de share regional:', e); }
 }
 
 function renderChipsJanelaCarregamentoTabela(f) {
@@ -10152,6 +10680,7 @@ function configurarListenerSemana(key) {
       if (activeTab === 1) renderViagensTable();
       if (activeTab === 2) renderExport();
       if (activeTab === 3) renderMonitoramento();
+      if (activeTab === 9) renderPerformance();
       updatePipeline();
       if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
       precisaToast = false;
@@ -10425,12 +10954,14 @@ function atualizarMultiSemana() {
 }
 
 // Aplica a visão multi-semana à aba que estiver aberta no momento (Gerir Viagens,
-// Exportar ou Monitoramento — as únicas que combinam viagens entre semanas).
+// Exportar, Monitoramento, Veículos Dedicados e Performance — as que combinam/agregam
+// viagens entre semanas).
 function renderizarAbaAtual() {
   if (activeTab === 1) renderViagensTable();
   else if (activeTab === 2) renderExport();
   else if (activeTab === 3) renderMonitoramento();
   else if (activeTab === 7) renderVeiculosTable();
+  else if (activeTab === 9) renderPerformance();
 }
 
 // Monitoramento Herrlog (node `monitoramentoHerrlog`, fora de `sessoes` — alimentado a
@@ -10454,6 +10985,7 @@ function configurarListenerMonitoramentoHerrlog() {
       if (activeTab === 1) renderViagensTable();
       if (activeTab === 2) renderExport();
       if (activeTab === 3) renderMonitoramento();
+      if (activeTab === 9) renderPerformance();
     }, 200);
   }
 
@@ -10629,6 +11161,7 @@ await carregarUsuariosFirebase();
   await carregarFornecedoresFirebase();
   await carregarLeadtimesFirebase();
   await carregarVeiculosDedicadosFirebase();
+  await carregarMetasShareRegionalFirebase();
   configurarListenerMonitoramentoHerrlog();
   configurarListenerCadastroHerrlogPlacas();
   configurarListenerCadastroHerrlogClientes();
@@ -10669,6 +11202,983 @@ await carregarUsuariosFirebase();
   }
 }
 
+// ── PERFORMANCE ──
+// Aba de overview de transporte: malha logística, share por transportadora, taxa de
+// aceite, aderência de prazo, tempo de resposta e envio de placa. Lê de viagensAtivo()
+// (mesmo período — semana única ou multi-semana — já selecionado no topo da página) e
+// reaproveita os cálculos já existentes de Monitoramento (classificarAderencia /
+// calcularLinhaMonitoramento) em vez de recalcular aderência do zero.
+
+// Centróides reais (lat/long, graus decimais) das 27 UFs — calculados a partir do mesmo
+// contorno usado em BR_UF_PATHS logo abaixo (média dos pontos de cada polígono), então
+// caem exatamente em cima do respectivo estado no mapa de fundo.
+const UF_CENTROIDES = {
+  AC: { lat: -8.83,  lon: -71.88 },
+  AL: { lat: -9.65,  lon: -36.46 },
+  AM: { lat: -2.98,  lon: -65.13 },
+  AP: { lat: 1.54,   lon: -52.60 },
+  BA: { lat: -12.18, lon: -40.43 },
+  CE: { lat: -5.39,  lon: -39.32 },
+  DF: { lat: -15.83, lon: -47.70 },
+  ES: { lat: -19.62, lon: -40.77 },
+  GO: { lat: -16.28, lon: -49.52 },
+  MA: { lat: -5.98,  lon: -45.57 },
+  MG: { lat: -18.64, lon: -43.96 },
+  MS: { lat: -20.12, lon: -54.54 },
+  MT: { lat: -14.54, lon: -56.41 },
+  PA: { lat: -2.18,  lon: -52.11 },
+  PB: { lat: -7.22,  lon: -36.82 },
+  PE: { lat: -8.33,  lon: -37.81 },
+  PI: { lat: -7.50,  lon: -42.68 },
+  PR: { lat: -25.02, lon: -51.49 },
+  RJ: { lat: -22.25, lon: -42.89 },
+  RN: { lat: -5.82,  lon: -36.92 },
+  RO: { lat: -10.66, lon: -63.47 },
+  RR: { lat: 2.37,   lon: -61.60 },
+  RS: { lat: -31.10, lon: -52.46 },
+  SC: { lat: -27.07, lon: -50.35 },
+  SE: { lat: -10.44, lon: -37.34 },
+  SP: { lat: -23.03, lon: -46.88 },
+  TO: { lat: -8.70,  lon: -47.86 },
+};
+
+// Contorno dos 27 estados (equirretangular, já projetado no viewBox 640×660 do mapa —
+// ver projetarUf) — derivado do topojson br-states.json (MIT, ppKrauss/Brazilian States
+// Topojson, adaptado de ruliana), decodificado e reprojetado uma única vez offline. Serve
+// só de fundo visual (silhueta) atrás dos pontos/arcos calculados em tempo real.
+const BR_UF_PATHS = {
+  AC: "M22.6,216.5 L75.9,232.9 L129.9,259.5 L133.1,260.8 L103.3,280.1 L71.4,278.4 L71.7,254.3 L61.9,262.8 L48.0,262.1 L44.8,253.3 L31.9,252.9 L36.6,247.5 L27.3,235.5 L23.7,228.8 L23.7,226.7 L20.1,223.9 L20.0,220.0 L22.9,220.0 L22.6,216.5Z",
+  AL: "M615.4,244.6 L611.8,250.5 L605.8,257.4 L601.1,263.8 L597.3,267.2 L597.4,268.0 L595.8,270.3 L595.0,268.8 L593.2,269.0 L593.2,267.6 L592.1,266.5 L591.2,267.0 L587.4,263.9 L587.2,262.6 L571.3,254.5 L567.8,251.7 L574.5,244.2 L587.4,252.7 L588.2,250.9 L591.3,251.0 L592.5,252.2 L602.5,244.2 L606.4,245.2 L609.1,243.7 L615.4,244.6Z",
+  AM: "M182.2,68.5 L192.3,74.1 L199.5,108.7 L195.8,115.7 L211.4,128.4 L209.8,116.5 L216.3,111.0 L223.6,117.5 L229.7,114.2 L227.9,111.5 L233.3,99.6 L251.0,99.1 L251.4,109.9 L259.8,121.6 L290.0,139.2 L258.5,211.6 L262.2,219.8 L258.5,243.1 L210.5,243.5 L201.3,243.0 L190.5,230.4 L179.5,230.4 L168.6,245.3 L159.0,245.5 L159.2,253.6 L137.6,253.3 L129.9,259.5 L75.9,232.9 L22.6,216.5 L24.3,210.5 L32.7,206.3 L30.7,199.5 L37.8,184.7 L58.2,173.6 L81.5,171.9 L89.9,119.5 L80.5,106.3 L80.2,94.2 L93.9,93.8 L93.9,86.7 L83.4,86.8 L83.4,76.1 L108.3,75.9 L119.8,69.0 L125.3,74.4 L125.6,84.9 L149.3,93.2 L182.2,68.5Z",
+  AP: "M385.3,93.1 L361.1,115.1 L361.9,121.3 L351.5,122.1 L332.0,83.6 L320.8,75.8 L314.4,75.8 L312.4,64.2 L315.8,64.0 L319.1,68.6 L325.2,69.0 L328.8,66.0 L336.2,66.2 L337.8,68.7 L343.3,68.7 L366.3,32.6 L375.1,66.7 L389.6,77.7 L389.2,87.3 L385.3,93.1Z",
+  BA: "M567.8,251.7 L571.3,254.5 L571.6,261.8 L574.0,262.3 L575.4,267.8 L573.8,268.5 L573.8,273.7 L571.0,274.5 L570.6,273.6 L568.2,273.7 L567.2,275.5 L571.2,283.9 L579.4,288.2 L565.6,310.5 L562.6,308.5 L556.9,314.0 L555.1,338.1 L558.1,355.6 L551.4,378.0 L553.8,384.4 L551.8,387.6 L548.1,389.3 L545.7,395.0 L536.4,388.6 L537.6,385.5 L531.1,379.6 L533.0,372.1 L536.5,371.5 L541.2,357.8 L476.0,329.8 L448.1,345.5 L448.3,339.6 L444.8,309.4 L440.0,283.4 L451.5,266.5 L460.2,275.5 L477.2,272.6 L484.4,263.0 L481.6,255.3 L487.2,250.8 L498.2,256.4 L506.3,250.6 L511.8,250.6 L521.4,241.1 L529.3,248.9 L529.2,253.2 L534.6,253.3 L549.6,238.9 L561.0,246.3 L563.2,244.2 L566.7,247.1 L565.7,249.0 L567.8,251.7Z",
+  CE: "M582.0,180.0 L576.9,182.1 L562.5,204.5 L559.5,214.0 L563.0,219.3 L560.4,226.7 L553.9,226.7 L545.4,220.0 L532.2,221.0 L534.6,211.1 L529.9,209.1 L524.7,181.4 L520.3,149.8 L512.6,146.7 L520.3,149.8 L540.3,148.6 L564.0,162.2 L572.8,172.3 L581.9,177.6 L582.0,180.0Z",
+  DF: "M428.6,358.6 L413.8,358.6 L413.7,350.0 L428.6,350.1 L428.6,358.6Z",
+  ES: "M526.4,442.3 L514.3,439.3 L514.3,434.7 L511.7,434.0 L513.2,424.7 L519.3,424.5 L526.8,409.8 L524.4,406.4 L526.2,401.9 L522.2,395.3 L525.7,392.0 L528.8,392.1 L531.2,388.7 L536.4,388.6 L545.7,395.0 L543.6,402.0 L545.3,410.8 L543.6,415.6 L539.4,418.6 L537.1,425.6 L532.0,434.9 L528.7,435.1 L526.4,442.3Z",
+  GO: "M378.5,306.9 L397.6,312.9 L444.8,309.4 L448.3,339.6 L435.8,341.7 L436.3,355.8 L428.6,358.6 L428.6,350.1 L413.7,350.0 L413.8,358.6 L428.6,358.6 L429.0,390.5 L420.1,398.1 L414.1,395.1 L402.4,395.2 L396.5,400.4 L382.6,400.8 L373.0,413.1 L343.9,399.6 L340.1,389.6 L337.6,383.9 L341.3,371.1 L352.6,356.1 L359.3,355.0 L362.6,343.1 L370.6,341.7 L378.5,306.9Z",
+  MA: "M409.7,185.6 L424.9,175.8 L435.1,160.2 L447.5,120.0 L467.5,127.7 L472.8,141.2 L479.2,143.5 L486.2,138.8 L502.2,146.9 L512.7,146.8 L494.8,170.8 L495.8,209.5 L487.3,213.0 L485.0,209.1 L478.0,211.8 L470.5,219.9 L457.0,225.4 L449.3,244.3 L451.5,266.5 L442.6,264.2 L439.7,257.7 L432.7,246.6 L436.4,236.5 L441.3,235.7 L440.5,228.7 L432.7,230.5 L423.0,218.5 L427.7,203.0 L425.6,190.6 L409.7,185.6Z",
+  MG: "M541.2,357.8 L536.5,371.5 L533.0,372.1 L531.1,379.6 L537.6,385.5 L536.4,388.6 L531.2,388.7 L528.8,392.1 L525.7,392.0 L522.2,395.3 L526.2,401.9 L524.4,406.4 L526.8,409.8 L519.3,424.5 L513.2,424.7 L511.7,434.0 L510.5,436.7 L508.5,436.7 L504.4,447.3 L505.3,448.8 L493.3,454.7 L489.3,452.9 L467.8,459.7 L443.4,467.6 L426.4,421.2 L372.5,420.2 L373.0,413.1 L382.6,400.8 L396.5,400.4 L402.4,395.2 L414.1,395.1 L420.1,398.1 L429.0,390.5 L428.6,358.6 L436.3,355.8 L435.8,341.7 L448.3,339.6 L448.1,345.5 L476.1,330.0 L541.2,357.8Z",
+  MS: "M340.1,389.6 L343.9,399.6 L373.0,413.1 L372.5,420.2 L349.7,456.0 L340.0,462.5 L332.4,468.1 L326.8,476.1 L322.3,485.6 L315.5,483.4 L305.4,485.0 L298.0,457.5 L265.5,456.5 L266.0,436.8 L261.0,420.7 L272.9,388.4 L284.9,379.0 L296.0,376.3 L309.2,384.0 L324.5,383.7 L330.9,376.7 L330.8,384.0 L325.1,389.6 L340.1,389.6Z",
+  MT: "M223.8,321.2 L236.6,299.0 L236.7,278.4 L210.4,278.1 L210.5,243.5 L258.5,243.1 L262.2,219.8 L283.8,253.0 L383.9,259.9 L376.1,285.3 L378.5,306.9 L370.6,341.7 L362.6,343.1 L359.3,355.0 L352.6,356.1 L341.3,371.1 L337.6,383.9 L340.1,389.6 L325.1,389.6 L330.8,384.0 L330.9,376.7 L324.5,383.7 L309.2,384.0 L296.0,376.3 L284.9,379.0 L272.9,388.4 L259.9,378.0 L259.9,362.0 L231.5,362.1 L231.3,349.9 L225.3,343.0 L230.4,343.2 L230.1,335.5 L228.1,326.3 L223.8,321.2Z",
+  PA: "M447.5,120.0 L435.1,160.2 L424.9,175.8 L409.7,185.6 L406.5,188.5 L415.1,192.2 L406.7,210.4 L402.2,211.6 L396.8,224.1 L400.2,227.8 L383.9,259.9 L283.8,253.0 L262.2,219.8 L258.5,211.6 L290.0,139.2 L259.8,121.6 L251.4,109.9 L251.0,99.1 L251.3,83.1 L278.0,73.0 L295.2,72.4 L294.5,64.1 L312.4,64.2 L314.4,75.8 L320.8,75.8 L332.0,83.6 L351.5,122.1 L361.9,121.3 L361.1,115.1 L385.3,93.1 L387.7,98.3 L393.4,97.8 L411.3,107.6 L411.6,111.5 L418.8,114.1 L423.4,110.3 L447.5,120.0Z",
+  PB: "M617.7,206.6 L620.0,223.4 L616.2,221.0 L609.9,222.1 L609.0,225.1 L601.9,227.9 L598.2,227.3 L592.9,229.5 L592.5,232.9 L586.7,235.6 L581.7,229.6 L587.2,222.0 L582.4,219.0 L571.8,226.3 L560.4,226.7 L563.0,219.3 L559.5,214.0 L562.5,204.5 L569.6,206.6 L582.6,198.6 L584.0,201.1 L579.3,209.6 L591.1,214.5 L596.1,206.3 L617.7,206.6Z",
+  PE: "M620.0,223.4 L615.4,244.6 L609.1,243.7 L606.4,245.2 L602.5,244.2 L592.5,252.2 L591.3,251.0 L588.2,250.9 L587.4,252.7 L574.5,244.2 L567.8,251.7 L565.7,249.0 L566.7,247.1 L563.2,244.2 L561.0,246.3 L549.6,238.9 L534.6,253.3 L529.2,253.2 L529.3,248.9 L521.4,241.1 L532.2,231.6 L532.2,227.8 L529.6,226.8 L529.6,222.1 L532.2,221.0 L545.4,220.0 L553.9,226.7 L560.4,226.7 L571.8,226.3 L582.4,219.0 L587.2,222.0 L581.7,229.6 L586.7,235.6 L592.5,232.9 L592.9,229.5 L598.2,227.3 L601.9,227.9 L609.0,225.1 L609.9,222.1 L616.2,221.0 L620.0,223.4Z",
+  PI: "M512.7,146.8 L520.3,149.8 L524.7,181.4 L529.9,209.1 L534.6,211.1 L532.2,221.0 L529.6,222.1 L529.6,226.8 L532.2,227.8 L532.2,231.6 L521.4,241.1 L511.8,250.6 L506.3,250.6 L498.2,256.4 L487.2,250.8 L481.6,255.3 L484.4,263.0 L477.2,272.6 L460.2,275.5 L451.5,266.5 L449.3,244.3 L457.0,225.4 L470.5,219.9 L478.0,211.8 L485.0,209.1 L487.3,213.0 L495.8,209.5 L494.8,170.8 L512.7,146.8Z",
+  PR: "M340.0,462.5 L391.0,470.0 L399.6,494.1 L417.7,504.6 L408.8,516.5 L400.1,516.5 L394.7,520.1 L388.9,517.2 L378.4,517.3 L376.3,520.5 L368.0,521.6 L366.2,526.9 L331.6,521.0 L326.9,511.2 L317.1,510.4 L322.3,485.6 L326.8,476.1 L332.4,468.1 L340.0,462.5Z",
+  RJ: "M467.9,474.9 L466.1,469.2 L475.9,465.6 L474.6,462.5 L470.5,463.8 L467.8,459.7 L489.3,452.9 L493.3,454.7 L505.3,448.8 L504.4,447.3 L508.5,436.7 L510.5,436.7 L511.7,434.0 L514.3,434.7 L514.3,439.3 L526.4,442.3 L524.2,445.7 L525.6,453.1 L521.8,455.3 L516.7,457.1 L510.1,462.8 L511.9,464.8 L509.5,468.3 L494.3,468.7 L485.7,470.0 L481.7,467.9 L470.1,472.1 L470.8,474.0 L467.9,474.9Z",
+  RN: "M582.0,180.0 L591.6,184.3 L602.5,183.7 L611.7,186.4 L617.7,206.6 L596.1,206.3 L591.1,214.5 L579.3,209.6 L584.0,201.1 L582.6,198.6 L569.6,206.6 L562.5,204.5 L576.9,182.1 L582.0,180.0Z",
+  RO: "M129.9,259.5 L137.6,253.3 L159.2,253.6 L159.0,245.5 L168.6,245.3 L179.5,230.4 L190.5,230.4 L201.3,243.0 L210.5,243.5 L210.4,278.1 L236.7,278.4 L236.6,299.0 L223.8,321.2 L218.3,318.2 L205.6,318.7 L200.9,313.1 L175.7,300.9 L169.7,303.3 L152.8,289.7 L152.9,261.0 L133.1,260.8 L129.9,259.5Z",
+  RR: "M251.3,83.1 L251.0,99.1 L233.3,99.6 L227.9,111.5 L229.7,114.2 L223.6,117.5 L216.3,111.0 L209.8,116.5 L211.4,128.4 L195.8,115.7 L199.5,108.7 L192.3,74.1 L182.2,68.5 L182.0,65.1 L173.0,65.1 L169.6,46.7 L159.8,36.3 L161.2,35.1 L164.1,37.8 L171.2,38.2 L173.1,41.3 L185.4,40.8 L188.4,46.0 L192.6,44.8 L190.8,40.3 L198.5,37.1 L202.8,38.3 L223.1,27.4 L222.9,20.2 L233.9,20.0 L234.3,31.5 L239.9,33.7 L240.1,43.0 L234.7,55.8 L235.0,65.9 L238.1,67.0 L238.1,73.7 L245.9,81.8 L251.3,83.1Z",
+  RS: "M328.6,535.5 L360.3,539.4 L378.7,554.5 L389.7,557.5 L387.0,565.7 L391.1,569.4 L383.0,588.2 L375.0,599.3 L369.1,604.7 L355.7,614.5 L355.7,609.7 L358.6,609.7 L365.8,604.4 L376.9,588.6 L369.2,587.0 L361.8,600.2 L352.7,609.6 L355.1,611.0 L355.1,614.8 L351.5,619.0 L348.4,628.3 L345.1,632.6 L335.6,640.0 L333.2,637.9 L335.0,632.3 L341.2,624.7 L344.5,626.7 L347.6,619.9 L344.9,618.1 L338.4,622.4 L302.7,594.8 L295.9,598.0 L274.1,581.2 L301.0,550.8 L328.6,535.5Z",
+  SC: "M331.6,521.0 L366.2,526.9 L368.0,521.6 L376.3,520.5 L378.4,517.3 L388.9,517.2 L394.7,520.1 L400.1,516.5 L408.8,516.5 L410.6,520.6 L407.7,528.1 L409.2,538.5 L409.1,546.3 L406.6,556.7 L391.1,569.4 L387.0,565.7 L389.7,557.5 L378.7,554.5 L360.3,539.4 L328.6,535.5 L331.6,521.0Z",
+  SE: "M571.3,254.5 L587.2,262.6 L587.4,263.9 L591.2,267.0 L592.1,266.5 L593.2,267.6 L593.2,269.0 L595.0,268.8 L595.8,270.3 L595.4,271.0 L593.7,271.0 L588.0,275.1 L579.4,288.2 L571.2,283.9 L567.2,275.5 L568.2,273.7 L570.6,273.6 L571.0,274.5 L573.8,273.7 L573.8,268.5 L575.4,267.8 L574.0,262.3 L571.6,261.8 L571.3,254.5Z",
+  SP: "M467.9,474.9 L457.4,479.5 L458.3,481.0 L456.1,482.5 L452.6,481.3 L448.2,482.0 L435.8,488.5 L417.7,504.6 L399.6,494.1 L391.0,470.0 L340.0,462.5 L349.7,456.0 L372.5,420.2 L426.4,421.2 L443.4,467.6 L467.8,459.7 L470.5,463.8 L474.6,462.5 L475.9,465.6 L466.1,469.2 L467.9,474.9Z",
+  TO: "M451.5,266.5 L440.0,283.4 L444.8,309.4 L397.6,312.9 L378.5,306.9 L376.1,285.3 L383.9,259.9 L400.2,227.8 L396.8,224.1 L402.2,211.6 L406.7,210.4 L415.1,192.2 L406.5,188.5 L409.7,185.6 L425.6,190.6 L427.7,203.0 L423.0,218.5 L432.7,230.5 L440.5,228.7 L441.3,235.7 L436.4,236.5 L432.7,246.6 L439.7,257.7 L442.6,264.2 L451.5,266.5Z",
+};
+
+// Bounding box de cada UF (mesmo espaço de coordenadas de BR_UF_PATHS) — usado só pra
+// calcular o auto-zoom do mapa (renderMalhaLogistica) na região com viagens, sem precisar
+// re-percorrer as strings de path em tempo de execução.
+const BR_UF_BBOX = {
+  AC: [20.0,216.5,133.1,280.1],
+  AL: [567.8,243.7,615.4,270.3],
+  AM: [22.6,68.5,290.0,259.5],
+  AP: [312.4,32.6,389.6,122.1],
+  BA: [440.0,238.9,579.4,395.0],
+  CE: [512.6,146.7,582.0,226.7],
+  DF: [413.7,350.0,428.6,358.6],
+  ES: [511.7,388.6,545.7,442.3],
+  GO: [337.6,306.9,448.3,413.1],
+  MA: [409.7,120.0,512.7,266.5],
+  MG: [372.5,330.0,541.2,467.6],
+  MS: [261.0,376.3,373.0,485.6],
+  MT: [210.4,219.8,383.9,389.6],
+  PA: [251.0,64.1,447.5,259.9],
+  PB: [559.5,198.6,620.0,235.6],
+  PE: [521.4,219.0,620.0,253.3],
+  PI: [449.3,146.8,534.6,275.5],
+  PR: [317.1,462.5,417.7,526.9],
+  RJ: [466.1,434.0,526.4,474.9],
+  RN: [562.5,180.0,617.7,214.5],
+  RO: [129.9,230.4,236.7,321.2],
+  RR: [159.8,20.0,251.3,128.4],
+  RS: [274.1,535.5,391.1,640.0],
+  SC: [328.6,516.5,410.6,569.4],
+  SE: [567.2,254.5,595.8,288.2],
+  SP: [340.0,420.2,475.9,504.6],
+  TO: [376.1,185.6,451.5,312.9],
+};
+
+function corPorTaxa(pct) {
+  if (pct >= 80) return 'var(--success)';
+  if (pct >= 60) return 'var(--pet-yellow)';
+  return 'var(--danger)';
+}
+
+// Severidade do desvio (Δ = Real − Meta) por magnitude, não por sinal: tanto faltar
+// quanto exceder muito a meta do BID sinaliza a mesma coisa (alocação real fugiu do
+// planejado), então |Δ| grande é sempre vermelho, independente da direção.
+function corPorDesvioMeta(delta) {
+  const abs = Math.abs(delta);
+  if (abs <= 5)  return { cor: 'var(--success)', fundo: 'var(--success-dim)' };
+  if (abs <= 20) return { cor: 'var(--pet-yellow)', fundo: 'var(--accent2-dim)' };
+  return { cor: 'var(--danger)', fundo: 'var(--danger-dim)' };
+}
+
+function valorMetaShare(transportador, regional) {
+  const found = metasShareRegional.find(m => m.transportador === transportador && m.regional === regional);
+  return found ? found.meta : null;
+}
+
+// onchange (não oninput) — só grava quando o usuário sai do campo, uma escrita por
+// edição em vez de uma por tecla digitada. Mesmo padrão de toggleDiaCarregamentoInline:
+// muta o array em memória, re-renderiza pra refletir o Δ na hora, e persiste no Firebase
+// (visível para todos os usuários, não só na sessão local).
+async function atualizarMetaShare(transportador, regional, valorStr) {
+  const bruto = String(valorStr).trim();
+  const idx = metasShareRegional.findIndex(m => m.transportador === transportador && m.regional === regional);
+  if (bruto === '') {
+    if (idx >= 0) metasShareRegional.splice(idx, 1);
+  } else {
+    const num = Math.max(0, Math.min(100, Math.round(parseFloat(bruto))));
+    if (isNaN(num)) { if (idx >= 0) metasShareRegional.splice(idx, 1); }
+    else if (idx >= 0) metasShareRegional[idx].meta = num;
+    else metasShareRegional.push({ transportador, regional, meta: num });
+  }
+  renderShareRegional(viagensPerf());
+  await persistirMetasShareRegional();
+}
+
+function pctSeguro(parte, total) { return total ? Math.round(parte / total * 100) : 0; }
+
+function formatarM3(n, casas = 0) {
+  return Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+
+function formatarHoras(h) {
+  if (h < 1) return Math.round(h * 60) + ' min';
+  if (h < 48) return h.toFixed(1) + ' h';
+  return (h / 24).toFixed(1) + ' d';
+}
+
+// Bbox real do Brasil (mesmo bbox do topojson usado em BR_UF_PATHS) e viewBox 640×660 —
+// fixos (não derivados de UF_CENTROIDES) pra os pontos caírem exatamente em cima do
+// contorno pré-projetado dos estados, não num recorte relativo só às UFs em uso.
+const BR_BBOX = { minLon: -73.97741220933203, maxLon: -34.81727575186676, minLat: -33.74579986956992, maxLat: 5.24981966486962 };
+function projetarUf(centroides) {
+  const { minLon, maxLon, minLat, maxLat } = BR_BBOX;
+  const W = 640, H = 660, PAD = 20;
+  const pontos = {};
+  Object.entries(centroides).forEach(([uf, c]) => {
+    const x = PAD + (c.lon - minLon) / (maxLon - minLon) * (W - 2 * PAD);
+    const y = PAD + (1 - (c.lat - minLat) / (maxLat - minLat)) * (H - 2 * PAD);
+    pontos[uf] = { x, y };
+  });
+  return { pontos, W, H };
+}
+const PERF_MAPA_PROJ = projetarUf(UF_CENTROIDES);
+
+// ── FILTROS ──
+// Compra × Transferência: transferência é quando o fornecedor pertence a uma das empresas
+// do próprio grupo (SIM, Nexta, Charrua) — qualquer outro fornecedor é compra de terceiro.
+// Resolve pelo cadastro de Fornecedores (buscarFornecedorDaViagem, linha ~9487), não pelo
+// texto solto v.origem da viagem — é o mesmo padrão de valorUfOrigemFiltro/buscarBaseDaViagem
+// pra não depender de o campo da viagem estar exatamente igual ao nome cadastrado. No
+// cadastro a Sim aparece como "SIM DISTRIBUIDORA"; Nexta e Charrua já são o próprio nome.
+function tipoOperacaoViagem(v) {
+  const nome = String(buscarFornecedorDaViagem(v)?.origem || v.origem || '').trim().toUpperCase();
+  return (nome.startsWith('SIM') || nome.startsWith('NEXTA') || nome.startsWith('CHARRUA')) ? 'Transferência' : 'Compra';
+}
+
+function estadoFiltrosPerf() {
+  return {
+    regionais: new Set(msPerfRegional?.getSelected() || []),
+    ufs: new Set(msPerfUf?.getSelected() || []),
+    produtos: new Set(msPerfProduto?.getSelected() || []),
+    modais: new Set(msPerfModal?.getSelected() || []),
+    tiposOperacao: new Set(msPerfTipoOp?.getSelected() || []),
+    transp: (document.getElementById('fPerfTransp')?.value || '').toLowerCase().trim(),
+  };
+}
+
+function passaFiltrosPerf(v, f, ignorar = '') {
+  if (ignorar !== 'regional' && f.regionais.size && !f.regionais.has(valorRegionalFiltro(v))) return false;
+  if (ignorar !== 'uf' && f.ufs.size && !f.ufs.has(valorUfOrigemFiltro(v))) return false;
+  if (ignorar !== 'produto' && f.produtos.size && !f.produtos.has(v.produto)) return false;
+  if (ignorar !== 'modal' && f.modais.size && !f.modais.has(v.modal)) return false;
+  if (ignorar !== 'tipoOperacao' && f.tiposOperacao.size && !f.tiposOperacao.has(tipoOperacaoViagem(v))) return false;
+  if (ignorar !== 'transp' && f.transp && !(v.transportador || '').toLowerCase().includes(f.transp)) return false;
+  return true;
+}
+
+function atualizarOpcoesFiltrosPerf(base, f) {
+  msPerfRegional?.setOptions(valoresUnicosOrdenados(base.filter(v => passaFiltrosPerf(v, f, 'regional')), valorRegionalFiltro));
+  msPerfUf?.setOptions(valoresUnicosOrdenados(base.filter(v => passaFiltrosPerf(v, f, 'uf')), valorUfOrigemFiltro));
+  msPerfProduto?.setOptions(valoresUnicosOrdenados(base.filter(v => passaFiltrosPerf(v, f, 'produto')), v => v.produto));
+  msPerfModal?.setOptions(valoresUnicosOrdenados(base.filter(v => passaFiltrosPerf(v, f, 'modal')), v => v.modal));
+  msPerfTipoOp?.setOptions(valoresUnicosOrdenados(base.filter(v => passaFiltrosPerf(v, f, 'tipoOperacao')), tipoOperacaoViagem));
+}
+
+// Modal (Tipo de Frete) volta pro default "FOB" em vez de limpar pra "sem filtro" — é o
+// padrão da aba (ver setSelected(['FOB']) na inicialização); os demais filtros voltam a
+// mostrar tudo, sem restrição, como sempre.
+function limparFiltrosPerf() {
+  document.getElementById('fPerfTransp').value = '';
+  msPerfRegional?.clear(); msPerfUf?.clear(); msPerfProduto?.clear(); msPerfTipoOp?.clear();
+  msPerfModal?.setSelected(['FOB']);
+  renderPerformance();
+}
+
+// Cancelado sai da conta (não representa volume/serviço realmente prestado); Backlog fica
+// (ainda conta como demanda de rota na Malha Logística), mas não aparece nas seções por
+// transportador porque ainda não tem transportador nem histórico de oferta.
+function viagensPerf() {
+  const f = estadoFiltrosPerf();
+  const base = viagensAtivo().filter(v => v.status !== 'Cancelado');
+  atualizarOpcoesFiltrosPerf(base, f);
+  return base.filter(v => passaFiltrosPerf(v, f));
+}
+
+// Mesma base de viagensPerf(), mas ignorando UM filtro específico do topo — usada quando
+// uma seção precisa do universo completo naquela dimensão mesmo com o filtro ativo. Dois
+// usos hoje: 'transp' (Malha Logística recompõe o volume TOTAL de uma rota — todas as
+// transportadoras — quando o usuário filtra por uma específica; sem isso o % vira sempre
+// 100%) e 'tipoOperacao' (Share Regional sempre mostra Coletas × Transferências lado a
+// lado, então não pode sumir com um dos dois só porque o filtro do topo está em um deles).
+function viagensPerfIgnorando(campo) {
+  const f = estadoFiltrosPerf();
+  return viagensAtivo().filter(v => v.status !== 'Cancelado').filter(v => passaFiltrosPerf(v, f, campo));
+}
+
+// ── HISTÓRICO POR TRANSPORTADORA (Taxa de Aceite + Tempo de Resposta) ──
+function agregarHistoricoPorTransportador(lista) {
+  const porTransp = new Map();
+  const get = nome => {
+    if (!porTransp.has(nome)) porTransp.set(nome, { ofertas: 0, aceites: 0, recusas: 0, temposRespostaH: [] });
+    return porTransp.get(nome);
+  };
+  lista.forEach(v => {
+    const hist = Array.isArray(v.historico) ? v.historico : [];
+    hist.forEach((h, i) => {
+      if (!h.transportador) return;
+      if (h.evento === 'Ofertado') {
+        get(h.transportador).ofertas++;
+        const prox = hist.slice(i + 1).find(h2 => h2.transportador === h.transportador && ['Aceito', 'Recusado'].includes(h2.evento));
+        if (prox) {
+          const diffH = (new Date(prox.data) - new Date(h.data)) / 3600000;
+          if (!isNaN(diffH) && diffH >= 0) get(h.transportador).temposRespostaH.push(diffH);
+        }
+      } else if (h.evento === 'Aceito') {
+        get(h.transportador).aceites++;
+      } else if (h.evento === 'Recusado') {
+        get(h.transportador).recusas++;
+      }
+    });
+  });
+  return porTransp;
+}
+
+// ── BARRA HORIZONTAL REAPROVEITÁVEL (Share Regional, Taxa de Aceite, Aderência, Placa) ──
+function renderBarraHorizontal(containerId, linhas, opts = {}) {
+  const el = document.getElementById(containerId);
+  if (!linhas.length) { el.innerHTML = `<div class="perf-empty">Sem dados no período filtrado.</div>`; return; }
+  const max = opts.max || Math.max(1, ...linhas.map(l => l.segments.reduce((s, g) => s + g.value, 0)));
+  const linhasHtml = linhas.map(l => {
+    const total = l.segments.reduce((s, g) => s + g.value, 0);
+    const larguraTotal = opts.pct100 ? 100 : (total / max * 100);
+    const segsHtml = l.segments.filter(g => g.value > 0).map(seg => {
+      const w = opts.pct100 ? (total ? seg.value / total * 100 : 0) : (max ? seg.value / max * 100 : 0);
+      return `<span class="perf-bar-seg" style="width:${w}%;background:${seg.color}" title="${esc(seg.title || '')}"></span>`;
+    }).join('');
+    return `
+      <div class="perf-bar-row" title="${esc(l.tooltip || l.label)}">
+        <div class="perf-bar-label">${esc(l.label)}</div>
+        <div class="perf-bar-track"><div class="perf-bar-fill" style="width:${larguraTotal}%">${segsHtml}</div></div>
+        <div class="perf-bar-value">${esc(l.valueLabel != null ? l.valueLabel : String(total))}</div>
+      </div>`;
+  }).join('');
+  const legendaHtml = opts.legenda ? `<div class="perf-legend">${opts.legenda.map(x =>
+    `<span class="perf-legend-item"><span class="perf-legend-dot" style="background:${x.color}"></span>${esc(x.label)}</span>`
+  ).join('')}</div>` : '';
+  el.innerHTML = `<div class="perf-bars">${linhasHtml}</div>${legendaHtml}`;
+}
+
+// ── SEÇÃO 1: MALHA LOGÍSTICA ──
+const PERF_NAO_ALOCADO = 'Não alocado';
+
+function agregarMalhaLogistica(lista) {
+  const rotas = new Map();
+  lista.forEach(v => {
+    const ufOrigem = valorUfOrigemFiltro(v);
+    const ufDestino = buscarBaseDaViagem(v)?.estado || '';
+    if (!ufOrigem || !ufDestino || !UF_CENTROIDES[ufOrigem] || !UF_CENTROIDES[ufDestino]) return;
+    const key = ufOrigem + '→' + ufDestino;
+    if (!rotas.has(key)) rotas.set(key, { ufOrigem, ufDestino, volume: 0, count: 0, transportadores: new Map() });
+    const r = rotas.get(key);
+    r.volume += v.volume || 0;
+    r.count += 1;
+    // Sem transportador ainda entra como "Não alocado" (não é descartado) — senão o volume
+    // real da rota fica invisível na coluna Transportadoras (mostrava "—" mesmo com viagens).
+    const nomeTransp = v.transportador || PERF_NAO_ALOCADO;
+    r.transportadores.set(nomeTransp, (r.transportadores.get(nomeTransp) || 0) + (v.volume || 0));
+  });
+  return [...rotas.values()].sort((a, b) => b.volume - a.volume);
+}
+
+// Soma o volume de cada UF só a partir de um subconjunto de rotas (ex.: as selecionadas
+// na tabela) — usado pra o mapa/auto-zoom refletirem só o que está em foco, não o total.
+function porUfDeRotas(listaRotas) {
+  const m = new Map();
+  listaRotas.forEach(r => {
+    m.set(r.ufOrigem, (m.get(r.ufOrigem) || 0) + r.volume);
+    m.set(r.ufDestino, (m.get(r.ufDestino) || 0) + r.volume);
+  });
+  return m;
+}
+
+// ── Tabela de rotas: ordenação, busca e seleção (linhas escolhidas somam no mapa) ──
+let perfRotasSelecionadas = new Set();
+let sortColunaRotas = null;
+let sortDirRotas = 'asc';
+
+function valorOrdenacaoRotas(r, coluna) {
+  switch (coluna) {
+    case 'origem':          return r.ufOrigem;
+    case 'destino':         return r.ufDestino;
+    case 'viagens':         return r.count;
+    case 'volume':          return r.volume;
+    case 'transportadoras': return r.transportadores.size;
+    default: return '';
+  }
+}
+function compararOrdenacaoRotas(a, b, coluna) {
+  const va = valorOrdenacaoRotas(a, coluna), vb = valorOrdenacaoRotas(b, coluna);
+  if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+  return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+}
+function ordenarColunaRotas(coluna) {
+  if (sortColunaRotas === coluna) sortDirRotas = sortDirRotas === 'asc' ? 'desc' : 'asc';
+  else { sortColunaRotas = coluna; sortDirRotas = 'asc'; }
+  renderPerformance();
+}
+function atualizarSetasOrdenacaoRotas() {
+  document.querySelectorAll('#perfRotasTable th[data-col]').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    arrow.textContent = sortColunaRotas === th.dataset.col ? (sortDirRotas === 'asc' ? '▲' : '▼') : '';
+  });
+}
+function toggleSelecaoRotaMalha(key) {
+  if (perfRotasSelecionadas.has(key)) perfRotasSelecionadas.delete(key);
+  else perfRotasSelecionadas.add(key);
+  renderPerformance();
+}
+function limparSelecaoRotasMalha() {
+  perfRotasSelecionadas.clear();
+  renderPerformance();
+}
+
+// ── Filtro por coluna (Origem/Destino/Transportadoras) — cabeçalho abre um painel com
+// atalho de ordenação + checklist de valores, no mesmo espírito do componente MultiSelect
+// já usado no resto da aba (mas embutido no cabeçalho da tabela, não num filtro à parte).
+let perfRotasFiltro = { origem: new Set(), destino: new Set(), transportadoras: new Set() };
+let perfColFiltroAberta = null; // qual coluna está com o painel aberto agora (ou null)
+let perfRotasAtual = []; // cache das rotas já agregadas (antes do filtro de coluna), pro painel montar as opções
+
+function passaFiltroColunaRotas(r, ignorar = '') {
+  if (ignorar !== 'origem' && perfRotasFiltro.origem.size && !perfRotasFiltro.origem.has(r.ufOrigem)) return false;
+  if (ignorar !== 'destino' && perfRotasFiltro.destino.size && !perfRotasFiltro.destino.has(r.ufDestino)) return false;
+  if (ignorar !== 'transportadoras' && perfRotasFiltro.transportadoras.size
+    && ![...r.transportadores.keys()].some(t => perfRotasFiltro.transportadoras.has(t))) return false;
+  return true;
+}
+function opcoesColunaRotas(coluna) {
+  const base = perfRotasAtual.filter(r => passaFiltroColunaRotas(r, coluna));
+  if (coluna === 'origem') return [...new Set(base.map(r => r.ufOrigem))].sort();
+  if (coluna === 'destino') return [...new Set(base.map(r => r.ufDestino))].sort();
+  if (coluna === 'transportadoras') return [...new Set(base.flatMap(r => [...r.transportadores.keys()]))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return [];
+}
+function toggleFiltroColunaRotas(coluna, valor) {
+  const set = perfRotasFiltro[coluna];
+  if (set.has(valor)) set.delete(valor); else set.add(valor);
+  renderPerformance();
+}
+function limparFiltroColunaRotas(coluna) {
+  perfRotasFiltro[coluna].clear();
+  renderPerformance();
+}
+function fecharPainelFiltroRotas() {
+  perfColFiltroAberta = null;
+  const painel = document.getElementById('painelFiltroRotas');
+  if (painel) painel.style.display = 'none';
+}
+function abrirFiltroColunaRotas(ev, coluna) {
+  ev.stopPropagation();
+  if (perfColFiltroAberta === coluna) { fecharPainelFiltroRotas(); return; }
+  perfColFiltroAberta = coluna;
+  posicionarPainelFiltroRotas(ev.currentTarget);
+  preencherPainelFiltroRotas(coluna);
+  document.getElementById('painelFiltroRotas').style.display = 'block';
+}
+function posicionarPainelFiltroRotas(triggerEl) {
+  const painel = document.getElementById('painelFiltroRotas');
+  const rect = triggerEl.getBoundingClientRect();
+  painel.style.top = (rect.bottom + 4) + 'px';
+  painel.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
+}
+const LABEL_COLUNA_ROTAS = { origem: 'Origem (UF)', destino: 'Destino (UF)', transportadoras: 'Transportadoras' };
+function preencherPainelFiltroRotas(coluna) {
+  const wrap = document.getElementById('painelFiltroRotasOpts');
+  wrap.innerHTML = '';
+  const set = perfRotasFiltro[coluna];
+
+  const linhaOrdenar = document.createElement('div');
+  linhaOrdenar.style.cssText = 'padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;border-bottom:1px solid var(--border);color:var(--accent)';
+  const dirAtual = sortColunaRotas === coluna ? (sortDirRotas === 'asc' ? ' (▲)' : ' (▼)') : '';
+  linhaOrdenar.textContent = `↕ Ordenar por ${LABEL_COLUNA_ROTAS[coluna]}${dirAtual}`;
+  linhaOrdenar.addEventListener('click', () => ordenarColunaRotas(coluna));
+  wrap.appendChild(linhaOrdenar);
+
+  if (set.size) {
+    const linhaLimpar = document.createElement('div');
+    linhaLimpar.style.cssText = 'padding:7px 14px;cursor:pointer;font-size:12px;color:var(--danger);border-bottom:1px solid var(--border)';
+    linhaLimpar.textContent = `✕ Limpar filtro (${set.size})`;
+    linhaLimpar.addEventListener('click', () => limparFiltroColunaRotas(coluna));
+    wrap.appendChild(linhaLimpar);
+  }
+
+  const opcoes = opcoesColunaRotas(coluna);
+  if (!opcoes.length) {
+    const vazio = document.createElement('div');
+    vazio.style.cssText = 'padding:12px 14px;font-size:11px;color:var(--text-muted)';
+    vazio.textContent = 'Sem opções';
+    wrap.appendChild(vazio);
+    return;
+  }
+  opcoes.forEach(v => {
+    const checked = set.has(v);
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px';
+    div.innerHTML = `
+      <span style="width:14px;height:14px;border:1.5px solid ${checked ? 'var(--accent)' : 'var(--border)'};border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${checked ? 'var(--accent)' : 'transparent'}">
+        ${checked ? '<span style="color:#1A2A0D;font-size:9px;font-weight:800">✓</span>' : ''}
+      </span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v)}">${esc(v)}</span>`;
+    div.addEventListener('mouseenter', () => div.style.background = 'rgba(141,200,48,0.12)');
+    div.addEventListener('mouseleave', () => div.style.background = '');
+    div.addEventListener('click', e => { e.stopPropagation(); toggleFiltroColunaRotas(coluna, v); });
+    wrap.appendChild(div);
+  });
+}
+// composedPath() (não closest()) porque clicar em "Ordenar"/num checkbox reconstrói o
+// painel no meio do próprio evento (renderPerformance síncrono) — o nó clicado fica
+// órfão antes do evento terminar de borbulhar, e closest() nesse nó órfão nunca acha o
+// painel. composedPath() é resolvido no instante do clique, então continua correto.
+document.addEventListener('click', e => {
+  if (!perfColFiltroAberta) return;
+  const painel = document.getElementById('painelFiltroRotas');
+  const path = e.composedPath ? e.composedPath() : [e.target];
+  const cliqueDentro = path.includes(painel) || path.some(el => el.classList?.contains?.('perf-th-filtro-btn'));
+  if (cliqueDentro) return;
+  fecharPainelFiltroRotas();
+});
+
+// Auto-zoom: enquadra só o bounding box das UFs com viagem (+ margem), em vez de sempre
+// mostrar o Brasil inteiro — o mapa fica bem maior quando a operação está concentrada
+// numa região (o caso comum). MIN_SPAN evita zoom exagerado quando só 1-2 UFs pequenas
+// estão ativas (ex.: só o DF, que é minúsculo). Cai pro país inteiro se não achar bbox.
+function calcularViewBoxAutoZoom(ufsAtivas, W, H) {
+  const boxes = ufsAtivas.map(uf => BR_UF_BBOX[uf]).filter(Boolean);
+  if (!boxes.length) return `0 0 ${W} ${H}`;
+  let x0 = Math.min(...boxes.map(b => b[0]));
+  let y0 = Math.min(...boxes.map(b => b[1]));
+  let x1 = Math.max(...boxes.map(b => b[2]));
+  let y1 = Math.max(...boxes.map(b => b[3]));
+  const margemX = Math.max((x1 - x0) * 0.18, 30);
+  const margemY = Math.max((y1 - y0) * 0.18, 30);
+  x0 -= margemX;
+  x1 += margemX;
+  y0 -= margemY + 25; // folga extra em cima: laço de auto-rota e rótulo de UF desenham acima do ponto
+  y1 += margemY;
+  const MIN_SPAN = 150;
+  if (x1 - x0 < MIN_SPAN) { const cx = (x0 + x1) / 2; x0 = cx - MIN_SPAN / 2; x1 = cx + MIN_SPAN / 2; }
+  if (y1 - y0 < MIN_SPAN) { const cy = (y0 + y1) / 2; y0 = cy - MIN_SPAN / 2; y1 = cy + MIN_SPAN / 2; }
+  x0 = Math.max(0, x0); y0 = Math.max(0, y0);
+  x1 = Math.min(W, x1); y1 = Math.min(H, y1);
+  return `${x0.toFixed(0)} ${y0.toFixed(0)} ${(x1 - x0).toFixed(0)} ${(y1 - y0).toFixed(0)}`;
+}
+
+function renderMalhaLogistica(lista) {
+  const rotas = agregarMalhaLogistica(lista);
+  perfRotasAtual = rotas; // cache pro painel de filtro por coluna montar as opções
+
+  // Volume total por rota (todas as transportadoras, ignorando o filtro de transportador
+  // do topo) — usado só como denominador do % na coluna Transportadoras. Sem filtro ativo
+  // isso bate exatamente com o volume já em `rotas`, então não muda nada no caso comum.
+  const volTotalRotaSemFiltroTransp = new Map();
+  agregarMalhaLogistica(viagensPerfIgnorando('transp')).forEach(r => {
+    volTotalRotaSemFiltroTransp.set(r.ufOrigem + '→' + r.ufDestino, [...r.transportadores.values()].reduce((s, v) => s + v, 0));
+  });
+  const wrap = document.getElementById('perfMapaWrap');
+  const tbody = document.getElementById('perfRotasBody');
+  const btnLimparSel = document.getElementById('btnLimparSelecaoRotas');
+
+  if (!rotas.length) {
+    document.getElementById('badge-perf-rotas').textContent = '0 rotas';
+    wrap.innerHTML = `<div class="perf-empty">Sem rotas identificáveis no período (confira UF de origem em Fornecedores e de destino em Bases).</div>`;
+    tbody.innerHTML = '';
+    if (btnLimparSel) btnLimparSel.style.display = 'none';
+    return;
+  }
+
+  // Poda seleção que não existe mais nesta renderização (ex.: o usuário trocou o filtro
+  // do topo da aba e a rota selecionada sumiu) — evita ficar "preso" numa seleção fantasma.
+  const chavesValidas = new Set(rotas.map(r => r.ufOrigem + '→' + r.ufDestino));
+  [...perfRotasSelecionadas].forEach(k => { if (!chavesValidas.has(k)) perfRotasSelecionadas.delete(k); });
+
+  // Filtro por coluna (painel do cabeçalho) restringe a tabela (e, por tabela, o que
+  // aparece no mapa quando não há seleção de linha ativa).
+  const rotasFiltradas = rotas.filter(r => passaFiltroColunaRotas(r));
+
+  // Selecionar 1+ linhas na tabela restringe (e soma) o que o mapa mostra — sem seleção,
+  // usa tudo que passou na busca.
+  const rotasParaMapa = perfRotasSelecionadas.size
+    ? rotasFiltradas.filter(r => perfRotasSelecionadas.has(r.ufOrigem + '→' + r.ufDestino))
+    : rotasFiltradas;
+
+  document.getElementById('badge-perf-rotas').textContent = rotasParaMapa.length === rotas.length
+    ? `${rotas.length} rota${rotas.length !== 1 ? 's' : ''}`
+    : `${rotasParaMapa.length} de ${rotas.length} rotas`;
+  if (btnLimparSel) btnLimparSel.style.display = perfRotasSelecionadas.size ? '' : 'none';
+
+  if (!rotasParaMapa.length) {
+    wrap.innerHTML = `<div class="perf-empty">Nenhuma rota corresponde ao filtro/seleção atual.</div>`;
+  } else {
+    const { pontos, W, H } = PERF_MAPA_PROJ;
+    const porUfMapa = porUfDeRotas(rotasParaMapa);
+    const maxVolRota = Math.max(...rotasParaMapa.map(r => r.volume));
+    const maxVolUf = Math.max(...[...porUfMapa.values()]);
+    // Só desenha o contorno das UFs com viagem no recorte atual — o resto some do mapa
+    // (silêncio visual em vez de cinza apagado), e o viewBox dá zoom só nessa região.
+    const ufsAtivas = [...porUfMapa.keys()].filter(uf => BR_UF_PATHS[uf]);
+    const fundoUfs = ufsAtivas.map(uf =>
+      `<path d="${BR_UF_PATHS[uf]}" fill="var(--accent-dim)" stroke="var(--border-dk)" stroke-width="1"><title>${esc(uf)}</title></path>`
+    ).join('');
+    const viewBox = calcularViewBoxAutoZoom(ufsAtivas, W, H);
+    const arcos = rotasParaMapa.map(r => {
+      const p1 = pontos[r.ufOrigem], p2 = pontos[r.ufDestino];
+      if (!p1 || !p2) return '';
+      const topTransp = [...r.transportadores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n).join(', ') || '—';
+      const titulo = `${r.ufOrigem} → ${r.ufDestino} · ${r.count} viagem(ns) · ${formatarM3(r.volume)} m³ · Transportadoras: ${topTransp}`;
+      if (r.ufOrigem === r.ufDestino) {
+        const raio = 22 + (r.volume / maxVolRota) * 14;
+        return `<circle cx="${p1.x}" cy="${p1.y - raio}" r="${raio}" fill="none" stroke="var(--pet-green-mid)" stroke-width="${(1.5 + (r.volume / maxVolRota) * 5).toFixed(1)}" stroke-opacity="0.55"><title>${esc(titulo)}</title></circle>`;
+      }
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      const mx = (p1.x + p2.x) / 2 - dy * 0.18, my = (p1.y + p2.y) / 2 + dx * 0.18;
+      const espessura = (1.5 + (r.volume / maxVolRota) * 7).toFixed(1);
+      const opacidade = (0.35 + (r.volume / maxVolRota) * 0.5).toFixed(2);
+      return `<path d="M${p1.x},${p1.y} Q${mx},${my} ${p2.x},${p2.y}" fill="none" stroke="var(--pet-green-mid)" stroke-width="${espessura}" stroke-opacity="${opacidade}" stroke-linecap="round" marker-end="url(#perfArrow)"><title>${esc(titulo)}</title></path>`;
+    }).join('');
+    const pontosSvg = Object.entries(pontos).filter(([uf]) => porUfMapa.has(uf)).map(([uf, p]) => {
+      const vol = porUfMapa.get(uf) || 0;
+      const r = (4 + (vol / maxVolUf) * 10).toFixed(1);
+      return `
+        <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="var(--pet-yellow)" stroke="var(--panel)" stroke-width="1.5">
+          <title>${esc(uf)} — ${formatarM3(vol)} m³ movimentados</title>
+        </circle>
+        <text x="${p.x}" y="${p.y - Number(r) - 6}" text-anchor="middle" class="perf-map-label">${esc(uf)}</text>`;
+    }).join('');
+    wrap.innerHTML = `
+      <svg viewBox="${viewBox}" preserveAspectRatio="xMinYMid meet" class="perf-map-svg" role="img" aria-label="Mapa esquemático da malha logística por UF">
+        <defs>
+          <marker id="perfArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--pet-green-mid)"></path>
+          </marker>
+        </defs>
+        ${fundoUfs}
+        ${arcos}
+        ${pontosSvg}
+      </svg>`;
+  }
+
+  // A tabela sempre lista o que passou no filtro de coluna (não trava na seleção de
+  // linha), ordenada pela coluna escolhida no painel.
+  let rotasOrdenadas = rotasFiltradas;
+  if (sortColunaRotas) {
+    const dir = sortDirRotas === 'asc' ? 1 : -1;
+    rotasOrdenadas = rotasOrdenadas.slice().sort((a, b) => dir * compararOrdenacaoRotas(a, b, sortColunaRotas));
+  }
+  atualizarSetasOrdenacaoRotas();
+  document.querySelectorAll('.perf-th-filtro-btn').forEach(btn => {
+    btn.classList.toggle('ativo', perfRotasFiltro[btn.dataset.col]?.size > 0);
+  });
+
+  tbody.innerHTML = rotasOrdenadas.slice(0, 100).map(r => {
+    const key = r.ufOrigem + '→' + r.ufDestino;
+    const classeSel = perfRotasSelecionadas.has(key) ? ' row-selected' : '';
+    // % de share de cada transportadora dentro do volume da própria rota (todas as
+    // transportadoras, não só as que sobraram depois do filtro do topo) — senão, filtrar
+    // por uma transportadora específica faz ela aparecer sempre como 100% (única
+    // sobrevivente no denominador), o que não responde "quanto ela representa da rota".
+    const volTotalRota = volTotalRotaSemFiltroTransp.get(key)
+      ?? [...r.transportadores.values()].reduce((s, v) => s + v, 0);
+    const transpOrdenadas = [...r.transportadores.entries()].sort((a, b) => b[1] - a[1]);
+    const transpTexto = transpOrdenadas.length
+      ? transpOrdenadas.slice(0, 4).map(([nome, vol]) => {
+          const texto = `${esc(nome)} (${pctSeguro(vol, volTotalRota)}%)`;
+          return nome === PERF_NAO_ALOCADO ? `<em style="font-style:italic;color:var(--text-muted)">${texto}</em>` : texto;
+        }).join(', ')
+        + (transpOrdenadas.length > 4 ? ` +${transpOrdenadas.length - 4}` : '')
+      : '—';
+    return `
+    <tr class="${classeSel}" style="cursor:pointer" onclick="toggleSelecaoRotaMalha('${key}')" title="Clique pra focar esta rota no mapa (clique em mais de uma pra somar)">
+      <td>${esc(r.ufOrigem)}</td>
+      <td>${esc(r.ufDestino)}</td>
+      <td>${r.count}</td>
+      <td>${formatarM3(r.volume)}</td>
+      <td style="white-space:normal;font-size:12px;color:var(--text-dim)">${transpTexto}</td>
+    </tr>`;
+  }).join('');
+
+  // Se o painel de filtro de alguma coluna estiver aberto, repopula em cima dos dados
+  // frescos (sem fechar) — assim o usuário pode marcar vários checkboxes em sequência.
+  if (perfColFiltroAberta) preencherPainelFiltroRotas(perfColFiltroAberta);
+}
+
+// ── SEÇÃO 2: ADERÊNCIA AO BID POR REGIONAL (Meta × Real) ──
+// Tabela transportadora × regional: Meta (editável, gravada pro Firebase e visível a
+// todos), Real (share calculado das viagens do período filtrado) e Δ (Real − Meta,
+// colorido por magnitude do desvio — ver corPorDesvioMeta). Coletas (compra) entram
+// quebradas por regional, igual sempre; Transferência não é quebrada por regional — vira
+// um bucket único "Transferências" no fim, mesmo layout do relatório de referência do
+// Power BI (Coletas CO/MG/RJ/SP..., Transferências por último).
+const PERF_REGIONAL_TRANSFERENCIAS = 'Transferências';
+
+function renderShareRegional(lista) {
+  // Ignora de propósito o filtro de Compra/Transferência do topo — esta seção existe
+  // exatamente pra comparar os dois lado a lado, então nunca pode sumir com um dos dois só
+  // porque o filtro do topo está no outro. Os demais filtros (Regional, UF, Produto, Tipo
+  // de Frete, Transportador) continuam valendo normalmente.
+  const base = viagensPerfIgnorando('tipoOperacao');
+
+  const porRegional = new Map(); // regional (ou "Transferências") -> Map(transportador -> volume)
+  base.forEach(v => {
+    if (!v.transportador) return;
+    const chave = tipoOperacaoViagem(v) === 'Transferência'
+      ? PERF_REGIONAL_TRANSFERENCIAS
+      : (valorRegionalFiltro(v) || 'Sem Regional');
+    if (!porRegional.has(chave)) porRegional.set(chave, new Map());
+    const m = porRegional.get(chave);
+    m.set(v.transportador, (m.get(v.transportador) || 0) + (v.volume || 0));
+  });
+
+  // Regional com meta cadastrada entra na grade mesmo sem nenhuma viagem no período
+  // filtrado — é justamente o caso que a meta serve pra expor (cota dada, mas não usada).
+  metasShareRegional.forEach(m => {
+    if (!porRegional.has(m.regional)) porRegional.set(m.regional, new Map());
+  });
+
+  if (!porRegional.size) {
+    document.getElementById('perfShareRegionalWrap').innerHTML = `<div class="perf-empty">Sem viagens com transportador alocado no período.</div>`;
+    return;
+  }
+
+  // Regionais de coleta em ordem alfabética; Transferências sempre por último (é um
+  // bucket à parte, não um regional de verdade).
+  const regionaisColeta = [...porRegional.keys()]
+    .filter(k => k !== PERF_REGIONAL_TRANSFERENCIAS)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const regionais = porRegional.has(PERF_REGIONAL_TRANSFERENCIAS)
+    ? [...regionaisColeta, PERF_REGIONAL_TRANSFERENCIAS]
+    : regionaisColeta;
+  const labelColuna = reg => reg === PERF_REGIONAL_TRANSFERENCIAS ? reg : `Coletas ${reg}`;
+
+  const nomes = new Set();
+  porRegional.forEach(m => m.forEach((_, nome) => nomes.add(nome)));
+  metasShareRegional.forEach(m => nomes.add(m.transportador));
+
+  // Ranqueado pelo % Real da coluna Total, maior pro menor — como o denominador (volume
+  // total do período) é o mesmo pra todo mundo, ordenar pelo volume bruto já dá o mesmo
+  // ranking do percentual, sem risco de empate por arredondamento. Empate real (ambos
+  // zero) cai por ordem alfabética, pra não reembaralhar a cada render.
+  const volGlobal = new Map();
+  porRegional.forEach(m => m.forEach((vol, nome) => volGlobal.set(nome, (volGlobal.get(nome) || 0) + vol)));
+  const transportadoras = [...nomes].sort((a, b) => {
+    const diff = (volGlobal.get(b) || 0) - (volGlobal.get(a) || 0);
+    return diff !== 0 ? diff : a.localeCompare(b, 'pt-BR');
+  });
+
+  const totalPorRegional = new Map();
+  porRegional.forEach((m, reg) => totalPorRegional.set(reg, [...m.values()].reduce((s, v) => s + v, 0)));
+
+  const theadGrupos = regionais.map(reg => `<th colspan="3" class="perf-meta-grupo">${esc(labelColuna(reg))}</th>`).join('')
+    + `<th colspan="3" class="perf-meta-total-grupo">Total</th>`;
+  const theadSub = regionais.map(() => `<th class="perf-meta-grupo">Meta</th><th>Real</th><th>Δ</th>`).join('')
+    + `<th class="perf-meta-total-grupo">Meta</th><th>Real</th><th>Δ</th>`;
+
+  // Célula Meta/Real/Δ compartilhada entre as colunas por regional e a coluna Total —
+  // só muda se recebe <input> editável (regional) ou texto fixo (Total, ponderado).
+  function celulaDelta(realPct, temReal, meta, temMeta) {
+    if (!temMeta && !temReal) return '<span class="perf-meta-delta">—</span>';
+    const delta = (temReal ? realPct : 0) - (temMeta ? meta : 0);
+    const { cor, fundo } = corPorDesvioMeta(delta);
+    return `<span class="perf-meta-delta" style="color:${cor};background:${fundo}">${delta > 0 ? '+' : ''}${delta}%</span>`;
+  }
+
+  const linhasHtml = transportadoras.map(nome => {
+    let volTotalTransp = 0;    // soma do volume do transportador em todas as regionais
+    let metaPonderada = 0;     // Σ (meta_ou_0 × volume_total_da_regional)
+    let pesoTotal = 0;         // Σ volume_total_da_regional — mesmo peso pros dois lados
+    let algumaMeta = false;    // pelo menos uma regional tem meta cadastrada pra esse transportador
+
+    const celulas = regionais.map(reg => {
+      const vol = porRegional.get(reg)?.get(nome) || 0;
+      const totalReg = totalPorRegional.get(reg) || 0;
+      const meta = valorMetaShare(nome, reg);
+      const temMeta = meta !== null;
+      const temReal = vol > 0;
+      const realPct = temReal ? pctSeguro(vol, totalReg) : 0;
+
+      volTotalTransp += vol;
+      pesoTotal += totalReg;
+      metaPonderada += (temMeta ? meta : 0) * totalReg;
+      if (temMeta) algumaMeta = true;
+
+      const metaInput = `<input type="number" class="perf-meta-input" min="0" max="100" step="1"
+        value="${temMeta ? meta : ''}" placeholder="—"
+        data-transp="${esc(nome)}" data-regional="${esc(reg)}"
+        title="Meta de share (%) do BID para ${esc(nome)} em ${esc(reg)}">`;
+      const realTxt = temReal ? realPct + '%' : '—';
+      return `<td class="perf-meta-grupo">${metaInput}</td><td>${realTxt}</td><td>${celulaDelta(realPct, temReal, meta, temMeta)}</td>`;
+    }).join('');
+
+    // Total: não editável — Meta e Real ponderados pelo volume total de cada regional
+    // (mesmo peso dos dois lados, pra Δ total continuar comparando "like for like").
+    const temRealTotal = volTotalTransp > 0;
+    const realTotalPct = temRealTotal && pesoTotal ? Math.round(volTotalTransp / pesoTotal * 100) : 0;
+    const metaTotalPct = algumaMeta && pesoTotal ? Math.round(metaPonderada / pesoTotal) : 0;
+    const totalHtml = `
+      <td class="perf-meta-total-grupo perf-meta-total-cell">${algumaMeta ? metaTotalPct + '%' : '—'}</td>
+      <td class="perf-meta-total-cell">${temRealTotal ? realTotalPct + '%' : '—'}</td>
+      <td>${celulaDelta(realTotalPct, temRealTotal, metaTotalPct, algumaMeta)}</td>`;
+
+    return `<tr><td class="perf-meta-th-transp">${esc(nome)}</td>${celulas}${totalHtml}</tr>`;
+  }).join('');
+
+  document.getElementById('perfShareRegionalWrap').innerHTML = `
+    <div class="perf-note">Campo <strong>Meta</strong> é editável.</div>
+    <div class="scrollable" style="max-height:480px">
+      <table class="perf-meta-table">
+        <thead>
+          <tr><th rowspan="2" class="perf-meta-th-transp">Transportadora</th>${theadGrupos}</tr>
+          <tr>${theadSub}</tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+      </table>
+    </div>`;
+
+  // data-attributes (não onchange inline com o nome interpolado) — nome de transportadora
+  // pode conter aspas/caractere especial que quebraria o atributo HTML inline.
+  document.querySelectorAll('#perfShareRegionalWrap .perf-meta-input').forEach(inp => {
+    inp.addEventListener('change', () => atualizarMetaShare(inp.dataset.transp, inp.dataset.regional, inp.value));
+  });
+}
+
+// ── SEÇÃO 3: TAXA DE ACEITE POR TRANSPORTADORA ──
+// Por ora conta só recusa explícita (evento 'Recusado') — realocação silenciosa pelo
+// analista ainda não é instrumentada (ver nota na aba e no plano).
+function renderTaxaAceite(lista) {
+  // agregarHistoricoPorTransportador conta pelo transportador de CADA evento do histórico,
+  // não pelo transportador final da viagem — uma viagem hoje com a KMT pode ter histórico
+  // de oferta recusada por outras transportadoras antes dela. Isso é correto pro caso sem
+  // filtro (queremos o comportamento de aceite de todo mundo que já recebeu oferta), mas o
+  // filtro de transportador do topo precisa restringir também as LINHAS aqui — senão
+  // filtrar por "KMT" mostra as outras transportadoras que só passaram pela mesma viagem.
+  const { transp } = estadoFiltrosPerf();
+  const porTransp = agregarHistoricoPorTransportador(lista);
+  const linhas = [...porTransp.entries()]
+    .filter(([nome]) => !transp || nome.toLowerCase().includes(transp))
+    .map(([nome, d]) => {
+      const base = d.aceites + d.recusas;
+      return { nome, ...d, base, pct: base ? Math.round(d.aceites / base * 100) : 0 };
+    })
+    .filter(l => l.base > 0)
+    .sort((a, b) => b.pct - a.pct);
+  if (!linhas.length) {
+    document.getElementById('perfTaxaAceiteWrap').innerHTML = `<div class="perf-empty">Sem ofertas respondidas (aceite/recusa) no período.</div>`;
+    return;
+  }
+  const dados = linhas.map(l => ({
+    label: l.nome,
+    segments: [{ value: l.pct, color: corPorTaxa(l.pct), title: `${l.aceites} aceite(s) · ${l.recusas} recusa(s)` }],
+    valueLabel: l.pct + '%',
+    tooltip: `${l.nome} — ${l.aceites} aceite(s), ${l.recusas} recusa(s)`,
+  }));
+  renderBarraHorizontal('perfTaxaAceiteWrap', dados, { max: 100 });
+}
+
+// ── SEÇÃO 4: ADERÊNCIA AO PRAZO POR TRANSPORTADORA ──
+// Reaproveita calcularLinhaMonitoramento() (mesma conta da aba Monitoramento) vs. Data
+// Desejada — o compromisso real com o cliente, não só a programação interna.
+function renderAderenciaPrazo(lista) {
+  const porTransp = new Map();
+  lista.forEach(v => {
+    if (!v.transportador) return;
+    const linha = calcularLinhaMonitoramento(v);
+    if (!linha.vsDesejada) return;
+    if (!porTransp.has(v.transportador)) porTransp.set(v.transportador, { atraso: 0, adiantado: 0, noPrazo: 0, volume: 0 });
+    const d = porTransp.get(v.transportador);
+    d.volume += v.volume || 0;
+    if (linha.vsDesejada === 'atraso') d.atraso++;
+    else if (linha.vsDesejada === 'adiantado') d.adiantado++;
+    else d.noPrazo++;
+  });
+  const linhas = [...porTransp.entries()].map(([nome, d]) => {
+    const total = d.atraso + d.adiantado + d.noPrazo;
+    return {
+      label: nome,
+      segments: [
+        { value: d.noPrazo, color: 'var(--success)', title: `${d.noPrazo} no prazo` },
+        { value: d.adiantado, color: 'var(--pet-blue)', title: `${d.adiantado} adiantada(s)` },
+        { value: d.atraso, color: 'var(--danger)', title: `${d.atraso} em atraso` },
+      ],
+      valueLabel: total + ' viagem' + (total !== 1 ? 's' : ''),
+      tooltip: `${nome} — ${formatarM3(d.volume)} m³`,
+      _total: total,
+    };
+  }).sort((a, b) => b._total - a._total);
+  if (!linhas.length) {
+    document.getElementById('perfAderenciaWrap').innerHTML = `<div class="perf-empty">Sem viagens com ETA real (monitoramento Herrlog ou CIF) no período.</div>`;
+    return;
+  }
+  const legenda = [
+    { color: 'var(--success)', label: 'No prazo' },
+    { color: 'var(--pet-blue)', label: 'Adiantado' },
+    { color: 'var(--danger)', label: 'Atraso' },
+  ];
+  renderBarraHorizontal('perfAderenciaWrap', linhas, { pct100: true, legenda });
+}
+
+// ── SEÇÃO 5: TEMPO MÉDIO DE RESPOSTA À OFERTA ──
+function renderTempoResposta(lista) {
+  // mesmo motivo do filtro em renderTaxaAceite: o histórico pode citar outras
+  // transportadoras que só passaram pela mesma viagem antes dela ir pra quem está no
+  // filtro do topo.
+  const { transp } = estadoFiltrosPerf();
+  const porTransp = agregarHistoricoPorTransportador(lista);
+  const linhas = [...porTransp.entries()]
+    .filter(([nome]) => !transp || nome.toLowerCase().includes(transp))
+    .filter(([, d]) => d.temposRespostaH.length)
+    .map(([nome, d]) => ({
+      nome,
+      mediaH: d.temposRespostaH.reduce((s, h) => s + h, 0) / d.temposRespostaH.length,
+      n: d.temposRespostaH.length,
+    }))
+    .sort((a, b) => a.mediaH - b.mediaH);
+  if (!linhas.length) {
+    document.getElementById('perfTempoRespostaWrap').innerHTML = `<div class="perf-empty">Sem pares oferta → resposta no período.</div>`;
+    return;
+  }
+  const maxH = Math.max(...linhas.map(l => l.mediaH));
+  const dados = linhas.map(l => ({
+    label: l.nome,
+    segments: [{ value: l.mediaH, color: 'var(--pet-blue)', title: `${l.n} resposta(s)` }],
+    valueLabel: formatarHoras(l.mediaH),
+    tooltip: `${l.nome} — média de ${formatarHoras(l.mediaH)} em ${l.n} resposta(s)`,
+  }));
+  renderBarraHorizontal('perfTempoRespostaWrap', dados, { max: maxH });
+}
+
+// ── SEÇÃO 6: PERFORMANCE DE ENVIO DE PLACA ──
+// Timestamp do 1º evento 'Placa Enviada' do histórico vs. data/hora de carregamento
+// programada (parseDataHora, mesma função usada em Monitoramento/Veículos Dedicados).
+function renderEnvioPlacas(lista) {
+  const porTransp = new Map();
+  lista.forEach(v => {
+    if (!v.transportador) return;
+    const hist = Array.isArray(v.historico) ? v.historico : [];
+    const evPlaca = hist.find(h => h.evento === 'Placa Enviada');
+    if (!evPlaca) return;
+    const refCarreg = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg);
+    const dtPlaca = new Date(evPlaca.data);
+    if (!refCarreg || isNaN(dtPlaca.getTime())) return;
+    const diffH = (refCarreg - dtPlaca) / 3600000; // positivo = placa enviada antes do carregamento
+    if (!porTransp.has(v.transportador)) porTransp.set(v.transportador, { antecedencia: 0, mesmoDia: 0, atrasado: 0 });
+    const d = porTransp.get(v.transportador);
+    if (diffH >= 24) d.antecedencia++;
+    else if (diffH >= 0) d.mesmoDia++;
+    else d.atrasado++;
+  });
+  const linhas = [...porTransp.entries()].map(([nome, d]) => {
+    const total = d.antecedencia + d.mesmoDia + d.atrasado;
+    return {
+      label: nome,
+      segments: [
+        { value: d.antecedencia, color: 'var(--success)', title: `${d.antecedencia} com ≥24h de antecedência` },
+        { value: d.mesmoDia, color: 'var(--pet-yellow)', title: `${d.mesmoDia} no mesmo dia` },
+        { value: d.atrasado, color: 'var(--danger)', title: `${d.atrasado} atrasada(s)` },
+      ],
+      valueLabel: total + ' viagem' + (total !== 1 ? 's' : ''),
+      tooltip: nome,
+      _total: total,
+    };
+  }).sort((a, b) => b._total - a._total);
+  if (!linhas.length) {
+    document.getElementById('perfEnvioPlacaWrap').innerHTML = `<div class="perf-empty">Sem placas enviadas com data de carregamento programada no período.</div>`;
+    return;
+  }
+  const legenda = [
+    { color: 'var(--success)', label: '≥24h antes' },
+    { color: 'var(--pet-yellow)', label: 'Mesmo dia' },
+    { color: 'var(--danger)', label: 'Atrasado' },
+  ];
+  renderBarraHorizontal('perfEnvioPlacaWrap', linhas, { pct100: true, legenda });
+}
+
+// ── KPIs + ORQUESTRADOR ──
+function renderPerformanceKpis(lista) {
+  const volume = lista.reduce((s, v) => s + (v.volume || 0), 0);
+  const transportadoras = new Set(lista.map(v => v.transportador).filter(Boolean));
+  document.getElementById('sv-perf-viagens').textContent = lista.length;
+  document.getElementById('sv-perf-volume').textContent = formatarM3(volume);
+  document.getElementById('sv-perf-transportadoras').textContent = transportadoras.size;
+
+  const porTransp = agregarHistoricoPorTransportador(lista);
+  let aceites = 0, recusas = 0, todosTempos = [];
+  porTransp.forEach(d => { aceites += d.aceites; recusas += d.recusas; todosTempos.push(...d.temposRespostaH); });
+  const baseAceite = aceites + recusas;
+  document.getElementById('sv-perf-aceite').textContent = baseAceite ? Math.round(aceites / baseAceite * 100) + '%' : '—';
+
+  let noPrazo = 0, totalPrazo = 0;
+  lista.forEach(v => {
+    if (!v.transportador) return;
+    const linha = calcularLinhaMonitoramento(v);
+    if (!linha.vsDesejada) return;
+    totalPrazo++;
+    if (linha.vsDesejada !== 'atraso') noPrazo++;
+  });
+  document.getElementById('sv-perf-noprazo').textContent = totalPrazo ? Math.round(noPrazo / totalPrazo * 100) + '%' : '—';
+  document.getElementById('sv-perf-resposta').textContent = todosTempos.length
+    ? formatarHoras(todosTempos.reduce((s, h) => s + h, 0) / todosTempos.length)
+    : '—';
+}
+
+function renderPerformance() {
+  const lista = viagensPerf();
+  document.getElementById('performanceEmpty').style.display = lista.length ? 'none' : 'block';
+  document.getElementById('performanceContent').style.display = lista.length ? '' : 'none';
+  if (!lista.length) return;
+  renderPerformanceKpis(lista);
+  renderMalhaLogistica(lista);
+  renderShareRegional(lista);
+  renderTaxaAceite(lista);
+  renderAderenciaPrazo(lista);
+  renderTempoResposta(lista);
+  renderEnvioPlacas(lista);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
   aplicarEstadoKpisViagens();
@@ -10693,6 +12203,13 @@ window.addEventListener('DOMContentLoaded', () => {
   msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento);
   msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento);
   msMonRegional = new MultiSelect('ms-monRegional', 'Regional', renderMonitoramento);
+
+  msPerfRegional = new MultiSelect('ms-perfRegional', 'Regional', renderPerformance);
+  msPerfUf       = new MultiSelect('ms-perfUf',       'UF Origem', renderPerformance);
+  msPerfProduto  = new MultiSelect('ms-perfProduto',  'Produto', renderPerformance);
+  msPerfModal    = new MultiSelect('ms-perfModal',    'Tipo de Frete', renderPerformance, null, true);
+  msPerfModal.setSelected(['FOB']); // padrão da aba: só FOB — usuário troca pra Todos/CIF quando quiser
+  msPerfTipoOp   = new MultiSelect('ms-perfTipoOp',   'Compra/Transferência', renderPerformance, null, true);
 
   if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
     mostrarStatus('saving', 'Reconectando...');
