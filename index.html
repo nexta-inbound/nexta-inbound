@@ -2747,6 +2747,33 @@
   </div>
   <input type="file" id="fileInputLeadtime" accept=".xlsx,.xls" style="display:none">
 
+  <div id="leadtimePendentesWrap" style="display:none;margin-bottom:20px">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">⚠️ Pendentes de Cadastro</span>
+          <span class="badge badge-warn" id="badge-leadtime-pendentes">0 rotas</span>
+        </div>
+      </div>
+      <div class="section-sub" style="padding:0 16px 10px">Rotas de viagens ativas sem leadtime cadastrado (Origem × Destino) — cadastre aqui em vez de caçar uma a uma na aba Gerir Viagens</div>
+      <div class="scrollable" style="max-height:260px">
+        <table>
+          <thead>
+            <tr>
+              <th style="white-space:normal">Origem Cidade</th>
+              <th>Origem UF</th>
+              <th style="white-space:normal">Destino Cidade</th>
+              <th>Destino UF</th>
+              <th style="white-space:normal">Viagens s/ Leadtime</th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="leadtimePendentesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div id="leadtimeEmpty" class="empty-state">
     <div class="empty-icon">⏱️</div>
     <div class="empty-text">Nenhum leadtime cadastrado</div>
@@ -4040,8 +4067,13 @@ function abrirTrocarSenhaModal() {
   document.getElementById('senha-atual').focus();
 }
 
+function fecharModal(modalId, reset) {
+  document.getElementById(modalId).classList.remove('open');
+  if (reset) reset();
+}
+
 function fecharModalTrocarSenha() {
-  document.getElementById('modalTrocarSenha').classList.remove('open');
+  fecharModal('modalTrocarSenha');
 }
 
 async function confirmarTrocarSenha() {
@@ -4273,8 +4305,7 @@ function editarGrupo(idxs) {
 }
 
 function fecharModalGrupo() {
-  document.getElementById('modalGrupo').classList.remove('open');
-  editingGrupoIdxs = [];
+  fecharModal('modalGrupo', () => editingGrupoIdxs = []);
 }
 
 function salvarGrupo() {
@@ -4880,7 +4911,7 @@ function switchTab(i) {
   if (i === 5) renderBasesTable();
   if (i === 6) renderFornecedoresTable();
   if (i === 7) renderVeiculosTable();
-  if (i === 8) renderLeadtimeTable();
+  if (i === 8) { renderLeadtimeTable(); renderLeadtimesPendentes(); }
   if (i === 9) renderPerformance();
 }
 
@@ -5312,7 +5343,7 @@ function abrirModalNovaCadencia() {
 }
 
 function fecharModalNovaCad() {
-  document.getElementById('modalNovaCad').classList.remove('open');
+  fecharModal('modalNovaCad');
 }
 
 function salvarNovaCadencia() {
@@ -6380,11 +6411,15 @@ async function carregarTransportadoresFirebase() {
   } catch (e) { console.error('Erro ao carregar transportadores:', e); }
 }
 
-async function persistirTransportadores() {
-  if (!window._fb?.salvarTransportadores) return;
+async function persistirEmFirebase(metodo, dados, label) {
+  if (!window._fb?.[metodo]) return;
   try {
-    await window._fb.salvarTransportadores(transportadores);
-  } catch (e) { console.error('Erro ao salvar transportadores:', e); }
+    await window._fb[metodo](dados);
+  } catch (e) { console.error(`Erro ao salvar ${label}:`, e); }
+}
+
+async function persistirTransportadores() {
+  await persistirEmFirebase('salvarTransportadores', transportadores, 'transportadores');
 }
 
 // ── CADASTRO DE BASES (carga única, somente consulta) ──
@@ -6506,8 +6541,7 @@ function abrirModalBase(idx) {
 }
 
 function fecharModalBase() {
-  document.getElementById('modalBase').classList.remove('open');
-  editingBaseIdx = null;
+  fecharModal('modalBase', () => editingBaseIdx = null);
 }
 
 async function salvarBase() {
@@ -6555,10 +6589,7 @@ async function removerBase(idx) {
 }
 
 async function persistirBases() {
-  if (!window._fb?.salvarBases) return;
-  try {
-    await window._fb.salvarBases(bases);
-  } catch (e) { console.error('Erro ao salvar bases:', e); }
+  await persistirEmFirebase('salvarBases', bases, 'bases');
 }
 
 const FORNECEDORES_SEED = [
@@ -6895,10 +6926,7 @@ async function carregarMetasShareRegionalFirebase() {
 }
 
 async function persistirMetasShareRegional() {
-  if (!window._fb?.salvarMetasShareRegional) return;
-  try {
-    await window._fb.salvarMetasShareRegional(metasShareRegional);
-  } catch (e) { console.error('Erro ao salvar metas de share regional:', e); }
+  await persistirEmFirebase('salvarMetasShareRegional', metasShareRegional, 'metas de share regional');
 }
 
 function renderChipsJanelaCarregamentoTabela(f) {
@@ -6995,8 +7023,7 @@ function abrirModalFornecedor(idx) {
 }
 
 function fecharModalFornecedor() {
-  document.getElementById('modalFornecedor').classList.remove('open');
-  editingFornecedorIdx = null;
+  fecharModal('modalFornecedor', () => editingFornecedorIdx = null);
 }
 
 async function salvarFornecedor() {
@@ -7051,10 +7078,7 @@ async function removerFornecedor(idx) {
 }
 
 async function persistirFornecedores() {
-  if (!window._fb?.salvarFornecedores) return;
-  try {
-    await window._fb.salvarFornecedores(fornecedores);
-  } catch (e) { console.error('Erro ao salvar fornecedores:', e); }
+  await persistirEmFirebase('salvarFornecedores', fornecedores, 'fornecedores');
 }
 
 // ── CADASTRO DE LEADTIME (origem/destino) ──
@@ -7093,23 +7117,23 @@ function renderLeadtimeTable() {
   }).join('');
 }
 
-function abrirModalLeadtime(idx) {
+function abrirModalLeadtime(idx, prefill) {
   editingLeadtimeIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('leadtime-modal-title').textContent = isNovo ? 'Novo Leadtime' : 'Editar Leadtime';
-  const l = isNovo ? {} : leadtimes[idx];
+  const l = isNovo ? (prefill || {}) : leadtimes[idx];
   document.getElementById('lt-origemCidade').value = l.origemCidade || '';
   document.getElementById('lt-origemUf').value = l.origemUf || '';
   document.getElementById('lt-destinoCidade').value = l.destinoCidade || '';
   document.getElementById('lt-destinoUf').value = l.destinoUf || '';
   document.getElementById('lt-leadtimeHoras').value = l.leadtimeHoras ?? '';
   document.getElementById('modalLeadtime').classList.add('open');
-  setTimeout(() => document.getElementById('lt-origemCidade').focus(), 100);
+  // Vindo da lista de pendentes: origem/destino já preenchidos, foca direto no leadtime
+  setTimeout(() => document.getElementById(prefill ? 'lt-leadtimeHoras' : 'lt-origemCidade').focus(), 100);
 }
 
 function fecharModalLeadtime() {
-  document.getElementById('modalLeadtime').classList.remove('open');
-  editingLeadtimeIdx = null;
+  fecharModal('modalLeadtime', () => editingLeadtimeIdx = null);
 }
 
 async function salvarLeadtime() {
@@ -7145,6 +7169,7 @@ async function salvarLeadtime() {
   else leadtimes[editingLeadtimeIdx] = registro;
   fecharModalLeadtime();
   renderLeadtimeTable();
+  renderLeadtimesPendentes();
   await persistirLeadtimes();
 }
 
@@ -7153,14 +7178,69 @@ async function removerLeadtime(idx) {
   if (!confirm(`Remover o leadtime "${l.origemCidade}/${l.origemUf}" → "${l.destinoCidade}/${l.destinoUf}" do cadastro?`)) return;
   leadtimes.splice(idx, 1);
   renderLeadtimeTable();
+  renderLeadtimesPendentes();
   await persistirLeadtimes();
 }
 
 async function persistirLeadtimes() {
-  if (!window._fb?.salvarLeadtimes) return;
-  try {
-    await window._fb.salvarLeadtimes(leadtimes);
-  } catch (e) { console.error('Erro ao salvar leadtimes:', e); }
+  await persistirEmFirebase('salvarLeadtimes', leadtimes, 'leadtimes');
+}
+
+// ── LEADTIMES PENDENTES DE CADASTRO ──
+// Consolida, por rota (Origem cidade/UF x Destino cidade/UF), as viagens ativas e não-CIF
+// cujo leadtime não está cadastrado — mesmo critério do alerta ⚠ da aba Gerir Viagens
+// (buscarLeadtimeHorasParaViagem). CIF fica de fora porque a descarga dessas viagens é
+// editável manualmente e não depende do leadtime. Viagens cujo Fornecedor/Base ainda não
+// foi casado (cadastro incompleto) também ficam de fora: sem essa referência não há
+// cidade/UF pra agrupar, e o problema real ali é outro (cadastro de Fornecedores/Bases).
+let leadtimesPendentesAtual = [];
+
+function calcularLeadtimesPendentes() {
+  const fonte = viagensAtivo().filter(v => v.status !== 'Cancelado' && v.status !== 'CIF');
+  const mapa = new Map();
+  fonte.forEach(v => {
+    if (buscarLeadtimeHorasParaViagem(v) !== null) return;
+    const fornecedor = buscarFornecedorDaViagem(v);
+    const base = buscarBaseDaViagem(v);
+    if (!fornecedor || !base) return;
+    const key = [fornecedor.cidade, fornecedor.uf, base.cidade, base.estado]
+      .map(s => String(s || '').trim().toLowerCase()).join('|');
+    if (!mapa.has(key)) {
+      mapa.set(key, {
+        origemCidade: fornecedor.cidade, origemUf: fornecedor.uf,
+        destinoCidade: base.cidade, destinoUf: base.estado,
+        count: 0,
+      });
+    }
+    mapa.get(key).count++;
+  });
+  return Array.from(mapa.values()).sort((a, b) => b.count - a.count);
+}
+
+function renderLeadtimesPendentes() {
+  leadtimesPendentesAtual = calcularLeadtimesPendentes();
+  const wrap = document.getElementById('leadtimePendentesWrap');
+  if (leadtimesPendentesAtual.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  document.getElementById('badge-leadtime-pendentes').textContent =
+    `${leadtimesPendentesAtual.length} rota${leadtimesPendentesAtual.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('leadtimePendentesBody').innerHTML = leadtimesPendentesAtual.map((p, i) => `
+    <tr>
+      <td style="white-space:normal">${esc(p.origemCidade)}</td>
+      <td>${esc(p.origemUf)}</td>
+      <td style="white-space:normal">${esc(p.destinoCidade)}</td>
+      <td>${esc(p.destinoUf)}</td>
+      <td style="white-space:normal"><span class="badge badge-danger">${p.count} viagem${p.count !== 1 ? 's' : ''}</span></td>
+      <td class="col-acao">
+        <button class="btn btn-primary btn-sm" style="padding:4px 10px;font-size:11px" onclick="abrirModalLeadtimePendente(${i})">＋ Cadastrar</button>
+      </td>
+    </tr>`).join('');
+}
+
+function abrirModalLeadtimePendente(i) {
+  abrirModalLeadtime(null, leadtimesPendentesAtual[i]);
 }
 
 // ── Upload xlsx Leadtime (layout: Origem CIDADE, Origem UF, Destino CIDADE, Destino UF, Leadtime sem T2 (horas)) ──
@@ -7227,6 +7307,7 @@ function processarArquivoLeadtime(file) {
       }
 
       renderLeadtimeTable();
+      renderLeadtimesPendentes();
       persistirLeadtimes();
 
       mostrarStatus('saved', `${importados} novo(s) e ${atualizados} atualizado(s) a partir de "${file.name}"`);
@@ -7268,10 +7349,7 @@ async function carregarVeiculosDedicadosFirebase() {
 }
 
 async function persistirVeiculosDedicados() {
-  if (!window._fb?.salvarVeiculosDedicados) return;
-  try {
-    await window._fb.salvarVeiculosDedicados(veiculosDedicados);
-  } catch (e) { console.error('Erro ao salvar veículos dedicados:', e); }
+  await persistirEmFirebase('salvarVeiculosDedicados', veiculosDedicados, 'veículos dedicados');
 }
 
 function gerarIdVeiculoDedicado() {
@@ -7573,9 +7651,7 @@ function abrirModalVeiculo(idx) {
 }
 
 function fecharModalVeiculo() {
-  document.getElementById('modalVeiculo').classList.remove('open');
-  editingVeiculoIdx = null;
-  _editingVigencias = [];
+  fecharModal('modalVeiculo', () => { editingVeiculoIdx = null; _editingVigencias = []; });
 }
 
 // ── VIGÊNCIA NA FROTA DEDICADA (entrada/saída/retorno do modal Novo/Editar Veículo) ──
@@ -7721,8 +7797,7 @@ function abrirModalIndisponibilidadeDias(veiculoId, dias) {
 }
 
 function fecharModalIndisponibilidade() {
-  document.getElementById('modalIndisponibilidade').classList.remove('open');
-  _indispAlvo = null;
+  fecharModal('modalIndisponibilidade', () => _indispAlvo = null);
 }
 
 async function confirmarIndisponibilidade() {
@@ -7862,8 +7937,7 @@ function abrirModalTransportador(idx) {
 }
 
 function fecharModalTransportador() {
-  document.getElementById('modalTransportador').classList.remove('open');
-  editingTranspIdx = null;
+  fecharModal('modalTransportador', () => editingTranspIdx = null);
 }
 
 function normalizarEmails(str) {
