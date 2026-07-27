@@ -5605,14 +5605,15 @@ function updateKPIs(list) {
   const ativas = list.filter(v => v.status !== 'Cancelado');
   const transportador = isTransportador();
 
-  // Escada de severidade por data de carregamento: Backlog (vencido) > Crítico (D0)
+  // Escada de severidade por data de programação (dtCarregProg, caindo para a Data Desejada
+  // dtCarreg quando ainda não programada): Backlog (vencido) > Crítico (D0)
   // > Alerta (D+1/D+2) > Atenção (D+3+). "Placa Enviada" sai do radar (já resolvido);
   // "sem aceite" = ainda não confirmado pelo transportador (Backlog/Ofertado/Recusado).
   const pendentes = ativas.filter(v => !['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF'].includes(v.status));
   const SEM_ACEITE = ['Backlog', 'Ofertado', 'Recusado'];
   const bucketStats = filtroData => {
     const itens = pendentes.filter(v => {
-      const d = parseDMY(v.dtCarreg);
+      const d = parseDMY(v.dtCarregProg || v.dtCarreg);
       return d && filtroData(d);
     });
     return { total: itens.length, semAceite: itens.filter(v => SEM_ACEITE.includes(v.status)).length };
@@ -5685,7 +5686,7 @@ function testeIndicador(key) {
   const RESOLVIDOS = ['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada', 'CIF'];
   const bucket = filtroData => v => {
     if (v.status === 'Cancelado' || RESOLVIDOS.includes(v.status)) return false;
-    const d = parseDMY(v.dtCarreg);
+    const d = parseDMY(v.dtCarregProg || v.dtCarreg);
     return !!d && filtroData(d);
   };
   switch (key) {
@@ -5942,13 +5943,14 @@ function viagensTransportadorPorStatus(status) {
 }
 
 // Mesma escada de severidade dos KPIs internos (ver updateKPIs/testeIndicador), calculada
-// sobre a Data Desejada (v.dtCarreg) — assim a ordenação de "mais urgente primeiro" usa o
+// sobre a Data Programação (v.dtCarregProg, caindo para a Data Desejada v.dtCarreg quando
+// ainda não programada) — assim a ordenação de "mais urgente primeiro" usa o
 // mesmo critério que o resto do app já usa para Backlog/Crítico/Alerta/Atenção.
 const ORDEM_URGENCIA_TRANSP = { backlog: 0, critico: 1, alerta: 2, atencao: 3 };
 function bucketUrgenciaTransportador(v) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
-  const d = parseDMY(v.dtCarreg);
+  const d = parseDMY(v.dtCarregProg || v.dtCarreg);
   if (!d) return 'atencao';
   if (d < hoje) return 'backlog';
   if (d.getTime() === hoje.getTime()) return 'critico';
@@ -5973,7 +5975,7 @@ function renderCardsOfertadasTransportador() {
   const wrap = document.getElementById('cardsOfertadasTransp');
   if (!wrap) return;
   const itens = viagensTransportadorPorStatus('Ofertado');
-  itens.sort((a, b) => (parseDMY(a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarreg) || new Date(8640000000000000)));
+  itens.sort((a, b) => (parseDMY(a.v.dtCarregProg || a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarregProg || b.v.dtCarreg) || new Date(8640000000000000)));
 
   document.getElementById('countOfertadasTransp').textContent = itens.length;
   document.getElementById('emptyOfertadasTransp').style.display = itens.length ? 'none' : 'block';
@@ -6020,7 +6022,7 @@ function renderCardsPlacasPendentesTransportador() {
   const itens = viagensTransportadorPorStatus('Aceito');
   itens.forEach(item => { item.urgencia = bucketUrgenciaTransportador(item.v); });
   itens.sort((a, b) => ORDEM_URGENCIA_TRANSP[a.urgencia] - ORDEM_URGENCIA_TRANSP[b.urgencia]
-    || (parseDMY(a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarreg) || new Date(8640000000000000)));
+    || (parseDMY(a.v.dtCarregProg || a.v.dtCarreg) || new Date(8640000000000000)) - (parseDMY(b.v.dtCarregProg || b.v.dtCarreg) || new Date(8640000000000000)));
 
   document.getElementById('countPlacasTransp').textContent = itens.length;
   document.getElementById('emptyPlacasTransp').style.display = itens.length ? 'none' : 'block';
