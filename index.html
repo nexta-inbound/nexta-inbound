@@ -2154,7 +2154,7 @@
             <div class="chip chip-agend" data-agend="Agendado" onclick="filterAgendamento('Agendado')" title="Filtro de Agendamento — clique para somar/remover">Agendado</div>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" id="btnReprocessarJanela" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento e Descarga das viagens elegíveis, recuando quando necessário e recalculando a descarga via leadtime. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
+        <button class="btn btn-secondary btn-sm" id="btnReprocessarJanela" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento das viagens elegíveis contra a Janela de Carregamento (recuando quando necessário) e recalcula a Descarga via leadtime — inclusive viagens que ficaram sem leadtime cadastrado e cuja rota acabou de ser cadastrada. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
       </div>
       <div class="filter-bar">
         <div class="filter-row">
@@ -9891,23 +9891,34 @@ function reprocessarJanelaCarregamentoRetroativo() {
     !STATUS_FORA_DO_REPROCESSAMENTO_JANELA.includes(v.status)
     && !AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado')
   );
-  if (!confirm(`Isso vai reavaliar a Data de Carregamento de ${elegiveis.length} viagem(ns) elegível(is) contra a Janela de Carregamento de cada fornecedor, recuando a data quando necessário e recalculando a descarga via leadtime.\n\nNão mexe em Agendado/Usina de Fila nem em Placa Enviada/Frota Dedicada/Em Andamento/Viagem Finalizada/Cancelado.\n\nConfirma?`)) return;
+  if (!confirm(`Isso vai reavaliar a Data de Carregamento de ${elegiveis.length} viagem(ns) elegível(is) contra a Janela de Carregamento de cada fornecedor (recuando quando necessário) e recalcular a Descarga via leadtime — inclusive viagens que já existiam sem leadtime cadastrado na hora e cuja rota acabou de ser cadastrada.\n\nNão mexe em Agendado/Usina de Fila nem em Placa Enviada/Frota Dedicada/Em Andamento/Viagem Finalizada/Cancelado.\n\nConfirma?`)) return;
 
   let ajustadas = 0;
   elegiveis.forEach(v => {
     const atual = v.dtCarregProg || v.dtCarreg;
     const ajustado = ajustarCarregamentoParaJanela(atual, v);
-    if (ajustado === atual) return;
-    v.dtCarregProg = ajustado;
+    const carregamentoMudou = ajustado !== atual;
+    if (carregamentoMudou) v.dtCarregProg = ajustado;
+
+    // Roda sempre, não só quando o carregamento muda — assim viagens que nasceram sem
+    // leadtime cadastrado para a rota (ver aba Leadtime > Pendentes de Cadastro) recebem a
+    // descarga calculada retroativamente assim que a rota é cadastrada.
+    const descargaAntes = v.dtDescProg, horaAntes = v.horaDescProg;
+    const leadtimeHoras = recalcularDescargaPorLeadtime(v);
+    const descargaMudou = leadtimeHoras !== null && (v.dtDescProg !== descargaAntes || v.horaDescProg !== horaAntes);
+
+    if (!carregamentoMudou && !descargaMudou) return;
+
     if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
     const agora = new Date().toISOString();
     const usuario = _authUsuarioAtual?.nome || '';
-    v.historicoProgramacao.push({
-      data: agora, usuario,
-      evento: `Carregamento antecipado para ${ajustado} — reprocessamento retroativo da Janela de Carregamento (era ${atual})`,
-    });
-    const leadtimeHoras = recalcularDescargaPorLeadtime(v);
-    if (leadtimeHoras !== null) {
+    if (carregamentoMudou) {
+      v.historicoProgramacao.push({
+        data: agora, usuario,
+        evento: `Carregamento antecipado para ${ajustado} — reprocessamento retroativo da Janela de Carregamento (era ${atual})`,
+      });
+    }
+    if (descargaMudou) {
       v.historicoProgramacao.push({
         data: agora, usuario,
         evento: `Descarga recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
@@ -9921,7 +9932,7 @@ function reprocessarJanelaCarregamentoRetroativo() {
     updatePipeline(viagensAtivo());
     renderViagensTable();
   }
-  mostrarStatus('saved', ajustadas ? `${ajustadas} viagem(ns) ajustada(s) pela Janela de Carregamento` : 'Nenhuma viagem precisou de ajuste');
+  mostrarStatus('saved', ajustadas ? `${ajustadas} viagem(ns) ajustada(s) pela Janela de Carregamento / Leadtime` : 'Nenhuma viagem precisou de ajuste');
 }
 
 function buscarBaseDaViagem(v) {
