@@ -831,6 +831,7 @@
   }
 
   .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip-group-disabled { opacity: 0.5; pointer-events: none; }
   .chip {
     padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600;
     background: var(--panel); color: var(--text-muted);
@@ -3182,6 +3183,30 @@
       </div>
     </div>
 
+    <div class="modal-row">
+      <div class="modal-field" style="grid-column:1/-1">
+        <div class="modal-label">Dia do DSR do motorista</div>
+        <div class="chip-group" id="m-diaDsr">
+          <div class="chip" data-dia="0" onclick="selecionarDiaDsr(0)">Dom</div>
+          <div class="chip" data-dia="1" onclick="selecionarDiaDsr(1)">Seg</div>
+          <div class="chip" data-dia="2" onclick="selecionarDiaDsr(2)">Ter</div>
+          <div class="chip" data-dia="3" onclick="selecionarDiaDsr(3)">Qua</div>
+          <div class="chip" data-dia="4" onclick="selecionarDiaDsr(4)">Qui</div>
+          <div class="chip" data-dia="5" onclick="selecionarDiaDsr(5)">Sex</div>
+          <div class="chip" data-dia="6" onclick="selecionarDiaDsr(6)">Sáb</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Informar data DSR do motorista. Importante respeitar a data de entrega!.</div>
+      </div>
+    </div>
+
+    <div class="modal-row" id="row-ajuste-seta" style="grid-template-columns:1fr;display:none">
+      <div class="modal-field">
+        <div class="modal-label">Ajuste de Seta (m³)</div>
+        <input type="number" class="config-input" id="m-ajuste-seta" min="0.1" step="0.1" style="max-width:220px">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Sinalize aqui o ajuste de seta mínima, o novo valor será avaliado pelo programador Nexta!.</div>
+      </div>
+    </div>
+
     <div class="modal-field" id="campo-historico-oferta" style="display:none">
       <div class="modal-label">📜 Histórico de Ofertas</div>
       <div id="m-historico" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--panel-soft);font-size:12px"></div>
@@ -3445,6 +3470,28 @@
   </div>
 </div>
 
+<!-- MODAL: Confirmar Agendamento -->
+<div class="modal-overlay" id="modalConfirmarAgendamento">
+  <div class="modal" style="width:380px;max-width:94vw">
+    <div class="modal-title">Confirmar Agendamento</div>
+    <div class="modal-sub">Confira (ou ajuste) a data e hora de carregamento confirmadas no agendamento — vira a Data de Programação da viagem.</div>
+    <div class="modal-row" style="grid-template-columns:1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Data de Carregamento</div>
+        <input type="date" class="config-input" id="ag-data">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Hora</div>
+        <input type="time" class="config-input" id="ag-hora">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="responderConfirmacaoAgendamento(false)">Cancelar</button>
+      <button class="btn btn-primary" onclick="responderConfirmacaoAgendamento(true)">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Novo/Editar Veículo Dedicado -->
 <div class="modal-overlay" id="modalVeiculo">
   <div class="modal" style="width:560px;max-width:96vw">
@@ -3597,6 +3644,42 @@ function responderMotivoCancelamento(motivo) {
   const resolve = _motivoCancelamentoResolve;
   _motivoCancelamentoResolve = null;
   if (resolve) resolve(motivo);
+}
+
+// ── CONFIRMAÇÃO DE AGENDAMENTO (status "Agendado") ──
+// Pede a data/hora de carregamento confirmada no agendamento antes de marcar a viagem
+// como "Agendado" (ver salvarAgendamentoInline) — pré-preenchida com a Data de
+// Programação atual, pra só exigir ajuste de quem de fato mudou. Resolve com
+// { data: 'DD/MM/AAAA', hora: 'HH:mm' }, ou null se o usuário desistir.
+let _confirmacaoAgendamentoResolve = null;
+
+function pedirConfirmacaoAgendamento(dataAtualDMY, horaAtual) {
+  return new Promise(resolve => {
+    _confirmacaoAgendamentoResolve = resolve;
+    const base = (dataAtualDMY && dataAtualDMY !== '-') ? dataAtualDMY : formatarDataHoraProg(new Date()).data;
+    const [dd, mm, aaaa] = base.split('/');
+    document.getElementById('ag-data').value = `${aaaa}-${mm}-${dd}`;
+    document.getElementById('ag-hora').value = horaAtual || '12:00';
+    document.getElementById('modalConfirmarAgendamento').classList.add('open');
+  });
+}
+
+function responderConfirmacaoAgendamento(confirmou) {
+  const resolve = _confirmacaoAgendamentoResolve;
+  if (!resolve) return;
+  if (confirmou) {
+    const dataInput = document.getElementById('ag-data').value;
+    if (!dataInput) { alert('Informe a data de carregamento.'); return; } // mantém o modal aberto
+    const horaInput = document.getElementById('ag-hora').value || '12:00';
+    const [aaaa, mm, dd] = dataInput.split('-');
+    document.getElementById('modalConfirmarAgendamento').classList.remove('open');
+    _confirmacaoAgendamentoResolve = null;
+    resolve({ data: `${dd}/${mm}/${aaaa}`, hora: horaInput });
+  } else {
+    document.getElementById('modalConfirmarAgendamento').classList.remove('open');
+    _confirmacaoAgendamentoResolve = null;
+    resolve(null);
+  }
 }
 
 // ── HISTÓRICO DE OFERTAS POR VIAGEM ──
@@ -4668,6 +4751,7 @@ let sortDir = 'asc';
 let idsExcluidosExport = new Set();
 let activeTab = 0;
 let editingIdx = null;
+let _editingDiaDsr = 0; // dia do DSR selecionado no modal aberto (0=domingo...6=sábado) — ver selecionarDiaDsr
 let autosaveTimer = null;
 let selectedViagens = new Set();
 let currentFilteredIdxs = [];
@@ -6176,7 +6260,7 @@ function renderViagensTable() {
             onblur="salvarVolumeInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
             ${isTransportador() ? 'disabled' : ''}>
-          ${(v.volumeAjustadoManualmente && !isTransportador()) ? `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>` : ''}
+          ${renderBadgeAjusteSeta(v, realIdx)}
         </td>
         <td data-label="Status">${renderSeletorStatus(v, realIdx)}</td>
         <td class="col-agendamento">${renderSeletorAgendamento(v, realIdx)}</td>
@@ -8286,6 +8370,20 @@ function sincronizarPipelineSelecionado() {
   document.getElementById('pipe-2')?.classList.toggle('selected', semFiltro);
 }
 
+// ── DIA DO DSR (folga semanal do motorista, ver aplicarFolgaDsr) ──
+// Seleção única (diferente da Janela de Carregamento do Fornecedor, que é múltipla) —
+// guardada em _editingDiaDsr enquanto o modal está aberto, só grava em v.diaDsr no Salvar.
+function selecionarDiaDsr(dia) {
+  _editingDiaDsr = dia;
+  renderChipDiaDsr();
+}
+
+function renderChipDiaDsr() {
+  document.querySelectorAll('#m-diaDsr .chip').forEach(c => {
+    c.classList.toggle('active', +c.dataset.dia === _editingDiaDsr);
+  });
+}
+
 // ── MODAL ──
 function openModal(idx) {
   editingIdx = idx;
@@ -8313,6 +8411,9 @@ function openModal(idx) {
   document.getElementById('m-nomeMotorista').value  = v.nomeMotorista || '';
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
+  document.getElementById('m-ajuste-seta').value    = v.volumeSetaProposto || v.volume || '';
+  _editingDiaDsr = v.diaDsr ?? 0;
+  renderChipDiaDsr();
   ajustarCampoFrotaDedicada();
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('alertaProgramacaoBanner').style.display = v.alertaProgramacao ? '' : 'none';
@@ -8330,6 +8431,15 @@ function ajustarModalParaTipoUsuario(v) {
   const podeEditarPlaca = !transportador || ['Aceito', 'Placa Enviada'].includes(v.status);
   ['m-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-nomeMotorista', 'm-cpfMotorista', 'm-obs']
     .forEach(id => { document.getElementById(id).disabled = !podeEditarPlaca; });
+
+  // Ajuste de seta: só o transportador propõe (o analista aprova/recusa direto na
+  // tabela, ver renderBadgeAjusteSeta) — mesma janela de edição da placa.
+  document.getElementById('row-ajuste-seta').style.display = transportador ? '' : 'none';
+  document.getElementById('m-ajuste-seta').disabled = !podeEditarPlaca;
+
+  // Dia do DSR: visível pra todo mundo (analista também pode corrigir), mas o
+  // transportador só edita na mesma janela em que pode informar a placa.
+  document.getElementById('m-diaDsr').classList.toggle('chip-group-disabled', !podeEditarPlaca);
 
   const podeAceitar = transportador && v.status === 'Ofertado';
   const podeRecusar = transportador && ['Ofertado', 'Aceito'].includes(v.status);
@@ -8364,6 +8474,8 @@ function _aplicarRecusaViagem(v) {
   v.placaCarreta2 = '';
   v.nomeMotorista = '';
   v.cpfMotorista = '';
+  delete v.volumeSetaProposto;
+  delete v.statusAjusteSeta;
 }
 
 function aceitarOfertaTransportador(idx) {
@@ -8608,6 +8720,63 @@ function salvarVolumeInline(realIdx, valorInput) {
   renderViagensTable();
 }
 
+// ── AJUSTE DE SETA (proposta de volume do transportador) ──
+// O transportador propõe o volume real (v.volumeSetaProposto) sem mexer em v.volume
+// direto — só vira volume oficial quando o analista aprova (aprovarAjusteSeta). Isso
+// evita que uma proposta ainda não revisada vaze para a Ordem de Carregamento em PDF,
+// exportação Herrlog ou cálculo de cadência antes de alguém confirmar o valor.
+function renderBadgeAjusteSeta(v, realIdx) {
+  if (v.statusAjusteSeta === 'pendente') {
+    if (isTransportador()) {
+      return `<br><span style="font-size:11px;color:var(--accent2)" title="Aguardando aprovação do analista">seta ${v.volumeSetaProposto} m³ enviada</span>`;
+    }
+    return `<br><span style="font-size:11px;color:var(--accent2)" title="Proposta de seta do transportador">seta ${v.volumeSetaProposto} m³</span>
+      <button class="btn btn-success btn-sm" style="padding:1px 5px;font-size:10px;margin-left:3px" onclick="aprovarAjusteSeta(${realIdx})" title="Aprovar ajuste de seta">✓</button>
+      <button class="btn btn-danger btn-sm" style="padding:1px 5px;font-size:10px" onclick="recusarAjusteSeta(${realIdx})" title="Recusar ajuste de seta">✕</button>`;
+  }
+  if (v.statusAjusteSeta === 'recusado') {
+    return `<br><span style="font-size:11px;color:var(--danger)" title="Ajuste de seta recusado pelo analista">✕ seta recusada</span>`;
+  }
+  if (v.volumeAjustadoManualmente && !isTransportador()) {
+    return `<br><span style="font-size:11px;color:var(--text-muted)" title="Volume ajustado manualmente">✎ ajustado</span>`;
+  }
+  return '';
+}
+
+function aprovarAjusteSeta(realIdx) {
+  const v = viagensAtivo()[realIdx];
+  if (!v || v.statusAjusteSeta !== 'pendente') return;
+  const anterior = v.volume;
+  v.volume = v.volumeSetaProposto;
+  v.volumeAjustadoManualmente = true;
+  v.statusAjusteSeta = 'aprovado';
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Ajuste de seta aprovado: ${anterior} m³ → ${v.volume} m³ (proposto pelo transportador)`,
+  });
+  if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+    v.alertaProgramacao = true;
+  }
+  marcarEAgendar(v);
+  renderViagensTable();
+}
+
+function recusarAjusteSeta(realIdx) {
+  const v = viagensAtivo()[realIdx];
+  if (!v || v.statusAjusteSeta !== 'pendente') return;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Ajuste de seta recusado: proposta de ${v.volumeSetaProposto} m³ (mantido em ${v.volume} m³)`,
+  });
+  v.statusAjusteSeta = 'recusado';
+  marcarEAgendar(v);
+  renderViagensTable();
+}
+
 // ── ALERTA DE PLACA ALOCADA EM DUAS VIAGENS NO MESMO PERIODO ──
 // Janela que a viagem ocupa o veiculo: do carregamento (programado, ou desejado
 // se ainda nao programado) até a descarga. Usada para alertar quando uma mesma
@@ -8845,10 +9014,45 @@ function renderSeletorAgendamento(v, realIdx) {
     </select>`;
 }
 
-function salvarAgendamentoInline(realIdx, valor) {
+async function salvarAgendamentoInline(realIdx, valor) {
   const v = viagensAtivo()[realIdx];
   const anterior = v.statusAgendamento || 'Não Agendado';
   if (valor === anterior) return;
+
+  // Virar "Agendado" pede confirmação da data/hora de carregamento — é o momento em que
+  // o agendamento junto ao fornecedor normalmente confirma (ou corrige) o horário
+  // programado. O que for confirmado vira a nova Data de Programação, com o mesmo
+  // recálculo de descarga por leadtime de qualquer edição manual do carregamento
+  // (ver salvarDataProgramacaoInline). Desistir da confirmação não muda o status.
+  if (valor === 'Agendado') {
+    const dataProgAtual = v.dtCarregProg || v.dtCarreg;
+    const horaProgAtual = v.horaCarregProg || '12:00';
+    const confirmado = await pedirConfirmacaoAgendamento(dataProgAtual, horaProgAtual);
+    if (!confirmado) { renderViagensTable(); return; }
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    if (confirmado.data !== dataProgAtual || confirmado.hora !== horaProgAtual) {
+      const anteriorTxt = (dataProgAtual && dataProgAtual !== '-') ? `${dataProgAtual} ${horaProgAtual}` : '—';
+      v.dtCarregProg = confirmado.data;
+      v.horaCarregProg = confirmado.hora;
+      v.historicoProgramacao.push({
+        data: new Date().toISOString(),
+        usuario: _authUsuarioAtual?.nome || '',
+        evento: `Data de Carregamento confirmada no agendamento: ${anteriorTxt} → ${confirmado.data} ${confirmado.hora}`,
+      });
+      const leadtimeHoras = recalcularDescargaPorLeadtime(v);
+      if (leadtimeHoras !== null) {
+        v.historicoProgramacao.push({
+          data: new Date().toISOString(),
+          usuario: _authUsuarioAtual?.nome || '',
+          evento: `Descarga recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
+        });
+      }
+      if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+        v.alertaProgramacao = true;
+      }
+    }
+  }
+
   v.statusAgendamento = valor;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
   v.historicoProgramacao.push({
@@ -8930,6 +9134,58 @@ async function salvarViagem() {
     && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(v.status)) {
     registrarHistoricoOferta(v, v.status, undefined, motivoCancelamento);
   }
+  // Ajuste de seta: campo vem pré-preenchido com a proposta pendente (ou o volume
+  // programado, se não há proposta) — o transportador só mexe sob demanda. Só vira
+  // proposta pendente se o valor final divergir do volume programado; se ele voltar
+  // o campo para o volume programado, cancela uma proposta pendente anterior.
+  // v.volume em si só muda quando o analista aprova, ver aprovarAjusteSeta().
+  if (isTransportador()) {
+    const inputSeta = document.getElementById('m-ajuste-seta').value.trim().replace(',', '.');
+    const novoSeta = parseFloat(inputSeta);
+    const propostaAtual = v.volumeSetaProposto ?? v.volume;
+    if (inputSeta && !isNaN(novoSeta) && novoSeta > 0) {
+      const novoArred = +novoSeta.toFixed(1);
+      if (novoArred !== propostaAtual) {
+        if (novoArred === v.volume) {
+          delete v.volumeSetaProposto;
+          delete v.statusAjusteSeta;
+        } else {
+          v.volumeSetaProposto = novoArred;
+          v.statusAjusteSeta = 'pendente';
+          if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+          v.historicoProgramacao.push({
+            data: new Date().toISOString(),
+            usuario: _authUsuarioAtual?.nome || '',
+            evento: `Ajuste de seta proposto pelo transportador: ${v.volume} m³ → ${novoArred} m³ (aguardando aprovação)`,
+          });
+        }
+      }
+    }
+  }
+  // Dia do DSR: se mudou, recalcula a entrega pela mesma rotina de leadtime (mesmo
+  // gatilho usado ao reajustar o carregamento manualmente, ver salvarDataProgramacaoInline)
+  // pra já refletir a nova folga do motorista sem esperar um reprocessamento em lote.
+  const diaDsrAnterior = v.diaDsr ?? 0;
+  if (_editingDiaDsr !== diaDsrAnterior) {
+    v.diaDsr = _editingDiaDsr;
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    v.historicoProgramacao.push({
+      data: new Date().toISOString(),
+      usuario: _authUsuarioAtual?.nome || '',
+      evento: `Dia do DSR do motorista alterado: ${DIAS_SEMANA_ABREV[diaDsrAnterior]} → ${DIAS_SEMANA_ABREV[_editingDiaDsr]}`,
+    });
+    const leadtimeHoras = recalcularDescargaPorLeadtime(v);
+    if (leadtimeHoras !== null) {
+      v.historicoProgramacao.push({
+        data: new Date().toISOString(),
+        usuario: _authUsuarioAtual?.nome || '',
+        evento: `Descarga recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
+      });
+    }
+    if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+      v.alertaProgramacao = true;
+    }
+  }
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   closeModal();
   updatePipeline();
@@ -8953,10 +9209,17 @@ function gerarOrdemRetirada(idx) {
   const destinatario  = baseDestino?.razaoSocial || v.destino || '—';
   const cnpjDestino   = v.cnpjDestino || baseDestino?.cnpj || '—';
   const cidadeDest    = baseDestino?.cidadeCnpj || (v.destino ? v.destino.split(' - ')[0].trim() : '—');
+  // Logo do cabeçalho: reflete a empresa (SIM/Nexta) cadastrada na Base de destino —
+  // sem base identificada, mantém Nexta como padrão. Cor de fundo segue a marca:
+  // SIM em azul, Nexta em verde.
+  const logoEmpresa  = (baseDestino?.empresa || 'Nexta').toUpperCase();
+  const logoBg       = logoEmpresa === 'SIM' ? '#1a3c8c' : '#1a5c38';
 
   const localCarreg  = [v.origem, v.base].filter(Boolean).join(' - ') || '—';
   const dtCarregValor = v.dtCarregProg || v.dtCarreg;
-  const dtCarreg     = (dtCarregValor && dtCarregValor !== '-') ? dtCarregValor : '—';
+  const dtCarreg     = (dtCarregValor && dtCarregValor !== '-') ? `${dtCarregValor} ${v.horaCarregProg || '12:00'}` : '—';
+  const dtDescValor  = v.dtDescProg || v.dtDesc;
+  const dtEntrega    = (dtDescValor && dtDescValor !== '-') ? `${dtDescValor} ${v.horaDescProg || '12:00'}` : '—';
   const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   // Assinatura do programador alocado na viagem — cadastrada pelo admin em
@@ -8989,9 +9252,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 .f1{flex:1}
 .br{border-right:1px solid #000}
 .hdr{display:flex;align-items:stretch;border-bottom:2px solid #000}
-.hdr-logo{width:100px;display:flex;align-items:center;justify-content:center;background:#1a5c38;color:#fff;font-size:18px;font-weight:900;letter-spacing:1px;font-family:Arial,sans-serif}
+.hdr-logo{width:100px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:900;letter-spacing:1px;font-family:Arial,sans-serif}
 .hdr-title{flex:1;text-align:center;font-size:13px;font-weight:bold;padding:14px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
-.hdr-title small{font-size:9px;font-weight:normal;letter-spacing:.5px;color:#555;text-transform:uppercase}
 .hdr-oc{min-width:80px;display:flex;flex-direction:column}
 .hdr-oc-lbl{padding:4px 14px;font-weight:bold;text-align:center;background:#d0d0d0;font-size:10px;border-bottom:1px solid #000}
 .hdr-oc-val{padding:8px 14px;text-align:center;font-size:13px;font-weight:bold}
@@ -9014,10 +9276,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
 <div class="doc">
 
   <div class="hdr">
-    <div class="hdr-logo br">NEXTA</div>
+    <div class="hdr-logo br" style="background:${logoBg}">${e(logoEmpresa)}</div>
     <div class="hdr-title br">
       ORDEM DE CARREGAMENTO
-      <small>Nexta Distribuidora Combustíveis</small>
     </div>
     <div class="hdr-oc">
       <div class="hdr-oc-lbl">OC</div>
@@ -9093,7 +9354,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;background:#fff;color
   </div>
   <div class="r">
     <div class="c lbl br w170">ENTREGA :</div>
-    <div class="c val ctr f1">${e(v.dtDescProg || v.dtDesc || '—')}</div>
+    <div class="c val ctr f1">${e(dtEntrega)}</div>
   </div>
 
   <div class="r"><div class="sec-lbl">OBSERVAÇÕES</div></div>
@@ -9966,7 +10227,10 @@ function buscarLeadtimeHorasParaViagem(v) {
 }
 
 // Regras de ajuste do horário de descarga calculado (todas em cascata — um empurrão pode
-// cair num dia que também precisa de ajuste, ex.: sábado 19h → domingo 8h → segunda 8h):
+// cair num dia que também precisa de ajuste, ex.: sábado 19h → domingo 8h → segunda 8h).
+// Domingo aqui é fixo (não segue o DSR do motorista, ver aplicarFolgaDsr): é a BASE de
+// destino que não opera aos domingos, então a entrega empurra pra segunda independente
+// de qual dia é a folga do motorista escalado.
 //  - depois das 18h            → empurra pro dia seguinte às 8h
 //  - domingo (qualquer hora)   → segunda às 8h
 //  - sábado a partir das 12h   → segunda às 8h
@@ -9994,10 +10258,13 @@ function formatarDataHoraProg(d) {
   return { data: `${dd}/${mm}/${d.getFullYear()}`, hora: `${hh}:${mi}` };
 }
 
-// Conta quantos domingos existem entre o dia de início (exclusive) e o dia de fim (inclusive)
-// de uma viagem. Usado pra aplicar a folga dominical do motorista: cada domingo "dentro" do
-// trajeto soma 1 dia de viagem, porque o motorista não roda aos domingos.
-function contarDomingosNoIntervalo(inicio, fim) {
+// Conta quantas ocorrências do dia do DSR existem entre o dia de início (exclusive) e o
+// dia de fim (inclusive) de uma viagem. Usado pra aplicar a folga semanal do motorista
+// durante o trajeto: cada ocorrência "dentro" do trecho soma 1 dia de viagem, porque o
+// motorista não roda no dia do DSR dele (v.diaDsr, default domingo — informado pelo
+// transportador no modal da viagem; diferente do domingo fixo de ajustarDataHoraDescarga,
+// que é o fechamento da base de destino, não a folga do motorista).
+function contarDiasDsrNoIntervalo(inicio, fim, diaDsr = 0) {
   const d = new Date(inicio);
   d.setHours(0, 0, 0, 0);
   const fimDia = new Date(fim);
@@ -10005,19 +10272,19 @@ function contarDomingosNoIntervalo(inicio, fim) {
   let count = 0;
   while (d < fimDia) {
     d.setDate(d.getDate() + 1);
-    if (d.getDay() === 0) count++;
+    if (d.getDay() === diaDsr) count++;
   }
   return count;
 }
 
-// Soma 24h ao leadtime bruto pra cada domingo que cair entre o carregamento e a descarga
-// (folga do motorista). A soma pode empurrar a chegada pra depois de outro domingo, por
-// isso repete até o número de domingos encontrados parar de crescer (ponto fixo).
-function aplicarFolgaDominical(inicio, leadtimeHoras) {
+// Soma 24h ao leadtime bruto pra cada ocorrência do dia do DSR que cair entre o
+// carregamento e a descarga (folga do motorista). A soma pode empurrar a chegada pra
+// depois de outra ocorrência, por isso repete até a contagem parar de crescer (ponto fixo).
+function aplicarFolgaDsr(inicio, leadtimeHoras, diaDsr = 0) {
   let bruto = new Date(inicio.getTime() + leadtimeHoras * 3600000);
   while (true) {
-    const domingos = contarDomingosNoIntervalo(inicio, bruto);
-    const novoBruto = new Date(inicio.getTime() + (leadtimeHoras + domingos * 24) * 3600000);
+    const diasDsr = contarDiasDsrNoIntervalo(inicio, bruto, diaDsr);
+    const novoBruto = new Date(inicio.getTime() + (leadtimeHoras + diasDsr * 24) * 3600000);
     if (novoBruto.getTime() === bruto.getTime()) return novoBruto;
     bruto = novoBruto;
   }
@@ -10032,7 +10299,8 @@ function recalcularDescargaPorLeadtime(v) {
   if (!inicio) return null;
   const leadtimeHoras = buscarLeadtimeHorasParaViagem(v);
   if (leadtimeHoras === null) return null;
-  const bruto = aplicarFolgaDominical(inicio, leadtimeHoras);
+  const diaDsr = v.diaDsr ?? 0;
+  const bruto = aplicarFolgaDsr(inicio, leadtimeHoras, diaDsr);
   const ajustado = ajustarDataHoraDescarga(bruto);
   const { data, hora } = formatarDataHoraProg(ajustado);
   v.dtDescProg = data;
