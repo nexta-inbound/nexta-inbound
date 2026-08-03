@@ -8725,6 +8725,11 @@ function salvarVolumeInline(realIdx, valorInput) {
 // direto — só vira volume oficial quando o analista aprova (aprovarAjusteSeta). Isso
 // evita que uma proposta ainda não revisada vaze para a Ordem de Carregamento em PDF,
 // exportação Herrlog ou cálculo de cadência antes de alguém confirmar o valor.
+// Nenhum caminhão-tanque roda com mais de ~120 m³ (rodotrem) — valor acima disso na
+// prática sempre é o transportador digitando em litros (ex.: 58500 querendo dizer
+// 58,5 m³). Bloqueamos no salvarViagem() em vez de deixar passar e confundir o
+// analista no histórico de ajustes.
+const SETA_M3_LIMITE_PLAUSIVEL = 200;
 function renderBadgeAjusteSeta(v, realIdx) {
   if (v.statusAjusteSeta === 'pendente') {
     if (isTransportador()) {
@@ -9105,6 +9110,14 @@ async function salvarViagem() {
   if (novoStatus === 'Cancelado' && statusAnterior !== 'Cancelado') {
     motivoCancelamento = await pedirMotivoCancelamento();
     if (!motivoCancelamento) return; // mantém o modal aberto sem salvar
+  }
+  if (isTransportador()) {
+    const setaBruta = document.getElementById('m-ajuste-seta').value.trim().replace(',', '.');
+    const setaNum = parseFloat(setaBruta);
+    if (setaBruta && !isNaN(setaNum) && setaNum > SETA_M3_LIMITE_PLAUSIVEL) {
+      alert(`O valor de ${setaNum} m³ não é plausível para um caminhão-tanque (capacidade máxima ~120 m³) — parece que foi digitado em litros.\n\nSe a intenção era ${(setaNum / 1000).toFixed(1)} m³, corrija o campo "Ajuste de Seta" e salve novamente.`);
+      return;
+    }
   }
   v.transportador     = novoTransportador;
   v.transportadorCnpj = novoTransportador ? novoCnpj : '';
