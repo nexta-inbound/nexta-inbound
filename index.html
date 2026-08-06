@@ -475,6 +475,14 @@
   .vd-day.status-I { background: rgba(255,107,95,0.16); border-color: var(--danger); color: var(--danger); }
   .vd-day.status-M { background: rgba(249,115,22,0.18); border-color: var(--pet-yellow); color: var(--pet-yellow); }
   .vd-day.status-DSR, .vd-day.status-RF, .vd-day.status-RV { background: rgba(124,58,237,0.16); border-color: var(--pet-purple); color: var(--pet-purple); }
+  /* Dia com observação mas sem status (ver indisponibilidadeBloqueiaNoDia) — não bloqueia
+     nem muda a cor do dia (livre/busy continuam valendo), só ganha um pontinho de aviso
+     no canto pra indicar que há uma nota registrada, visível no title ao passar o mouse. */
+  .vd-day.has-note { position: relative; }
+  .vd-day.has-note::after {
+    content: ''; position: absolute; top: 1px; right: 1px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--accent2);
+  }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -539,6 +547,11 @@
   .stat-card.clickable { cursor: pointer; }
   .stat-card.clickable:hover { border-color: var(--accent); }
   .stat-card.indicador-ativo { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  /* Cards "Hoje" (Livres/Alocados) quando a semana exibida não inclui o dia de hoje — ver
+     hojeNaSemanaAtiva(). Fica visualmente apagado e sem cursor de clique, já que o número
+     não tem relação com o período que está sendo visualizado. */
+  .stat-card.nao-aplicavel { opacity: 0.45; cursor: default; }
+  .stat-card.nao-aplicavel:hover { border-color: var(--border); }
   .stat-label { font-family: var(--font-cond); font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
   .stat-sub  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
   .stat-val { font-family: var(--font-cond); font-size: 28px; font-weight: 700; }
@@ -547,6 +560,7 @@
   .stat-card.c-success .stat-val { color: var(--success); }
   .stat-card.c-muted   .stat-val { color: var(--text-muted); }
   .stat-card.c-danger  .stat-val { color: var(--danger); }
+  .stat-card.c-purple  .stat-val { color: var(--pet-purple); }
 
 
   /* ── EMPTY STATE ── */
@@ -570,6 +584,14 @@
   .perf-bar-seg { height: 100%; }
   .perf-bar-seg:not(:last-child) { border-right: 2px solid var(--surface); }
   .perf-bar-value { font-family: var(--font-cond); font-weight: 700; font-size: 12px; text-align: right; color: var(--text); white-space: nowrap; }
+  /* Barras clicáveis (crossfilter das 3 seções de Cancelamento — Motivo/Regional/Usuário,
+     ver perfCancelFiltro): cursor + destaque de hover, e uma borda de acento na barra
+     selecionada (perf-bar-active) pra indicar qual filtro está ativo agora. */
+  .perf-bar-clickable { cursor: pointer; }
+  .perf-bar-clickable:hover .perf-bar-track { border-color: var(--accent); }
+  .perf-bar-clickable:hover .perf-bar-label { color: var(--text); }
+  .perf-bar-active .perf-bar-label { color: var(--accent); font-weight: 700; }
+  .perf-bar-active .perf-bar-track { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(141,200,48,0.18); }
   .perf-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
   .perf-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
   .perf-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -586,6 +608,15 @@
   .perf-grid-2 .perf-bar-row { grid-template-columns: 130px 1fr 76px; }
   @media (max-width: 900px) {
     .perf-grid-2 { grid-template-columns: 1fr; }
+  }
+  .perf-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .perf-grid-3 .table-wrap { margin-top: 0; }
+  .perf-grid-3 .perf-bar-row { grid-template-columns: 110px 1fr 66px; }
+  @media (max-width: 1200px) {
+    .perf-grid-3 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .perf-grid-3 { grid-template-columns: 1fr; }
   }
   .perf-th-filtro-btn { margin-left: 4px; cursor: pointer; color: var(--text-muted); font-size: 10px; }
   .perf-th-filtro-btn:hover { color: var(--accent); }
@@ -2665,31 +2696,36 @@
   </div>
 
   <div id="veiculosContent" style="display:none">
-    <div class="stats-row" style="grid-template-columns:repeat(5, 1fr)" id="kpi-veiculos">
+    <div class="stats-row" style="grid-template-columns:repeat(6, 1fr)" id="kpi-veiculos">
       <div class="stat-card c-muted clickable" id="kpi-veic-total" onclick="limparFiltroIndicadorVeiculo()" title="Clique para limpar o filtro e ver todos os veículos">
         <div class="stat-label">🚛 Total de Veículos</div>
         <div class="stat-val" id="sv-veic-total">0</div>
-        <div class="stat-sub" id="sub-veic-total">cadastrados</div>
+        <div class="stat-sub" id="sub-veic-total">ativos na semana exibida</div>
       </div>
       <div class="stat-card c-success clickable" id="kpi-veic-livres" onclick="filtrarPorIndicadorVeiculo('livres')" title="Clique para filtrar os veículos livres hoje">
         <div class="stat-label">🟢 Livres Hoje</div>
         <div class="stat-val" id="sv-veic-livres">0</div>
-        <div class="stat-sub">sem viagem nem indisponibilidade hoje</div>
+        <div class="stat-sub" id="sub-veic-livres">sem viagem nem indisponibilidade hoje</div>
       </div>
       <div class="stat-card c-accent clickable" id="kpi-veic-alocados" onclick="filtrarPorIndicadorVeiculo('alocados')" title="Clique para filtrar os veículos alocados hoje">
         <div class="stat-label">🔵 Alocados Hoje</div>
         <div class="stat-val" id="sv-veic-alocados">0</div>
-        <div class="stat-sub">com viagem em carregamento/trânsito hoje</div>
+        <div class="stat-sub" id="sub-veic-alocados">com viagem em carregamento/trânsito hoje</div>
       </div>
-      <div class="stat-card c-danger clickable" id="kpi-veic-indisp" onclick="filtrarPorIndicadorVeiculo('indisponiveis')" title="Clique para filtrar os veículos com indisponibilidade marcada na semana exibida">
-        <div class="stat-label">🔴 Indisponíveis (semana)</div>
-        <div class="stat-val" id="sv-veic-indisp">0</div>
-        <div class="stat-sub" id="sub-veic-indisp">com ao menos 1 dia marcado indisponível</div>
+      <div class="stat-card c-danger clickable" id="kpi-veic-indisp" onclick="filtrarPorIndicadorVeiculo('indisponiveis')" title="Clique para filtrar os veículos com Manutenção, Indisponível ou Retorno Filial marcado na semana exibida">
+        <div class="stat-label">🔴 Disponibilidade da Frota</div>
+        <div class="stat-val" id="sv-veic-indisp">0%</div>
+        <div class="stat-sub" id="sub-veic-indisp">dias sem Manutenção/Indisponível/Retorno Filial ÷ dias-veículo</div>
       </div>
       <div class="stat-card c-accent clickable" id="kpi-veic-taxa" onclick="filtrarPorIndicadorVeiculo('utilizados')" title="Clique para filtrar os veículos utilizados em ao menos 1 dia da semana exibida">
         <div class="stat-label">📈 % Alocação (semana)</div>
         <div class="stat-val" id="sv-veic-taxa">0%</div>
         <div class="stat-sub">dias ocupados / dias-veículo na semana</div>
+      </div>
+      <div class="stat-card c-purple clickable" id="kpi-veic-rv" onclick="filtrarPorIndicadorVeiculo('retornoVazio')" title="Clique para filtrar os veículos com Retorno Vazio (RV) marcado na semana exibida">
+        <div class="stat-label">🟣 Retorno Vazio (RV)</div>
+        <div class="stat-val" id="sv-veic-rv">0%</div>
+        <div class="stat-sub" id="sub-veic-rv">dias-veículo com Retorno Vazio ÷ dias-veículo</div>
       </div>
     </div>
     <div class="table-wrap">
@@ -2959,6 +2995,37 @@
           </div>
         </div>
         <div id="perfEnvioPlacaWrap" class="perf-body"></div>
+      </div>
+    </div>
+
+    <div class="perf-grid-3" style="margin-top:20px">
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">❌ Motivos de Cancelamento</span>
+            <span class="badge badge-accent" id="badge-perf-cancelamentos">0 canceladas</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btnLimparCancelFiltro" onclick="limparCrossfilterCancelamento()" style="display:none">✕ Limpar</button>
+        </div>
+        <div id="perfMotivosCancelamentoWrap" class="perf-body"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">📍 Cancelamentos por Regional</span>
+          </div>
+        </div>
+        <div id="perfCancelamentoRegionalWrap" class="perf-body"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="table-title">🙋 Quem Mais Cancela</span>
+          </div>
+        </div>
+        <div id="perfCancelamentoUsuarioWrap" class="perf-body"></div>
       </div>
     </div>
   </div>
@@ -3559,9 +3626,9 @@
     <div class="modal-title">Status do Veículo no Dia</div>
     <div class="modal-sub" id="indisp-sub">—</div>
     <div class="modal-field">
-      <div class="modal-label">Status</div>
+      <div class="modal-label">Status (opcional)</div>
       <select class="config-input" id="indisp-status">
-        <option value="" disabled>Selecione o status...</option>
+        <option value="">Nenhum — só anotar uma observação</option>
         <option value="DSR">DSR - Descanso Semanal Remunerado</option>
         <option value="I">I - Indisponível</option>
         <option value="M">M - Manutenção</option>
@@ -3570,7 +3637,7 @@
       </select>
     </div>
     <div class="modal-field">
-      <div class="modal-label">Observação (opcional)</div>
+      <div class="modal-label">Observação</div>
       <input type="text" class="config-input" id="indisp-motivo" placeholder="Ex.: quebra, sem motorista...">
     </div>
     <div class="modal-actions">
@@ -5446,6 +5513,15 @@ function salvarNovaCadencia() {
     alert('Verifique o ano das datas informadas — parece um erro de digitação (ex: 2062 em vez de 2026).');
     return;
   }
+  // anoPlausivel tolera até 1 ano atrás (pensado pro ETA manual da Herrlog, que é rastreio de
+  // algo que já está acontecendo — ver confirmarEtaManual). Cadência manual é sempre um pedido
+  // A EXECUTAR, então uma data no passado quase sempre é o mesmo erro de digitação de ano (ex.:
+  // 2025 em vez de 2026) — só que dentro da janela que anoPlausivel deixa passar. Aqui a régua é
+  // mais rígida: só alguns dias de folga, pra cobrir lançamento tardio de algo que já carregou.
+  if (dataCadenciaMuitoNoPassado(dtCarreg) || dataCadenciaMuitoNoPassado(dtDesc)) {
+    alert(`Data de carregamento/descarga no passado (${[dtCarreg, dtDesc].filter(d => d && d !== '-').join(' / ')}) — confira se o ANO está correto, é o erro de digitação mais comum aqui.`);
+    return;
+  }
   cadencias.push({
     id,
     dtCarreg,
@@ -6356,6 +6432,21 @@ function anoPlausivel(dataStr) {
   if (!ano) return true;
   const atual = new Date().getFullYear();
   return ano >= atual - 1 && ano <= atual + 2;
+}
+
+// Guarda específica de salvarNovaCadencia() (Inserir Linha de Cadência manual) — mais rígida
+// que anoPlausivel(): aqui a data é sempre de um pedido A EXECUTAR, nunca algo em rastreio
+// real (esse é o caso de uso do ETA manual da Herrlog, onde "até 1 ano atrás" faz sentido perto
+// de virada de ano). Um caso real: cadência manual inserida com "07/08/2025" em vez de
+// "07/08/2026" — passou pelo anoPlausivel (só 1 ano atrás) e virou uma viagem com janela de
+// ocupação de quase 1 ano inteiro assim que ganhou status "Em Andamento" (ver
+// fimOcupacaoVeiculo, que estica o fim até o ETA real da Herrlog).
+function dataCadenciaMuitoNoPassado(dataStr, toleranciaDias = 5) {
+  if (!dataStr || dataStr === '-') return false;
+  const d = parseDMY(dataStr);
+  if (!d) return false;
+  const limite = new Date(); limite.setHours(0, 0, 0, 0); limite.setDate(limite.getDate() - toleranciaDias);
+  return d < limite;
 }
 
 function limparFiltrosCad() {
@@ -7462,6 +7553,69 @@ function diasDaSemanaAtiva() {
   return [...diasMap.values()].sort((a, b) => a - b);
 }
 
+// Hoje está dentro dos dias exibidos no calendário (diasDaSemanaAtiva) — os cards "Hoje"
+// (Livres/Alocados) só fazem sentido quando o período selecionado inclui o dia de hoje;
+// visualizando uma semana passada ou futura eles ficam em branco (ver atualizarKPIsVeiculos
+// e filtrarPorIndicadorVeiculo) em vez de mostrar um número de "hoje" sem relação com o
+// período que está na tela.
+function hojeNaSemanaAtiva() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return diasDaSemanaAtiva().some(d => d.getTime() === hoje.getTime());
+}
+
+// ── OCUPAÇÃO DE VEÍCULOS: alcança viagens de semanas vizinhas ──
+// "Semana" aqui é só o lote em que a cadência foi importada/planejada (nó do Firebase — ver
+// carregarViagensMultiSemana), não uma trava da data real de carregamento/descarga: uma
+// viagem cadastrada na semana anterior pode ter sido reagendada pra dentro da semana
+// seguinte (ou vice-versa) e continuar fisicamente gravada no nó antigo. Com só a semana
+// selecionada carregada em memória (viagensMultiSemana), o veículo aparecia "ocioso" nesses
+// dias mesmo tendo rodado — pedido do usuário (06/08): filtrar ocupação pela data real da
+// viagem, não pela semana a que ela pertence. Busca (uma vez, sem listener — não precisa
+// ser tempo real) a semana imediatamente anterior e a seguinte à seleção atual, só pra
+// completar esse cálculo; o resto da aba (Gerir Viagens, KPIs do topo etc.) continua
+// enxergando só a seleção real do usuário em viagensMultiSemana/viagensAtivo().
+let _viagensVizinhasVeiculos = []; // viagens extras carregadas só pra ocupação (fora da seleção do usuário)
+let _semanasVizinhasCarregadas = new Set(); // keys já buscadas (cache — evita reler a cada render)
+let _semanasVizinhasEmVoo = new Set(); // keys com fetch em andamento (evita fetch duplicado em cliques rápidos)
+
+// União de viagensAtivo() (seleção real do usuário) + as extras de semanas vizinhas, sem
+// duplicar quando a própria semana vizinha acaba virando parte da seleção depois (nesse
+// caso a cópia "viva" de viagensAtivo() ganha da cópia estática do cache).
+function viagensParaOcupacaoVeiculos() {
+  const base = viagensAtivo();
+  const idsBase = new Set(base.map(v => v.idViagem));
+  return base.concat(_viagensVizinhasVeiculos.filter(v => !idsBase.has(v.idViagem)));
+}
+
+async function garantirSemanasVizinhasCarregadas() {
+  if (!window._fb) return;
+  const selecionadas = modoMultiSemana ? selecaoAtualMsSemanas() : (semanaAtiva ? [semanaAtiva] : []);
+  if (!selecionadas.length) return;
+
+  const todasKeys = (await window._fb.listarSemanas()).sort(); // prefixo ISO ordena cronologicamente
+  const selecionadasOrdenadas = [...selecionadas].sort();
+  const idxMin = todasKeys.indexOf(selecionadasOrdenadas[0]);
+  const idxMax = todasKeys.indexOf(selecionadasOrdenadas[selecionadasOrdenadas.length - 1]);
+  const alvos = [todasKeys[idxMin - 1], todasKeys[idxMax + 1]]
+    .filter(Boolean)
+    .filter(key => !selecionadas.includes(key) && !_semanasVizinhasCarregadas.has(key) && !_semanasVizinhasEmVoo.has(key));
+  if (!alvos.length) return;
+
+  alvos.forEach(key => _semanasVizinhasEmVoo.add(key));
+  try {
+    const payloads = await Promise.all(alvos.map(key => window._fb.carregar(key)));
+    alvos.forEach((key, i) => {
+      normalizarViagensArray(payloads[i]?.viagens).forEach(v => {
+        _viagensVizinhasVeiculos.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
+      });
+      _semanasVizinhasCarregadas.add(key);
+    });
+  } finally {
+    alvos.forEach(key => _semanasVizinhasEmVoo.delete(key));
+  }
+  if (activeTab === 7) renderVeiculosTable();
+}
+
 // Fim da ocupação: enquanto a viagem não está de fato em andamento, usa a programação
 // estática (dtDescProg/dtDesc). A partir do momento que ela entra em "Em Andamento" ou
 // "Viagem Finalizada", a Herrlog já tem uma data real (chegada ou ETA) mais confiável e
@@ -7481,7 +7635,7 @@ function fimOcupacaoVeiculo(v, ini, fimProgramado) {
 
 function viagensDoVeiculoNoDia(veiculoId, dia) {
   const d0 = new Date(dia); d0.setHours(0, 0, 0, 0);
-  return (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => {
+  return viagensParaOcupacaoVeiculos().filter(v => {
     if (v.veiculoDedicadoId !== veiculoId || v.status === 'Cancelado') return false;
     const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
     if (!ini) return false;
@@ -7550,6 +7704,35 @@ function indisponibilidadeNoDia(veiculoId, dia) {
   return vd?.indisponibilidades?.[iso] || null;
 }
 
+// Um registro em vd.indisponibilidades só bloqueia alocação/conta como indisponível de
+// fato quando tem um status escolhido — status:'' explícito (ver confirmarIndisponibilidade)
+// é uma observação anexada ao dia sem tirar o veículo de "disponível" (pedido do usuário
+// 06/08: deixar anotar sem precisar mudar o status). Registro antigo sem a chave `status`
+// (undefined, não '') continua bloqueando como sempre — só o vazio EXPLÍCITO vira "nota
+// apenas", pra não mudar o comportamento de dado legado.
+function indisponibilidadeBloqueiaNoDia(veiculoId, dia) {
+  const indisp = indisponibilidadeNoDia(veiculoId, dia);
+  return !!indisp && indisp.status !== '';
+}
+
+// % de Disponibilidade da Frota (card KPI) conta só motivos de "problema" — Manutenção,
+// Indisponível e Retorno Filial. DSR (folga legal do motorista) e RV (retorno vazio por
+// ordem da própria Nexta) ficam de fora: continuam bloqueando alocação normalmente (ver
+// indisponibilidadeBloqueiaNoDia, usado em diasIndisponiveisNoIntervalo), mas não são
+// "indisponibilidade" no sentido de frota quebrada/parada — são operação planejada.
+const STATUS_CONTA_INDISPONIBILIDADE_FROTA = ['I', 'M', 'RF'];
+function diaIndisponivelFrota(veiculoId, dia) {
+  const indisp = indisponibilidadeNoDia(veiculoId, dia);
+  return !!indisp && STATUS_CONTA_INDISPONIBILIDADE_FROTA.includes(indisp.status);
+}
+
+// % Retorno Vazio (card KPI) — só o status RV (retorno vazio por ordem da própria Nexta),
+// separado do bucket de "problema" acima porque é operação planejada, não pane/indisponibilidade.
+function diaRetornoVazioNexta(veiculoId, dia) {
+  const indisp = indisponibilidadeNoDia(veiculoId, dia);
+  return !!indisp && indisp.status === 'RV';
+}
+
 // Usado por salvarViagem() pra bloquear a alocação de um veículo marcado
 // indisponível em algum dia do intervalo de carregamento/descarregamento da viagem.
 function diasIndisponiveisNoIntervalo(veiculoId, ini, fim) {
@@ -7558,7 +7741,8 @@ function diasIndisponiveisNoIntervalo(veiculoId, ini, fim) {
   const conflitos = [];
   for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
     const iso = d.toISOString().slice(0, 10);
-    if (vd.indisponibilidades[iso]) conflitos.push({ data: iso, ...vd.indisponibilidades[iso] });
+    const indisp = vd.indisponibilidades[iso];
+    if (indisp && indisp.status !== '') conflitos.push({ data: iso, ...indisp });
   }
   return conflitos;
 }
@@ -7590,14 +7774,18 @@ function renderUtilizacaoSemanal(veiculoId) {
     const viagensNoDia = viagensDoVeiculoNoDia(veiculoId, d);
     const ocupado = viagensNoDia.length > 0;
     const indisp = indisponibilidadeNoDia(veiculoId, d);
+    const bloqueado = indisponibilidadeBloqueiaNoDia(veiculoId, d);
+    const apenasNota = !!indisp && !bloqueado; // status:'' — observação anexada, veículo continua disponível
     const iso = d.toISOString().slice(0, 10);
-    let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar um status';
-    const statusCodigo = indisp ? (indisp.status || 'I') : '';
+    let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar um status ou observação';
+    const statusCodigo = bloqueado ? (indisp.status || 'I') : '';
     const statusLabel = STATUS_VEICULO_LABELS[statusCodigo] || 'Indisponível';
-    if (indisp) titulo = `${statusCodigo} - ${statusLabel}${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
-    return `<div class="vd-day ${indisp ? 'status-' + statusCodigo : (ocupado ? 'busy' : '')}" title="${esc(titulo)}"
+    if (bloqueado) titulo = `${statusCodigo} - ${statusLabel}${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
+    else if (apenasNota) titulo = `📝 ${indisp.motivo}` + (ocupado ? '\n\n' + titulo : '');
+    const classes = ['vd-day', bloqueado ? 'status-' + statusCodigo : (ocupado ? 'busy' : ''), apenasNota ? 'has-note' : ''].filter(Boolean).join(' ');
+    return `<div class="${classes}" title="${esc(titulo)}"
         onclick="abrirModalIndisponibilidade('${veiculoId}', '${iso}')">
-        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${indisp ? esc(statusCodigo) : DIAS_SEMANA_ABREV[d.getDay()]}
+        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${bloqueado ? esc(statusCodigo) : DIAS_SEMANA_ABREV[d.getDay()]}
       </div>`;
   }).join('');
   return `<div class="vd-week-wrap">
@@ -7613,32 +7801,46 @@ function renderUtilizacaoSemanal(veiculoId) {
 function atualizarKPIsVeiculos(lista) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const dias = diasDaSemanaAtiva();
+  const hojeAplica = hojeNaSemanaAtiva();
 
-  const livres      = lista.filter(vd => veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje));
+  const livres      = lista.filter(vd => veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeBloqueiaNoDia(vd.id, hoje));
   const alocados    = lista.filter(vd => viagensDoVeiculoNoDia(vd.id, hoje).length > 0);
-  const indisponiveis = lista.filter(vd => dias.some(d => veiculoAtivoNoDia(vd, d) && indisponibilidadeNoDia(vd.id, d)));
 
   // Dias-veículo considerados só contam a partir da entrada e até a saída de cada
   // veículo (vd.vigencias) — evita que período fora da operação puxe a % de alocação
-  // pra baixo artificialmente.
-  let totalDiasVeiculo = 0, diasOcupadosTotal = 0;
+  // (e a % de disponibilidade) pra baixo artificialmente.
+  let totalDiasVeiculo = 0, diasOcupadosTotal = 0, diasIndisponiveisFrotaTotal = 0, diasRetornoVazioTotal = 0;
   lista.forEach(vd => {
     const diasVd = dias.filter(d => veiculoAtivoNoDia(vd, d));
     totalDiasVeiculo += diasVd.length;
     diasOcupadosTotal += diasVd.filter(d => viagensDoVeiculoNoDia(vd.id, d).length > 0).length;
+    diasIndisponiveisFrotaTotal += diasVd.filter(d => diaIndisponivelFrota(vd.id, d)).length;
+    diasRetornoVazioTotal += diasVd.filter(d => diaRetornoVazioNexta(vd.id, d)).length;
   });
   const taxaAlocacao = totalDiasVeiculo ? Math.round((diasOcupadosTotal / totalDiasVeiculo) * 100) : 0;
+  const pctDisponibilidade = totalDiasVeiculo
+    ? Math.round(((totalDiasVeiculo - diasIndisponiveisFrotaTotal) / totalDiasVeiculo) * 100)
+    : 0;
+  const pctRetornoVazio = totalDiasVeiculo ? Math.round((diasRetornoVazioTotal / totalDiasVeiculo) * 100) : 0;
 
   document.getElementById('sv-veic-total').textContent    = lista.length;
-  document.getElementById('sv-veic-livres').textContent   = livres.length;
-  document.getElementById('sv-veic-alocados').textContent = alocados.length;
-  document.getElementById('sv-veic-indisp').textContent   = indisponiveis.length;
+  document.getElementById('sv-veic-livres').textContent   = hojeAplica ? livres.length : '—';
+  document.getElementById('sv-veic-alocados').textContent = hojeAplica ? alocados.length : '—';
+  document.getElementById('sv-veic-indisp').textContent   = pctDisponibilidade + '%';
   document.getElementById('sv-veic-taxa').textContent     = taxaAlocacao + '%';
+  document.getElementById('sv-veic-rv').textContent       = pctRetornoVazio + '%';
+  document.getElementById('sub-veic-livres').textContent  = hojeAplica ? 'sem viagem nem indisponibilidade hoje' : 'semana exibida não inclui hoje';
+  document.getElementById('sub-veic-alocados').textContent = hojeAplica ? 'com viagem em carregamento/trânsito hoje' : 'semana exibida não inclui hoje';
+  document.getElementById('kpi-veic-livres')?.classList.toggle('nao-aplicavel', !hojeAplica);
+  document.getElementById('kpi-veic-alocados')?.classList.toggle('nao-aplicavel', !hojeAplica);
   document.getElementById('sub-veic-indisp').textContent = dias.length
-    ? `com ao menos 1 dia indisponível de ${dias.length} exibidos`
+    ? `${diasIndisponiveisFrotaTotal} de ${totalDiasVeiculo} dias-veículo com Manutenção/Indisponível/Retorno Filial`
+    : 'sem semana ativa';
+  document.getElementById('sub-veic-rv').textContent = dias.length
+    ? `${diasRetornoVazioTotal} de ${totalDiasVeiculo} dias-veículo com Retorno Vazio`
     : 'sem semana ativa';
 
-  const indicadorIds = { livres: 'kpi-veic-livres', alocados: 'kpi-veic-alocados', indisponiveis: 'kpi-veic-indisp', utilizados: 'kpi-veic-taxa' };
+  const indicadorIds = { livres: 'kpi-veic-livres', alocados: 'kpi-veic-alocados', indisponiveis: 'kpi-veic-indisp', utilizados: 'kpi-veic-taxa', retornoVazio: 'kpi-veic-rv' };
   Object.values(indicadorIds).forEach(id => document.getElementById(id)?.classList.remove('indicador-ativo'));
   if (activeIndicadorVeiculo) document.getElementById(indicadorIds[activeIndicadorVeiculo])?.classList.add('indicador-ativo');
 }
@@ -7649,15 +7851,19 @@ function testeIndicadorVeiculo(key, vd) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const dias = diasDaSemanaAtiva().filter(d => veiculoAtivoNoDia(vd, d));
   switch (key) {
-    case 'livres':        return veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeNoDia(vd.id, hoje);
+    case 'livres':        return veiculoAtivoNoDia(vd, hoje) && viagensDoVeiculoNoDia(vd.id, hoje).length === 0 && !indisponibilidadeBloqueiaNoDia(vd.id, hoje);
     case 'alocados':      return viagensDoVeiculoNoDia(vd.id, hoje).length > 0;
-    case 'indisponiveis': return dias.some(d => indisponibilidadeNoDia(vd.id, d));
+    case 'indisponiveis': return dias.some(d => diaIndisponivelFrota(vd.id, d));
     case 'utilizados':    return dias.some(d => viagensDoVeiculoNoDia(vd.id, d).length > 0);
+    case 'retornoVazio':  return dias.some(d => diaRetornoVazioNexta(vd.id, d));
     default: return true;
   }
 }
 
 function filtrarPorIndicadorVeiculo(key) {
+  // Livres/Alocados Hoje ficam em branco (ver atualizarKPIsVeiculos) quando a semana exibida
+  // não inclui hoje — clicar neles nesse estado não filtraria nada que faça sentido na tela.
+  if ((key === 'livres' || key === 'alocados') && !hojeNaSemanaAtiva()) return;
   activeIndicadorVeiculo = activeIndicadorVeiculo === key ? null : key;
   renderVeiculosTable();
 }
@@ -7668,12 +7874,15 @@ function limparFiltroIndicadorVeiculo() {
 }
 
 function renderVeiculosTable() {
+  // Disparo assíncrono (não bloqueia este render) — quando resolver e trouxer dados novos,
+  // ele mesmo chama renderVeiculosTable() de novo (ver garantirSemanasVizinhasCarregadas).
+  garantirSemanasVizinhasCarregadas();
   const busca = (document.getElementById('fVeiculosBusca')?.value || '').toLowerCase().trim();
   const statusFiltro = document.getElementById('fVeiculosStatus')?.value || '';
+  const matchBusca = vd => !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
+    .join(' ').toLowerCase().includes(busca);
   const buscaFiltrados = veiculosDedicados.filter(vd => {
-    const matchBusca = !busca || [vd.transportador, vd.placaCavalo, vd.placaCarreta1, vd.placaCarreta2, vd.nomeMotorista, vd.cpfMotorista]
-      .join(' ').toLowerCase().includes(busca);
-    if (!matchBusca) return false;
+    if (!matchBusca(vd)) return false;
     if (!statusFiltro) return true;
     const estado = statusVigenciaVeiculo(vd).estado;
     return statusFiltro === 'ativos' ? estado === 'ativo' : estado !== 'ativo';
@@ -7684,10 +7893,18 @@ function renderVeiculosTable() {
   document.getElementById('veiculosContent').style.display = isEmpty ? 'none' : 'block';
   if (isEmpty) return;
 
-  atualizarKPIsVeiculos(buscaFiltrados);
+  // Indicadores do topo sempre restritos a quem estava de fato em vigência durante a
+  // semana/período exibido (diasAtivosDoVeiculo, dia a dia) — não pelo filtro "Status:
+  // Ativos/Inativos" da tabela (que é sobre o cadastro HOJE, pra gestão do roster atual) e
+  // não pelo status "hoje" do veículo (statusVigenciaVeiculo). Pedido do usuário (06/08):
+  // um veículo desativado hoje mas que operou normalmente numa semana de julho não pode
+  // sumir dos indicadores nem entrar como "sempre ativo" só por causa da data de hoje — só
+  // muda se ele realmente estava em vigência NAQUELE período.
+  const listaAtivaNoPeriodo = veiculosDedicados.filter(vd => matchBusca(vd) && diasAtivosDoVeiculo(vd).length > 0);
+  atualizarKPIsVeiculos(listaAtivaNoPeriodo);
 
   const filtered = activeIndicadorVeiculo
-    ? buscaFiltrados.filter(vd => testeIndicadorVeiculo(activeIndicadorVeiculo, vd))
+    ? listaAtivaNoPeriodo.filter(vd => testeIndicadorVeiculo(activeIndicadorVeiculo, vd))
     : buscaFiltrados;
 
   document.getElementById('badge-veiculos').textContent =
@@ -7892,18 +8109,24 @@ async function confirmarIndisponibilidade() {
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   if (!vd) return;
 
-  const diasComViagem = dias.filter(iso => viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00')).length > 0);
-  if (diasComViagem.length) {
-    const lista = diasComViagem.map(iso => {
-      const vs = viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00'));
-      return `${new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')}: ${vs.map(v => `${v.idViagem} · ${v.destino}`).join(', ')}`;
-    }).join('\n');
-    if (!confirm(`${diasComViagem.length} dia(s) já têm viagem(ns) alocada(s) a este veículo:\n\n${lista}\n\nMarcar mesmo assim? (isso não cancela as viagens já alocadas — só bloqueia novas alocações nesses dias)`)) return;
+  const status = document.getElementById('indisp-status').value;
+  const motivo = document.getElementById('indisp-motivo').value.trim();
+  if (!status && !motivo) { alert('Selecione um status ou informe uma observação.'); return; }
+
+  // Aviso de conflito só faz sentido quando o status escolhido de fato bloqueia novas
+  // alocações (ver indisponibilidadeBloqueiaNoDia) — uma observação sem status não trava
+  // nada, então não há o que confirmar aqui.
+  if (status) {
+    const diasComViagem = dias.filter(iso => viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00')).length > 0);
+    if (diasComViagem.length) {
+      const lista = diasComViagem.map(iso => {
+        const vs = viagensDoVeiculoNoDia(veiculoId, new Date(iso + 'T00:00:00'));
+        return `${new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')}: ${vs.map(v => `${v.idViagem} · ${v.destino}`).join(', ')}`;
+      }).join('\n');
+      if (!confirm(`${diasComViagem.length} dia(s) já têm viagem(ns) alocada(s) a este veículo:\n\n${lista}\n\nMarcar mesmo assim? (isso não cancela as viagens já alocadas — só bloqueia novas alocações nesses dias)`)) return;
+    }
   }
 
-  const status = document.getElementById('indisp-status').value;
-  if (!status) { alert('Selecione um status (DSR, Indisponível, Manutenção, Retorno Vazio ou Retorno Filial).'); return; }
-  const motivo = document.getElementById('indisp-motivo').value.trim();
   if (!vd.indisponibilidades) vd.indisponibilidades = {};
   const registroBase = { status, motivo, usuario: _authUsuarioAtual?.nome || '', criadoEm: new Date().toISOString() };
   dias.forEach(iso => { vd.indisponibilidades[iso] = { ...registroBase }; });
@@ -11794,6 +12017,7 @@ function limparFiltrosPerf() {
   document.getElementById('fPerfTransp').value = '';
   msPerfRegional?.clear(); msPerfUf?.clear(); msPerfProduto?.clear(); msPerfTipoOp?.clear();
   msPerfModal?.setSelected(['FOB']);
+  perfCancelFiltro = { motivo: null, regional: null, usuario: null };
   renderPerformance();
 }
 
@@ -11816,6 +12040,18 @@ function viagensPerf() {
 function viagensPerfIgnorando(campo) {
   const f = estadoFiltrosPerf();
   return viagensAtivo().filter(v => v.status !== 'Cancelado').filter(v => passaFiltrosPerf(v, f, campo));
+}
+
+// Espelha viagensPerf(), mas pega só as Canceladas (o resto da aba exclui Cancelado da
+// conta — ver comentário acima) — usada pelas 3 seções de Cancelamento abaixo, com os
+// mesmos filtros do topo (Regional/UF/Produto/Tipo de Frete/Transportador). Descarta quem
+// não tem motivo registrado no histórico (eventoCancelamentoDe): é lixo da 1ª semana de
+// teste da ferramenta, de antes do modal "Motivo do Cancelamento" existir — sem motivo real
+// por trás, só polui a análise (ver pedido do usuário 06/08).
+function viagensCanceladasPerf() {
+  const f = estadoFiltrosPerf();
+  const base = viagensAtivo().filter(v => v.status === 'Cancelado');
+  return base.filter(v => passaFiltrosPerf(v, f)).filter(v => eventoCancelamentoDe(v)?.motivo);
 }
 
 // ── HISTÓRICO POR TRANSPORTADORA (Taxa de Aceite + Tempo de Resposta) ──
@@ -11846,11 +12082,18 @@ function agregarHistoricoPorTransportador(lista) {
   return porTransp;
 }
 
-// ── BARRA HORIZONTAL REAPROVEITÁVEL (Share Regional, Taxa de Aceite, Aderência, Placa) ──
+// ── BARRA HORIZONTAL REAPROVEITÁVEL (Share Regional, Taxa de Aceite, Aderência, Placa,
+// Cancelamento) ──
+// opts.onClickRow (opcional): vira cada linha clicável (cursor + hover), chamando
+// onClickRow(label) no clique. Usado só pelas 3 seções de crossfilter de Cancelamento
+// (Motivo/Regional/Usuário, ver perfCancelFiltro) — as demais seções não passam essa opção
+// e continuam só leitura, sem mudança de comportamento. opts.ativoLabel marca qual linha
+// está com o filtro ativo agora (perf-bar-active), pra destacar visualmente a seleção.
 function renderBarraHorizontal(containerId, linhas, opts = {}) {
   const el = document.getElementById(containerId);
   if (!linhas.length) { el.innerHTML = `<div class="perf-empty">Sem dados no período filtrado.</div>`; return; }
   const max = opts.max || Math.max(1, ...linhas.map(l => l.segments.reduce((s, g) => s + g.value, 0)));
+  const clicavel = !!opts.onClickRow;
   const linhasHtml = linhas.map(l => {
     const total = l.segments.reduce((s, g) => s + g.value, 0);
     const larguraTotal = opts.pct100 ? 100 : (total / max * 100);
@@ -11858,8 +12101,11 @@ function renderBarraHorizontal(containerId, linhas, opts = {}) {
       const w = opts.pct100 ? (total ? seg.value / total * 100 : 0) : (max ? seg.value / max * 100 : 0);
       return `<span class="perf-bar-seg" style="width:${w}%;background:${seg.color}" title="${esc(seg.title || '')}"></span>`;
     }).join('');
+    const ativa = clicavel && opts.ativoLabel === l.label;
+    const classes = ['perf-bar-row', clicavel ? 'perf-bar-clickable' : '', ativa ? 'perf-bar-active' : ''].filter(Boolean).join(' ');
+    const dataAttr = clicavel ? ` data-label="${esc(l.label)}"` : '';
     return `
-      <div class="perf-bar-row" title="${esc(l.tooltip || l.label)}">
+      <div class="${classes}"${dataAttr} title="${esc(l.tooltip || l.label)}">
         <div class="perf-bar-label">${esc(l.label)}</div>
         <div class="perf-bar-track"><div class="perf-bar-fill" style="width:${larguraTotal}%">${segsHtml}</div></div>
         <div class="perf-bar-value">${esc(l.valueLabel != null ? l.valueLabel : String(total))}</div>
@@ -11869,6 +12115,11 @@ function renderBarraHorizontal(containerId, linhas, opts = {}) {
     `<span class="perf-legend-item"><span class="perf-legend-dot" style="background:${x.color}"></span>${esc(x.label)}</span>`
   ).join('')}</div>` : '';
   el.innerHTML = `<div class="perf-bars">${linhasHtml}</div>${legendaHtml}`;
+  if (clicavel) {
+    el.querySelectorAll('.perf-bar-clickable').forEach(row => {
+      row.addEventListener('click', () => opts.onClickRow(row.dataset.label));
+    });
+  }
 }
 
 // ── SEÇÃO 1: MALHA LOGÍSTICA ──
@@ -12505,6 +12756,192 @@ function renderEnvioPlacas(lista) {
   renderBarraHorizontal('perfEnvioPlacaWrap', linhas, { pct100: true, legenda });
 }
 
+// ── SEÇÕES 7-9: CANCELAMENTO (MOTIVO × REGIONAL × USUÁRIO, com crossfilter) ──
+// Motivo/usuário vêm do histórico (registrarHistoricoOferta, ver pedirMotivoCancelamento) —
+// pega o evento 'Cancelado' mais recente porque uma viagem pode ter sido reaberta e
+// cancelada mais de uma vez; o par motivo/usuário válido é o da última vez. Sem esse evento
+// no histórico (cancelamentos anteriores à existência do modal de motivo), cai nos buckets
+// "Sem motivo registrado"/"Não identificado" em vez de sumir da conta.
+const MOTIVO_CANCELAMENTO_AUSENTE = 'Sem motivo registrado';
+const USUARIO_CANCELAMENTO_AUSENTE = 'Não identificado';
+
+// Pega o evento 'Cancelado' mais recente do histórico de uma viagem — base compartilhada
+// pelas 3 seções pra não repetir a mesma busca 3x por viagem.
+function eventoCancelamentoDe(v) {
+  const hist = Array.isArray(v.historico) ? v.historico : [];
+  return [...hist].reverse().find(h => h.evento === 'Cancelado') || null;
+}
+
+// Motivo mais frequente dentro de um Map(motivo -> contagem) — usado nos tooltips de
+// Regional/Usuário pra dar contexto ("por que" além do "quanto").
+function motivoPrincipal(motivosMap) {
+  let top = null;
+  motivosMap.forEach((n, motivo) => { if (!top || n > top.n) top = { motivo, n }; });
+  return top;
+}
+
+// Crossfilter entre as 3 seções: clicar numa barra de Motivo/Regional/Usuário filtra as
+// outras duas pelo mesmo valor — mesmo padrão de "ignorar" já usado nos filtros do topo da
+// aba (ver passaFiltrosPerf/estadoFiltrosPerf): cada seção some SEU PRÓPRIO filtro ao
+// montar as próprias barras (senão clicar um motivo faria ele sumir sozinho da lista), mas
+// aplica o filtro das outras duas. Reseta junto com limparFiltrosPerf().
+let perfCancelFiltro = { motivo: null, regional: null, usuario: null };
+
+function passaFiltroCancelamento(v, ignorar = '') {
+  const ev = eventoCancelamentoDe(v);
+  if (ignorar !== 'motivo' && perfCancelFiltro.motivo
+    && (ev?.motivo || MOTIVO_CANCELAMENTO_AUSENTE) !== perfCancelFiltro.motivo) return false;
+  if (ignorar !== 'regional' && perfCancelFiltro.regional
+    && (valorRegionalFiltro(v) || 'Sem Regional') !== perfCancelFiltro.regional) return false;
+  if (ignorar !== 'usuario' && perfCancelFiltro.usuario
+    && (ev?.usuario || USUARIO_CANCELAMENTO_AUSENTE) !== perfCancelFiltro.usuario) return false;
+  return true;
+}
+
+function toggleFiltroCancelamento(dimensao, valor) {
+  perfCancelFiltro[dimensao] = perfCancelFiltro[dimensao] === valor ? null : valor;
+  renderPerformance();
+}
+
+function limparCrossfilterCancelamento() {
+  perfCancelFiltro = { motivo: null, regional: null, usuario: null };
+  renderPerformance();
+}
+
+function atualizarBotaoLimparCancelamento() {
+  const ativo = !!(perfCancelFiltro.motivo || perfCancelFiltro.regional || perfCancelFiltro.usuario);
+  const btn = document.getElementById('btnLimparCancelFiltro');
+  if (btn) btn.style.display = ativo ? '' : 'none';
+}
+
+// ── SEÇÃO 7: MOTIVOS DE CANCELAMENTO ──
+function agregarMotivosCancelamento(lista) {
+  const porMotivo = new Map();
+  lista.forEach(v => {
+    const motivo = eventoCancelamentoDe(v)?.motivo || MOTIVO_CANCELAMENTO_AUSENTE;
+    if (!porMotivo.has(motivo)) porMotivo.set(motivo, { count: 0, volume: 0 });
+    const d = porMotivo.get(motivo);
+    d.count++;
+    d.volume += v.volume || 0;
+  });
+  return porMotivo;
+}
+
+function renderMotivosCancelamento(listaCancelada) {
+  const totalFiltrado = listaCancelada.filter(v => passaFiltroCancelamento(v)).length;
+  document.getElementById('badge-perf-cancelamentos').textContent =
+    totalFiltrado + ' cancelada' + (totalFiltrado !== 1 ? 's' : '');
+  atualizarBotaoLimparCancelamento();
+
+  const base = listaCancelada.filter(v => passaFiltroCancelamento(v, 'motivo'));
+  if (!base.length) {
+    document.getElementById('perfMotivosCancelamentoWrap').innerHTML = `<div class="perf-empty">Sem viagens canceladas no período/filtro selecionado.</div>`;
+    return;
+  }
+  const total = base.length;
+  const porMotivo = agregarMotivosCancelamento(base);
+  const linhas = [...porMotivo.entries()]
+    .map(([motivo, d]) => ({ motivo, ...d }))
+    .sort((a, b) => b.count - a.count);
+  const maxCount = Math.max(...linhas.map(l => l.count));
+  const dados = linhas.map(l => ({
+    label: l.motivo,
+    segments: [{
+      value: l.count,
+      color: l.motivo === MOTIVO_CANCELAMENTO_AUSENTE ? 'var(--text-muted)' : 'var(--danger)',
+      title: `${l.count} viagem(ns) · ${formatarM3(l.volume)} m³`,
+    }],
+    valueLabel: `${l.count} (${pctSeguro(l.count, total)}%)`,
+    tooltip: `${l.motivo} — ${l.count} viagem(ns), ${formatarM3(l.volume)} m³`,
+  }));
+  renderBarraHorizontal('perfMotivosCancelamentoWrap', dados, {
+    max: maxCount,
+    ativoLabel: perfCancelFiltro.motivo,
+    onClickRow: valor => toggleFiltroCancelamento('motivo', valor),
+  });
+}
+
+// ── SEÇÃO 8: CANCELAMENTOS POR REGIONAL ──
+function agregarCancelamentosPorRegional(lista) {
+  const porRegional = new Map();
+  lista.forEach(v => {
+    const regional = valorRegionalFiltro(v) || 'Sem Regional';
+    if (!porRegional.has(regional)) porRegional.set(regional, { count: 0, volume: 0, motivos: new Map() });
+    const d = porRegional.get(regional);
+    d.count++;
+    d.volume += v.volume || 0;
+    const motivo = eventoCancelamentoDe(v)?.motivo || MOTIVO_CANCELAMENTO_AUSENTE;
+    d.motivos.set(motivo, (d.motivos.get(motivo) || 0) + 1);
+  });
+  return porRegional;
+}
+
+function renderCancelamentosPorRegional(listaCancelada) {
+  const base = listaCancelada.filter(v => passaFiltroCancelamento(v, 'regional'));
+  if (!base.length) {
+    document.getElementById('perfCancelamentoRegionalWrap').innerHTML = `<div class="perf-empty">Sem viagens canceladas no período/filtro selecionado.</div>`;
+    return;
+  }
+  const porRegional = agregarCancelamentosPorRegional(base);
+  const linhas = [...porRegional.entries()]
+    .map(([regional, d]) => ({ regional, ...d, top: motivoPrincipal(d.motivos) }))
+    .sort((a, b) => b.count - a.count);
+  const maxCount = Math.max(...linhas.map(l => l.count));
+  const dados = linhas.map(l => ({
+    label: l.regional,
+    segments: [{ value: l.count, color: 'var(--danger)', title: `${l.count} viagem(ns) · ${formatarM3(l.volume)} m³` }],
+    valueLabel: String(l.count),
+    tooltip: `${l.regional} — ${l.count} viagem(ns) · principal motivo: ${l.top ? `${l.top.motivo} (${pctSeguro(l.top.n, l.count)}%)` : '—'}`,
+  }));
+  renderBarraHorizontal('perfCancelamentoRegionalWrap', dados, {
+    max: maxCount,
+    ativoLabel: perfCancelFiltro.regional,
+    onClickRow: valor => toggleFiltroCancelamento('regional', valor),
+  });
+}
+
+// ── SEÇÃO 9: QUEM MAIS CANCELA ──
+// "Usuário" aqui é quem confirmou o cancelamento no portal (registrarHistoricoOferta grava
+// o usuário logado no momento) — não confundir com o transportador, que não cancela viagem
+// (a recusa dele já é o evento 'Recusado', contado em Taxa de Aceite).
+function agregarCancelamentosPorUsuario(lista) {
+  const porUsuario = new Map();
+  lista.forEach(v => {
+    const ev = eventoCancelamentoDe(v);
+    const usuario = ev?.usuario || USUARIO_CANCELAMENTO_AUSENTE;
+    if (!porUsuario.has(usuario)) porUsuario.set(usuario, { count: 0, motivos: new Map() });
+    const d = porUsuario.get(usuario);
+    d.count++;
+    const motivo = ev?.motivo || MOTIVO_CANCELAMENTO_AUSENTE;
+    d.motivos.set(motivo, (d.motivos.get(motivo) || 0) + 1);
+  });
+  return porUsuario;
+}
+
+function renderCancelamentosPorUsuario(listaCancelada) {
+  const base = listaCancelada.filter(v => passaFiltroCancelamento(v, 'usuario'));
+  if (!base.length) {
+    document.getElementById('perfCancelamentoUsuarioWrap').innerHTML = `<div class="perf-empty">Sem viagens canceladas no período/filtro selecionado.</div>`;
+    return;
+  }
+  const porUsuario = agregarCancelamentosPorUsuario(base);
+  const linhas = [...porUsuario.entries()]
+    .map(([usuario, d]) => ({ usuario, ...d, top: motivoPrincipal(d.motivos) }))
+    .sort((a, b) => b.count - a.count);
+  const maxCount = Math.max(...linhas.map(l => l.count));
+  const dados = linhas.map(l => ({
+    label: l.usuario,
+    segments: [{ value: l.count, color: 'var(--pet-blue)', title: `${l.count} cancelamento(s)` }],
+    valueLabel: String(l.count),
+    tooltip: `${l.usuario} — ${l.count} cancelamento(s) · principal motivo: ${l.top ? `${l.top.motivo} (${pctSeguro(l.top.n, l.count)}%)` : '—'}`,
+  }));
+  renderBarraHorizontal('perfCancelamentoUsuarioWrap', dados, {
+    max: maxCount,
+    ativoLabel: perfCancelFiltro.usuario,
+    onClickRow: valor => toggleFiltroCancelamento('usuario', valor),
+  });
+}
+
 // ── KPIs + ORQUESTRADOR ──
 function renderPerformanceKpis(lista) {
   const volume = lista.reduce((s, v) => s + (v.volume || 0), 0);
@@ -12545,6 +12982,10 @@ function renderPerformance() {
   renderAderenciaPrazo(lista);
   renderTempoResposta(lista);
   renderEnvioPlacas(lista);
+  const canceladas = viagensCanceladasPerf();
+  renderMotivosCancelamento(canceladas);
+  renderCancelamentosPorRegional(canceladas);
+  renderCancelamentosPorUsuario(canceladas);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
