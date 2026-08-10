@@ -817,6 +817,27 @@
     max-width: 96px;
     line-height: 1.3;
   }
+  /* Quebra automática em Origem/Destino (aba Monitoramento) — reduz a largura dessas
+     colunas pra abrir espaço pra Vale Pedágio sem estourar a rolagem horizontal.
+     min-width evita que o table-layout:auto espreme a coluna a ponto de quebrar
+     palavra por palavra (ex.: "ORIGEM" virando "ORIGE"+"M"); overflow-wrap só entra
+     como último recurso, pra uma palavra isolada maior que a coluna. */
+  .col-origem-dest {
+    white-space: normal;
+    min-width: 150px;
+    max-width: 220px;
+    line-height: 1.3;
+    overflow-wrap: break-word;
+  }
+  /* Mesmo tratamento em Produto (aba Monitoramento) — o badge .product-tag é
+     inline-block e herda white-space:normal do td, então também quebra dentro
+     da largura mínima em vez de empurrar a coluna. */
+  .col-produto {
+    white-space: normal;
+    min-width: 100px;
+    max-width: 140px;
+    line-height: 1.3;
+  }
   .cell-eta-realizada {
     color: var(--success);
     font-weight: 700;
@@ -1394,6 +1415,8 @@
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getStorage, ref as storageRef, getDownloadURL }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // ══════════════════════════════════════════════════
   //  🔧 COLE AQUI SUA CONFIG DO FIREBASE (passo 3)
@@ -1408,9 +1431,10 @@
     appId:             "1:831509614212:web:4ae82f7c624f754ed83cd1"
   };
 
-  const app  = initializeApp(firebaseConfig);
-  const db   = getDatabase(app);
-  const auth = getAuth(app);
+  const app     = initializeApp(firebaseConfig);
+  const db      = getDatabase(app);
+  const auth    = getAuth(app);
+  const storage = getStorage(app);
 
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
@@ -1524,6 +1548,25 @@
     // para "Placa Enviada" no portal.
     removerMonitoramentoHerrlog: async (idViagem) => {
       await remove(ref(db, 'monitoramentoHerrlog/' + idViagem));
+    },
+    // Vale-pedágio Pamcard (node `monitoramentoPamcard`, fora de `sessoes` — alimentado
+    // pelo bot_pamcard.py a cada transição de status). Mesmo motivo granular do
+    // ouvirMonitoramentoHerrlog acima: onValue reenviaria o node inteiro (todas as
+    // viagens com pedágio) a cada gravação de UMA viagem.
+    ouvirMonitoramentoPamcard: ({ onAdded, onChanged, onRemoved }) => {
+      const r = ref(db, 'monitoramentoPamcard');
+      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
+      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
+      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
+      return () => { u1(); u2(); u3(); };
+    },
+    // URL de download do comprovante em PDF gravado pelo bot_pamcard.py no Storage
+    // (`comprovantes-pamcard/AAAA/MM/arquivo.pdf`, ver comprovanteStoragePath em
+    // monitoramentoPamcard). getDownloadURL exige usuário autenticado (regra do
+    // Storage: allow read: if request.auth != null) — o mesmo login já usado pelo
+    // resto do portal.
+    obterUrlComprovantePamcard: async (storagePath) => {
+      return await getDownloadURL(storageRef(storage, storagePath));
     },
     ouvirCadastroHerrlogPlacas: (callback) => {
       return onValue(ref(db, 'cadastroHerrlogPlacas'), (snap) => {
@@ -2492,9 +2535,10 @@
               <th class="th-sortable" data-col="idViagem" onclick="ordenarColunaMon('idViagem')">ID Viagem<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="placa" onclick="ordenarColunaMon('placa')">Placa<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="frete" onclick="ordenarColunaMon('frete')" title="Tipo de Frete — CIF é frota do fornecedor, acompanhada manualmente por telefone">Frete<span class="sort-arrow"></span></th>
-              <th class="th-sortable" data-col="produto" onclick="ordenarColunaMon('produto')">Produto<span class="sort-arrow"></span></th>
-              <th class="th-sortable" data-col="origem" onclick="ordenarColunaMon('origem')">Origem<span class="sort-arrow"></span></th>
-              <th class="th-sortable" data-col="destino" onclick="ordenarColunaMon('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="col-produto th-sortable" data-col="produto" onclick="ordenarColunaMon('produto')">Produto<span class="sort-arrow"></span></th>
+              <th class="col-origem-dest th-sortable" data-col="origem" onclick="ordenarColunaMon('origem')">Origem<span class="sort-arrow"></span></th>
+              <th class="col-origem-dest th-sortable" data-col="destino" onclick="ordenarColunaMon('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="statusPedagio" onclick="ordenarColunaMon('statusPedagio')" title="Automático via bot Pamcard — só viagens FOB">Vale Pedágio<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="volume" onclick="ordenarColunaMon('volume')">Volume<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="transportador" onclick="ordenarColunaMon('transportador')">Transportador<span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="frotaDedicada" onclick="ordenarColunaMon('frotaDedicada')">Frota Dedicada<span class="sort-arrow"></span></th>
@@ -4791,6 +4835,7 @@ function viagensAtivo() {
   return modoMultiSemana ? viagensMultiSemana : viagens;
 }
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
+let monitoramentoPamcard = {}; // { [idViagem]: { statusCompraPedagio, descricaoStatus, valorPedagio, comprovanteStoragePath, mensagem, atualizadoEm } } — ver bot_pamcard.py
 let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ativo na Herrlog (tabela Cavalo do datalake)
 let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
 let cadastroHerrlogClientes = {}; // { [codigoExterno]: true } — fornecedores/bases com cadastro ativo na Herrlog (tabela Cliente do datalake)
@@ -4804,6 +4849,7 @@ let sortColunaMon = null;
 let sortDirMon = 'asc';
 window._fbUnsub = null;
 window._fbUnsubMonitoramento = null;
+window._fbUnsubPamcard = null;
 let activeFilter = new Set(); // status selecionados (vazio = "Todos")
 let activeAgendamento = new Set(); // status de agendamento selecionados (vazio = "Todos")
 let activeDiasCarregamento = new Set(); // offsets D0..D+4 selecionados (vazio = sem filtro)
@@ -6355,6 +6401,7 @@ function renderViagensTable() {
             ` : `
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+              ${renderBotaoComprovantePamcard(v)}
             `}
           </div>
         </td>
@@ -10034,6 +10081,7 @@ function valorOrdenacaoMon(l, coluna) {
     case 'vsProgramacao':   return l.vsProgramacao in ordemAderencia ? ordemAderencia[l.vsProgramacao] : 99;
     case 'vsDesejada':      return l.vsDesejada in ordemAderencia ? ordemAderencia[l.vsDesejada] : 99;
     case 'statusHerrlog':   return statusExibidoMon(v, mon);
+    case 'statusPedagio':   return monitoramentoPamcard[v.idViagem]?.statusCompraPedagio || '';
     default: return '';
   }
 }
@@ -10154,9 +10202,10 @@ function renderMonitoramento() {
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
         <td>${renderBadgeFrete(v)}</td>
-        <td>${prodTag(v.produto)}</td>
-        <td>${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
-        <td>${esc(v.destino)}</td>
+        <td class="col-produto">${prodTag(v.produto)}</td>
+        <td class="col-origem-dest">${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}</td>
+        <td class="col-origem-dest">${esc(v.destino)}</td>
+        <td style="font-size:12px">${renderPedagioCelulaMon(v)}</td>
         <td>${v.volume} m³</td>
         <td>${esc(v.transportador)}</td>
         <td>${badgeFrotaDedicada(v)}</td>
@@ -10213,6 +10262,84 @@ function renderStatusCelulaMon(v, mon) {
       ${STATUS_MANUAL_CIF_OPCOES.map(op => `<option value="${esc(op)}" ${op === atual ? 'selected' : ''}>${esc(op)}</option>`).join('')}
     </select>
   `;
+}
+
+// Vale-pedágio Pamcard (aba Monitoramento) — status vem do node monitoramentoPamcard,
+// alimentado pelo bot_pamcard.py; só existe para viagens FOB (CIF não passa pelo Pamcard,
+// ver bot_pamcard.py). '—' cobre tanto CIF quanto FOB ainda não processado pelo bot.
+const PEDAGIO_BADGE_CLASSE = {
+  PROCESSANDO:   'badge-warn',
+  SIMULADO:      'badge-warn',
+  INCLUINDO:     'badge-warn',
+  VIAGEM_CRIADA: 'badge-warn',
+  LIBERANDO:     'badge-warn',
+  LIBERADO:      'badge-warn',
+  CARREGANDO:    'badge-warn',
+  COMPRADO:      'badge-success',
+  INCERTO:       'badge-danger',
+  ERRO:          'badge-danger',
+};
+
+function renderPedagioCelulaMon(v) {
+  const ped = monitoramentoPamcard[v.idViagem];
+  if (v.modal === 'CIF' || !ped) return '<span style="color:var(--text-muted)">—</span>';
+
+  const status = ped.statusCompraPedagio || '—';
+  const classe = PEDAGIO_BADGE_CLASSE[status] || 'badge-accent';
+  const titulo = [ped.descricaoStatus, ped.mensagem].filter(Boolean).join(' — ');
+  const valorTexto = ped.valorPedagio
+    ? `R$ ${Number(ped.valorPedagio).toFixed(2).replace('.', ',')}`
+    : '';
+  // Ícone discreto (mesmo padrão do botão 💳 em Gerir Viagens — ver
+  // renderBotaoComprovantePamcard), ao lado direito do valor em vez de um botão
+  // de texto cheio abaixo dele.
+  const comprovante = status === 'COMPRADO' && ped.comprovanteStoragePath
+    ? `<button type="button" class="btn-cal" style="padding:2px 6px;font-size:12px;line-height:1.2" onclick="baixarComprovantePamcard('${esc(v.idViagem)}', this)" title="Baixar comprovante em PDF">💳</button>`
+    : '';
+  const linha = (valorTexto || comprovante)
+    ? `<div style="margin-top:3px;display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <span style="font-size:11px;color:var(--text-dim)">${valorTexto}</span>${comprovante}
+      </div>`
+    : '';
+  return `
+    <span class="badge ${classe}" ${titulo ? `title="${esc(titulo)}"` : ''}>${esc(status)}</span>
+    ${linha}
+  `;
+}
+
+// Busca a URL do comprovante sob demanda (não fica em memória) e abre numa nova aba — o
+// próprio visualizador de PDF do navegador oferece o download. getDownloadURL exige login
+// (ver window._fb.obterUrlComprovantePamcard), o mesmo já usado pelo resto do portal.
+async function baixarComprovantePamcard(idViagem, btn) {
+  const ped = monitoramentoPamcard[idViagem];
+  const caminho = ped?.comprovanteStoragePath;
+  if (!caminho) { alert('Comprovante ainda não disponível para esta viagem.'); return; }
+
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const url = await window._fb.obterUrlComprovantePamcard(caminho);
+    window.open(url, '_blank');
+  } catch (e) {
+    alert('Não foi possível abrir o comprovante: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// Botão do comprovante Pamcard na aba Gerir Viagens, ao lado do "Gerar Ordem de
+// Retirada" (mesmo botão usado na aba Monitoramento — ver baixarComprovantePamcard).
+// Só aparece com o vale-pedágio de fato COMPRADO; monitoramentoPamcard é carregado no
+// login pra qualquer perfil autenticado (ver configurarListenerMonitoramentoPamcard),
+// então funciona também pro transportador.
+function renderBotaoComprovantePamcard(v) {
+  const ped = monitoramentoPamcard[v.idViagem];
+  if (!ped || ped.statusCompraPedagio !== 'COMPRADO' || !ped.comprovanteStoragePath) return '';
+  // 💳 (não 📄) de propósito: o botão "Gerar Ordem de Retirada" ao lado já usa 📄 —
+  // outro ícone de documento ali ficaria visualmente idêntico e confundiria os dois.
+  return `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="baixarComprovantePamcard('${esc(v.idViagem)}', this)" title="Baixar comprovante do vale-pedágio (Pamcard)">💳</button>`;
 }
 
 function salvarEtaManualInline(idViagem, valorInput) {
@@ -11587,6 +11714,27 @@ function configurarListenerMonitoramentoHerrlog() {
   });
 }
 
+// Vale-pedágio Pamcard (node `monitoramentoPamcard`, fora de `sessoes` — alimentado
+// pelo bot_pamcard.py a cada transição de status). Mesmo padrão granular + debounce
+// do monitoramento Herrlog acima, listener único e independente da semana ativa.
+function configurarListenerMonitoramentoPamcard() {
+  if (window._fbUnsubPamcard) { window._fbUnsubPamcard(); window._fbUnsubPamcard = null; }
+
+  let refreshTimer = null;
+  function agendarRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      if (activeTab === 3) renderMonitoramento();
+    }, 200);
+  }
+
+  window._fbUnsubPamcard = window._fb.ouvirMonitoramentoPamcard({
+    onAdded: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
+    onChanged: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
+    onRemoved: (id) => { delete monitoramentoPamcard[id]; agendarRefresh(); },
+  });
+}
+
 // O monitoramento_tempo_real_herrlog.py marca statusHerrlog="Cancelado" (em vez de
 // remover a entrada) quando detecta, no datalake, que a viagem foi cancelada na
 // Herrlog. Reagimos ao VALOR atual (não a uma transição vista ao vivo) de propósito:
@@ -11754,6 +11902,7 @@ await carregarUsuariosFirebase();
   await carregarVeiculosDedicadosFirebase();
   await carregarMetasShareRegionalFirebase();
   configurarListenerMonitoramentoHerrlog();
+  configurarListenerMonitoramentoPamcard();
   configurarListenerCadastroHerrlogPlacas();
   configurarListenerCadastroHerrlogClientes();
   configurarListenerAssinaturasProgramadores();
