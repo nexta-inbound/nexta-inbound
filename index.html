@@ -1549,6 +1549,14 @@
     removerMonitoramentoHerrlog: async (idViagem) => {
       await remove(ref(db, 'monitoramentoHerrlog/' + idViagem));
     },
+    // Viagens Finalizadas ha' mais de HERRLOG_RETENCAO_CONCLUIDA_DIAS saem de
+    // monitoramentoHerrlog e sao arquivadas aqui (ver monitoramento_tempo_real_herrlog.py) —
+    // busca sempre pontual (get, nao listener) via garantirHistoricoHerrlog: sincronizar esse
+    // node inteiro reintroduziria o mesmo consumo que a retencao foi feita pra evitar.
+    obterMonitoramentoHerrlogHistorico: async (idViagem) => {
+      const snap = await get(ref(db, 'monitoramentoHerrlogHistorico/' + idViagem));
+      return snap.exists() ? snap.val() : null;
+    },
     // Vale-pedágio Pamcard (node `monitoramentoPamcard`, fora de `sessoes` — alimentado
     // pelo bot_pamcard.py a cada transição de status). Mesmo motivo granular do
     // ouvirMonitoramentoHerrlog acima: onValue reenviaria o node inteiro (todas as
@@ -4835,6 +4843,35 @@ function viagensAtivo() {
   return modoMultiSemana ? viagensMultiSemana : viagens;
 }
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
+// Viagens Finalizadas ha mais de HERRLOG_RETENCAO_CONCLUIDA_DIAS saem de monitoramentoHerrlog
+// (arquivadas pelo monitoramento_tempo_real_herrlog.py em monitoramentoHerrlogHistorico, nao
+// apagadas) — ver garantirHistoricoHerrlog. Cache local, nunca sincronizado como listener: um
+// onChildAdded nesse node reintroduziria exatamente o download do node inteiro que a retencao
+// foi feita pra evitar. Busca e' sempre sob demanda, um idViagem por vez.
+let monitoramentoHerrlogHistoricoCache = {};
+let _monitoramentoHerrlogHistoricoPendentes = new Set();
+
+function monitoramentoComHistorico(idViagem) {
+  return monitoramentoHerrlog[idViagem] || monitoramentoHerrlogHistoricoCache[idViagem] || null;
+}
+
+// Busca sob demanda em monitoramentoHerrlogHistorico quando uma viagem Finalizada nao tem
+// mais registro em monitoramentoHerrlog. Dispara no maximo uma vez por idViagem; ao resolver,
+// guarda em cache e reaplica o render da aba atual (mesmo padrao dos listeners em tempo real).
+function garantirHistoricoHerrlog(idViagem) {
+  if (monitoramentoHerrlog[idViagem] || monitoramentoHerrlogHistoricoCache[idViagem]) return;
+  if (_monitoramentoHerrlogHistoricoPendentes.has(idViagem)) return;
+  _monitoramentoHerrlogHistoricoPendentes.add(idViagem);
+  window._fb.obterMonitoramentoHerrlogHistorico(idViagem)
+    .then(dados => {
+      _monitoramentoHerrlogHistoricoPendentes.delete(idViagem);
+      if (dados) {
+        monitoramentoHerrlogHistoricoCache[idViagem] = dados;
+        renderizarAbaAtual();
+      }
+    })
+    .catch(() => { _monitoramentoHerrlogHistoricoPendentes.delete(idViagem); });
+}
 let monitoramentoPamcard = {}; // { [idViagem]: { statusCompraPedagio, descricaoStatus, valorPedagio, comprovanteStoragePath, mensagem, atualizadoEm } } — ver bot_pamcard.py
 let cadastroHerrlogPlacas = {}; // { [placa]: true } — placas com cadastro ativo na Herrlog (tabela Cavalo do datalake)
 let cadastroHerrlogCarregado = false; // evita acusar "sem cadastro" antes do primeiro retorno do Firebase
@@ -7671,7 +7708,8 @@ async function garantirSemanasVizinhasCarregadas() {
 // nunca deixa o fim ficar antes do início por causa de um ETA incoerente.
 function fimOcupacaoVeiculo(v, ini, fimProgramado) {
   if (!['Em Andamento', 'Viagem Finalizada'].includes(v.status)) return fimProgramado;
-  const mon = monitoramentoHerrlog[v.idViagem];
+  const mon = monitoramentoComHistorico(v.idViagem);
+  if (!mon && v.status === 'Viagem Finalizada') garantirHistoricoHerrlog(v.idViagem);
   const etaIso = mon?.chegadaReal || mon?.etaDestino;
   if (!etaIso) return fimProgramado;
   const etaData = new Date(etaIso);
@@ -9932,7 +9970,8 @@ function etaManualParaIso(v) {
 }
 
 function calcularLinhaMonitoramento(v) {
-  const mon = monitoramentoHerrlog[v.idViagem] || {};
+  const mon = monitoramentoComHistorico(v.idViagem) || {};
+  if (!monitoramentoHerrlog[v.idViagem] && v.status === 'Viagem Finalizada') garantirHistoricoHerrlog(v.idViagem);
   const etaManualIso = etaManualParaIso(v);
   const etaIso = etaManualIso || mon.chegadaReal || mon.etaDestino || null;
   return {
@@ -10115,10 +10154,17 @@ function atualizarSetasOrdenacaoMon() {
 function renderMonitoramento() {
   // Viagens CIF nunca têm monitoramentoHerrlog (frota é do fornecedor, fora do rastreio
   // automático) — entram sempre, independente de já terem ETA/status manual preenchido.
-  const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v =>
-    (['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status) && monitoramentoHerrlog[v.idViagem])
-    || v.status === 'CIF'
-  );
+  const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => {
+    if (v.status === 'CIF') return true;
+    if (!['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)) return false;
+    if (monitoramentoHerrlog[v.idViagem]) return true;
+    // Saiu de monitoramentoHerrlog por retencao (>N dias Finalizada) — o dado nao foi
+    // perdido, so' arquivado (ver monitoramentoHerrlogHistorico/garantirHistoricoHerrlog).
+    if (v.status !== 'Viagem Finalizada') return false;
+    if (monitoramentoHerrlogHistoricoCache[v.idViagem]) return true;
+    garantirHistoricoHerrlog(v.idViagem);
+    return false;
+  });
   const isEmpty = monitoradas.length === 0;
   document.getElementById('monitoramentoEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('monitoramentoContent').style.display = isEmpty ? 'none' : 'block';
@@ -10137,7 +10183,7 @@ function renderMonitoramento() {
   // em 0 só porque a tabela foi restrita ao card clicado) — mesma lógica de Gerir Viagens.
   // Precisa aplicar também o filtro de estado (chips Todos/T1.../T5...) — senão os cards
   // ficam com o total geral enquanto a tabela abaixo já está restrita ao estado clicado.
-  const passaStatusMon = v => activeFilterMonStatus.size === 0 || activeFilterMonStatus.has(statusExibidoMon(v, monitoramentoHerrlog[v.idViagem] || {}));
+  const passaStatusMon = v => activeFilterMonStatus.size === 0 || activeFilterMonStatus.has(statusExibidoMon(v, monitoramentoComHistorico(v.idViagem) || {}));
   const paraKpis = (activeIndicadorMon
     ? monitoradas.filter(v => passaFiltrosMonitoramento(v, f, 'indicador'))
     : monitoradas.filter(v => passaFiltrosMonitoramento(v, f))
