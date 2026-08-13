@@ -3748,6 +3748,24 @@
   </div>
 </div>
 
+<!-- MODAL: Motivo do Ajuste de Programação -->
+<div class="modal-overlay" id="modalMotivoProgramacao">
+  <div class="modal" style="width:400px;max-width:94vw">
+    <div class="modal-title">Motivo do Ajuste (opcional)</div>
+    <div class="modal-sub">Por que a data/hora de programação está sendo alterada? Fica registrado no histórico da viagem.</div>
+    <div class="modal-field">
+      <textarea class="config-input" id="motivo-prog-texto" rows="3" maxlength="300"
+        style="resize:vertical;font-family:var(--font)"
+        placeholder="Ex.: cliente pediu antecipação, fila na descarga, ajuste combinado com transportador..."
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); responderMotivoProgramacao(this.value); }"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="responderMotivoProgramacao('')">Salvar sem motivo</button>
+      <button class="btn btn-primary" onclick="responderMotivoProgramacao(document.getElementById('motivo-prog-texto').value)">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Confirmar Agendamento -->
 <div class="modal-overlay" id="modalConfirmarAgendamento">
   <div class="modal" style="width:380px;max-width:94vw">
@@ -3924,6 +3942,29 @@ function responderMotivoCancelamento(motivo) {
   if (resolve) resolve(motivo);
 }
 
+// ── MOTIVO DO AJUSTE DE PROGRAMAÇÃO ──
+// Pergunta (campo livre, opcional) o motivo ao ajustar a Data Programação em Gerir
+// Viagens (ver salvarDataProgramacaoInline) — resolve com o texto digitado, ou '' se o
+// usuário optar por não informar. Diferente de pedirMotivoCancelamento, nunca bloqueia
+// o salvamento: é só um registro extra no histórico.
+let _motivoProgramacaoResolve = null;
+
+function pedirMotivoProgramacao() {
+  return new Promise(resolve => {
+    _motivoProgramacaoResolve = resolve;
+    document.getElementById('motivo-prog-texto').value = '';
+    document.getElementById('modalMotivoProgramacao').classList.add('open');
+    setTimeout(() => document.getElementById('motivo-prog-texto').focus(), 50);
+  });
+}
+
+function responderMotivoProgramacao(motivo) {
+  document.getElementById('modalMotivoProgramacao').classList.remove('open');
+  const resolve = _motivoProgramacaoResolve;
+  _motivoProgramacaoResolve = null;
+  if (resolve) resolve((motivo || '').trim());
+}
+
 // ── CONFIRMAÇÃO DE AGENDAMENTO (status "Agendado") ──
 // Pede a data/hora de carregamento confirmada no agendamento antes de marcar a viagem
 // como "Agendado" (ver salvarAgendamentoInline) — pré-preenchida com a Data de
@@ -4013,7 +4054,8 @@ function formatarHistoricoProgramacaoItem(h) {
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const icone = h.evento && h.evento.startsWith('Volume') ? '📦' : '📅';
-  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} ${esc(h.evento)} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
+  const motivo = h.motivo ? ` <span style="color:var(--text-dim)">(${esc(h.motivo)})</span>` : '';
+  return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} ${esc(h.evento)}${motivo} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
 
 function renderHistoricoProgramacao(v) {
@@ -9447,7 +9489,7 @@ function salvarPlacaInline(realIdx, value) {
   renderViagensTable();
 }
 
-function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
+async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   const v = viagensAtivo()[realIdx];
   const campo = tipo === 'carreg' ? 'dtCarregProg' : 'dtDescProg';
   const campoHora = tipo === 'carreg' ? 'horaCarregProg' : 'horaDescProg';
@@ -9488,6 +9530,7 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     }
   }
   if (novo === anterior && novaHora === horaAnterior) return;
+  const motivo = await pedirMotivoProgramacao();
   v[campo] = novo;
   v[campoHora] = novaHora;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
@@ -9495,6 +9538,7 @@ function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     data: new Date().toISOString(),
     usuario: _authUsuarioAtual?.nome || '',
     evento: `Data de ${tipo === 'carreg' ? 'Carregamento' : 'Descarga'} ajustada: ${anterior === '-' ? '—' : anterior + ' ' + horaAnterior} → ${novo === '-' ? '—' : novo + ' ' + novaHora}`,
+    ...(motivo ? { motivo } : {}),
   });
   // Carregamento é o gatilho: descarga passa a ser derivada dele + leadtime cadastrado
   // (tempo de carregamento do fornecedor + leadtime origem→destino), não editada à mão.
@@ -13804,29 +13848,31 @@ window.addEventListener('DOMContentLoaded', () => {
   aplicarEstadoKpisViagens();
 
   // initialize multiselects
-  msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable);
-  msVUf      = new MultiSelect('ms-vUf',      'UF Origem', renderViagensTable);
-  msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable);
-  msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable);
-  msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable);
-  msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable);
-  msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport);
+  // comTodos=true em todos — adiciona a opção "Todos" no topo do painel pra marcar/desmarcar
+  // tudo de uma vez, em vez de clicar opção por opção (ver MultiSelect._toggleTodos).
+  msVProduto = new MultiSelect('ms-vProduto', 'Produto',  renderViagensTable, null, true);
+  msVUf      = new MultiSelect('ms-vUf',      'UF Origem', renderViagensTable, null, true);
+  msVOrigem  = new MultiSelect('ms-vOrigem',  'Origem',   renderViagensTable, null, true);
+  msVDestino = new MultiSelect('ms-vDestino', 'Destino',  renderViagensTable, null, true);
+  msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable, null, true);
+  msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable, null, true);
+  msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport, null, true);
   msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas, true);
-  msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview);
-  msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview);
-  msCUf      = new MultiSelect('ms-cUf',      'UF Origem', renderPreview);
-  msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview);
-  msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview);
-  msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview);
-  msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento);
-  msMonUf      = new MultiSelect('ms-monUf',      'UF Origem', renderMonitoramento);
-  msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento);
-  msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento);
-  msMonRegional = new MultiSelect('ms-monRegional', 'Regional', renderMonitoramento);
+  msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview, null, true);
+  msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview, null, true);
+  msCUf      = new MultiSelect('ms-cUf',      'UF Origem', renderPreview, null, true);
+  msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview, null, true);
+  msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview, null, true);
+  msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview, null, true);
+  msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento, null, true);
+  msMonUf      = new MultiSelect('ms-monUf',      'UF Origem', renderMonitoramento, null, true);
+  msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento, null, true);
+  msMonDestino = new MultiSelect('ms-monDestino', 'Destino', renderMonitoramento, null, true);
+  msMonRegional = new MultiSelect('ms-monRegional', 'Regional', renderMonitoramento, null, true);
 
-  msPerfRegional = new MultiSelect('ms-perfRegional', 'Regional', renderPerformance);
-  msPerfUf       = new MultiSelect('ms-perfUf',       'UF Origem', renderPerformance);
-  msPerfProduto  = new MultiSelect('ms-perfProduto',  'Produto', renderPerformance);
+  msPerfRegional = new MultiSelect('ms-perfRegional', 'Regional', renderPerformance, null, true);
+  msPerfUf       = new MultiSelect('ms-perfUf',       'UF Origem', renderPerformance, null, true);
+  msPerfProduto  = new MultiSelect('ms-perfProduto',  'Produto', renderPerformance, null, true);
   msPerfModal    = new MultiSelect('ms-perfModal',    'Tipo de Frete', renderPerformance, null, true);
   msPerfModal.setSelected(['FOB']); // padrão da aba: só FOB — usuário troca pra Todos/CIF quando quiser
   msPerfTipoOp   = new MultiSelect('ms-perfTipoOp',   'Compra/Transferência', renderPerformance, null, true);
