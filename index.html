@@ -320,6 +320,30 @@
   }
   .config-input:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(141,200,48,0.14); }
 
+  /* Combobox de busca livre (ex.: Viagem de referência do Frete Retorno) — digita e filtra
+     por múltiplos campos (id/placa/origem) em vez de um <select> com scroll longo. */
+  .fr-ref-dropdown {
+    display: none;
+    position: absolute;
+    z-index: 40;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .fr-ref-dropdown.open { display: block; }
+  .fr-ref-item { padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .fr-ref-item:last-child { border-bottom: none; }
+  .fr-ref-item:hover { background: var(--panel-soft); }
+  .fr-ref-item-nenhuma { color: var(--text-muted); font-style: italic; }
+  .fr-ref-item-muted { padding: 8px 10px; font-size: 12px; color: var(--text-muted); }
+
   /* ── PREVIEW TABLE ── */
   .table-wrap {
     background: var(--surface);
@@ -392,6 +416,7 @@
   .prod-biodiesel { background: rgba(54,209,107,0.16); color: #5DF08B; border: 1px solid rgba(93,240,139,0.30); }
   .prod-hidratado { background: rgba(249,115,22,0.18); color: #FFAE6A; border: 1px solid rgba(255,174,106,0.32); }
   .prod-anidro { background: rgba(124,58,237,0.20); color: #D0B4FF; border: 1px solid rgba(208,180,255,0.30); }
+  .prod-retorno { background: rgba(148,163,184,0.20); color: #CBD5E1; border: 1px solid rgba(203,213,225,0.32); }
 
   /* ── BUTTONS ── */
   .btn {
@@ -1218,6 +1243,7 @@
   body.transportador-mode #kpiToggleHeader,
   body.transportador-mode #kpiCardsWrap,
   body.transportador-mode #btnReprocessarJanela,
+  body.transportador-mode #btnNovoFreteRetorno,
   body.transportador-mode #fCarrModo,
   body.transportador-mode #fDtModo,
   body.transportador-mode #chipOfertado,
@@ -1542,6 +1568,15 @@
       const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
       return () => { u1(); u2(); u3(); };
     },
+    // Leitura única do node inteiro, usada só na largada (ver configurarListenerMonitoramentoHerrlog)
+    // pra popular monitoramentoHerrlog de uma vez antes de assinar o onChildAdded acima — sem
+    // isso, com o node já grande (centenas de viagens monitoradas), o onChildAdded reconstrói o
+    // node inteiro evento a evento na primeira assinatura, e cada evento dispara um re-render
+    // pesado da aba Monitoramento (a tabela "sobe aos poucos" em vez de aparecer de uma vez).
+    carregarMonitoramentoHerrlog: async () => {
+      const snap = await get(ref(db, 'monitoramentoHerrlog'));
+      return snap.exists() ? snap.val() : {};
+    },
     // Usado por processarViagensCanceladasNaHerrlog() para limpar do Firebase a
     // entrada já processada (statusHerrlog="Cancelado", gravado pelo
     // monitoramento_tempo_real_herrlog.py) depois que a viagem foi revertida
@@ -1567,6 +1602,12 @@
       const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
       const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
       return () => { u1(); u2(); u3(); };
+    },
+    // Mesmo motivo do carregarMonitoramentoHerrlog acima — leitura única antes de assinar o
+    // onChildAdded do vale-pedágio.
+    carregarMonitoramentoPamcard: async () => {
+      const snap = await get(ref(db, 'monitoramentoPamcard'));
+      return snap.exists() ? snap.val() : {};
     },
     // URL de download do comprovante em PDF gravado pelo bot_pamcard.py no Storage
     // (`comprovantes-pamcard/AAAA/MM/arquivo.pdf`, ver comprovanteStoragePath em
@@ -2238,6 +2279,7 @@
           </div>
         </div>
         <button class="btn btn-secondary btn-sm" id="btnReprocessarJanela" onclick="reprocessarJanelaCarregamentoRetroativo()" title="Reavalia a Data de Carregamento das viagens elegíveis contra a Janela de Carregamento (recuando quando necessário) e recalcula a Descarga via leadtime — inclusive viagens que ficaram sem leadtime cadastrado e cuja rota acabou de ser cadastrada. Não mexe em Agendado/Usina de Fila nem em viagens já em Placa Enviada/Em Andamento/Viagem Finalizada.">🔄 Reprocessar Janela de Carga / Descarga</button>
+        <button class="btn btn-secondary btn-sm" id="btnNovoFreteRetorno" onclick="abrirModalFreteRetorno(null)" title="Registrar um deslocamento vazio de frota dedicada voltando a um fornecedor, sem partir de uma viagem específica">↩ Novo Frete Retorno</button>
       </div>
       <div class="filter-bar">
         <div class="filter-row">
@@ -2361,6 +2403,7 @@
               <th class="th-sortable" data-col="volume" onclick="ordenarColuna('volume')">Vol (m³)<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="status" onclick="ordenarColuna('status')">Status<span class="sort-arrow"></span></th>
               <th class="col-agendamento th-sortable" data-col="agendamento" onclick="ordenarColuna('agendamento')">Agendamento<span class="sort-arrow"></span></th>
+              <th style="width:100px;max-width:112px">Placa</th>
               <th class="th-sortable" data-col="transportador" onclick="ordenarColuna('transportador')">Transportador<span class="sort-arrow"></span></th>
               <th class="col-acao col-acao-sm">Ação</th>
             </tr>
@@ -3189,6 +3232,7 @@
   <div class="modal" style="width:860px;max-width:96vw;max-height:90vh;overflow-y:auto">
     <div class="modal-title">Gerenciar Viagem</div>
     <div class="modal-sub" id="modal-id-label">—</div>
+    <div class="modal-sub" id="modal-vinculo-label" style="display:none;margin-top:-8px"></div>
 
     <div class="alert alert-warn" id="alertaProgramacaoBanner" style="display:none">
       ⚠ A programação desta viagem foi alterada após o aceite. Confira as novas datas de carregamento/descarga.
@@ -3342,6 +3386,121 @@
       <button class="btn btn-danger" id="btnRecusarOferta" style="display:none" onclick="recusarOfertaTransportador()">❌ Recusar oferta</button>
       <button class="btn btn-success" id="btnAceitarOferta" style="display:none" onclick="aceitarOfertaTransportador()">✅ Aceitar oferta</button>
       <button class="btn btn-primary" id="btnSalvarViagem" onclick="salvarViagem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Frete Retorno (deslocamento vazio entre duas viagens de frota dedicada) -->
+<div class="modal-overlay" id="modalFreteRetorno">
+  <div class="modal" style="width:720px;max-width:96vw;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">Nova Viagem — Frete Retorno</div>
+    <div class="modal-sub">Deslocamento vazio de volta a um fornecedor, sem produto — vincule a uma viagem de entrega já feita ou informe a origem manualmente.</div>
+
+    <div class="modal-field" style="position:relative">
+      <div class="modal-label">Viagem de referência (entrega que acabou de terminar)</div>
+      <input type="text" class="config-input" id="fr-referencia-busca" autocomplete="off"
+        placeholder="Digite ID da viagem, placa ou origem para buscar..."
+        oninput="filtrarReferenciasFreteRetorno()"
+        onfocus="filtrarReferenciasFreteRetorno()"
+        onblur="setTimeout(fecharListaReferenciasFreteRetorno, 150)">
+      <input type="hidden" id="fr-referencia">
+      <div id="fr-referencia-lista" class="fr-ref-dropdown"></div>
+    </div>
+
+    <div class="modal-field" id="fr-campo-origem-ref">
+      <div class="modal-label">Origem (destino da viagem de referência)</div>
+      <input type="text" class="config-input" id="fr-origem-texto" readonly style="opacity:0.7;cursor:not-allowed">
+    </div>
+    <div class="modal-field" id="fr-campo-origem-manual" style="display:none">
+      <div class="modal-label">Origem *</div>
+      <select class="config-input" id="fr-origem-base" onchange="atualizarChegadaFreteRetorno()">
+        <option value="">Selecione a base...</option>
+      </select>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Destino — Fornecedor (próxima carga) *</div>
+        <select class="config-input" id="fr-destino"
+          onchange="popularSelectBaseFornecedor('fr-destino-base', this.value, ''); atualizarChegadaFreteRetorno();">
+          <option value="">Selecione o fornecedor...</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Base de Atendimento *</div>
+        <select class="config-input" id="fr-destino-base" onchange="atualizarChegadaFreteRetorno()">
+          <option value="">Selecione o fornecedor primeiro</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:1.2fr 1.3fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Transportador</div>
+        <select class="config-input" id="fr-transportador" onchange="popularSelectCnpjsTransportador('fr-transportador-cnpj', this.value, ''); atualizarVeiculosFreteRetorno(this.value)">
+          <option value="">— Selecione —</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CNPJ que vai atender</div>
+        <select class="config-input" id="fr-transportador-cnpj">
+          <option value="">— Não alocado —</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Veículo Dedicado *</div>
+        <select class="config-input" id="fr-veiculo-dedicado" onchange="aplicarVeiculoDedicadoFreteRetorno(this.value)">
+          <option value="">Selecione o veículo...</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Placa do Cavalo *</div>
+        <input type="text" class="config-input" id="fr-placa" placeholder="ABC1D23" maxlength="8"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Nome do Motorista</div>
+        <input type="text" class="config-input" id="fr-nomeMotorista" placeholder="Nome completo">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">CPF do Motorista</div>
+        <input type="text" class="config-input" id="fr-cpfMotorista" placeholder="000.000.000-00" maxlength="14"
+          oninput="this.value = mascaraCPF(this.value)">
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:-10px;margin-bottom:16px">Preenchido automaticamente ao escolher um Veículo Dedicado — ou digite manualmente se o veículo ainda não estiver cadastrado.</div>
+
+    <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Data de Saída *</div>
+        <input type="date" class="config-input" id="fr-dtSaida" onchange="atualizarChegadaFreteRetorno()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Hora de Saída</div>
+        <input type="time" class="config-input" id="fr-horaSaida" value="12:00" onchange="atualizarChegadaFreteRetorno()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Data de Chegada <span style="font-weight:400;text-transform:none;letter-spacing:0" title="Calculada automaticamente pelo leadtime da rota, quando cadastrado — sem carregamento, só o deslocamento">(auto, se houver leadtime)</span></div>
+        <input type="date" class="config-input" id="fr-dtChegada">
+        <div id="fr-chegada-aviso" style="display:none;font-size:11px;color:var(--danger);margin-top:4px">⚠ Sem leadtime cadastrado para esta rota — preencha a data manualmente ou cadastre em "Leadtime".</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Hora de Chegada</div>
+        <input type="time" class="config-input" id="fr-horaChegada" value="12:00">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Observações</div>
+      <input type="text" class="config-input" id="fr-obs" placeholder="Observações opcionais">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalFreteRetorno()">Cancelar</button>
+      <button class="btn btn-primary" onclick="criarViagemFreteRetorno()">Criar Viagem</button>
     </div>
   </div>
 </div>
@@ -4858,6 +5017,13 @@ function monitoramentoComHistorico(idViagem) {
 // Busca sob demanda em monitoramentoHerrlogHistorico quando uma viagem Finalizada nao tem
 // mais registro em monitoramentoHerrlog. Dispara no maximo uma vez por idViagem; ao resolver,
 // guarda em cache e reaplica o render da aba atual (mesmo padrao dos listeners em tempo real).
+// Cada idViagem e' uma busca pontual independente (proposital — ver comentario em
+// monitoramentoHerrlogHistoricoCache acima), entao com muitas viagens Finalizadas antigas
+// sem cache ainda, dezenas/centenas dessas buscas saem em paralelo e completam em momentos
+// diferentes. Debounce (200ms, mesmo padrao dos listeners em tempo real) agrupa essa rajada
+// num unico render em vez de reaplicar a aba inteira a cada resposta que chega — sem isso, a
+// tabela "sobe aos poucos" conforme cada busca individual vai resolvendo.
+let _historicoHerrlogRefreshTimer = null;
 function garantirHistoricoHerrlog(idViagem) {
   if (monitoramentoHerrlog[idViagem] || monitoramentoHerrlogHistoricoCache[idViagem]) return;
   if (_monitoramentoHerrlogHistoricoPendentes.has(idViagem)) return;
@@ -4867,7 +5033,8 @@ function garantirHistoricoHerrlog(idViagem) {
       _monitoramentoHerrlogHistoricoPendentes.delete(idViagem);
       if (dados) {
         monitoramentoHerrlogHistoricoCache[idViagem] = dados;
-        renderizarAbaAtual();
+        clearTimeout(_historicoHerrlogRefreshTimer);
+        _historicoHerrlogRefreshTimer = setTimeout(renderizarAbaAtual, 200);
       }
     })
     .catch(() => { _monitoramentoHerrlogHistoricoPendentes.delete(idViagem); });
@@ -4913,6 +5080,10 @@ let editingFornecedorIdx = null;
 // Tempo médio de carregamento assumido quando o fornecedor não tem valor próprio
 // cadastrado (fornecedores antigos, importados sem essa coluna etc.).
 const TEMPO_CARREGAMENTO_PADRAO_HORAS = 4;
+// Tempo médio de descarga na Base — usado só pra sugerir a saída do Frete Retorno (ver
+// sugerirSaidaFreteRetorno): depois de chegar ao destino, o caminhão ainda leva um tempo
+// pra descarregar antes de poder sair vazio de novo.
+const TEMPO_DESCARGA_PADRAO_HORAS = 4;
 // Janela de carregamento: dias da semana (0=Dom ... 6=Sáb) em que o fornecedor está
 // aberto para carregar. Padrão de segunda a sexta — exceto origem própria (SIM/Nexta),
 // que carrega sábado também. Mesma lógica do tempo de carregamento acima: vale pra
@@ -5625,12 +5796,18 @@ function salvarNovaCadencia() {
 }
 
 function prodTag(p) {
-  const cls = p.includes('Diesel') ? 'prod-diesel' : p.includes('Biodiesel') ? 'prod-biodiesel' : p.includes('Hidratado') ? 'prod-hidratado' : 'prod-anidro';
+  const cls = p === PRODUTO_RETORNO_VAZIO ? 'prod-retorno'
+    : p.includes('Diesel') ? 'prod-diesel' : p.includes('Biodiesel') ? 'prod-biodiesel' : p.includes('Hidratado') ? 'prod-hidratado' : 'prod-anidro';
   return `<span class="product-tag ${cls}">${p}</span>`;
 }
 
 // ── GERAR VIAGENS ──
 const PREFIXO_VIAGEM = 'NXT';
+
+// Marca a viagem como um deslocamento vazio (Base → Fornecedor) entre duas viagens
+// carregadas — o "tipo" fica só neste valor de produto (não um campo tipoViagem à parte),
+// ver criarViagemFreteRetorno(). Volume sempre 0, sem cadência de origem.
+const PRODUTO_RETORNO_VAZIO = 'Retorno Vazio';
 
 function assinaturaGrupoViagem(v) {
   return [
@@ -5842,6 +6019,10 @@ async function gerarViagens() {
 
 // ── KPI CARDS ──
 function updateKPIs(list) {
+  // Frete Retorno (volume sempre 0, nasce direto em "Frota Dedicada") fica fora dos KPIs —
+  // não é carga pendente de alocação, misturar distorceria Taxa de Alocação e os buckets de
+  // urgência. Tabela/filtros/exportações continuam mostrando essas viagens normalmente.
+  list = list.filter(v => v.produto !== PRODUTO_RETORNO_VAZIO);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const d2 = new Date(hoje); d2.setDate(hoje.getDate() + 2);
 
@@ -6384,7 +6565,7 @@ function renderViagensTable() {
           ${v.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjOrigem)}</span>` : ''}
         </td>
         <td class="cell-truncate" data-label="Destino" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
-          ${esc(v.destino)}
+          ${esc(v.destino)}${v.destinoBase ? `<span style="color:var(--text-muted)"> (${esc(v.destinoBase)})</span>` : ''}
           ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}
         </td>
         <td class="cell-periodo col-data-desejada">
@@ -6423,6 +6604,7 @@ function renderViagensTable() {
         </td>
         <td data-label="Status">${renderSeletorStatus(v, realIdx)}</td>
         <td class="col-agendamento">${renderSeletorAgendamento(v, realIdx)}</td>
+        <td data-label="Placa">${renderPlacaCelula(v, realIdx)}</td>
         <td class="cell-truncate" data-label="Transportador" title="${esc(v.transportador)}">
           ${v.transportador ? esc(v.transportador) : '<span style="color:var(--text-muted)">—</span>'}
           ${isTransportador() && v.transportador ? renderSeletorCnpjTransportador(v, realIdx) : ''}
@@ -6438,6 +6620,7 @@ function renderViagensTable() {
             ` : `
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
+              ${v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteRetorno(${realIdx})" title="Criar viagem de Frete Retorno a partir desta entrega">🔄</button>` : ''}
               ${renderBotaoComprovantePamcard(v)}
             `}
           </div>
@@ -7811,11 +7994,15 @@ function diaIndisponivelFrota(veiculoId, dia) {
   return !!indisp && STATUS_CONTA_INDISPONIBILIDADE_FROTA.includes(indisp.status);
 }
 
-// % Retorno Vazio (card KPI) — só o status RV (retorno vazio por ordem da própria Nexta),
-// separado do bucket de "problema" acima porque é operação planejada, não pane/indisponibilidade.
+// % Retorno Vazio (card KPI) — status RV marcado manualmente na indisponibilidade, OU uma
+// viagem real de Frete Retorno (ver PRODUTO_RETORNO_VAZIO) ocupando o dia — essa já É, por
+// construção, um retorno vazio por ordem da Nexta, sem precisar marcar de novo à mão.
+// Separado do bucket de "problema" (STATUS_CONTA_INDISPONIBILIDADE_FROTA) porque é operação
+// planejada, não pane/indisponibilidade.
 function diaRetornoVazioNexta(veiculoId, dia) {
   const indisp = indisponibilidadeNoDia(veiculoId, dia);
-  return !!indisp && indisp.status === 'RV';
+  if (indisp && indisp.status === 'RV') return true;
+  return viagensDoVeiculoNoDia(veiculoId, dia).some(v => v.produto === PRODUTO_RETORNO_VAZIO);
 }
 
 // Usado por salvarViagem() pra bloquear a alocação de um veículo marcado
@@ -7863,14 +8050,18 @@ function renderUtilizacaoSemanal(veiculoId) {
     const apenasNota = !!indisp && !bloqueado; // status:'' — observação anexada, veículo continua disponível
     const iso = d.toISOString().slice(0, 10);
     let titulo = ocupado ? viagensNoDia.map(v => `${v.idViagem} · ${v.destino}`).join('\n') : 'Livre — clique para marcar um status ou observação';
-    const statusCodigo = bloqueado ? (indisp.status || 'I') : '';
+    // Viagem real de Frete Retorno ocupando o dia conta como RV mesmo sem marcação manual
+    // de indisponibilidade (ver diaRetornoVazioNexta) — mesmo código/cor do RV manual.
+    const retornoVazioReal = !bloqueado && viagensNoDia.some(v => v.produto === PRODUTO_RETORNO_VAZIO);
+    const statusCodigo = bloqueado ? (indisp.status || 'I') : (retornoVazioReal ? 'RV' : '');
     const statusLabel = STATUS_VEICULO_LABELS[statusCodigo] || 'Indisponível';
     if (bloqueado) titulo = `${statusCodigo} - ${statusLabel}${indisp.motivo ? ': ' + indisp.motivo : ''}` + (ocupado ? '\n\n' + titulo : '');
+    else if (retornoVazioReal) titulo = `RV - Retorno Vazio (ordem Nexta)\n\n${titulo}`;
     else if (apenasNota) titulo = `📝 ${indisp.motivo}` + (ocupado ? '\n\n' + titulo : '');
-    const classes = ['vd-day', bloqueado ? 'status-' + statusCodigo : (ocupado ? 'busy' : ''), apenasNota ? 'has-note' : ''].filter(Boolean).join(' ');
+    const classes = ['vd-day', statusCodigo ? 'status-' + statusCodigo : (ocupado ? 'busy' : ''), apenasNota ? 'has-note' : ''].filter(Boolean).join(' ');
     return `<div class="${classes}" title="${esc(titulo)}"
         onclick="abrirModalIndisponibilidade('${veiculoId}', '${iso}')">
-        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${bloqueado ? esc(statusCodigo) : DIAS_SEMANA_ABREV[d.getDay()]}
+        <span class="vd-day-num">${String(d.getDate()).padStart(2, '0')}</span>${statusCodigo ? esc(statusCodigo) : DIAS_SEMANA_ABREV[d.getDay()]}
       </div>`;
   }).join('');
   return `<div class="vd-week-wrap">
@@ -8580,8 +8771,329 @@ function aplicarVeiculoDedicadoSelecionado(veiculoId) {
   document.getElementById('m-nomeMotorista').value = vd.nomeMotorista || '';
   document.getElementById('m-cpfMotorista').value = vd.cpfMotorista || '';
   popularSelectTransportadores('m-transportador', vd.transportador || '');
-  popularSelectCnpjsTransportador('m-transportador-cnpj', vd.transportador || '', '');
+  // Preserva o CNPJ já escolhido pelo usuário — popularSelectCnpjsTransportador já recai pra
+  // vazio sozinho se esse CNPJ não pertencer ao transportador do veículo selecionado.
+  popularSelectCnpjsTransportador('m-transportador-cnpj', vd.transportador || '', document.getElementById('m-transportador-cnpj').value);
   verificarPlacaDuplicadaModal();
+}
+
+// ── MODAL FRETE RETORNO (deslocamento vazio Base → Fornecedor) ──
+let _referenciasFreteRetorno = []; // snapshot das viagens elegíveis como referência, montado ao abrir o modal — ver filtrarReferenciasFreteRetorno
+
+function abrirModalFreteRetorno(idx) {
+  const refViagem = (idx === null || idx === undefined) ? null : viagensAtivo()[idx];
+
+  _referenciasFreteRetorno = viagensAtivo().filter(v => v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO);
+  document.getElementById('fr-referencia').value = refViagem ? refViagem.idViagem : '';
+  document.getElementById('fr-referencia-busca').value = refViagem ? textoReferenciaFreteRetorno(refViagem) : '';
+  fecharListaReferenciasFreteRetorno();
+
+  popularSelectOrigemFornecedor('fr-destino', '');
+  popularSelectBaseFornecedor('fr-destino-base', '', '');
+  document.getElementById('fr-dtSaida').value = '';
+  document.getElementById('fr-dtChegada').value = '';
+  document.getElementById('fr-horaSaida').value = '12:00';
+  document.getElementById('fr-horaChegada').value = '12:00';
+  document.getElementById('fr-obs').value = '';
+
+  selecionarReferenciaFreteRetorno(document.getElementById('fr-referencia').value);
+  document.getElementById('modalFreteRetorno').classList.add('open');
+}
+
+function fecharModalFreteRetorno() {
+  fecharModal('modalFreteRetorno');
+}
+
+function textoReferenciaFreteRetorno(v) {
+  return `${v.idViagem} · ${v.placa || '—'} · ${v.destino || ''}`;
+}
+
+// Combobox de busca livre da viagem de referência — digitar filtra por ID, placa ou origem
+// (destino da própria viagem, que vira a Origem do retorno) em vez de rolar um <select> longo.
+function filtrarReferenciasFreteRetorno() {
+  const termo = document.getElementById('fr-referencia-busca').value.trim().toLowerCase();
+  const itens = !termo ? _referenciasFreteRetorno : _referenciasFreteRetorno.filter(v =>
+    v.idViagem.toLowerCase().includes(termo) ||
+    (v.placa || '').toLowerCase().includes(termo) ||
+    (v.destino || '').toLowerCase().includes(termo)
+  );
+  const opcaoNenhuma = `<div class="fr-ref-item fr-ref-item-nenhuma" onmousedown="selecionarItemReferenciaFreteRetorno('')">— Nenhuma · informar tudo manualmente —</div>`;
+  const opcoesItens = itens.slice(0, 50).map(v =>
+    `<div class="fr-ref-item" onmousedown="selecionarItemReferenciaFreteRetorno('${esc(v.idViagem)}')">${esc(textoReferenciaFreteRetorno(v))}</div>`
+  ).join('') || `<div class="fr-ref-item-muted">Nenhuma viagem encontrada</div>`;
+  document.getElementById('fr-referencia-lista').innerHTML = opcaoNenhuma + opcoesItens;
+  document.getElementById('fr-referencia-lista').classList.add('open');
+}
+
+// onmousedown nos itens (não onclick) garante que a seleção roda antes do blur do campo de
+// busca fechar a lista — padrão usual de combobox sem depender de biblioteca.
+function selecionarItemReferenciaFreteRetorno(idViagem) {
+  document.getElementById('fr-referencia').value = idViagem;
+  fecharListaReferenciasFreteRetorno();
+  selecionarReferenciaFreteRetorno(idViagem);
+}
+
+function fecharListaReferenciasFreteRetorno() {
+  document.getElementById('fr-referencia-lista').classList.remove('open');
+  // Se o usuário digitou algo e clicou fora sem escolher um item da lista, o texto volta a
+  // refletir a seleção real (fr-referencia, o hidden) — nunca fica um texto de busca "solto".
+  const idAtual = document.getElementById('fr-referencia').value;
+  const v = idAtual ? _referenciasFreteRetorno.find(x => x.idViagem === idAtual) : null;
+  document.getElementById('fr-referencia-busca').value = v ? textoReferenciaFreteRetorno(v) : '';
+}
+
+function selecionarReferenciaFreteRetorno(idViagem) {
+  const ref = idViagem ? viagensAtivo().find(v => v.idViagem === idViagem) : null;
+  document.getElementById('fr-campo-origem-ref').style.display = ref ? '' : 'none';
+  document.getElementById('fr-campo-origem-manual').style.display = ref ? 'none' : '';
+  document.getElementById('fr-transportador').disabled = !!ref;
+  document.getElementById('fr-transportador-cnpj').disabled = !!ref;
+  document.getElementById('fr-veiculo-dedicado').disabled = !!ref;
+
+  if (ref) {
+    document.getElementById('fr-origem-texto').value = ref.destino + (ref.cnpjDestino ? ` · ${ref.cnpjDestino}` : '');
+    popularSelectTransportadores('fr-transportador', ref.transportador || '');
+    popularSelectCnpjsTransportador('fr-transportador-cnpj', ref.transportador || '', ref.transportadorCnpj || '');
+    atualizarVeiculosFreteRetorno(ref.transportador || '', ref.veiculoDedicadoId || '');
+    const saidaSugerida = sugerirSaidaFreteRetorno(ref);
+    if (saidaSugerida) {
+      document.getElementById('fr-dtSaida').value =
+        `${saidaSugerida.getFullYear()}-${String(saidaSugerida.getMonth() + 1).padStart(2, '0')}-${String(saidaSugerida.getDate()).padStart(2, '0')}`;
+      document.getElementById('fr-horaSaida').value =
+        `${String(saidaSugerida.getHours()).padStart(2, '0')}:${String(saidaSugerida.getMinutes()).padStart(2, '0')}`;
+    }
+  } else {
+    popularSelectBaseDestino('fr-origem-base', '');
+    popularSelectTransportadores('fr-transportador', '');
+    popularSelectCnpjsTransportador('fr-transportador-cnpj', '', '');
+    atualizarVeiculosFreteRetorno('');
+  }
+  atualizarChegadaFreteRetorno();
+}
+
+// Quando o caminhão da viagem de referência fica livre pra sair vazio de novo: prioriza a
+// chegada real/estimada da Herrlog (mon.chegadaReal || mon.etaDestino — mesma prioridade de
+// renderEtaHerrlog/fimOcupacaoVeiculo) em vez da Descarga Programada, porque uma viagem
+// atrasada (comum em trânsito longo) só libera o veículo bem depois do horário planejado.
+// Sem monitoramento Herrlog pra essa viagem (não exportada, ou já sem dado ativo), cai pra
+// dtDescProg/horaDescProg como estimativa. Em cima da chegada (real ou prevista), soma o
+// tempo médio de descarga — o caminhão não sai de imediato, ainda precisa descarregar.
+function sugerirSaidaFreteRetorno(ref) {
+  const mon = monitoramentoHerrlog[ref.idViagem];
+  const etaIso = mon?.chegadaReal || mon?.etaDestino;
+  const chegada = etaIso ? new Date(etaIso) : parseDataHora(ref.dtDescProg || ref.dtDesc, ref.horaDescProg);
+  if (!chegada || isNaN(chegada.getTime())) return null;
+  return new Date(chegada.getTime() + TEMPO_DESCARGA_PADRAO_HORAS * 60 * 60 * 1000);
+}
+
+// Origem efetiva no momento (destino da viagem de referência, ou a base escolhida manualmente)
+// — usada tanto pra montar a viagem quanto pro cálculo de leadtime da chegada.
+function origemAtualFreteRetorno() {
+  const refId = document.getElementById('fr-referencia').value;
+  const ref = refId ? viagensAtivo().find(v => v.idViagem === refId) : null;
+  return ref ? ref.destino : document.getElementById('fr-origem-base').value;
+}
+
+// Data/hora de chegada = saída + leadtime da rota (Origem/Base → Fornecedor/Base de
+// Atendimento), sem somar tempo de carregamento (ver nota em buscarLeadtimeHorasParaViagem)
+// — é só o deslocamento vazio de volta. Sem leadtime cadastrado pra essa rota, não mexe no
+// campo (fica pro usuário preencher manualmente, mesmo padrão do resto do app).
+function atualizarChegadaFreteRetorno() {
+  const aviso = document.getElementById('fr-chegada-aviso');
+  const origemNome = origemAtualFreteRetorno();
+  const destinoNome = document.getElementById('fr-destino').value;
+  const destinoBase = document.getElementById('fr-destino-base').value;
+  const dtSaidaIso = document.getElementById('fr-dtSaida').value;
+  // Sem base de atendimento escolhida ainda, nem tenta — fica esperando o usuário
+  // completar o destino (não é "sem leadtime", é "faltando informação").
+  if (!origemNome || !destinoNome || !destinoBase || !dtSaidaIso) { aviso.style.display = 'none'; return; }
+  const horas = buscarLeadtimeHorasParaViagem({
+    produto: PRODUTO_RETORNO_VAZIO,
+    origem: origemNome,
+    destino: destinoNome,
+    destinoBase,
+  });
+  if (horas === null) { aviso.style.display = ''; return; }
+  aviso.style.display = 'none';
+  const horaSaida = document.getElementById('fr-horaSaida').value || '12:00';
+  const [hh, mm] = horaSaida.split(':').map(Number);
+  const saida = new Date(dtSaidaIso + 'T00:00:00');
+  saida.setHours(hh, mm, 0, 0);
+  const chegada = new Date(saida.getTime() + horas * 60 * 60 * 1000);
+  document.getElementById('fr-dtChegada').value =
+    `${chegada.getFullYear()}-${String(chegada.getMonth() + 1).padStart(2, '0')}-${String(chegada.getDate()).padStart(2, '0')}`;
+  document.getElementById('fr-horaChegada').value =
+    `${String(chegada.getHours()).padStart(2, '0')}:${String(chegada.getMinutes()).padStart(2, '0')}`;
+}
+
+// Reflete a troca de transportador (manual, ou copiado da viagem de referência) na lista de
+// veículos dedicados disponíveis — mesmo padrão de atualizarVeiculosDedicadosDoTransportador.
+// Não mexe no select de CNPJ (cada chamador já cuida disso com o valorAtual certo — ver
+// selecionarReferenciaFreteRetorno e o onchange de fr-transportador) nem filtra por vigência
+// de data (as datas do retorno ainda não foram escolhidas neste ponto do fluxo; a checagem
+// autoritativa de vigência/indisponibilidade roda em criarViagemFreteRetorno(), como em
+// salvarViagem()).
+function atualizarVeiculosFreteRetorno(nomeTransportador, veiculoIdPreferido) {
+  popularSelectVeiculosDedicados('fr-veiculo-dedicado', veiculoIdPreferido || '', nomeTransportador, null);
+  aplicarVeiculoDedicadoFreteRetorno(document.getElementById('fr-veiculo-dedicado').value);
+}
+
+// Preenche e trava placa/motorista/CPF a partir do veículo dedicado escolhido. Sem veículo
+// selecionado (nenhum cadastrado pra esse transportador ainda, ou o usuário limpou o select),
+// libera os três campos pra digitação manual — sem essa liberação não havia como criar um
+// Frete Retorno pra um transportador sem veículo em "Veículos Dedicados".
+function aplicarVeiculoDedicadoFreteRetorno(veiculoId) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  const bloqueado = !!vd;
+  document.getElementById('fr-placa').value = vd?.placaCavalo || '';
+  document.getElementById('fr-nomeMotorista').value = vd?.nomeMotorista || '';
+  document.getElementById('fr-cpfMotorista').value = vd?.cpfMotorista || '';
+  ['fr-placa', 'fr-nomeMotorista', 'fr-cpfMotorista'].forEach(id => {
+    const el = document.getElementById(id);
+    el.readOnly = bloqueado;
+    el.style.opacity = bloqueado ? '0.7' : '';
+    el.style.cursor = bloqueado ? 'not-allowed' : '';
+  });
+}
+
+async function criarViagemFreteRetorno() {
+  const refId = document.getElementById('fr-referencia').value;
+  const refViagem = refId ? viagensAtivo().find(v => v.idViagem === refId) : null;
+
+  const destinoNome = document.getElementById('fr-destino').value;
+  const destinoBase = document.getElementById('fr-destino-base').value;
+  const origemNome = origemAtualFreteRetorno();
+  const transportador = document.getElementById('fr-transportador').value;
+  const transportadorCnpj = document.getElementById('fr-transportador-cnpj').value;
+  const veiculoDedicadoId = document.getElementById('fr-veiculo-dedicado').value;
+  const placa = document.getElementById('fr-placa').value.trim().toUpperCase();
+  const nomeMotorista = document.getElementById('fr-nomeMotorista').value.trim();
+  const cpfMotorista = document.getElementById('fr-cpfMotorista').value.trim();
+  const dtSaidaIso = document.getElementById('fr-dtSaida').value;
+  const horaSaida = document.getElementById('fr-horaSaida').value || '12:00';
+  const dtChegadaIso = document.getElementById('fr-dtChegada').value;
+  const horaChegada = document.getElementById('fr-horaChegada').value || '12:00';
+  const obs = document.getElementById('fr-obs').value.trim();
+
+  if (!origemNome) { alert('Selecione a origem (ou escolha uma viagem de referência).'); return; }
+  if (!destinoNome || !destinoBase) { alert('Selecione o fornecedor de destino e a base de atendimento.'); return; }
+  // Veículo Dedicado é só um atalho pra preencher placa/motorista — sem ele cadastrado
+  // (transportador ainda sem veículo em "Veículos Dedicados"), a placa pode ser digitada
+  // direto (ver aplicarVeiculoDedicadoFreteRetorno, que libera os campos nesse caso).
+  if (!placa) { alert('Informe a placa do cavalo (ou selecione um veículo dedicado).'); return; }
+  if (!dtSaidaIso) { alert('Informe a data de saída.'); return; }
+
+  const dtCarreg = isoParaDMY(dtSaidaIso);
+  const dtDesc = dtChegadaIso ? isoParaDMY(dtChegadaIso) : dtCarreg;
+
+  // Mesma validação autoritativa de vigência/indisponibilidade de salvarViagem() — só se
+  // aplica quando o veículo veio do cadastro de Veículos Dedicados (aqui precisa rodar
+  // explicitamente porque esta viagem não passa pelo modal Gerir Viagem).
+  if (veiculoDedicadoId) {
+    const ini = parseDMY(dtCarreg);
+    const fim = parseDMY(dtDesc) || ini;
+    const foraVigencia = diasForaDaVigenciaNoIntervalo(veiculoDedicadoId, ini, fim);
+    if (foraVigencia.length) {
+      const vd = veiculosDedicados.find(x => x.id === veiculoDedicadoId);
+      const lista = foraVigencia.map(d => d.toLocaleDateString('pt-BR')).join(', ');
+      alert(`O veículo ${vd?.placaCavalo || ''} não está ativo na frota dedicada em: ${lista}.\n\nEscolha outro veículo ou ajuste a vigência em "Veículos Dedicados".`);
+      return;
+    }
+    const conflitos = diasIndisponiveisNoIntervalo(veiculoDedicadoId, ini, fim);
+    if (conflitos.length) {
+      const vd = veiculosDedicados.find(x => x.id === veiculoDedicadoId);
+      const lista = conflitos.map(c => `${new Date(c.data + 'T00:00:00').toLocaleDateString('pt-BR')}${c.motivo ? ' — ' + c.motivo : ''}`).join('\n');
+      alert(`O veículo ${vd?.placaCavalo || ''} está marcado como indisponível em:\n\n${lista}\n\nEscolha outro veículo ou libere a marcação em "Veículos Dedicados".`);
+      return;
+    }
+  }
+
+  const semanaAlvo = refViagem?._semanaOrigem || semanaAtiva;
+  if (!semanaAlvo) { alert('Nenhuma semana ativa — selecione uma semana antes de criar o Frete Retorno.'); return; }
+  if (!window._fb?.salvarComViagensUnicas) { alert('Firebase indisponível para gerar o ID da viagem.'); return; }
+
+  const fornecedorDestino = fornecedores.find(f => f.origem === destinoNome && f.baseAtendimento === destinoBase)
+    || fornecedores.find(f => f.origem === destinoNome);
+  const baseOrigem = bases.find(b => b.nomeMis === origemNome);
+  const vd = veiculosDedicados.find(x => x.id === veiculoDedicadoId);
+  const criadoEm = new Date().toISOString();
+  const criadoPor = _authUsuarioAtual?.nome || '';
+  const novaViagem = {
+    idCadencia: '', cadenciaOrigem: '',
+    produto: PRODUTO_RETORNO_VAZIO,
+    origem: origemNome,
+    base: '',
+    cnpjOrigem: refViagem?.cnpjDestino || baseOrigem?.cnpj || '',
+    destino: destinoNome,
+    destinoBase,
+    cnpjDestino: fornecedorDestino?.cnpj || '',
+    dtCarreg, dtDesc, dtCarregProg: dtCarreg, dtDescProg: dtDesc,
+    horaCarregProg: horaSaida, horaDescProg: horaChegada,
+    volume: 0,
+    modal: 'FOB',
+    // Sem veículo dedicado cadastrado, não dá pra marcar "Frota Dedicada" (status que em
+    // todo o resto do app sempre implica um veiculoDedicadoId válido — ver salvarViagem) —
+    // cai em "Placa Enviada", o mesmo estado "pronto pra rodar" de uma viagem normal que já
+    // tem placa confirmada, só que sem passar pelo fluxo de oferta/aceite.
+    status: veiculoDedicadoId ? 'Frota Dedicada' : 'Placa Enviada',
+    statusAgendamento: 'Não Agendado',
+    veiculoDedicadoId,
+    transportador: transportador || vd?.transportador || '',
+    transportadorCnpj: transportadorCnpj || '',
+    placa,
+    placaCarreta1: vd?.placaCarreta1 || '',
+    placaCarreta2: vd?.placaCarreta2 || '',
+    nomeMotorista,
+    cpfMotorista,
+    obs,
+    viagemOrigemId: refViagem?.idViagem || '',
+    criadoEm, criadoPor,
+    historicoProgramacao: [{
+      data: criadoEm, usuario: criadoPor,
+      evento: 'Viagem de Frete Retorno criada' + (refViagem ? ` a partir de ${refViagem.idViagem}` : ''),
+    }],
+  };
+
+  const btn = document.querySelector('#modalFreteRetorno .btn-primary');
+  const oldText = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    mostrarStatus('saving', 'Criando Frete Retorno...');
+    let salvo;
+    if (semanaAlvo === semanaAtiva) {
+      const payload = { cadencias, config: { capCaminhao: document.getElementById('capCaminhao').value } };
+      salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, [...viagens, novaViagem], PREFIXO_VIAGEM);
+      aplicarPayload(salvo);
+    } else {
+      // Viagem de referência de outra semana (visão multi-semana) — precisa da sessão
+      // completa dela (cadencias/viagens/config próprios, não os da semana ativa) pra não
+      // sobrescrever o resto da semana com dado errado (salvarComViagensUnicas faz um
+      // set() completo do node da sessão, ver comentário na função).
+      const sessao = await window._fb.carregar(semanaAlvo);
+      if (!sessao) { alert('Não foi possível carregar os dados da semana da viagem de referência. Tente novamente.'); return; }
+      const viagensDaSemana = Object.values(sessao.viagens || {});
+      const payload = { cadencias: sessao.cadencias || [], config: sessao.config || {} };
+      salvo = await window._fb.salvarComViagensUnicas(semanaAlvo, payload, [...viagensDaSemana, novaViagem], PREFIXO_VIAGEM);
+      // Não chama aplicarPayload aqui (só cobre a semana ativa) — o listener em tempo real
+      // de viagensMultiSemana (ver configurarListenersMultiSemana) reconcilia sozinho.
+    }
+
+    const novoId = Object.keys(salvo.viagens).find(id => salvo.viagens[id].criadoEm === criadoEm && salvo.viagens[id].produto === PRODUTO_RETORNO_VAZIO);
+    if (refViagem && novoId) {
+      refViagem.viagemRetornoId = novoId;
+      marcarEAgendar(refViagem);
+    }
+
+    fecharModalFreteRetorno();
+    renderViagensTable();
+    mostrarStatusSalvo();
+    if (novoId) alert(`Viagem de Frete Retorno criada: ${novoId}\n${origemNome} → ${destinoNome}${destinoBase ? ' (' + destinoBase + ')' : ''}`);
+  } catch (e) {
+    alert('Não foi possível criar a viagem de Frete Retorno: ' + e.message);
+    mostrarStatus('saving', 'Erro ao salvar');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = oldText || 'Criar Viagem'; }
+  }
 }
 
 function verificarPlacaDuplicadaModal() {
@@ -8697,12 +9209,17 @@ function openModal(idx) {
   editingIdx = idx;
   const v = viagensAtivo()[idx];
   document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
+  const vinculoLabel = document.getElementById('modal-vinculo-label');
+  const vinculoTexto = v.viagemOrigemId ? `↩ Retorno de ${v.viagemOrigemId}`
+    : v.viagemRetornoId ? `↩ Retorno vinculado: ${v.viagemRetornoId}` : '';
+  vinculoLabel.textContent = vinculoTexto;
+  vinculoLabel.style.display = vinculoTexto ? '' : 'none';
   document.getElementById('m-produto').textContent = v.produto;
   document.getElementById('m-volume').textContent = v.volume + ' m³';
   document.getElementById('m-dtcarreg').textContent = v.dtCarreg && v.dtCarreg !== '-' ? v.dtCarreg : '—';
   document.getElementById('m-dtdesc').textContent = v.dtDesc;
   document.getElementById('m-origem').innerHTML = esc(v.origem) + (v.base ? ` <span style="color:var(--text-muted)">(${esc(v.base)})</span>` : '');
-  document.getElementById('m-destino').textContent = v.destino;
+  document.getElementById('m-destino').innerHTML = esc(v.destino) + (v.destinoBase ? ` <span style="color:var(--text-muted)">(${esc(v.destinoBase)})</span>` : '');
   popularSelectTransportadores('m-transportador', v.transportador || '');
   popularSelectCnpjsTransportador('m-transportador-cnpj', v.transportador || '', v.transportadorCnpj || '');
   popularSelectProgramadores('m-programador', v.programador || '');
@@ -9161,30 +9678,57 @@ function renderSeletorStatus(v, realIdx) {
     </select>`;
   if (v.status === 'Frota Dedicada' && !transportador) {
     const veiculos = veiculosDedicados.filter(vd => !v.transportador || vd.transportador === v.transportador);
+    // Transportador já definido pra viagem (coluna "Transportador" ao lado já mostra o nome)
+    // → lista fica restrita a ele mesmo (filtro acima), então repetir o nome em cada opção é
+    // redundante — só a placa. Sem transportador ainda, o select mistura veículos de vários
+    // transportadores, aí o nome ajuda a diferenciar.
     const opcoesVeiculo = veiculos.map(vd =>
-      `<option value="${esc(vd.id)}" ${vd.id === v.veiculoDedicadoId ? 'selected' : ''}>${esc(vd.placaCavalo)} · ${esc(vd.transportador)}</option>`
+      `<option value="${esc(vd.id)}" ${vd.id === v.veiculoDedicadoId ? 'selected' : ''}>${esc(vd.placaCavalo)}${v.transportador ? '' : ' · ' + esc(vd.transportador)}</option>`
     ).join('');
     html += `<br><select class="placa-input" style="width:100%;max-width:185px;font-size:10px;text-transform:none;margin-top:3px"
         onchange="salvarVeiculoDedicadoInline(${realIdx}, this.value)" title="Veículo dedicado que vai atender esta viagem">
         <option value="">Selecione o veículo...</option>
         ${opcoesVeiculo}
       </select>`;
-  } else {
-    html += `<br><input class="placa-input" style="width:100%;max-width:140px;font-size:11px;margin-top:3px" value="${esc(v.placa||'')}" placeholder="AAA0A000"
-        onblur="salvarPlacaInline(${realIdx}, this.value)"
-        onkeydown="if(event.key==='Enter')this.blur()"
-        ${transportador && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
-        maxlength="8">`;
+  } else if (v.status === 'Em Andamento') {
+    html += renderCicloHerrlogInline(v);
   }
-  html += badgePlacaConflitante(v);
   return html;
+}
+
+// Placa: input livre pra maioria dos status; pra Frota Dedicada só exibe (o campo que
+// realmente controla a placa nesse caso é o select de Veículo Dedicado, na coluna Status —
+// ver renderSeletorStatus), pra não ter dois controles editando o mesmo dado.
+function renderPlacaCelula(v, realIdx) {
+  const transportador = isTransportador();
+  if (v.status === 'Frota Dedicada' && !transportador) {
+    return (v.placa ? `<span style="font-family:var(--font-cond)">${esc(v.placa)}</span>` : '<span style="color:var(--text-muted)">—</span>')
+      + badgePlacaConflitante(v);
+  }
+  return `<input class="placa-input" style="width:100%;max-width:96px;font-size:11px" value="${esc(v.placa||'')}" placeholder="AAA0A000"
+      onblur="salvarPlacaInline(${realIdx}, this.value)"
+      onkeydown="if(event.key==='Enter')this.blur()"
+      ${transportador && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
+      maxlength="8">${badgePlacaConflitante(v)}`;
+}
+
+// Ciclo real da viagem na Herrlog (T1 Programado/Em deslocamento p/ Origem, T2 Espera/Na
+// Origem, T3 Em deslocamento p/ Destino, T4 Espera/No Destino, T5 Finalizada — ver
+// CICLO_LABELS em nexta_extractors/extractors/herrlog/herrlog_datalake.py e
+// STATUS_MANUAL_CIF_OPCOES) — resumido aqui só no código (T1..T5), com o texto completo no
+// title. A aba Monitoramento (renderStatusCelulaMon) já mostra o texto inteiro; isso aqui é
+// só pra não precisar trocar de aba pra saber em que pé a viagem está.
+function renderCicloHerrlogInline(v) {
+  const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
+  if (!statusHerrlog) return '';
+  return `<br><span style="display:block;margin-top:3px;font-size:10px;color:#fff;font-family:var(--font-cond)">${esc(statusHerrlog)}</span>`;
 }
 
 function badgePlacaConflitante(v) {
   const conflitos = viagensComPlacaConflitante(v, v.placa);
   if (!conflitos.length) return '';
   const ids = conflitos.map(c => c.idViagem).join(', ');
-  return `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block;cursor:help"
+  return `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:block;width:100%;max-width:96px;white-space:normal;line-height:1.3;cursor:help"
       title="Placa ${esc(v.placa)} também alocada em ${esc(ids)} no mesmo período — confira se não é engano do transportador">⚠ Placa em outra viagem</span>`;
 }
 
@@ -9319,6 +9863,9 @@ function claseAgendamento(valor) {
 }
 
 function renderSeletorAgendamento(v, realIdx) {
+  // Agendamento é sobre a fila/grade de carregamento na usina/fornecedor — não existe pra
+  // um Frete Retorno (deslocamento vazio, sem carga a agendar).
+  if (v.produto === PRODUTO_RETORNO_VAZIO) return '<span style="color:var(--text-muted)">—</span>';
   const atual = v.statusAgendamento || 'Não Agendado';
   const opcoes = OPCOES_AGENDAMENTO.map(op => `<option value="${op}" ${op === atual ? 'selected' : ''}>${op}</option>`).join('');
   return `<select class="placa-input sel-agend ${claseAgendamento(atual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
@@ -9781,12 +10328,15 @@ function updatePipeline(list) {
 // Só entram na exportação viagens com agendamento confirmado — "Agendado" ou "Usina de
 // Fila" — as demais (Não Agendado, Segurando Grade, Sem Saldo, Sem Grades) ainda não têm
 // carregamento garantido e não devem ser criadas no monitoramento da Herrlog.
+// Frete Retorno (ver PRODUTO_RETORNO_VAZIO) fica fora dessa regra: é um deslocamento vazio,
+// não depende de fila/grade de carregamento em fornecedor nenhum — assim que a viagem tem
+// placa confirmada, já está pronta pra ir pro monitoramento.
 const AGENDAMENTOS_EXPORTAVEIS = ['Agendado', 'Usina de Fila'];
 
 function calcularFiltradasExport() {
   const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v =>
     ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa
-    && AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado')
+    && (v.produto === PRODUTO_RETORNO_VAZIO || AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado'))
   );
   const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
   const programadores = new Set(msEProgramador?.getSelected() || []);
@@ -9853,7 +10403,7 @@ function renderExport() {
         <td>${prodTag(v.produto)}</td>
         <td>${v.origem}${v.base ? `<span style="color:var(--text-muted)"> (${v.base})</span>` : ''}</td>
         <td>${renderBadgeCadastroCliente(fornecedor?.codSap)}</td>
-        <td>${v.destino}</td>
+        <td>${v.destino}${v.destinoBase ? `<span style="color:var(--text-muted)"> (${v.destinoBase})</span>` : ''}</td>
         <td>${renderBadgeCadastroCliente(baseDestino?.idHerrlog)}</td>
         <td><strong>${v.dtDesc}</strong></td>
         <td>${v.volume} m³</td>
@@ -10516,6 +11066,15 @@ function salvarStatusManualInline(idViagem, valorInput) {
 function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
 
 function buscarFornecedorDaViagem(v) {
+  // Frete Retorno (Base → Fornecedor) guarda os campos invertidos em relação a uma viagem
+  // normal: v.origem é a Base de saída e v.destino é o fornecedor da próxima carga (ver
+  // criarViagemFreteRetorno) — por isso o fornecedor se resolve por v.destino aqui, não
+  // v.origem. Mantém leadtime/export Herrlog funcionando sem tratamento especial neles.
+  if (v.produto === PRODUTO_RETORNO_VAZIO) {
+    return (v.destinoBase && fornecedores.find(f => f.origem === v.destino && f.baseAtendimento === v.destinoBase))
+      || fornecedores.find(f => f.origem === v.destino)
+      || null;
+  }
   // Origem (nome do fornecedor) se repete entre cidades/bases de atendimento
   // diferentes (ex.: "SIM DISTRIBUIDORA" em Guarulhos, Guarulhos-Ale, São Caetano...).
   // Sem cruzar com a Base, o find() abaixo pegaria a primeira ocorrência do nome,
@@ -10608,6 +11167,12 @@ function reprocessarJanelaCarregamentoRetroativo() {
 }
 
 function buscarBaseDaViagem(v) {
+  // Ver nota em buscarFornecedorDaViagem — Frete Retorno guarda a Base em v.origem.
+  if (v.produto === PRODUTO_RETORNO_VAZIO) {
+    return bases.find(b => b.nomeMis === v.origem)
+      || (v.cnpjOrigem && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(v.cnpjOrigem)))
+      || null;
+  }
   return bases.find(b => b.nomeMis === v.destino)
     || (v.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(v.cnpjDestino)))
     || null;
@@ -10631,6 +11196,10 @@ function buscarLeadtimeHorasParaViagem(v) {
     norm(l.destinoUf) === norm(base.estado)
   );
   if (!registro) return null;
+  // Frete Retorno é só deslocamento vazio de volta ao fornecedor — não carrega nada nesse
+  // trecho (o carregamento é a próxima viagem, já no fornecedor), então não soma o tempo
+  // médio de carregamento do fornecedor como nas viagens normais.
+  if (v.produto === PRODUTO_RETORNO_VAZIO) return registro.leadtimeHoras;
   const tempoCarregamento = fornecedor.tempoCarregamentoHoras ?? TEMPO_CARREGAMENTO_PADRAO_HORAS;
   return tempoCarregamento + registro.leadtimeHoras;
 }
@@ -11753,10 +12322,39 @@ function configurarListenerMonitoramentoHerrlog() {
     }, 200);
   }
 
-  window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog({
-    onAdded: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
-    onChanged: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
-    onRemoved: (id) => { delete monitoramentoHerrlog[id]; agendarRefresh(); },
+  const assinar = () => {
+    // idsConhecidos evita reagendar refresh pra cada registro que a redelivery do
+    // onChildAdded reentrega logo depois de assinar (mesmo padrão de idsConhecidos em
+    // configurarListenerSemana) — sem isso, a carga em lote abaixo não evitaria a segunda
+    // rajada de re-renders causada pela própria assinatura do listener.
+    const idsConhecidos = new Set(Object.keys(monitoramentoHerrlog));
+    window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog({
+      onAdded: (id, dados) => {
+        monitoramentoHerrlog[id] = dados;
+        if (!idsConhecidos.delete(id)) agendarRefresh(id);
+      },
+      onChanged: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
+      onRemoved: (id) => { delete monitoramentoHerrlog[id]; agendarRefresh(); },
+    });
+  };
+
+  // Carga em lote (1 leitura) antes de assinar o onChildAdded: com o node já grande
+  // (centenas de viagens monitoradas), assinar direto sem essa carga prévia faz o
+  // onChildAdded reconstruir o node inteiro evento a evento na largada — cada evento
+  // dispara um re-render pesado da aba Monitoramento, que por isso "sobe aos poucos" em
+  // vez de aparecer de uma vez.
+  window._fb.carregarMonitoramentoHerrlog().then(dados => {
+    monitoramentoHerrlog = dados || {};
+    processarViagensCanceladasNaHerrlog();
+    sincronizarStatusHerrlog();
+    if (activeTab === 1) renderViagensTable();
+    if (activeTab === 2) renderExport();
+    if (activeTab === 3) renderMonitoramento();
+    if (activeTab === 9) renderPerformance();
+    assinar();
+  }).catch(e => {
+    console.error('Erro ao carregar monitoramentoHerrlog:', e);
+    assinar(); // fallback: segue só com o listener incremental mesmo sem a carga em lote
   });
 }
 
@@ -11774,10 +12372,28 @@ function configurarListenerMonitoramentoPamcard() {
     }, 200);
   }
 
-  window._fbUnsubPamcard = window._fb.ouvirMonitoramentoPamcard({
-    onAdded: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
-    onChanged: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
-    onRemoved: (id) => { delete monitoramentoPamcard[id]; agendarRefresh(); },
+  const assinar = () => {
+    // Mesmo padrão de idsConhecidos do configurarListenerMonitoramentoHerrlog acima.
+    const idsConhecidos = new Set(Object.keys(monitoramentoPamcard));
+    window._fbUnsubPamcard = window._fb.ouvirMonitoramentoPamcard({
+      onAdded: (id, dados) => {
+        monitoramentoPamcard[id] = dados;
+        if (!idsConhecidos.delete(id)) agendarRefresh();
+      },
+      onChanged: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
+      onRemoved: (id) => { delete monitoramentoPamcard[id]; agendarRefresh(); },
+    });
+  };
+
+  // Mesmo motivo do configurarListenerMonitoramentoHerrlog acima — carga em lote antes de
+  // assinar o onChildAdded, pra não reconstruir o node inteiro evento a evento na largada.
+  window._fb.carregarMonitoramentoPamcard().then(dados => {
+    monitoramentoPamcard = dados || {};
+    if (activeTab === 3) renderMonitoramento();
+    assinar();
+  }).catch(e => {
+    console.error('Erro ao carregar monitoramentoPamcard:', e);
+    assinar();
   });
 }
 
