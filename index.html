@@ -9935,6 +9935,7 @@ async function salvarAgendamentoInline(realIdx, valor) {
     if (!confirmado) { renderViagensTable(); return; }
     if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
     if (confirmado.data !== dataProgAtual || confirmado.hora !== horaProgAtual) {
+      const motivo = await pedirMotivoProgramacao();
       const anteriorTxt = (dataProgAtual && dataProgAtual !== '-') ? `${dataProgAtual} ${horaProgAtual}` : '—';
       v.dtCarregProg = confirmado.data;
       v.horaCarregProg = confirmado.hora;
@@ -9942,6 +9943,7 @@ async function salvarAgendamentoInline(realIdx, valor) {
         data: new Date().toISOString(),
         usuario: _authUsuarioAtual?.nome || '',
         evento: `Data de Carregamento confirmada no agendamento: ${anteriorTxt} → ${confirmado.data} ${confirmado.hora}`,
+        ...(motivo ? { motivo } : {}),
       });
       const leadtimeHoras = recalcularDescargaPorLeadtime(v);
       if (leadtimeHoras !== null) {
