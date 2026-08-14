@@ -5885,6 +5885,11 @@ const PREFIXO_VIAGEM = 'NXT';
 // ver criarViagemFreteRetorno(). Volume sempre 0, sem cadência de origem.
 const PRODUTO_RETORNO_VAZIO = 'Retorno Vazio';
 
+// Contador dedicado (contadoresViagem/RV, separado do NXT) — ver salvarComViagensUnicas.
+// Precisa ser semeado uma vez em produção via migrar_contador_viagens.py --aplicar antes
+// do primeiro uso (adicionar "RV" em PREFIXOS lá); sem isso a criação aborta com erro.
+const PREFIXO_VIAGEM_RETORNO_VAZIO = 'RV';
+
 function assinaturaGrupoViagem(v) {
   return [
     v.produto || '',
@@ -9138,7 +9143,7 @@ async function criarViagemFreteRetorno() {
     let salvo;
     if (semanaAlvo === semanaAtiva) {
       const payload = { cadencias, config: { capCaminhao: document.getElementById('capCaminhao').value } };
-      salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, [...viagens, novaViagem], PREFIXO_VIAGEM);
+      salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, [...viagens, novaViagem], PREFIXO_VIAGEM_RETORNO_VAZIO);
       aplicarPayload(salvo);
     } else {
       // Viagem de referência de outra semana (visão multi-semana) — precisa da sessão
@@ -9149,7 +9154,7 @@ async function criarViagemFreteRetorno() {
       if (!sessao) { alert('Não foi possível carregar os dados da semana da viagem de referência. Tente novamente.'); return; }
       const viagensDaSemana = Object.values(sessao.viagens || {});
       const payload = { cadencias: sessao.cadencias || [], config: sessao.config || {} };
-      salvo = await window._fb.salvarComViagensUnicas(semanaAlvo, payload, [...viagensDaSemana, novaViagem], PREFIXO_VIAGEM);
+      salvo = await window._fb.salvarComViagensUnicas(semanaAlvo, payload, [...viagensDaSemana, novaViagem], PREFIXO_VIAGEM_RETORNO_VAZIO);
       // Não chama aplicarPayload aqui (só cobre a semana ativa) — o listener em tempo real
       // de viagensMultiSemana (ver configurarListenersMultiSemana) reconcilia sozinho.
     }
