@@ -2599,6 +2599,7 @@
               <th class="th-sortable" style="white-space:normal" data-col="vsProgramacao" onclick="ordenarColunaMon('vsProgramacao')">vs Programação<span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="vsDesejada" onclick="ordenarColunaMon('vsDesejada')">vs Desejada<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="statusHerrlog" onclick="ordenarColunaMon('statusHerrlog')" title="Automático via Herrlog, ou digitado manualmente em viagens CIF">Status<span class="sort-arrow"></span></th>
+              <th title="Anotações livres do dia a dia (ex.: motivo de atraso) — lápis para adicionar, olho para ver o histórico">Anotações</th>
             </tr>
           </thead>
           <tbody id="monitoramentoBody"></tbody>
@@ -3784,6 +3785,39 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="responderConfirmacaoAgendamento(false)">Cancelar</button>
       <button class="btn btn-primary" onclick="responderConfirmacaoAgendamento(true)">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Nova Anotação de Viagem (aba Monitoramento) -->
+<div class="modal-overlay" id="modalAnotacaoViagem">
+  <div class="modal" style="width:440px;max-width:94vw">
+    <div class="modal-title">✏️ Nova Anotação</div>
+    <div class="modal-sub" id="anotacao-viagem-label">Viagem —</div>
+    <div class="modal-field">
+      <textarea class="config-input" id="anotacao-texto" rows="4" maxlength="500"
+        style="resize:vertical;font-family:var(--font)"
+        placeholder="Ex.: viagem em atraso por fila no pátio de descarga, previsão de chegada às 18h..."
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); salvarAnotacaoViagem(); }"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalAnotacao()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarAnotacaoViagem()">Salvar Anotação</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Histórico de Anotações da Viagem (aba Monitoramento) -->
+<div class="modal-overlay" id="modalHistoricoAnotacoes">
+  <div class="modal" style="width:480px;max-width:94vw">
+    <div class="modal-title">👁️ Histórico de Anotações</div>
+    <div class="modal-sub" id="historico-anotacoes-label">Viagem —</div>
+    <div class="modal-field">
+      <div id="lista-anotacoes" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--panel-soft);font-size:12px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharHistoricoAnotacoes()">Fechar</button>
+      <button class="btn btn-primary" onclick="abrirModalAnotacaoDoHistorico()">✏️ Nova Anotação</button>
     </div>
   </div>
 </div>
@@ -10384,7 +10418,13 @@ function calcularFiltradasExport() {
     ['Placa Enviada', 'Frota Dedicada'].includes(v.status) && v.placa
     && (v.produto === PRODUTO_RETORNO_VAZIO || AGENDAMENTOS_EXPORTAVEIS.includes(v.statusAgendamento || 'Não Agendado'))
   );
-  const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem]); // ainda não confirmado na Herrlog (exportado ou não)
+  // herrlogImportViaApi: sai da lista assim que importar_viagens_herrlog.py grava o
+  // campo (POST 200 confirmado pela Herrlog), sem esperar o ciclo de monitoramento -
+  // sem isso, a viagem continuaria aparecendo como "pronta para importação" na janela
+  // entre o envio automático e a confirmação, e alguém podia clicar em Exportar de
+  // novo e duplicar a viagem na Herrlog. monitoramentoHerrlog continua aqui pro caso
+  // raro de confirmação chegar antes do herrlogImportViaApi (ex.: reconciliação manual).
+  const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem] && !v.herrlogImportViaApi);
   const programadores = new Set(msEProgramador?.getSelected() || []);
   const filtradas = programadores.size
     ? naoConfirmadas.filter(v => programadores.has(valorProgramadorFiltro(v)))
@@ -10464,10 +10504,21 @@ function renderExport() {
 // da Herrlog (extracao_herrlog.py, a cada ciclo) — não apenas quando o XLSX
 // foi baixado. Isso avisa o usuário quando exportou mas esqueceu de importar
 // (ou a importação falhou) na Herrlog.
+//
+// Estado intermediário "📤 Enviado via API" (herrlogImportViaApi): gravado só por
+// importar_viagens_herrlog.py, e só depois que a Herrlog responde 200 com o
+// idViagem em SuccessfullyImported — ao contrário do XLSX baixado manualmente
+// (herrlogExportadoEm sozinho), aqui já existe confirmação real de recebimento;
+// falta só o ciclo de monitoramento sincronizar. Por isso usa o azul informativo
+// (mesmo tom de "🔵 Adiantado" em badgeAderencia), não o laranja de alerta.
 function renderEnvioHerrlog(v, mon) {
   if (mon) {
     const quando = mon.atualizadoEm ? fmtIsoShort(mon.atualizadoEm) : '';
     return `<span class="badge badge-success" title="Confirmado pelo monitoramento Herrlog${quando ? ' · atualizado ' + quando : ''}">✅ Confirmado na Herrlog</span>`;
+  }
+  if (v.herrlogImportViaApi) {
+    const quando = v.herrlogExportadoEm ? new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="Importado automaticamente via API em ${quando} — a Herrlog confirmou o recebimento (200 OK). Aguardando o ciclo de monitoramento sincronizar o status.">📤 Enviado via API</span>`;
   }
   const titulo = v.herrlogExportadoEm
     ? `XLSX exportado em ${new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ainda não encontrado na Herrlog. Confira se a importação foi feita.`
@@ -10857,6 +10908,7 @@ function renderMonitoramento() {
         <td>${badgeAderencia(vsProgramacao)}</td>
         <td>${badgeAderencia(vsDesejada)}</td>
         <td style="font-size:12px;color:var(--text-dim)">${renderStatusCelulaMon(v, mon)}</td>
+        <td>${renderAnotacoesCelulaMon(v)}</td>
       </tr>
     `;
   }).join('');
@@ -11106,6 +11158,93 @@ function salvarStatusManualInline(idViagem, valorInput) {
   });
   marcarEAgendar(v);
   renderMonitoramento();
+}
+
+// ── ANOTAÇÕES DE VIAGEM (aba Monitoramento) ──
+// Observações livres do dia a dia (ex.: motivo de atraso) por viagem — histórico completo
+// com data/hora e usuário, gravado em v.anotacoes. Reaproveita o mesmo autosave das demais
+// edições inline da aba (ver marcarEAgendar), então persiste igual a ETA/Status manual.
+let _anotacaoIdViagemAtual = null;
+
+function abrirModalAnotacao(idViagem) {
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  if (!v) return;
+  _anotacaoIdViagemAtual = idViagem;
+  document.getElementById('anotacao-viagem-label').textContent = `Viagem ${idViagem} · ${v.origem || ''} → ${v.destino || ''}`;
+  document.getElementById('anotacao-texto').value = '';
+  document.getElementById('modalAnotacaoViagem').classList.add('open');
+  setTimeout(() => document.getElementById('anotacao-texto').focus(), 50);
+}
+
+function fecharModalAnotacao() {
+  document.getElementById('modalAnotacaoViagem').classList.remove('open');
+  _anotacaoIdViagemAtual = null;
+}
+
+function salvarAnotacaoViagem() {
+  const texto = document.getElementById('anotacao-texto').value.trim();
+  if (!texto) { alert('Escreva a anotação antes de salvar.'); return; }
+  const v = viagensAtivo().find(x => x.idViagem === _anotacaoIdViagemAtual);
+  if (!v) { fecharModalAnotacao(); return; }
+  if (!Array.isArray(v.anotacoes)) v.anotacoes = [];
+  v.anotacoes.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    texto,
+  });
+  marcarEAgendar(v);
+  fecharModalAnotacao();
+  renderMonitoramento();
+}
+
+function formatarAnotacaoItem(a) {
+  const dt = new Date(a.data);
+  const dataFmt = isNaN(dt.getTime())
+    ? ''
+    : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `
+    <div style="padding:6px 0;border-bottom:1px dashed var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px;color:var(--text-muted);font-size:10px;margin-bottom:2px">
+        <span>👤 ${esc(a.usuario || '—')}</span>
+        <span>${dataFmt}</span>
+      </div>
+      <div>${esc(a.texto).replace(/\n/g, '<br>')}</div>
+    </div>
+  `;
+}
+
+function abrirHistoricoAnotacoes(idViagem) {
+  const v = viagensAtivo().find(x => x.idViagem === idViagem);
+  if (!v) return;
+  _anotacaoIdViagemAtual = idViagem;
+  const anotacoes = Array.isArray(v.anotacoes) ? v.anotacoes : [];
+  document.getElementById('historico-anotacoes-label').textContent = `Viagem ${idViagem} · ${v.origem || ''} → ${v.destino || ''}`;
+  document.getElementById('lista-anotacoes').innerHTML = anotacoes.length
+    ? anotacoes.slice().reverse().map(formatarAnotacaoItem).join('')
+    : '<div style="color:var(--text-muted)">Nenhuma anotação registrada ainda.</div>';
+  document.getElementById('modalHistoricoAnotacoes').classList.add('open');
+}
+
+function fecharHistoricoAnotacoes() {
+  document.getElementById('modalHistoricoAnotacoes').classList.remove('open');
+  _anotacaoIdViagemAtual = null;
+}
+
+function abrirModalAnotacaoDoHistorico() {
+  const idViagem = _anotacaoIdViagemAtual;
+  fecharHistoricoAnotacoes();
+  if (idViagem) abrirModalAnotacao(idViagem);
+}
+
+function renderAnotacoesCelulaMon(v) {
+  const n = Array.isArray(v.anotacoes) ? v.anotacoes.length : 0;
+  return `
+    <div style="display:flex;align-items:center;gap:6px">
+      <button type="button" class="btn-cal" onclick="abrirModalAnotacao('${esc(v.idViagem)}')" title="Adicionar anotação">✏️</button>
+      <button type="button" class="btn-cal" style="${n ? '' : 'opacity:0.4'}" onclick="abrirHistoricoAnotacoes('${esc(v.idViagem)}')" title="${n ? `Ver histórico (${n})` : 'Nenhuma anotação registrada ainda'}">👁️</button>
+      ${n ? `<span style="font-size:10px;color:var(--text-muted)">${n}</span>` : ''}
+    </div>
+  `;
 }
 
 // ── EXPORT HERRLOG (modelo Importador Herrlog: abas Viagens + Eventos de Viagem) ──
