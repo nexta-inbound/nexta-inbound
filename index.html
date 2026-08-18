@@ -8225,6 +8225,16 @@ async function garantirSemanasVizinhasCarregadas() {
 // passa a valer sempre — inclusive pra encurtar (chegou antes) ou esticar (atrasada e
 // ainda rodando) a ocupação em relação à data programada. `ini` é o piso de segurança:
 // nunca deixa o fim ficar antes do início por causa de um ETA incoerente.
+//
+// mon.chegadaReal só é gravado quando o evento de destino tem DataSaida — ou seja, a
+// viagem já chegou em T5 (descarregou e saiu, ver destino_fim em herrlog_datalake.py).
+// Antes disso (T1..T4, incluindo "No Destino"/"Espera para descarga"), chegadaReal é
+// null e o único dado disponível é etaDestino — mas isso é só a PREVISÃO de chegada,
+// não considera o tempo de descarga. Usar etaDestino puro como fim de ocupação liberava
+// o veículo no calendário assim que o caminhão chegava, mesmo ele ainda parado
+// descarregando (ex.: chegou ontem, ainda aguardando descarga hoje). Por isso, sem
+// chegadaReal confirmado, o fim nunca recua pra antes de hoje: a viagem segue ocupando
+// o veículo dia a dia até a Herrlog confirmar a saída real.
 function fimOcupacaoVeiculo(v, ini, fimProgramado) {
   if (!['Em Andamento', 'Viagem Finalizada'].includes(v.status)) return fimProgramado;
   const mon = monitoramentoComHistorico(v.idViagem);
@@ -8234,7 +8244,12 @@ function fimOcupacaoVeiculo(v, ini, fimProgramado) {
   const etaData = new Date(etaIso);
   if (isNaN(etaData.getTime())) return fimProgramado;
   etaData.setHours(0, 0, 0, 0);
-  return etaData < ini ? ini : etaData;
+  let fim = etaData < ini ? ini : etaData;
+  if (!mon?.chegadaReal) {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    if (fim < hoje) fim = hoje;
+  }
+  return fim;
 }
 
 function viagensDoVeiculoNoDia(veiculoId, dia) {
