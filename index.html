@@ -1432,6 +1432,143 @@
     }
     body.transportador-mode .modal-row { grid-template-columns: 1fr; }
   }
+
+  /* ── STATUS FROTA DEDICADA (KANBAN) ── */
+  /* Seletor de modo + legenda numa barra só (pedido do usuário 17/08 — duas barras
+     empilhadas, cada uma com seu próprio padding/borda, desperdiçava altura). */
+  .frota-controles {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+    margin-bottom: 12px; padding: 8px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .frota-legenda-divisor { width: 1px; align-self: stretch; background: var(--border); }
+  /* Filtros de Transportador/Placa — pedido do usuário 18/08: filtro de verdade (multi-select
+     com checkbox, mesmo componente MultiSelect já usado em Gerir Viagens/Monitoramento/
+     Performance), não campo de texto — permite combinar mais de um transportador ou mais de
+     uma placa ao mesmo tempo. Fica logo ao lado do seletor de dia (pedido do usuário 18/08:
+     "dá pra ficar ao lado do filtro data? assim aproveitamos melhor o espaço") — a legenda,
+     que é o item mais "elástico" da barra (flex:1 1 auto, quebra pra linha de baixo sozinha),
+     vem por último, depois dos dois seletores.  */
+  .frota-filtros { display: flex; gap: 8px; flex: 0 0 auto; }
+  .frota-legenda {
+    display: flex; flex-wrap: wrap; gap: 4px 6px;
+    flex: 1 1 auto; min-width: 0;
+  }
+  .frota-legenda-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+    cursor: pointer; padding: 4px 8px; border-radius: 20px;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .frota-legenda-item:hover { background: var(--panel-soft); }
+  .frota-legenda-item.ativo { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .frota-legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .frota-board {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px; align-items: start;
+  }
+  .frota-col {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .frota-col-header {
+    flex: 0 0 auto;
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    font-family: var(--font-cond); font-weight: 700; font-size: 13px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 8px; background: var(--panel-soft);
+  }
+  .frota-col-body {
+    flex: 1 1 auto; min-height: 0;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px; max-height: 74vh; overflow-y: auto;
+  }
+  .frota-col-body::-webkit-scrollbar { width: 6px; }
+  .frota-col-body::-webkit-scrollbar-track { background: transparent; }
+  .frota-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .frota-col-body::-webkit-scrollbar-thumb:hover { background: var(--border-dk); }
+
+  /* Quadro horizontal (estilo Trello) — colunas lado a lado com largura fixa, rolagem
+     lateral quando não cabem todas, cada coluna com sua própria rolagem vertical
+     (max-height: 74vh acima) quando tem muito veículo. Pedido do usuário 17/08: nada de
+     travar a rolagem geral da página (tentamos um modo "cabe tudo sem rolar" antes, mas
+     em telas/zooms menores o usuário ficava sem conseguir ver o resto da página — melhor
+     deixar a página rolar normalmente como qualquer outra aba e só ganhar o layout
+     horizontal das colunas). Escopado em body.frota-tab-ativa (só quando o sub-modo Status
+     Frota da aba Veículos Dedicados está ativo — ver mudarSubViewVeiculos) pra não mexer em
+     nada no resto do app, nem na visão "Lista" da mesma aba.
+     */
+  body.frota-tab-ativa #pipeline { display: none; }
+  body.frota-tab-ativa #veiculosViewFrota .frota-controles { margin-bottom: 10px; padding: 6px 12px; }
+  body.frota-tab-ativa #veiculosViewFrota .frota-board {
+    display: flex; flex-wrap: nowrap; align-items: flex-start;
+    overflow-x: auto;
+  }
+  body.frota-tab-ativa #veiculosViewFrota .frota-col { flex: 0 0 300px; }
+
+  /* Seletor de modo de visualização (Cards/Tabela/Blocos) — experimento 17/08 pra achar
+     um formato que aguente o volume real de veículos sem ficar ilegível (ver
+     modoVisualizacaoFrota em renderStatusFrota). */
+  .frota-modo-seletor { display: flex; gap: 6px; flex: 0 0 auto; }
+  .frota-modo-btn {
+    background: var(--panel-soft); border: 1px solid var(--border); color: var(--text-dim);
+    font-family: var(--font-cond); font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+    padding: 5px 11px; border-radius: 7px; cursor: pointer; transition: all 0.15s;
+  }
+  .frota-modo-btn:hover { border-color: var(--accent); color: var(--text); }
+  .frota-modo-btn.ativo { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+  /* Seletor de dia — pedido do usuário 18/08: por padrão hoje, navegação um dia por vez
+     (setas) ou pulando direto pra uma data via o <input type="date"> nativo (que já é
+     single-value por natureza, sem risco de selecionar mais de um dia — ver
+     frotaDiaSelecionado/navegarDiaFrota). */
+  .frota-dia-seletor { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .frota-dia-nav {
+    background: var(--panel-soft); border: 1px solid var(--border); color: var(--text-dim);
+    font-size: 11px; font-weight: 700; padding: 5px 9px; border-radius: 7px;
+    cursor: pointer; transition: all 0.15s; line-height: 1;
+  }
+  .frota-dia-nav:hover { border-color: var(--accent); color: var(--text); }
+  .frota-dia-input {
+    background: var(--panel-soft); border: 1px solid var(--border); color: var(--text);
+    font-family: var(--font-cond); font-size: 12px; font-weight: 700;
+    padding: 4px 8px; border-radius: 7px; cursor: pointer; color-scheme: dark;
+  }
+  .frota-dia-input:hover, .frota-dia-input:focus { border-color: var(--accent); outline: none; }
+
+  /* ── Visão Tabela: uma linha por veículo, agrupada por transportadora ── */
+  .frota-tabela-wrap .frota-tr-grupo td {
+    background: var(--panel-soft); border-bottom: 1px solid var(--border);
+    font-family: var(--font-cond); font-weight: 700; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 14px;
+  }
+  .frota-tabela-wrap td { vertical-align: top; white-space: normal; }
+  .frota-tabela-wrap .scrollable { max-height: 76vh; }
+
+  /* ── Visão Blocos: grade de blocos coloridos, só placa + ícone, detalhe no hover/clique ── */
+  .frota-col-body.frota-blocos-grid { display: flex; flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 6px; }
+  .frota-bloco {
+    width: 76px; height: 52px; border-radius: 8px; border: 1.5px solid;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    cursor: pointer; font-family: var(--font-cond); transition: transform 0.12s;
+  }
+  .frota-bloco:hover { transform: scale(1.07); z-index: 1; }
+  .frota-bloco-placa { font-weight: 700; font-size: 11px; letter-spacing: 0.02em; }
+  .frota-bloco-icone { font-size: 13px; }
+
+  .frota-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .frota-card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 7px; }
+  .frota-placa { font-family: var(--font-cond); font-weight: 700; font-size: 15px; letter-spacing: 0.03em; }
+  .frota-nota-btn {
+    background: transparent; border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer; font-size: 12px; padding: 2px 7px; color: var(--text-muted); line-height: 1.6;
+  }
+  .frota-nota-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .frota-card-rota { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .frota-id-viagem { font-family: monospace; font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .frota-card-desc { font-size: 11px; color: var(--text-dim); margin-top: 7px; line-height: 1.55; }
+  .frota-card-nota { font-size: 11px; color: var(--accent2); margin-top: 7px; font-style: italic; }
 </style>
 
 <!-- ── FIREBASE ── -->
@@ -2251,7 +2388,6 @@
       </div>
     </div>
     </div>
-    </div>
 
     <div class="table-wrap">
       <div class="table-toolbar">
@@ -2782,9 +2918,16 @@
       <div class="section-title">Veículos Dedicados</div>
       <div class="section-sub">Placas de frota dedicada alocadas em transportadoras — disponíveis para atribuição direta em "Gerir Viagens"</div>
     </div>
-    <button class="btn btn-primary" onclick="abrirModalVeiculo(null)">＋ Novo Veículo</button>
+    <div style="display:flex;gap:10px;align-items:center">
+      <div class="frota-modo-seletor" id="veiculosSubViewSeletor">
+        <button class="frota-modo-btn ativo" data-view="lista" onclick="mudarSubViewVeiculos('lista')">📋 Lista</button>
+        <button class="frota-modo-btn" data-view="frota" onclick="mudarSubViewVeiculos('frota')">🚦 Status Frota</button>
+      </div>
+      <button class="btn btn-primary" id="btnNovoVeiculo" onclick="abrirModalVeiculo(null)">＋ Novo Veículo</button>
+    </div>
   </div>
 
+  <div id="veiculosViewLista">
   <div id="veiculosEmpty" class="empty-state">
     <div class="empty-icon">🚛</div>
     <div class="empty-text">Nenhum veículo dedicado cadastrado</div>
@@ -2864,6 +3007,40 @@
       </div>
     </div>
   </div>
+  </div><!-- /veiculosViewLista -->
+
+  <div id="veiculosViewFrota" style="display:none">
+    <!-- Seletor de modo + legenda numa única barra (ver .frota-controles) — juntar os dois
+       numa linha só economiza a altura de uma barra inteira em relação a duas empilhadas. -->
+    <div class="frota-controles">
+      <div class="frota-modo-seletor" id="frotaModoSeletor">
+        <button class="frota-modo-btn ativo" data-modo="cards" onclick="mudarModoVisualizacaoFrota('cards')">🗂️ Cards</button>
+        <button class="frota-modo-btn" data-modo="tabela" onclick="mudarModoVisualizacaoFrota('tabela')">📋 Tabela</button>
+        <button class="frota-modo-btn" data-modo="blocos" onclick="mudarModoVisualizacaoFrota('blocos')">🧱 Blocos</button>
+      </div>
+      <div class="frota-legenda-divisor"></div>
+      <div class="frota-dia-seletor">
+        <button class="frota-dia-nav" onclick="navegarDiaFrota(-1)" title="Dia anterior">◀</button>
+        <input type="date" class="frota-dia-input" id="frotaDiaInput" onchange="selecionarDiaFrota(this.value)" title="Escolher um dia específico">
+        <button class="frota-dia-nav" onclick="navegarDiaFrota(1)" title="Próximo dia">▶</button>
+        <button class="frota-modo-btn" id="frotaDiaHojeBtn" onclick="irParaHojeFrota()" title="Voltar para hoje" style="display:none">Hoje</button>
+      </div>
+      <div class="frota-filtros">
+        <div id="ms-frotaTransportador"></div>
+        <div id="ms-frotaPlaca" class="ms-narrow"></div>
+      </div>
+      <div class="frota-legenda-divisor"></div>
+      <div class="frota-legenda" id="frotaLegenda"></div>
+    </div>
+
+    <div id="frotaEmpty" class="empty-state" style="display:none">
+      <div class="empty-icon">🚛</div>
+      <div class="empty-text" id="frotaEmptyText">Nenhum veículo dedicado ativo hoje</div>
+      <div class="empty-sub">Cadastre ou ative veículos na aba "Veículos Dedicados"</div>
+    </div>
+
+    <div id="frotaBoard" class="frota-board"></div>
+  </div><!-- /veiculosViewFrota -->
 </div>
 
 <!-- ===== TAB 9: LEADTIME ===== -->
@@ -4688,6 +4865,7 @@ let msSemanas;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
 let msPerfRegional, msPerfUf, msPerfProduto, msPerfModal, msPerfTipoOp;
+let msFrotaTransportador, msFrotaPlaca;
 
 // ── MODAL GRUPO ──
 let editingGrupoIdxs = [];
@@ -5385,15 +5563,40 @@ function switchTab(i) {
   document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', j===i));
   document.querySelectorAll('.tab-content').forEach((c,j) => c.classList.toggle('active', j===i));
   activeTab = i;
+  // Status Frota não é mais aba própria — virou sub-modo da aba Veículos Dedicados (ver
+  // mudarSubViewVeiculos) — recalcula aqui só porque activeTab mudou (entrar/sair da aba 7
+  // também precisa ligar/desligar o "painel de report" se o sub-modo já estava em 'frota').
+  aplicarClasseFrotaAtiva();
   if (i === 1) renderViagensTable();
   if (i === 2) renderExport();
   if (i === 3) renderMonitoramento();
   if (i === 4) renderTransportadoresTable();
   if (i === 5) renderBasesTable();
   if (i === 6) renderFornecedoresTable();
-  if (i === 7) renderVeiculosTable();
+  if (i === 7) { renderVeiculosTable(); if (subViewVeiculos === 'frota') renderStatusFrota(); }
   if (i === 8) { renderLeadtimeTable(); renderLeadtimesPendentes(); }
   if (i === 9) renderPerformance();
+}
+
+// ── SUB-MODO "STATUS FROTA" DENTRO DA ABA VEÍCULOS DEDICADOS ──
+// Pedido do usuário 17/08: não fazer sentido ocupar uma aba inteira no menu principal só
+// pro board de status — virou um botão/sub-visão dentro da própria aba Veículos Dedicados
+// (mesmo dado, mesmo contexto). 'lista' = tabela de cadastro original; 'frota' = board
+// Cards/Tabela/Blocos (ver renderStatusFrota).
+let subViewVeiculos = 'lista';
+
+function aplicarClasseFrotaAtiva() {
+  document.body.classList.toggle('frota-tab-ativa', activeTab === 7 && subViewVeiculos === 'frota');
+}
+
+function mudarSubViewVeiculos(view) {
+  subViewVeiculos = view;
+  document.querySelectorAll('#veiculosSubViewSeletor .frota-modo-btn').forEach(b => b.classList.toggle('ativo', b.dataset.view === view));
+  document.getElementById('veiculosViewLista').style.display = view === 'lista' ? '' : 'none';
+  document.getElementById('veiculosViewFrota').style.display = view === 'frota' ? '' : 'none';
+  document.getElementById('btnNovoVeiculo').style.display = view === 'lista' ? '' : 'none';
+  aplicarClasseFrotaAtiva();
+  if (view === 'frota') renderStatusFrota();
 }
 
 // ── SAMPLE DATA ──
@@ -7961,7 +8164,7 @@ async function garantirSemanasVizinhasCarregadas() {
   } finally {
     alvos.forEach(key => _semanasVizinhasEmVoo.delete(key));
   }
-  if (activeTab === 7) renderVeiculosTable();
+  if (activeTab === 7) { renderVeiculosTable(); if (subViewVeiculos === 'frota') renderStatusFrota(); }
 }
 
 // Fim da ocupação: enquanto a viagem não está de fato em andamento, usa a programação
@@ -8291,6 +8494,467 @@ function renderVeiculosTable() {
   }).join('');
 }
 
+// ── STATUS FROTA DEDICADA (aba ⑪, quadro em cards por transportadora) ──
+// Reaproveita os mesmos dados da aba Veículos Dedicados (vigência, indisponibilidade) e do
+// ciclo real da Herrlog (monitoramentoHerrlog/statusHerrlog, ver renderCicloHerrlogInline e
+// STATUS_MANUAL_CIF_OPCOES) — não introduz nenhum node novo no Firebase. A "anotação" do
+// card é a mesma indisponibilidade por dia já usada no calendário da aba 7 (status:'' +
+// motivo = observação que não bloqueia o veículo — ver confirmarIndisponibilidade); clicar
+// em 📝 no card abre o mesmo modalIndisponibilidade, já filtrado pro dia de hoje.
+//
+// Rótulos com prefixo T1..T5 igual ao usado na aba Monitoramento (CICLO_LABELS em
+// herrlog_datalake.py e STATUS_MANUAL_CIF_OPCOES) — pedido do usuário 17/08: mesma
+// nomenclatura que o time já lê ali, pra não precisar aprender um vocabulário novo. O card em
+// si mostra o texto exato vindo da Herrlog quando disponível (ver labelCicloViagem); os
+// rótulos aqui são o nome do "balde" (usado na legenda e como fallback antes da confirmação).
+// Ordem do objeto = ordem de exibição (legenda e ordenação dos cards, ver
+// renderStatusFrota) — pedido do usuário 17/08: veículo Disponível é ociosidade (ruim,
+// destacado em vermelho) e por isso vem primeiro; depois os outros estados "fora do
+// ciclo" (Manutenção/Indisponível); só então o ciclo real T1→T5 em ordem cronológica da
+// viagem (T1 Programado → T1 Em Deslocamento Vazio → T2 → T3 → T4 → T5).
+const FROTA_STATUS_GRUPOS = {
+  disponivel:             { label: 'Disponível (ocioso)',             icon: '🔴', cor: 'var(--danger)',     fundo: 'var(--danger-dim)' },
+  manutencao:             { label: 'Manutenção',                      icon: '🔧', cor: 'var(--danger)',     fundo: 'var(--danger-dim)' },
+  indisponivel:           { label: 'Indisponível',                    icon: '🚫', cor: 'var(--pet-indigo)', fundo: 'rgba(99,102,241,0.14)' },
+  programado:             { label: 'T1 - Programado',                icon: '🚩', cor: 'var(--success)',    fundo: 'var(--success-dim)' },
+  deslocamento_vazio:     { label: 'T1 - Em Deslocamento Vazio',      icon: '📦', cor: 'var(--pet-teal)',   fundo: 'rgba(20,184,166,0.14)' },
+  aguardando_carga:       { label: 'T2 - Aguardando Carregamento',    icon: '⏳', cor: 'var(--pet-blue)',   fundo: 'var(--pet-blue-bg)' },
+  deslocamento_carregado: { label: 'T3 - Em Deslocamento Carregado',  icon: '🚚', cor: 'var(--accent2)',    fundo: 'var(--accent2-dim)' },
+  aguardando_descarga:    { label: 'T4 - Aguardando Descarregamento', icon: '🔀', cor: 'var(--pet-purple)', fundo: 'rgba(124,58,237,0.14)' },
+  finalizada:             { label: 'T5 - Viagem Finalizada',          icon: '✅', cor: 'var(--pet-sky)',    fundo: 'rgba(56,189,248,0.14)' },
+};
+
+// Índice de exibição de cada grupo (posição no objeto acima) — usado tanto pra ordenar os
+// cards dentro de cada coluna/transportadora quanto, indiretamente, a legenda.
+const FROTA_ORDEM_GRUPOS = Object.keys(FROTA_STATUS_GRUPOS);
+
+// Paleta reduzida pro modo Blocos — pedido do usuário 17/08: nos blocos (bem pequenos,
+// grade densa) a cor por ciclo (6 tons diferentes de FROTA_STATUS_GRUPOS) virava ruído
+// visual. Aqui só 3 tons de "problema" (Disponível = ocioso, Manutenção, Indisponível,
+// cada um com uma cor própria pra não confundir um com o outro) + 1 tom único pra qualquer
+// veículo COM viagem, seja qual for o ciclo — o texto reduzido do ciclo (T1..T5, ver
+// FROTA_BLOCO_CICLO_TEXTO) é quem carrega essa informação, não a cor. Mesmo teal já usado
+// pro dia "ocupado" no calendário semanal da aba Veículos Dedicados (.vd-day.busy) — reusa
+// o significado "tem viagem" com a mesma cor em vez de inventar um tom novo (pedido do
+// usuário 17/08, depois de testar cinza e verde). Vira vermelho só quando o tempo parado em
+// T2/T4 passa do limite (ver emAtraso abaixo).
+const FROTA_BLOCO_CORES = {
+  disponivel:   { cor: 'var(--danger)',  fundo: 'var(--danger-dim)' },
+  manutencao:   { cor: 'var(--accent2)', fundo: 'var(--accent2-dim)' },
+  indisponivel: { cor: '#F4978E',        fundo: 'rgba(244,151,142,0.16)' },
+};
+const FROTA_BLOCO_COR_CICLO = { cor: 'var(--pet-teal)', fundo: 'rgba(20,184,166,0.14)' };
+const FROTA_BLOCO_CICLO_TEXTO = {
+  programado: 'T1', deslocamento_vazio: 'T1', aguardando_carga: 'T2',
+  deslocamento_carregado: 'T3', aguardando_descarga: 'T4', finalizada: 'T5',
+};
+
+let filtroStatusFrota = null;
+
+// Classifica o veículo num dos grupos acima pro dia informado. Prioridade: indisponibilidade
+// marcada manualmente (bloqueia alocação, ver indisponibilidadeBloqueiaNoDia) > viagem em
+// andamento hoje (classificada pelo prefixo T1..T5 do ciclo real da Herrlog, mesma leitura de
+// renderCicloHerrlogInline) > sem viagem nem indisponibilidade = disponível.
+function statusCardVeiculoHoje(vd, hoje) {
+  if (indisponibilidadeBloqueiaNoDia(vd.id, hoje)) {
+    const indisp = indisponibilidadeNoDia(vd.id, hoje);
+    return { grupo: indisp.status === 'M' ? 'manutencao' : 'indisponivel', indisp };
+  }
+
+  const viagensHoje = viagensDoVeiculoNoDia(vd.id, hoje);
+  if (!viagensHoje.length) return { grupo: 'disponivel' };
+
+  // Entre várias viagens no mesmo dia (troca de viagem hoje), prioriza a que ainda está em
+  // andamento na Herrlog (não T5) — é a que representa o estado atual do veículo agora.
+  const viagem = viagensHoje.find(v => {
+    const st = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
+    return st && st !== STATUS_HERRLOG_FINALIZADA;
+  }) || viagensHoje[0];
+
+  const mon = monitoramentoHerrlog[viagem.idViagem] || null;
+  const statusHerrlog = mon?.statusHerrlog || null;
+  let grupo = 'programado';
+  if (statusHerrlog) {
+    if (statusHerrlog.startsWith('T1 - Em deslocamento')) grupo = 'deslocamento_vazio';
+    else if (statusHerrlog.startsWith('T2')) grupo = 'aguardando_carga';
+    else if (statusHerrlog.startsWith('T3')) grupo = 'deslocamento_carregado';
+    else if (statusHerrlog.startsWith('T4')) grupo = 'aguardando_descarga';
+    else if (statusHerrlog.startsWith('T5')) grupo = 'finalizada';
+  }
+  return { grupo, viagem, statusHerrlog, mon };
+}
+
+function filtrarStatusFrota(grupo) {
+  filtroStatusFrota = filtroStatusFrota === grupo ? null : grupo;
+  renderStatusFrota();
+}
+
+function renderLegendaStatusFrota(infos) {
+  const contagem = {};
+  Object.keys(FROTA_STATUS_GRUPOS).forEach(k => contagem[k] = 0);
+  infos.forEach(x => contagem[x.info.grupo]++);
+  const chips = Object.entries(FROTA_STATUS_GRUPOS).map(([key, g]) => `
+    <div class="frota-legenda-item ${filtroStatusFrota === key ? 'ativo' : ''}" onclick="filtrarStatusFrota('${key}')"
+        title="Clique para filtrar só ${esc(g.label)}">
+      <span class="frota-legenda-dot" style="background:${g.cor}"></span>${g.icon} ${esc(g.label)}
+      <span style="color:var(--text-muted)">(${contagem[key]})</span>
+    </div>`).join('');
+  document.getElementById('frotaLegenda').innerHTML = chips;
+}
+
+// Cidade da origem/destino via cadastro (Fornecedores.cidade / Bases.cidade — mesmo
+// casamento usado por buscarLeadtimeHorasParaViagem), não o nome comercial cru da
+// viagem (que costuma vir como "FORNECEDOR (BASE)" — verboso demais pro card). Sem
+// cadastro encontrado, cai pro nome cru mesmo (v.origem/v.destino) em vez de sumir.
+function cidadeOrigemViagem(v) {
+  return buscarFornecedorDaViagem(v)?.cidade || v.origem;
+}
+function cidadeDestinoViagem(v) {
+  return buscarBaseDaViagem(v)?.cidade || v.destino;
+}
+
+// Limite (horas) até o qual o tempo parado em T2/T4 (aguardando carga/descarga) ainda
+// aparece em verde — acima disso vira vermelho (pedido do usuário 17/08: sinalizar
+// veículo "preso" esperando carga/descarga há tempo demais).
+const LIMITE_HORAS_CICLO_OK = 3;
+
+// Rótulo do que a viagem está esperando em cada ciclo "parado" — usado no texto de tempo
+// abaixo (ex.: "5h16 aguardando carregamento").
+const FROTA_ESPERANDO_LABEL = { aguardando_carga: 'aguardando carregamento', aguardando_descarga: 'aguardando descarga' };
+
+// Há quantas horas (decimal) a viagem está no ciclo T2/T4 atual (mon.cicloDesde, gravado
+// pelo herrlog_datalake.py a partir do DataChegada do evento de origem/destino/espera —
+// ver ciclo_desde em obter_monitoramento_datalake). null quando o dado ainda não veio
+// (script antigo sem o campo, ou o próprio ciclo ainda não tem o timestamp). Cálculo bruto
+// só — cada modo (Cards, Blocos) formata o texto do seu próprio jeito, ver abaixo.
+function horasNoCiclo(mon) {
+  if (!mon?.cicloDesde) return null;
+  const inicio = new Date(mon.cicloDesde);
+  if (isNaN(inicio.getTime())) return null;
+  const horas = (Date.now() - inicio.getTime()) / 3600000;
+  return horas >= 0 ? horas : null;
+}
+
+function tempoNoCicloHtml(mon, grupo) {
+  const horas = horasNoCiclo(mon);
+  if (horas === null) return null;
+  const h = Math.floor(horas);
+  const m = Math.round((horas - h) * 60);
+  const texto = h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
+  const cor = horas <= LIMITE_HORAS_CICLO_OK ? 'var(--success)' : 'var(--danger)';
+  return `<span style="color:${cor};font-weight:600">⏱ ${texto} ${esc(FROTA_ESPERANDO_LABEL[grupo])}</span>`;
+}
+
+// Versão compacta (só o número, sem cor/rótulo) pro bloco — pedido do usuário 17/08: em
+// T2/T4 mostrar quanto tempo já esperando em vez do código do ciclo (ex.: "5h30min" no
+// lugar de "T2"). null quando cicloDesde ainda não veio — quem chama cai pro texto T1..T5.
+function tempoNoCicloTextoCurto(mon) {
+  const horas = horasNoCiclo(mon);
+  if (horas === null) return null;
+  const h = Math.floor(horas);
+  const m = Math.round((horas - h) * 60);
+  return h > 0 ? `${h}h${String(m).padStart(2, '0')}min` : `${m}min`;
+}
+
+// Data/hora mais relevante pro estágio atual do ciclo — mostrar sempre o horário de
+// carregamento (programação estática) ficava ambíguo/pouco útil depois que o veículo já
+// carregou (pedido do usuário 17/08: "o que é essa data?" olhando um card já em
+// deslocamento carregado). Em T2/T4 (parado aguardando carga/descarga) mostra há quanto
+// tempo está parado nesse ciclo, colorido pelo limite acima (pedido do usuário 17/08). Em
+// T3 (já carregado, em movimento) mostra o ETA real da Herrlog quando disponível. Antes de
+// carregar, mostra a data de carregamento programada.
+// Cada branch devolve seu próprio <span> já colorido (span-mudo por padrão, verde/vermelho
+// só no caso do tempo em ciclo) — quem chama concatena direto, sem embrulhar de novo.
+function dataRelevanteViagem(v, mon, grupo) {
+  const mudo = texto => `<span style="color:var(--text-muted)">${texto}</span>`;
+
+  if (grupo === 'finalizada' && mon?.chegadaReal) {
+    return mudo(`✅ Chegou ${esc(fmtIsoShort(mon.chegadaReal))}`);
+  }
+  if (grupo === 'aguardando_carga' || grupo === 'aguardando_descarga') {
+    const tempo = tempoNoCicloHtml(mon, grupo);
+    if (tempo) return tempo;
+    // Fallback pra quando cicloDesde ainda não chegou (dado antigo) — mesma info de antes.
+    return grupo === 'aguardando_carga'
+      ? mudo(`📅 Carregamento prog. ${esc(fmtShort(v.dtCarregProg || v.dtCarreg))} às ${esc(v.horaCarregProg || '12:00')}`)
+      : mudo(`⏳ Descarga prog. ${esc(fmtShort(v.dtDescProg || v.dtDesc))} às ${esc(v.horaDescProg || '12:00')}`);
+  }
+  if (['deslocamento_carregado', 'finalizada'].includes(grupo)) {
+    if (mon?.etaDestino) return mudo(`⏳ Prev. Chegada Herrlog ${esc(fmtIsoShort(mon.etaDestino))}`);
+    const dataDesc = fmtShort(v.dtDescProg || v.dtDesc);
+    const horaDesc = v.horaDescProg || '12:00';
+    return mudo(`⏳ Descarga prog. ${esc(dataDesc)} às ${esc(horaDesc)}`);
+  }
+  const dataCarreg = fmtShort(v.dtCarregProg || v.dtCarreg);
+  const horaCarreg = v.horaCarregProg || '12:00';
+  return mudo(`📅 Carregamento prog. ${esc(dataCarreg)} às ${esc(horaCarreg)}`);
+}
+
+// Título do badge: usa o texto exato que a Herrlog manda (mon.statusHerrlog — mesmo que
+// aparece cru na aba Monitoramento, ver renderStatusCelulaMon) sempre que houver viagem
+// confirmada, em vez do nome do "balde" (FROTA_STATUS_GRUPOS[...].label) — mesmo pedido de
+// padronização acima, agora no card em si, não só na legenda.
+function labelCicloViagem(info) {
+  if (info.statusHerrlog) return info.statusHerrlog;
+  if (info.grupo === 'programado') return 'T1 - Programado'; // mesmo texto que a Herrlog usa (CICLO_LABELS["P"]) quando confirmar
+  return FROTA_STATUS_GRUPOS[info.grupo].label;
+}
+
+function renderCardStatusVeiculo(vd, info, hoje, isoHoje) {
+  const g = FROTA_STATUS_GRUPOS[info.grupo];
+  const ehHoje = diaFrotaEhHoje(isoHoje);
+  let descricao;
+  if (info.grupo === 'disponivel') {
+    descricao = ehHoje ? 'Sem viagem hoje — disponível para alocação' : 'Sem viagem nesse dia — disponível para alocação';
+  } else if (info.grupo === 'manutencao' || info.grupo === 'indisponivel') {
+    const codigo = info.indisp.status || 'I';
+    descricao = esc(STATUS_VEICULO_LABELS[codigo] || 'Indisponível') + (info.indisp.motivo ? `: ${esc(info.indisp.motivo)}` : '');
+  } else {
+    const v = info.viagem;
+    const rota = `${cidadeOrigemViagem(v)} x ${cidadeDestinoViagem(v)}`;
+    descricao = `<div class="frota-card-rota"><span>${esc(rota)}</span><span class="frota-id-viagem" title="ID da viagem">${esc(v.idViagem)}</span></div>`
+      + dataRelevanteViagem(v, info.mon, info.grupo);
+    // Ciclo real (T1..T5) já aparece no título do card (badge acima) — repetir aqui
+    // duplicava a mesma informação (pedido do usuário 17/08). Só entra texto extra
+    // quando ainda NÃO há confirmação da Herrlog, que é informação nova (não duplicada).
+    if (!info.statusHerrlog) {
+      descricao += `<br><span style="color:var(--text-muted);font-style:italic">(Ainda sem viagem em sistema Herrlog)</span>`;
+    }
+  }
+
+  // Observação livre do dia (status:'' — anotação que não bloqueia, ver confirmarIndisponibilidade).
+  // Indisponibilidades que bloqueiam já mostram o motivo dentro da própria descrição acima.
+  const notaLivre = (!indisponibilidadeBloqueiaNoDia(vd.id, hoje) && indisponibilidadeNoDia(vd.id, hoje)?.motivo) || '';
+
+  return `
+    <div class="frota-card">
+      <div class="frota-card-top">
+        <span class="frota-placa">${esc(vd.placaCavalo)}</span>
+        <button class="frota-nota-btn" title="Anotar ou marcar indisponibilidade ${ehHoje ? 'hoje' : 'nesse dia'}" onclick="abrirModalIndisponibilidade('${vd.id}', '${isoHoje}')">📝</button>
+      </div>
+      <span class="badge" style="color:${g.cor};background:${g.fundo}">${g.icon} ${esc(labelCicloViagem(info).toUpperCase())}</span>
+      <div class="frota-card-desc">${descricao}</div>
+      ${notaLivre ? `<div class="frota-card-nota">📝 ${esc(notaLivre)}</div>` : ''}
+    </div>`;
+}
+
+// Modo de visualização da aba — experimento 17/08 (ver seletor Cards/Tabela/Blocos no
+// HTML da aba). 'cards' é o formato original (1 card por veículo); 'tabela' e 'blocos'
+// são alternativas mais densas pra quando o volume real de veículos deixa os cards
+// pequenos/ilegíveis demais. Fica só em memória (não persiste no Firebase nem entre
+// sessões) — é escolha de visualização de quem está olhando, não dado da operação.
+let modoVisualizacaoFrota = 'cards';
+
+function mudarModoVisualizacaoFrota(modo) {
+  modoVisualizacaoFrota = modo;
+  document.querySelectorAll('.frota-modo-btn').forEach(b => b.classList.toggle('ativo', b.dataset.modo === modo));
+  renderStatusFrota();
+}
+
+// Dia exibido no board — pedido do usuário 18/08: por padrão hoje, mas navegável dia a dia
+// (um dia por vez, nunca um intervalo — por isso o <input type="date"> nativo, que já é
+// single-value por natureza, e as setas andam ±1 dia por clique). ISO (YYYY-MM-DD) pra bater
+// com o <input type="date"> e com as chaves de vd.indisponibilidades. Só em memória, mesmo
+// espírito de modoVisualizacaoFrota (escolha de quem está olhando, não dado da operação).
+// isoLocal usa getFullYear/Month/Date (não toISOString, que converte pra UTC) — com
+// toISOString, alguém abrindo a aba entre ~21h e meia-noite (horário de Brasília, UTC-3)
+// veria "hoje" já apontando pro dia seguinte.
+function isoLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function isoHojeReal() {
+  return isoLocal(new Date());
+}
+function diaFrotaEhHoje(iso) {
+  return iso === isoHojeReal();
+}
+
+let frotaDiaSelecionado = isoHojeReal();
+
+function navegarDiaFrota(delta) {
+  const d = new Date(frotaDiaSelecionado + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  frotaDiaSelecionado = isoLocal(d);
+  renderStatusFrota();
+}
+
+function selecionarDiaFrota(iso) {
+  if (!iso) return; // input limpo pelo usuário (✕ do calendário nativo) — mantém o dia atual
+  frotaDiaSelecionado = iso;
+  renderStatusFrota();
+}
+
+function irParaHojeFrota() {
+  frotaDiaSelecionado = isoHojeReal();
+  renderStatusFrota();
+}
+
+function renderStatusFrota() {
+  // Mesmo disparo assíncrono de renderVeiculosTable — garante que viagens do dia exibido
+  // alocadas numa semana vizinha à selecionada também entrem no cálculo (ver
+  // garantirSemanasVizinhasCarregadas).
+  garantirSemanasVizinhasCarregadas();
+
+  const isoHoje = frotaDiaSelecionado;
+  const hoje = new Date(isoHoje + 'T00:00:00');
+
+  document.getElementById('frotaDiaInput').value = isoHoje;
+  document.getElementById('frotaDiaHojeBtn').style.display = diaFrotaEhHoje(isoHoje) ? 'none' : '';
+
+  // Opções vêm do cadastro inteiro (não só de quem está ativo no dia exibido) — assim a
+  // lista de transportadores/placas do filtro fica estável ao navegar entre dias, em vez de
+  // mudar (e potencialmente derrubar uma seleção) toda vez que o dia muda (ver setOptions,
+  // que já intersecta a seleção atual com as opções novas sozinho).
+  msFrotaTransportador?.setOptions(valoresUnicosOrdenados(veiculosDedicados, vd => vd.transportador));
+  msFrotaPlaca?.setOptions(valoresUnicosOrdenados(veiculosDedicados, vd => vd.placaCavalo));
+  const transportadoresSelecionados = new Set(msFrotaTransportador?.getSelected() || []);
+  const placasSelecionadas = new Set(msFrotaPlaca?.getSelected() || []);
+
+  const ativos = veiculosDedicados.filter(vd => veiculoAtivoNoDia(vd, hoje));
+  const isEmpty = ativos.length === 0;
+  document.getElementById('frotaEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('frotaEmptyText').textContent = diaFrotaEhHoje(isoHoje)
+    ? 'Nenhum veículo dedicado ativo hoje'
+    : `Nenhum veículo dedicado ativo em ${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  const board = document.getElementById('frotaBoard');
+  board.style.display = isEmpty ? 'none' : '';
+  if (isEmpty) { document.getElementById('frotaLegenda').innerHTML = ''; return; }
+
+  const infos = ativos.map(vd => ({ vd, info: statusCardVeiculoHoje(vd, hoje) }));
+  renderLegendaStatusFrota(infos);
+
+  const visiveis = infos.filter(x =>
+    (!filtroStatusFrota || x.info.grupo === filtroStatusFrota) &&
+    (!transportadoresSelecionados.size || transportadoresSelecionados.has(x.vd.transportador)) &&
+    (!placasSelecionadas.size || placasSelecionadas.has(x.vd.placaCavalo)));
+  const porTransportador = new Map();
+  visiveis.forEach(x => {
+    const nome = x.vd.transportador || 'Sem Transportador';
+    if (!porTransportador.has(nome)) porTransportador.set(nome, []);
+    porTransportador.get(nome).push(x);
+  });
+  const colunas = [...porTransportador.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  // Disponível (ociosidade) primeiro, depois Manutenção/Indisponível, depois o ciclo real
+  // T1→T5 em ordem — mesma prioridade de FROTA_STATUS_GRUPOS (pedido do usuário 17/08).
+  // Placa só desempata dentro do mesmo grupo.
+  colunas.forEach(nome => porTransportador.get(nome).sort((a, b) => {
+    const diff = FROTA_ORDEM_GRUPOS.indexOf(a.info.grupo) - FROTA_ORDEM_GRUPOS.indexOf(b.info.grupo);
+    return diff !== 0 ? diff : (a.vd.placaCavalo || '').localeCompare(b.vd.placaCavalo || '');
+  }));
+
+  // Em modo cards/blocos .frota-board fica flex-row (ver CSS); em tabela vira um
+  // table-wrap normal (bloco, largura cheia) — a classe decide, não um display fixo aqui.
+  board.classList.toggle('frota-board', modoVisualizacaoFrota !== 'tabela');
+  board.classList.toggle('frota-tabela-wrap', modoVisualizacaoFrota === 'tabela');
+  board.classList.toggle('table-wrap', modoVisualizacaoFrota === 'tabela');
+
+  if (modoVisualizacaoFrota === 'tabela') {
+    board.innerHTML = renderStatusFrotaTabelaHtml(colunas, porTransportador, hoje, isoHoje);
+  } else if (modoVisualizacaoFrota === 'blocos') {
+    board.innerHTML = renderStatusFrotaColunasHtml(colunas, porTransportador, hoje, isoHoje, true);
+  } else {
+    board.innerHTML = renderStatusFrotaColunasHtml(colunas, porTransportador, hoje, isoHoje, false);
+  }
+}
+
+// Cards e Blocos compartilham a mesma estrutura de colunas por transportadora — só troca
+// o que vai dentro de .frota-col-body (card cheio vs. bloco compacto).
+function renderStatusFrotaColunasHtml(colunas, porTransportador, hoje, isoHoje, blocos) {
+  return colunas.map(nome => {
+    const itens = porTransportador.get(nome);
+    const corpo = blocos
+      ? itens.map(x => renderBlocoStatusVeiculo(x.vd, x.info, hoje, isoHoje)).join('')
+      : itens.map(x => renderCardStatusVeiculo(x.vd, x.info, hoje, isoHoje)).join('');
+    return `
+      <div class="frota-col">
+        <div class="frota-col-header">🚛 ${esc(nome)} <span class="badge badge-accent">${itens.length}</span></div>
+        <div class="frota-col-body${blocos ? ' frota-blocos-grid' : ''}">${corpo}</div>
+      </div>`;
+  }).join('');
+}
+
+// Bloco compacto (visão Blocos): só placa + ícone do status, cor já conta a história —
+// detalhe completo no title (hover) e clique abre a mesma anotação/indisponibilidade dos
+// outros modos (ver abrirModalIndisponibilidade).
+function renderBlocoStatusVeiculo(vd, info, hoje, isoHoje) {
+  const g = FROTA_STATUS_GRUPOS[info.grupo];
+  const emEspera = info.grupo === 'aguardando_carga' || info.grupo === 'aguardando_descarga';
+  const horasEspera = emEspera ? horasNoCiclo(info.mon) : null;
+  const emAtraso = horasEspera !== null && horasEspera > LIMITE_HORAS_CICLO_OK;
+  // T2/T4 (parado aguardando carga/descarga) mostra "T2 - 10h30"/"T4 - 45min" (código + tempo
+  // parado) em vez do código isolado do ciclo (pedido do usuário 17/08) — cai pro texto T1..T5
+  // puro se cicloDesde ainda não veio.
+  const tempoTexto = emEspera ? tempoNoCicloTextoCurto(info.mon) : null;
+  const textoCiclo = tempoTexto ? `${FROTA_BLOCO_CICLO_TEXTO[info.grupo]} - ${tempoTexto}` : FROTA_BLOCO_CICLO_TEXTO[info.grupo];
+  // Bloco (borda+fundo) sempre no verde do badge contador de veículos pra quem tem viagem —
+  // só o TEXTO do tempo vira vermelho quando passa do limite (pedido do usuário 17/08: "só o
+  // texto... o card mantém verde normal"), pra não perder o padrão visual da coluna.
+  const corBloco = FROTA_BLOCO_CORES[info.grupo] || FROTA_BLOCO_COR_CICLO;
+  const corTexto = emAtraso ? 'var(--danger)' : corBloco.cor;
+  const notaLivre = (!indisponibilidadeBloqueiaNoDia(vd.id, hoje) && indisponibilidadeNoDia(vd.id, hoje)?.motivo) || '';
+  let tooltip = `${vd.placaCavalo} — ${labelCicloViagem(info)}`;
+  if (info.grupo === 'manutencao' || info.grupo === 'indisponivel') {
+    const codigo = info.indisp.status || 'I';
+    tooltip += `\n${STATUS_VEICULO_LABELS[codigo] || 'Indisponível'}${info.indisp.motivo ? ': ' + info.indisp.motivo : ''}`;
+  } else if (info.viagem) {
+    const v = info.viagem;
+    tooltip += `\n${cidadeOrigemViagem(v)} x ${cidadeDestinoViagem(v)} (${v.idViagem})`;
+  }
+  if (notaLivre) tooltip += `\n📝 ${notaLivre}`;
+  const estiloIcone = `color:${corTexto}${tempoTexto ? ';font-size:10px' : ''}`;
+  return `<div class="frota-bloco" style="color:${corBloco.cor};background:${corBloco.fundo};border-color:${corBloco.cor}"
+      title="${esc(tooltip)}" onclick="abrirModalIndisponibilidade('${vd.id}', '${isoHoje}')">
+      <span class="frota-bloco-placa">${esc(vd.placaCavalo)}</span>
+      <span class="frota-bloco-icone" style="${estiloIcone}">${textoCiclo || g.icon}</span>
+    </div>`;
+}
+
+// Linha compacta (visão Tabela): mesma informação do card, num formato de tabela — muito
+// mais denso verticalmente (~28px/linha vs ~100px/card).
+function renderLinhaStatusVeiculo(vd, info, hoje, isoHoje) {
+  const g = FROTA_STATUS_GRUPOS[info.grupo];
+  const ehHoje = diaFrotaEhHoje(isoHoje);
+  let rota = '<span style="color:var(--text-muted)">—</span>';
+  let infoCel = '<span style="color:var(--text-muted)">—</span>';
+  if (info.grupo === 'disponivel') {
+    infoCel = `<span style="color:var(--text-muted)">Sem viagem ${ehHoje ? 'hoje' : 'nesse dia'}</span>`;
+  } else if (info.grupo === 'manutencao' || info.grupo === 'indisponivel') {
+    const codigo = info.indisp.status || 'I';
+    infoCel = `<span style="color:var(--text-dim)">${esc(STATUS_VEICULO_LABELS[codigo] || 'Indisponível')}${info.indisp.motivo ? ': ' + esc(info.indisp.motivo) : ''}</span>`;
+  } else {
+    const v = info.viagem;
+    rota = `${esc(cidadeOrigemViagem(v))} x ${esc(cidadeDestinoViagem(v))}<br><span class="frota-id-viagem">${esc(v.idViagem)}</span>`;
+    infoCel = dataRelevanteViagem(v, info.mon, info.grupo);
+  }
+  const notaLivre = (!indisponibilidadeBloqueiaNoDia(vd.id, hoje) && indisponibilidadeNoDia(vd.id, hoje)?.motivo) || '';
+  return `
+    <tr>
+      <td style="font-family:var(--font-cond);font-weight:700">${esc(vd.placaCavalo)}</td>
+      <td><span class="badge" style="color:${g.cor};background:${g.fundo}">${g.icon} ${esc(labelCicloViagem(info))}</span></td>
+      <td>${rota}</td>
+      <td>${infoCel}</td>
+      <td style="font-size:11px;color:var(--accent2);font-style:italic">${notaLivre ? '📝 ' + esc(notaLivre) : ''}</td>
+      <td style="text-align:center"><button class="frota-nota-btn" onclick="abrirModalIndisponibilidade('${vd.id}', '${isoHoje}')" title="Anotar ou marcar indisponibilidade ${ehHoje ? 'hoje' : 'nesse dia'}">📝</button></td>
+    </tr>`;
+}
+
+function renderStatusFrotaTabelaHtml(colunas, porTransportador, hoje, isoHoje) {
+  const linhas = colunas.map(nome => {
+    const itens = porTransportador.get(nome);
+    const cabecalho = `<tr class="frota-tr-grupo"><td colspan="6">🚛 ${esc(nome)} <span class="badge badge-accent">${itens.length}</span></td></tr>`;
+    return cabecalho + itens.map(x => renderLinhaStatusVeiculo(x.vd, x.info, hoje, isoHoje)).join('');
+  }).join('');
+  return `
+    <div class="scrollable">
+      <table>
+        <thead><tr>
+          <th>Placa</th><th>Status</th><th>Rota</th><th>Info</th><th style="white-space:normal">Anotação</th><th></th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+}
+
 function abrirModalVeiculo(idx) {
   editingVeiculoIdx = idx;
   const isNovo = idx === null || idx === undefined;
@@ -8489,6 +9153,7 @@ async function confirmarIndisponibilidade() {
   dias.forEach(iso => { vd.indisponibilidades[iso] = { ...registroBase }; });
   fecharModalIndisponibilidade();
   renderVeiculosTable();
+  if (subViewVeiculos === 'frota') renderStatusFrota();
   await persistirVeiculosDedicados();
 }
 
@@ -8499,6 +9164,7 @@ async function removerIndisponibilidade() {
   if (vd?.indisponibilidades) dias.forEach(iso => delete vd.indisponibilidades[iso]);
   fecharModalIndisponibilidade();
   renderVeiculosTable();
+  if (subViewVeiculos === 'frota') renderStatusFrota();
   await persistirVeiculosDedicados();
 }
 
@@ -10434,7 +11100,12 @@ function calcularFiltradasExport() {
   const filtradas = programadores.size
     ? naoConfirmadas.filter(v => programadores.has(valorProgramadorFiltro(v)))
     : naoConfirmadas;
-  return { elegiveis, naoConfirmadas, filtradas };
+  // Um POST sem resposta pode ter sido processado pela Herrlog. Enquanto o
+  // importador não reconciliar/liberar o marcador, a viagem continua visível
+  // para diagnóstico, mas não pode ser exportada manualmente: isso anularia a
+  // proteção contra duplicidade do importar_viagens_herrlog.py.
+  const selecionaveis = filtradas.filter(v => !v.herrlogImportIncertoEm);
+  return { elegiveis, naoConfirmadas, filtradas, selecionaveis };
 }
 
 function toggleSelecaoExport(idViagem, checked) {
@@ -10444,13 +11115,13 @@ function toggleSelecaoExport(idViagem, checked) {
 }
 
 function toggleSelectAllExport(checked) {
-  const { filtradas } = calcularFiltradasExport();
-  filtradas.forEach(v => checked ? idsExcluidosExport.delete(v.idViagem) : idsExcluidosExport.add(v.idViagem));
+  const { selecionaveis } = calcularFiltradasExport();
+  selecionaveis.forEach(v => checked ? idsExcluidosExport.delete(v.idViagem) : idsExcluidosExport.add(v.idViagem));
   renderExport();
 }
 
 function renderExport() {
-  const { elegiveis, naoConfirmadas, filtradas } = calcularFiltradasExport();
+  const { elegiveis, naoConfirmadas, filtradas, selecionaveis } = calcularFiltradasExport();
   const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('exportContent').style.display = isEmpty ? 'none' : 'block';
@@ -10458,9 +11129,9 @@ function renderExport() {
 
   msEProgramador?.setOptions(valoresUnicosOrdenados(naoConfirmadas, valorProgramadorFiltro));
 
-  const selecionadas = filtradas.filter(v => !idsExcluidosExport.has(v.idViagem));
+  const selecionadas = selecionaveis.filter(v => !idsExcluidosExport.has(v.idViagem));
 
-  document.getElementById('badge-prontas').textContent = filtradas.length + ' viagem' + (filtradas.length !== 1 ? 's' : '');
+  document.getElementById('badge-prontas').textContent = selecionaveis.length + ' viagem' + (selecionaveis.length !== 1 ? 's' : '');
 
   // Botão habilitado só quando há viagens SELECIONADAS (não apenas elegíveis) —
   // o contador reflete exatamente o que será exportado (filtro + seleção).
@@ -10470,10 +11141,11 @@ function renderExport() {
 
   const chkAll = document.getElementById('chk-all-export');
   if (chkAll) {
-    const todasSelecionadas = filtradas.length > 0 && filtradas.every(v => !idsExcluidosExport.has(v.idViagem));
-    const algumaSelecionada = filtradas.some(v => !idsExcluidosExport.has(v.idViagem));
+    const todasSelecionadas = selecionaveis.length > 0 && selecionaveis.every(v => !idsExcluidosExport.has(v.idViagem));
+    const algumaSelecionada = selecionaveis.some(v => !idsExcluidosExport.has(v.idViagem));
     chkAll.checked = todasSelecionadas;
     chkAll.indeterminate = algumaSelecionada && !todasSelecionadas;
+    chkAll.disabled = selecionaveis.length === 0;
   }
 
   const tbody = document.getElementById('exportBody');
@@ -10481,12 +11153,14 @@ function renderExport() {
     const mon = monitoramentoHerrlog[v.idViagem] || null;
     const fornecedor = buscarFornecedorDaViagem(v);
     const baseDestino = buscarBaseDaViagem(v);
+    const envioIncerto = Boolean(v.herrlogImportIncertoEm);
     return `
       <tr>
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
-          <input type="checkbox" ${idsExcluidosExport.has(v.idViagem) ? '' : 'checked'}
+          <input type="checkbox" ${envioIncerto || idsExcluidosExport.has(v.idViagem) ? '' : 'checked'}
+            ${envioIncerto ? 'disabled title="Envio manual bloqueado até a conferência do resultado incerto"' : ''}
             onchange="toggleSelecaoExport('${v.idViagem}', this.checked)"
-            style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
+            style="cursor:${envioIncerto ? 'not-allowed' : 'pointer'};width:14px;height:14px;accent-color:var(--accent)">
         </td>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
@@ -10524,6 +11198,10 @@ function renderEnvioHerrlog(v, mon) {
   if (v.herrlogImportViaApi) {
     const quando = v.herrlogExportadoEm ? new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="Importado automaticamente via API em ${quando} — a Herrlog confirmou o recebimento (200 OK). Aguardando o ciclo de monitoramento sincronizar o status.">📤 Enviado via API</span>`;
+  }
+  if (v.herrlogImportIncertoEm) {
+    const quando = new Date(v.herrlogImportIncertoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="A tentativa via API em ${quando} terminou sem resposta. A exportação manual está bloqueada para evitar viagem duplicada. Confira a Herrlog antes de liberar uma nova tentativa no importador.">⚠ Envio incerto</span>`;
   }
   const titulo = v.herrlogExportadoEm
     ? `XLSX exportado em ${new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ainda não encontrado na Herrlog. Confira se a importação foi feita.`
@@ -11501,9 +12179,11 @@ function paraSerialExcel(date) {
 function exportarHerrlog() {
   // Sem restrição por herrlogExportadoEm — reexportar quantas vezes precisar não é
   // problema; o filtro "Aguardando criação na Herrlog" já indica o que falta confirmar.
+  // A exceção é herrlogImportIncertoEm: um POST sem resposta pode ter sido processado,
+  // então a exportação manual fica bloqueada até a conferência para evitar duplicidade.
   // Exporta exatamente o que está marcado na tabela (filtro ativo + checkbox de cada linha).
-  const { filtradas } = calcularFiltradasExport();
-  const prontas = filtradas.filter(v => !idsExcluidosExport.has(v.idViagem));
+  const { selecionaveis } = calcularFiltradasExport();
+  const prontas = selecionaveis.filter(v => !idsExcluidosExport.has(v.idViagem));
   if (!prontas.length) return alert('Nenhuma viagem selecionada para exportar (considerando o filtro e a seleção atuais).');
 
   const provisorias = prontas.filter(v => v.pedidoProvisorio);
@@ -12483,7 +13163,7 @@ function renderizarAbaAtual() {
   if (activeTab === 1) renderViagensTable();
   else if (activeTab === 2) renderExport();
   else if (activeTab === 3) renderMonitoramento();
-  else if (activeTab === 7) renderVeiculosTable();
+  else if (activeTab === 7) { renderVeiculosTable(); if (subViewVeiculos === 'frota') renderStatusFrota(); }
   else if (activeTab === 9) renderPerformance();
 }
 
@@ -12509,6 +13189,7 @@ function configurarListenerMonitoramentoHerrlog() {
       if (activeTab === 2) renderExport();
       if (activeTab === 3) renderMonitoramento();
       if (activeTab === 9) renderPerformance();
+      if (activeTab === 7 && subViewVeiculos === 'frota') renderStatusFrota();
     }, 200);
   }
 
@@ -12541,6 +13222,7 @@ function configurarListenerMonitoramentoHerrlog() {
     if (activeTab === 2) renderExport();
     if (activeTab === 3) renderMonitoramento();
     if (activeTab === 9) renderPerformance();
+    if (activeTab === 7 && subViewVeiculos === 'frota') renderStatusFrota();
     assinar();
   }).catch(e => {
     console.error('Erro ao carregar monitoramentoHerrlog:', e);
@@ -14022,6 +14704,9 @@ window.addEventListener('DOMContentLoaded', () => {
   msPerfModal    = new MultiSelect('ms-perfModal',    'Tipo de Frete', renderPerformance, null, true);
   msPerfModal.setSelected(['FOB']); // padrão da aba: só FOB — usuário troca pra Todos/CIF quando quiser
   msPerfTipoOp   = new MultiSelect('ms-perfTipoOp',   'Compra/Transferência', renderPerformance, null, true);
+
+  msFrotaTransportador = new MultiSelect('ms-frotaTransportador', 'Transportador', renderStatusFrota, null, true);
+  msFrotaPlaca          = new MultiSelect('ms-frotaPlaca',          'Placa',          renderStatusFrota, null, true);
 
   if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
     mostrarStatus('saving', 'Reconectando...');
