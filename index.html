@@ -1686,8 +1686,20 @@
     // nao sobrescrever edicoes concorrentes feitas por outro usuario.
     autorizarReprocessamentoHerrlog: async (key, idViagem, usuario) => {
       const viagemRef = ref(db, 'sessoes/' + key + '/viagens/' + idViagem);
+      const gracaDatalakeMs = 10 * 60 * 1000;
+      let sincronizandoAte = null;
       const resultado = await runTransaction(viagemRef, atual => {
         if (!atual || atual.idViagem !== idViagem || !atual.herrlogReprocessamentoPendente) return;
+        // Segunda barreira contra duplicidade: mesmo que um monitor antigo ou
+        // atrasado volte a marcar a viagem como cancelada, um POST confirmado ha
+        // poucos minutos ainda pode estar apenas esperando o ETL do datalake.
+        const ultimoEnvio = atual.herrlogReprocessadoEm || atual.herrlogExportadoEm;
+        const ultimoEnvioMs = Date.parse(ultimoEnvio || '');
+        const idadeMs = Date.now() - ultimoEnvioMs;
+        if (Number.isFinite(ultimoEnvioMs) && idadeMs >= -5 * 60 * 1000 && idadeMs < gracaDatalakeMs) {
+          sincronizandoAte = new Date(ultimoEnvioMs + gracaDatalakeMs);
+          return;
+        }
         const agora = new Date().toISOString();
         delete atual.herrlogReprocessamentoPendente;
         delete atual.herrlogExportadoEm;
@@ -1710,6 +1722,13 @@
         return atual;
       });
       if (!resultado.committed) {
+        if (sincronizandoAte) {
+          throw new Error(
+            'O envio anterior ainda esta sincronizando com o datalake. '
+            + 'Aguarde ate ' + sincronizandoAte.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            + ' antes de autorizar outra tentativa.'
+          );
+        }
         throw new Error('A viagem nao esta mais aguardando autorizacao. Atualize a pagina e confira o estado atual.');
       }
       return resultado.snapshot.val();
@@ -10614,7 +10633,10 @@ function sincronizarStatusHerrlog(idsFiltro) {
     // cancelamento promover a viagem de volta enquanto ela aguarda autorizacao.
     if (v.herrlogReprocessamentoPendente) return;
     const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
-    if (!statusHerrlog) return;
+    // Cancelado e' um marcador operacional, nao um ciclo T1..T5. Trata-lo como
+    // qualquer status nao-final promovia a viagem para Em Andamento instantes
+    // antes de processar o cancelamento e poluia o historico.
+    if (!statusHerrlog || statusHerrlog === 'Cancelado') return;
     const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
     // Placa Enviada/Frota Dedicada só avançam pra automático (nunca voltam a estado
     // manual). Já entre Em Andamento e Viagem Finalizada — ambos 100% automáticos,
@@ -11119,6 +11141,16 @@ function updatePipeline(list) {
 // não depende de fila/grade de carregamento em fornecedor nenhum — assim que a viagem tem
 // placa confirmada, já está pronta pra ir pro monitoramento.
 const AGENDAMENTOS_EXPORTAVEIS = ['Agendado', 'Usina de Fila'];
+const HERRLOG_GRACA_DATALAKE_MS = 10 * 60 * 1000;
+
+function envioHerrlogAindaSincronizando(v) {
+  const ultimoEnvio = v?.herrlogReprocessadoEm || v?.herrlogExportadoEm;
+  const ultimoEnvioMs = Date.parse(ultimoEnvio || '');
+  const idadeMs = Date.now() - ultimoEnvioMs;
+  return Number.isFinite(ultimoEnvioMs)
+    && idadeMs >= -5 * 60 * 1000
+    && idadeMs < HERRLOG_GRACA_DATALAKE_MS;
+}
 
 function calcularFiltradasExport() {
   const elegiveis = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v =>
@@ -11252,6 +11284,17 @@ async function solicitarReprocessamentoHerrlog(idViagem) {
     alert('Esta viagem não está mais aguardando autorização. Atualize a página e confira o estado atual.');
     return;
   }
+  if (envioHerrlogAindaSincronizando(v)) {
+    const ultimoEnvio = new Date(v.herrlogReprocessadoEm || v.herrlogExportadoEm);
+    const liberarEm = new Date(ultimoEnvio.getTime() + HERRLOG_GRACA_DATALAKE_MS);
+    alert(
+      'O envio anterior ainda esta sincronizando com o datalake. '
+      + 'Para evitar duplicidade, aguarde ate '
+      + liberarEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      + ' antes de autorizar outra tentativa.'
+    );
+    return;
+  }
   const semana = v._semanaOrigem || semanaAtiva;
   if (!semana || !window._fb?.autorizarReprocessamentoHerrlog) {
     alert('Não foi possível identificar a semana da viagem ou acessar o Firebase.');
@@ -11302,6 +11345,12 @@ async function solicitarReprocessamentoHerrlog(idViagem) {
 // (mesmo tom de "🔵 Adiantado" em badgeAderencia), não o laranja de alerta.
 function renderEnvioHerrlog(v, mon) {
   if (v.herrlogReprocessamentoPendente) {
+    if (envioHerrlogAindaSincronizando(v)) {
+      const ultimoEnvio = new Date(v.herrlogReprocessadoEm || v.herrlogExportadoEm);
+      const liberarEm = new Date(ultimoEnvio.getTime() + HERRLOG_GRACA_DATALAKE_MS)
+        .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="A Herrlog confirmou o envio recente. O botao de reprocessamento ficara bloqueado ate ${liberarEm}, enquanto o novo OuterId chega ao datalake.">ðŸ“¤ Enviado via API Â· sincronizando</span>`;
+    }
     const quando = v.herrlogCanceladaEm
       ? new Date(v.herrlogCanceladaEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
       : '';
