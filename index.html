@@ -1681,6 +1681,39 @@
       });
       await update(ref(db), updates);
     },
+    // Autoriza de forma atomica uma nova importacao depois de cancelamento
+    // confirmado na Herrlog. A transacao le o registro atual no servidor para
+    // nao sobrescrever edicoes concorrentes feitas por outro usuario.
+    autorizarReprocessamentoHerrlog: async (key, idViagem, usuario) => {
+      const viagemRef = ref(db, 'sessoes/' + key + '/viagens/' + idViagem);
+      const resultado = await runTransaction(viagemRef, atual => {
+        if (!atual || atual.idViagem !== idViagem || !atual.herrlogReprocessamentoPendente) return;
+        const agora = new Date().toISOString();
+        delete atual.herrlogReprocessamentoPendente;
+        delete atual.herrlogExportadoEm;
+        delete atual.herrlogImportViaApi;
+        delete atual.herrlogImportIncertoEm;
+        atual.herrlogReprocessamentoSolicitadoEm = agora;
+        atual.herrlogReprocessamentoSolicitadoPor = usuario || '';
+        const historico = Array.isArray(atual.historico)
+          ? [...atual.historico]
+          : Object.values(atual.historico || {});
+        historico.push({
+          data: agora,
+          usuario: usuario || '',
+          transportador: atual.transportador || '',
+          cnpj: atual.transportadorCnpj || '',
+          evento: atual.status || 'Placa Enviada',
+          motivo: 'Reprocessamento na Herrlog autorizado pelo usuario',
+        });
+        atual.historico = historico;
+        return atual;
+      });
+      if (!resultado.committed) {
+        throw new Error('A viagem nao esta mais aguardando autorizacao. Atualize a pagina e confira o estado atual.');
+      }
+      return resultado.snapshot.val();
+    },
     // Cadências/config mudam raramente (import de cadência, capCaminhao) — ao contrário
     // de viagens, não vale a pena granularizar por item; grava os dois paths de uma vez,
     // sem tocar em `viagens` (preserva o mesmo motivo do salvarViagensParciais acima).
@@ -10577,6 +10610,9 @@ function sincronizarStatusHerrlog(idsFiltro) {
   let alterou = false;
   viagensAtivo().forEach(v => {
     if (filtro && !filtro.has(v.idViagem)) return;
+    // Cancelamento ja confirmado: nao deixar um snapshot T1..T5 anterior ao
+    // cancelamento promover a viagem de volta enquanto ela aguarda autorizacao.
+    if (v.herrlogReprocessamentoPendente) return;
     const statusHerrlog = monitoramentoHerrlog[v.idViagem]?.statusHerrlog;
     if (!statusHerrlog) return;
     const novoStatus = statusHerrlog === STATUS_HERRLOG_FINALIZADA ? 'Viagem Finalizada' : 'Em Andamento';
@@ -11095,7 +11131,21 @@ function calcularFiltradasExport() {
   // entre o envio automático e a confirmação, e alguém podia clicar em Exportar de
   // novo e duplicar a viagem na Herrlog. monitoramentoHerrlog continua aqui pro caso
   // raro de confirmação chegar antes do herrlogImportViaApi (ex.: reconciliação manual).
-  const naoConfirmadas = elegiveis.filter(v => !monitoramentoHerrlog[v.idViagem] && !v.herrlogImportViaApi);
+  // Canceladas e reprocessamentos ja autorizados permanecem visiveis como estados
+  // operacionais, mas bloqueados para o XLSX manual. Isso impede a corrida entre
+  // o clique de autorizacao e o importador automatico (loop de 30s).
+  const cancelamentoPendente = v => Boolean(
+    v.herrlogReprocessamentoPendente
+    || monitoramentoHerrlog[v.idViagem]?.statusHerrlog === 'Cancelado'
+  );
+  const reprocessamentoSolicitado = v => Boolean(
+    v.herrlogReprocessamentoSolicitadoEm && !v.herrlogImportViaApi
+  );
+  const naoConfirmadas = elegiveis.filter(v =>
+    cancelamentoPendente(v)
+    || reprocessamentoSolicitado(v)
+    || (!monitoramentoHerrlog[v.idViagem] && !v.herrlogImportViaApi)
+  );
   const programadores = new Set(msEProgramador?.getSelected() || []);
   const filtradas = programadores.size
     ? naoConfirmadas.filter(v => programadores.has(valorProgramadorFiltro(v)))
@@ -11104,7 +11154,11 @@ function calcularFiltradasExport() {
   // importador não reconciliar/liberar o marcador, a viagem continua visível
   // para diagnóstico, mas não pode ser exportada manualmente: isso anularia a
   // proteção contra duplicidade do importar_viagens_herrlog.py.
-  const selecionaveis = filtradas.filter(v => !v.herrlogImportIncertoEm);
+  const selecionaveis = filtradas.filter(v =>
+    !v.herrlogImportIncertoEm
+    && !cancelamentoPendente(v)
+    && !reprocessamentoSolicitado(v)
+  );
   return { elegiveis, naoConfirmadas, filtradas, selecionaveis };
 }
 
@@ -11154,13 +11208,26 @@ function renderExport() {
     const fornecedor = buscarFornecedorDaViagem(v);
     const baseDestino = buscarBaseDaViagem(v);
     const envioIncerto = Boolean(v.herrlogImportIncertoEm);
+    const cancelamentoPendente = Boolean(
+      v.herrlogReprocessamentoPendente
+      || monitoramentoHerrlog[v.idViagem]?.statusHerrlog === 'Cancelado'
+    );
+    const reprocessamentoSolicitado = Boolean(
+      v.herrlogReprocessamentoSolicitadoEm && !v.herrlogImportViaApi
+    );
+    const bloqueada = envioIncerto || cancelamentoPendente || reprocessamentoSolicitado;
+    const motivoBloqueio = envioIncerto
+      ? 'Envio manual bloqueado ate a conferencia do resultado incerto'
+      : cancelamentoPendente
+        ? 'Cancelada na Herrlog; autorize o reprocessamento na coluna Envio'
+        : 'Reprocessamento autorizado; aguardando o importador automatico';
     return `
       <tr>
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
-          <input type="checkbox" ${envioIncerto || idsExcluidosExport.has(v.idViagem) ? '' : 'checked'}
-            ${envioIncerto ? 'disabled title="Envio manual bloqueado até a conferência do resultado incerto"' : ''}
+          <input type="checkbox" ${bloqueada || idsExcluidosExport.has(v.idViagem) ? '' : 'checked'}
+            ${bloqueada ? `disabled title="${motivoBloqueio}"` : ''}
             onchange="toggleSelecaoExport('${v.idViagem}', this.checked)"
-            style="cursor:${envioIncerto ? 'not-allowed' : 'pointer'};width:14px;height:14px;accent-color:var(--accent)">
+            style="cursor:${bloqueada ? 'not-allowed' : 'pointer'};width:14px;height:14px;accent-color:var(--accent)">
         </td>
         <td class="cell-id-viagem">${v.idViagem}</td>
         <td><span style="font-family:monospace;font-size:12px;color:var(--success);background:var(--success-dim);padding:2px 7px;border-radius:4px">${v.placa}</span></td>
@@ -11179,6 +11246,49 @@ function renderExport() {
   }).join('');
 }
 
+async function solicitarReprocessamentoHerrlog(idViagem) {
+  const v = viagensAtivo().find(item => item.idViagem === idViagem);
+  if (!v?.herrlogReprocessamentoPendente) {
+    alert('Esta viagem não está mais aguardando autorização. Atualize a página e confira o estado atual.');
+    return;
+  }
+  const semana = v._semanaOrigem || semanaAtiva;
+  if (!semana || !window._fb?.autorizarReprocessamentoHerrlog) {
+    alert('Não foi possível identificar a semana da viagem ou acessar o Firebase.');
+    return;
+  }
+  const canceladaEm = v.herrlogCanceladaEm
+    ? new Date(v.herrlogCanceladaEm).toLocaleString('pt-BR')
+    : 'data não informada';
+  if (!confirm(
+    `A viagem ${idViagem} foi cancelada na Herrlog em ${canceladaEm}.\n\n`
+    + 'Autorizar uma nova importação automática? O importador assumirá a fila; não gere o XLSX manualmente.'
+  )) return;
+
+  mostrarStatus('saving', 'Autorizando reprocessamento...');
+  try {
+    const usuario = _authUsuarioAtual?.nome || window._fb.currentUser()?.email || '';
+    const atualizada = await window._fb.autorizarReprocessamentoHerrlog(semana, idViagem, usuario);
+    // Reflete imediatamente sem esperar o listener. Campos internos da visao
+    // multi-semana permanecem apenas em memoria e nunca vao para o Firebase.
+    delete v.herrlogReprocessamentoPendente;
+    delete v.herrlogExportadoEm;
+    delete v.herrlogImportViaApi;
+    delete v.herrlogImportIncertoEm;
+    Object.assign(v, atualizada, {
+      ...(v._semanaOrigem ? { _semanaOrigem: v._semanaOrigem } : {}),
+      ...(v._semanaLabel ? { _semanaLabel: v._semanaLabel } : {}),
+    });
+    idsExcluidosExport.add(idViagem);
+    mostrarStatus('saved', `${idViagem} autorizado · aguardando importador Herrlog`);
+    renderExport();
+  } catch (e) {
+    console.error('Erro ao autorizar reprocessamento Herrlog:', e);
+    mostrarStatus('saving', 'Erro ao autorizar reprocessamento');
+    alert('Não foi possível autorizar o reprocessamento: ' + e.message);
+  }
+}
+
 // Status real do "Envio": confirmado quando a viagem aparece no monitoramento
 // da Herrlog (extracao_herrlog.py, a cada ciclo) — não apenas quando o XLSX
 // foi baixado. Isso avisa o usuário quando exportou mas esqueceu de importar
@@ -11191,6 +11301,31 @@ function renderExport() {
 // falta só o ciclo de monitoramento sincronizar. Por isso usa o azul informativo
 // (mesmo tom de "🔵 Adiantado" em badgeAderencia), não o laranja de alerta.
 function renderEnvioHerrlog(v, mon) {
+  if (v.herrlogReprocessamentoPendente) {
+    const quando = v.herrlogCanceladaEm
+      ? new Date(v.herrlogCanceladaEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '';
+    return `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+      <span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Cancelada na Herrlog${quando ? ' em ' + quando : ''}. O envio anterior permanece bloqueado até uma autorização humana.">⛔ Cancelada na Herrlog</span>
+      <button type="button" onclick="solicitarReprocessamentoHerrlog('${v.idViagem}')"
+        style="border:1px solid var(--accent);border-radius:5px;background:var(--accent-dim);color:var(--accent);font-size:10px;font-weight:700;padding:4px 7px;cursor:pointer;white-space:nowrap">↻ Reprocessar</button>
+    </div>`;
+  }
+  if (mon?.statusHerrlog === 'Cancelado') {
+    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Cancelamento detectado; registrando a fila persistente de reprocessamento.">⏳ Processando cancelamento</span>`;
+  }
+  if (v.herrlogImportIncertoEm) {
+    const quando = new Date(v.herrlogImportIncertoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="A tentativa via API em ${quando} terminou sem resposta. A exportação manual está bloqueada para evitar viagem duplicada. Confira a Herrlog antes de liberar uma nova tentativa no importador.">⚠ Envio incerto</span>`;
+  }
+  if (v.herrlogReprocessamentoSolicitadoEm && !v.herrlogImportViaApi) {
+    const quando = new Date(v.herrlogReprocessamentoSolicitadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="Autorizado em ${quando}. O importador automático fará o envio; o XLSX manual está bloqueado para evitar duplicidade.">↻ Reprocessamento autorizado</span>`;
+  }
+  if (mon?.aguardandoDatalake) {
+    const quando = mon.atualizadoEm ? fmtIsoShort(mon.atualizadoEm) : '';
+    return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="A Herrlog confirmou a importação${quando ? ' em ' + quando : ''}. Aguardando o datalake publicar o primeiro ciclo real.">📤 Enviado via API · sincronizando</span>`;
+  }
   if (mon) {
     const quando = mon.atualizadoEm ? fmtIsoShort(mon.atualizadoEm) : '';
     return `<span class="badge badge-success" title="Confirmado pelo monitoramento Herrlog${quando ? ' · atualizado ' + quando : ''}">✅ Confirmado na Herrlog</span>`;
@@ -11198,10 +11333,6 @@ function renderEnvioHerrlog(v, mon) {
   if (v.herrlogImportViaApi) {
     const quando = v.herrlogExportadoEm ? new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="Importado automaticamente via API em ${quando} — a Herrlog confirmou o recebimento (200 OK). Aguardando o ciclo de monitoramento sincronizar o status.">📤 Enviado via API</span>`;
-  }
-  if (v.herrlogImportIncertoEm) {
-    const quando = new Date(v.herrlogImportIncertoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="A tentativa via API em ${quando} terminou sem resposta. A exportação manual está bloqueada para evitar viagem duplicada. Confira a Herrlog antes de liberar uma nova tentativa no importador.">⚠ Envio incerto</span>`;
   }
   const titulo = v.herrlogExportadoEm
     ? `XLSX exportado em ${new Date(v.herrlogExportadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ainda não encontrado na Herrlog. Confira se a importação foi feita.`
@@ -13286,18 +13417,32 @@ function processarViagensCanceladasNaHerrlog() {
   const idsCancelados = Object.keys(monitoramentoHerrlog).filter(id => monitoramentoHerrlog[id]?.statusHerrlog === 'Cancelado');
   if (!idsCancelados.length) return;
 
-  // "Placa Enviada"/"Frota Dedicada" já são elegíveis pra reexportação sozinhos
-  // (ver renderExport) — só "Em Andamento"/"Viagem Finalizada" (promovidos por
-  // sincronizarStatusHerrlog) precisam voltar pra "Placa Enviada" aqui.
+  // O monitor backend grava os mesmos campos diretamente na viagem antes deste
+  // marcador. Este trecho permanece como fallback caso essa escrita falhe: alem
+  // de voltar o status automatico, cria uma fila persistente e bloqueada ate que
+  // um usuario autorize o reprocessamento na aba Exportar.
   let alterou = false;
   viagensAtivo().forEach(v => {
     if (!idsCancelados.includes(v.idViagem)) return;
+    if (!['Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)) return;
+    const jaPendente = Boolean(v.herrlogReprocessamentoPendente);
+    const agora = new Date().toISOString();
     if (['Em Andamento', 'Viagem Finalizada'].includes(v.status)) {
       v.status = 'Placa Enviada';
-      registrarHistoricoOferta(v, 'Placa Enviada', 'Herrlog (automático)', 'Cancelada na Herrlog — removida do monitoramento');
-      marcarEAgendar(v);
-      alterou = true;
     }
+    if (!jaPendente) {
+      v.herrlogCanceladaEm = agora;
+      v.herrlogReprocessamentoPendente = true;
+      delete v.herrlogReprocessamentoSolicitadoEm;
+      registrarHistoricoOferta(
+        v,
+        v.status,
+        'Herrlog (automático)',
+        'Cancelada na Herrlog — aguardando autorização para reprocessamento'
+      );
+    }
+    if (!jaPendente || ['Placa Enviada'].includes(v.status)) marcarEAgendar(v);
+    alterou = true;
   });
 
   idsCancelados.forEach(id => {
