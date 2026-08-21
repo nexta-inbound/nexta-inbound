@@ -3981,17 +3981,30 @@
 <!-- MODAL: Motivo do Ajuste de Programação -->
 <div class="modal-overlay" id="modalMotivoProgramacao">
   <div class="modal" style="width:400px;max-width:94vw">
-    <div class="modal-title">Motivo do Ajuste (opcional)</div>
-    <div class="modal-sub">Por que a data/hora de programação está sendo alterada? Fica registrado no histórico da viagem.</div>
-    <div class="modal-field">
-      <textarea class="config-input" id="motivo-prog-texto" rows="3" maxlength="300"
-        style="resize:vertical;font-family:var(--font)"
-        placeholder="Ex.: cliente pediu antecipação, fila na descarga, ajuste combinado com transportador..."
-        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); responderMotivoProgramacao(this.value); }"></textarea>
+    <div class="modal-title">Motivo do Ajuste de Data</div>
+    <div class="modal-sub">Por que a data de programação está sendo alterada? Fica registrado no histórico da viagem.</div>
+    <div style="display:flex;flex-direction:column;gap:8px" id="motivo-prog-opcoes">
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Sem frota')">Sem frota</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Viagem lançada fora da cadência')">Viagem lançada fora da cadência</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('GAP Transportadora')">GAP Transportadora</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Solicitação abastecimento')">Solicitação abastecimento</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Falta de saldo')">Falta de saldo</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Falta de grades')">Falta de grades</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="responderMotivoProgramacao('Falta de produto')">Falta de produto</button>
+      <button class="btn btn-secondary" style="justify-content:flex-start" onclick="mostrarMotivoProgramacaoOutro()">Outros...</button>
     </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="responderMotivoProgramacao('')">Salvar sem motivo</button>
-      <button class="btn btn-primary" onclick="responderMotivoProgramacao(document.getElementById('motivo-prog-texto').value)">Salvar</button>
+    <div class="modal-field" id="motivo-prog-outro-wrap" style="display:none">
+      <textarea class="config-input" id="motivo-prog-outro-texto" rows="3" maxlength="300"
+        style="resize:vertical;font-family:var(--font)"
+        placeholder="Descreva o motivo..."
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); confirmarMotivoProgramacaoOutro(); }"></textarea>
+    </div>
+    <div class="modal-actions" id="motivo-prog-acoes-outro" style="display:none">
+      <button class="btn btn-secondary" onclick="ocultarMotivoProgramacaoOutro()">Voltar às opções</button>
+      <button class="btn btn-primary" onclick="confirmarMotivoProgramacaoOutro()">Salvar</button>
+    </div>
+    <div class="modal-actions" id="motivo-prog-acoes-padrao">
+      <button class="btn btn-secondary" onclick="responderMotivoProgramacao(null)">Voltar (não alterar)</button>
     </div>
   </div>
 </div>
@@ -4206,18 +4219,18 @@ function responderMotivoCancelamento(motivo) {
 }
 
 // ── MOTIVO DO AJUSTE DE PROGRAMAÇÃO ──
-// Pergunta (campo livre, opcional) o motivo ao ajustar a Data Programação em Gerir
-// Viagens (ver salvarDataProgramacaoInline) — resolve com o texto digitado, ou '' se o
-// usuário optar por não informar. Diferente de pedirMotivoCancelamento, nunca bloqueia
-// o salvamento: é só um registro extra no histórico.
+// Pede o motivo (lista fixa de opções, ou "Outros" com campo livre) ao ajustar a DATA de
+// Programação em Gerir Viagens (ver salvarDataProgramacaoInline/salvarAgendamentoInline) —
+// ajuste só de horário (data mantida) não passa por aqui. Mesmo contrato de
+// pedirMotivoCancelamento: resolve com o motivo escolhido, ou null se o usuário desistir,
+// caso em que o chamador deve abortar o salvamento.
 let _motivoProgramacaoResolve = null;
 
 function pedirMotivoProgramacao() {
   return new Promise(resolve => {
     _motivoProgramacaoResolve = resolve;
-    document.getElementById('motivo-prog-texto').value = '';
+    ocultarMotivoProgramacaoOutro();
     document.getElementById('modalMotivoProgramacao').classList.add('open');
-    setTimeout(() => document.getElementById('motivo-prog-texto').focus(), 50);
   });
 }
 
@@ -4225,7 +4238,29 @@ function responderMotivoProgramacao(motivo) {
   document.getElementById('modalMotivoProgramacao').classList.remove('open');
   const resolve = _motivoProgramacaoResolve;
   _motivoProgramacaoResolve = null;
-  if (resolve) resolve((motivo || '').trim());
+  if (resolve) resolve(motivo);
+}
+
+function mostrarMotivoProgramacaoOutro() {
+  document.getElementById('motivo-prog-opcoes').style.display = 'none';
+  document.getElementById('motivo-prog-acoes-padrao').style.display = 'none';
+  document.getElementById('motivo-prog-outro-wrap').style.display = '';
+  document.getElementById('motivo-prog-acoes-outro').style.display = '';
+  document.getElementById('motivo-prog-outro-texto').value = '';
+  setTimeout(() => document.getElementById('motivo-prog-outro-texto').focus(), 50);
+}
+
+function ocultarMotivoProgramacaoOutro() {
+  document.getElementById('motivo-prog-opcoes').style.display = '';
+  document.getElementById('motivo-prog-acoes-padrao').style.display = '';
+  document.getElementById('motivo-prog-outro-wrap').style.display = 'none';
+  document.getElementById('motivo-prog-acoes-outro').style.display = 'none';
+}
+
+function confirmarMotivoProgramacaoOutro() {
+  const texto = document.getElementById('motivo-prog-outro-texto').value.trim();
+  if (!texto) { alert('Descreva o motivo ou volte às opções.'); return; }
+  responderMotivoProgramacao(texto);
 }
 
 // ── CONFIRMAÇÃO DE AGENDAMENTO (status "Agendado") ──
@@ -4799,6 +4834,7 @@ class MultiSelect {
     this.allMode  = false;
     this.selected = new Set();
     this.options  = [];
+    this.busca    = ''; // texto digitado no campo de busca do painel — filtra as opções exibidas, não afeta a seleção nem o "Todos" (que sempre vale pra lista inteira)
     this._build();
     document.addEventListener('click', e => { if (!this.el.contains(e.target)) this._closePanel(); });
   }
@@ -4831,6 +4867,8 @@ class MultiSelect {
     this._renderPanel(); this._renderLabel(); this.onChange();
   }
   _closePanel() { this._panel.style.display = 'none'; }
+  // Ignora acento e caixa na busca (ex.: "araguaia" acha "ARAGUAIA", "sao paulo" acha "SÃO PAULO").
+  _norm(s) { return String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase(); }
   _build() {
     this.el.style.position = 'relative';
     this.el.innerHTML = `
@@ -4839,18 +4877,34 @@ class MultiSelect {
         <span style="font-size:8px;color:var(--text-muted);flex-shrink:0">▼</span>
       </div>
       <div class="ms-panel" style="display:none;position:fixed;min-width:220px;max-width:340px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:300;box-shadow:0 8px 28px rgba(0,0,0,0.5);max-height:260px;overflow-y:auto">
+        <div style="padding:6px;position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--border);z-index:1">
+          <input type="text" class="ms-busca" placeholder="Buscar..."
+            style="width:100%;box-sizing:border-box;background:var(--panel-soft);border:1px solid var(--border-dk);border-radius:5px;color:var(--text);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none">
+        </div>
         <div class="ms-opts"></div>
       </div>`;
     this._panel = this.el.querySelector('.ms-panel');
     this._label = this.el.querySelector('.ms-lbl');
     this._trigger = this.el.querySelector('.ms-trigger');
+    this._buscaInput = this.el.querySelector('.ms-busca');
+    this._buscaInput.addEventListener('click', e => e.stopPropagation());
+    this._buscaInput.addEventListener('input', () => {
+      this.busca = this._buscaInput.value;
+      this._renderPanel();
+    });
     this._trigger.addEventListener('click', e => {
       e.stopPropagation();
       const open = this._panel.style.display === 'block';
       document.querySelectorAll('.ms-panel').forEach(p => p.style.display = 'none');
       if (!open) {
+        // Busca sempre nasce vazia a cada abertura — evita reabrir o painel já filtrado
+        // por uma busca antiga que o usuário nem lembra mais de ter digitado.
+        this.busca = '';
+        this._buscaInput.value = '';
         this._posicionarPanel();
         this.onOpen?.();
+        this._renderPanel();
+        setTimeout(() => this._buscaInput.focus(), 30);
       }
       this._panel.style.display = open ? 'none' : 'block';
     });
@@ -4894,7 +4948,16 @@ class MultiSelect {
       divTodos.addEventListener('click', e => { e.stopPropagation(); this._toggleTodos(); });
       wrap.appendChild(divTodos);
     }
-    this.options.forEach(opt => {
+    // Busca filtra só as linhas exibidas — "Todos" acima continua valendo pra lista
+    // inteira (this.options), não pro subconjunto filtrado, senão marcar "Todos" com uma
+    // busca ativa selecionaria só o que está visível e desmarcaria o resto sem avisar.
+    const termo = this._norm(this.busca);
+    const filtradas = termo ? this.options.filter(opt => this._norm(opt).includes(termo)) : this.options;
+    if (!filtradas.length) {
+      wrap.insertAdjacentHTML('beforeend', `<div style="padding:12px 14px;font-size:11px;color:var(--text-muted)">Nenhuma opção com "${esc(this.busca)}"</div>`);
+      return;
+    }
+    filtradas.forEach(opt => {
       const checked = this.selected.has(opt);
       const div = document.createElement('div');
       div.style.cssText = 'padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;transition:background 0.1s';
@@ -5307,7 +5370,7 @@ let _unsubsMultiSemana = new Map(); // key da semana -> função de unsubscribe 
 function viagensAtivo() {
   return modoMultiSemana ? viagensMultiSemana : viagens;
 }
-let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, kmRestante, placaHerrlog, atualizadoEm } }
+let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, chegadaOrigem, kmRestante, placaHerrlog, atualizadoEm } }
 // Viagens Finalizadas ha mais de HERRLOG_RETENCAO_CONCLUIDA_DIAS saem de monitoramentoHerrlog
 // (arquivadas pelo monitoramento_tempo_real_herrlog.py em monitoramentoHerrlogHistorico, nao
 // apagadas) — ver garantirHistoricoHerrlog. Cache local, nunca sincronizado como listener: um
@@ -8252,10 +8315,27 @@ function fimOcupacaoVeiculo(v, ini, fimProgramado) {
   return fim;
 }
 
+// Pertence ao veículo tanto quando alocado explicitamente no modal de Gerir Viagens
+// (v.veiculoDedicadoId) quanto quando o transportador respondeu a uma oferta digitando a
+// placa pelo fluxo normal (Placa Enviada, sem passar pelo select de Frota Dedicada) — se
+// essa placa bate com a do próprio veículo dedicado dele, a viagem já está sendo cumprida
+// por aquele veículo na prática, mesmo sem o programador ter selecionado manualmente no
+// modal. Exige transportador igual além da placa: placa sozinha já seria praticamente
+// inequívoca (é única por veículo), mas o transportador é o cinto-e-suspensório contra
+// erro de digitação cruzando com a placa de um veículo dedicado de outra transportadora.
+function viagemPertenceAoVeiculo(v, vd) {
+  if (v.veiculoDedicadoId === vd.id) return true;
+  if (v.veiculoDedicadoId || !v.placa || !vd.placaCavalo) return false;
+  return v.transportador === vd.transportador
+    && v.placa.toUpperCase().trim() === vd.placaCavalo.toUpperCase().trim();
+}
+
 function viagensDoVeiculoNoDia(veiculoId, dia) {
+  const vd = veiculosDedicados.find(x => x.id === veiculoId);
+  if (!vd) return [];
   const d0 = new Date(dia); d0.setHours(0, 0, 0, 0);
   return viagensParaOcupacaoVeiculos().filter(v => {
-    if (v.veiculoDedicadoId !== veiculoId || v.status === 'Cancelado') return false;
+    if (!viagemPertenceAoVeiculo(v, vd) || v.status === 'Cancelado') return false;
     const ini = parseDMY(v.dtCarregProg || v.dtCarreg);
     if (!ini) return false;
     const fim = parseDMY(v.dtDescProg || v.dtDesc) || ini;
@@ -10302,7 +10382,11 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     }
   }
   if (novo === anterior && novaHora === horaAnterior) return;
-  const motivo = await pedirMotivoProgramacao();
+  let motivo = null;
+  if (novo !== anterior) {
+    motivo = await pedirMotivoProgramacao();
+    if (!motivo) { renderViagensTable(); return; }
+  }
   v[campo] = novo;
   v[campoHora] = novaHora;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
@@ -10713,7 +10797,11 @@ async function salvarAgendamentoInline(realIdx, valor) {
     if (!confirmado) { renderViagensTable(); return; }
     if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
     if (confirmado.data !== dataProgAtual || confirmado.hora !== horaProgAtual) {
-      const motivo = await pedirMotivoProgramacao();
+      let motivo = null;
+      if (confirmado.data !== dataProgAtual) {
+        motivo = await pedirMotivoProgramacao();
+        if (!motivo) { renderViagensTable(); return; }
+      }
       const anteriorTxt = (dataProgAtual && dataProgAtual !== '-') ? `${dataProgAtual} ${horaProgAtual}` : '—';
       v.dtCarregProg = confirmado.data;
       v.horaCarregProg = confirmado.hora;
@@ -14375,6 +14463,8 @@ function renderShareRegional(lista) {
   const base = viagensPerfIgnorando('tipoOperacao');
 
   const porRegional = new Map(); // regional (ou "Transferências") -> Map(transportador -> volume)
+  const ultimaCargaPorRegional = new Map(); // regional -> Map(transportador -> Date da carga mais recente)
+  const ultimaCargaGlobal = new Map();      // transportador -> Date da carga mais recente (todas regionais)
   base.forEach(v => {
     if (!v.transportador) return;
     const chave = tipoOperacaoViagem(v) === 'Transferência'
@@ -14383,6 +14473,29 @@ function renderShareRegional(lista) {
     if (!porRegional.has(chave)) porRegional.set(chave, new Map());
     const m = porRegional.get(chave);
     m.set(v.transportador, (m.get(v.transportador) || 0) + (v.volume || 0));
+
+    // Chegada real em T2 (Herrlog) quando disponível — chegadaOrigem é gravado sempre pelo
+    // herrlog_datalake.py, ao contrário de cicloDesde (só enquanto o ciclo atual é T2). Sem
+    // monitoramento (viagem antiga, fora da retenção, ou nunca rastreada), cai pra data
+    // programada — mas só pra viagem já Finalizada: uma viagem ainda em andamento/programada
+    // não tem carga confirmada de verdade, então a data programada não pode se passar por
+    // "Última Carga" (é só um planejamento, pode mudar). Dispara a busca do histórico
+    // arquivado pra próxima vez que renderizar.
+    const mon = monitoramentoHerrlog[v.idViagem] || monitoramentoHerrlogHistoricoCache[v.idViagem] || null;
+    let dataCarga = mon?.chegadaOrigem ? new Date(mon.chegadaOrigem) : null;
+    if (dataCarga && isNaN(dataCarga.getTime())) dataCarga = null;
+    if (!dataCarga && v.status === 'Viagem Finalizada') {
+      if (!mon) garantirHistoricoHerrlog(v.idViagem);
+      dataCarga = parseDMY(v.dtCarregProg || v.dtCarreg);
+    }
+    if (dataCarga) {
+      if (!ultimaCargaPorRegional.has(chave)) ultimaCargaPorRegional.set(chave, new Map());
+      const mc = ultimaCargaPorRegional.get(chave);
+      if (!mc.get(v.transportador) || dataCarga > mc.get(v.transportador)) mc.set(v.transportador, dataCarga);
+      if (!ultimaCargaGlobal.get(v.transportador) || dataCarga > ultimaCargaGlobal.get(v.transportador)) {
+        ultimaCargaGlobal.set(v.transportador, dataCarga);
+      }
+    }
   });
 
   // Regional com meta cadastrada entra na grade mesmo sem nenhuma viagem no período
@@ -14424,62 +14537,80 @@ function renderShareRegional(lista) {
   const totalPorRegional = new Map();
   porRegional.forEach((m, reg) => totalPorRegional.set(reg, [...m.values()].reduce((s, v) => s + v, 0)));
 
-  const theadGrupos = regionais.map(reg => `<th colspan="3" class="perf-meta-grupo">${esc(labelColuna(reg))}</th>`).join('')
-    + `<th colspan="3" class="perf-meta-total-grupo">Total</th>`;
-  const theadSub = regionais.map(() => `<th class="perf-meta-grupo">Meta</th><th>Real</th><th>Δ</th>`).join('')
-    + `<th class="perf-meta-total-grupo">Meta</th><th>Real</th><th>Δ</th>`;
+  const theadGrupos = regionais.map(reg => `<th colspan="2" class="perf-meta-grupo">${esc(labelColuna(reg))}</th>`).join('')
+    + `<th colspan="2" class="perf-meta-total-grupo">Total</th>`;
+  const theadSub = regionais.map(() => `<th class="perf-meta-grupo">Real</th><th>Última Carga</th>`).join('')
+    + `<th class="perf-meta-total-grupo">Real</th><th>Última Carga</th>`;
 
-  // Célula Meta/Real/Δ compartilhada entre as colunas por regional e a coluna Total —
-  // só muda se recebe <input> editável (regional) ou texto fixo (Total, ponderado).
-  function celulaDelta(realPct, temReal, meta, temMeta) {
-    if (!temMeta && !temReal) return '<span class="perf-meta-delta">—</span>';
-    const delta = (temReal ? realPct : 0) - (temMeta ? meta : 0);
-    const { cor, fundo } = corPorDesvioMeta(delta);
-    return `<span class="perf-meta-delta" style="color:${cor};background:${fundo}">${delta > 0 ? '+' : ''}${delta}%</span>`;
-  }
+  const fmtUltimaCarga = d => d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}` : '—';
+
+  // Mapa de calor do % Real, calibrado POR COLUNA (não 0-100% fixo): cada regional tem uma
+  // escala de disputa diferente (Coletas SP concentrada em poucos % vs. Coletas Sul dominada
+  // por 1 transportador), então uma escala global deixava colunas inteiras apagadas quando
+  // ninguém ali passa de ~20%. Aqui o valor é normalizado pelo maior % REAL daquela própria
+  // coluna — o maior de cada coluna sempre fica no tom mais forte, os demais relativos a ele.
+  const maxPorRegional = new Map(regionais.map(reg => {
+    const totalReg = totalPorRegional.get(reg) || 0;
+    let max = 0;
+    if (totalReg > 0) {
+      (porRegional.get(reg) || new Map()).forEach(vol => {
+        if (vol <= 0) return;
+        const pct = pctSeguro(vol, totalReg);
+        if (pct > max) max = pct;
+      });
+    }
+    return [reg, max];
+  }));
+  const maxTotal = Math.max(0, ...transportadoras.map(nome => {
+    let volTransp = 0, peso = 0;
+    regionais.forEach(reg => {
+      volTransp += porRegional.get(reg)?.get(nome) || 0;
+      peso += totalPorRegional.get(reg) || 0;
+    });
+    return volTransp > 0 && peso ? Math.round(volTransp / peso * 100) : 0;
+  }));
+
+  // Sequencial (magnitude), não categórico — não precisa de paleta nem validação de par por
+  // daltonismo (o valor sempre vem escrito na célula, a cor só reforça). Sem dado ou coluna
+  // sem nenhum % real (max=0), a célula fica sem tingimento (fundo padrão da tabela).
+  const corCalorShare = (pct, max) => {
+    if (!max) return '';
+    const intensidade = Math.min(Math.max(pct / max, 0), 1);
+    return `background:rgba(141,200,48,${(0.05 + intensidade * 0.45).toFixed(2)})`;
+  };
 
   const linhasHtml = transportadoras.map(nome => {
     let volTotalTransp = 0;    // soma do volume do transportador em todas as regionais
-    let metaPonderada = 0;     // Σ (meta_ou_0 × volume_total_da_regional)
-    let pesoTotal = 0;         // Σ volume_total_da_regional — mesmo peso pros dois lados
-    let algumaMeta = false;    // pelo menos uma regional tem meta cadastrada pra esse transportador
+    let pesoTotal = 0;         // Σ volume_total_da_regional
 
     const celulas = regionais.map(reg => {
       const vol = porRegional.get(reg)?.get(nome) || 0;
       const totalReg = totalPorRegional.get(reg) || 0;
-      const meta = valorMetaShare(nome, reg);
-      const temMeta = meta !== null;
       const temReal = vol > 0;
       const realPct = temReal ? pctSeguro(vol, totalReg) : 0;
 
       volTotalTransp += vol;
       pesoTotal += totalReg;
-      metaPonderada += (temMeta ? meta : 0) * totalReg;
-      if (temMeta) algumaMeta = true;
 
-      const metaInput = `<input type="number" class="perf-meta-input" min="0" max="100" step="1"
-        value="${temMeta ? meta : ''}" placeholder="—"
-        data-transp="${esc(nome)}" data-regional="${esc(reg)}"
-        title="Meta de share (%) do BID para ${esc(nome)} em ${esc(reg)}">`;
       const realTxt = temReal ? realPct + '%' : '—';
-      return `<td class="perf-meta-grupo">${metaInput}</td><td>${realTxt}</td><td>${celulaDelta(realPct, temReal, meta, temMeta)}</td>`;
+      const realStyle = temReal ? ` style="${corCalorShare(realPct, maxPorRegional.get(reg))}"` : '';
+      const ultimaCarga = fmtUltimaCarga(ultimaCargaPorRegional.get(reg)?.get(nome));
+      return `<td class="perf-meta-grupo"${realStyle}>${realTxt}</td><td>${ultimaCarga}</td>`;
     }).join('');
 
-    // Total: não editável — Meta e Real ponderados pelo volume total de cada regional
-    // (mesmo peso dos dois lados, pra Δ total continuar comparando "like for like").
+    // Total: Real ponderado pelo volume total de cada regional; Última Carga é a mais
+    // recente entre todas as regionais desse transportador.
     const temRealTotal = volTotalTransp > 0;
     const realTotalPct = temRealTotal && pesoTotal ? Math.round(volTotalTransp / pesoTotal * 100) : 0;
-    const metaTotalPct = algumaMeta && pesoTotal ? Math.round(metaPonderada / pesoTotal) : 0;
+    const totalStyle = temRealTotal ? ` style="${corCalorShare(realTotalPct, maxTotal)}"` : '';
     const totalHtml = `
-      <td class="perf-meta-total-grupo perf-meta-total-cell">${algumaMeta ? metaTotalPct + '%' : '—'}</td>
-      <td class="perf-meta-total-cell">${temRealTotal ? realTotalPct + '%' : '—'}</td>
-      <td>${celulaDelta(realTotalPct, temRealTotal, metaTotalPct, algumaMeta)}</td>`;
+      <td class="perf-meta-total-grupo perf-meta-total-cell"${totalStyle}>${temRealTotal ? realTotalPct + '%' : '—'}</td>
+      <td class="perf-meta-total-cell">${fmtUltimaCarga(ultimaCargaGlobal.get(nome))}</td>`;
 
     return `<tr><td class="perf-meta-th-transp">${esc(nome)}</td>${celulas}${totalHtml}</tr>`;
   }).join('');
 
   document.getElementById('perfShareRegionalWrap').innerHTML = `
-    <div class="perf-note">Campo <strong>Meta</strong> é editável.</div>
     <div class="scrollable" style="max-height:480px">
       <table class="perf-meta-table">
         <thead>
@@ -14489,12 +14620,6 @@ function renderShareRegional(lista) {
         <tbody>${linhasHtml}</tbody>
       </table>
     </div>`;
-
-  // data-attributes (não onchange inline com o nome interpolado) — nome de transportadora
-  // pode conter aspas/caractere especial que quebraria o atributo HTML inline.
-  document.querySelectorAll('#perfShareRegionalWrap .perf-meta-input').forEach(inp => {
-    inp.addEventListener('change', () => atualizarMetaShare(inp.dataset.transp, inp.dataset.regional, inp.value));
-  });
 }
 
 // ── SEÇÃO 3: TAXA DE ACEITE POR TRANSPORTADORA ──
