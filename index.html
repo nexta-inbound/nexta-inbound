@@ -7019,7 +7019,7 @@ function renderViagensTable() {
             ` : `
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
-              ${v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteRetorno(${realIdx})" title="Criar viagem de Frete Retorno a partir desta entrega">🔄</button>` : ''}
+              ${!isTransportador() && v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteRetorno(${realIdx})" title="Criar viagem de Frete Retorno a partir desta entrega">🔄</button>` : ''}
               ${renderBotaoComprovantePamcard(v)}
             `}
           </div>
@@ -9675,6 +9675,7 @@ function aplicarVeiculoDedicadoSelecionado(veiculoId) {
 let _referenciasFreteRetorno = []; // snapshot das viagens elegíveis como referência, montado ao abrir o modal — ver filtrarReferenciasFreteRetorno
 
 function abrirModalFreteRetorno(idx) {
+  if (isTransportador()) return;
   const refViagem = (idx === null || idx === undefined) ? null : viagensAtivo()[idx];
 
   _referenciasFreteRetorno = viagensAtivo().filter(v => v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO);
@@ -9851,6 +9852,7 @@ function aplicarVeiculoDedicadoFreteRetorno(veiculoId) {
 }
 
 async function criarViagemFreteRetorno() {
+  if (isTransportador()) return;
   const refId = document.getElementById('fr-referencia').value;
   const refViagem = refId ? viagensAtivo().find(v => v.idViagem === refId) : null;
 
