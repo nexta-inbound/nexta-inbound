@@ -3578,17 +3578,17 @@
 
     <div class="modal-row">
       <div class="modal-field" style="grid-column:1/-1">
-        <div class="modal-label">Dia do DSR do motorista</div>
+        <div class="modal-label">Dia(s) do DSR do motorista</div>
         <div class="chip-group" id="m-diaDsr">
-          <div class="chip" data-dia="0" onclick="selecionarDiaDsr(0)">Dom</div>
-          <div class="chip" data-dia="1" onclick="selecionarDiaDsr(1)">Seg</div>
-          <div class="chip" data-dia="2" onclick="selecionarDiaDsr(2)">Ter</div>
-          <div class="chip" data-dia="3" onclick="selecionarDiaDsr(3)">Qua</div>
-          <div class="chip" data-dia="4" onclick="selecionarDiaDsr(4)">Qui</div>
-          <div class="chip" data-dia="5" onclick="selecionarDiaDsr(5)">Sex</div>
-          <div class="chip" data-dia="6" onclick="selecionarDiaDsr(6)">Sáb</div>
+          <div class="chip" data-dia="0" onclick="toggleDiaDsr(0)">Dom</div>
+          <div class="chip" data-dia="1" onclick="toggleDiaDsr(1)">Seg</div>
+          <div class="chip" data-dia="2" onclick="toggleDiaDsr(2)">Ter</div>
+          <div class="chip" data-dia="3" onclick="toggleDiaDsr(3)">Qua</div>
+          <div class="chip" data-dia="4" onclick="toggleDiaDsr(4)">Qui</div>
+          <div class="chip" data-dia="5" onclick="toggleDiaDsr(5)">Sex</div>
+          <div class="chip" data-dia="6" onclick="toggleDiaDsr(6)">Sáb</div>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Informar data DSR do motorista. Importante respeitar a data de entrega!.</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Informar dia(s) de DSR do motorista — selecione mais de um se a folga cair em dois dias seguidos. Importante respeitar a data de entrega!.</div>
       </div>
     </div>
 
@@ -5437,7 +5437,7 @@ let sortDir = 'asc';
 let idsExcluidosExport = new Set();
 let activeTab = 0;
 let editingIdx = null;
-let _editingDiaDsr = 0; // dia do DSR selecionado no modal aberto (0=domingo...6=sábado) — ver selecionarDiaDsr
+let _editingDiasDsr = new Set([0]); // dias do DSR selecionados no modal aberto (0=domingo...6=sábado) — ver toggleDiaDsr
 let autosaveTimer = null;
 let selectedViagens = new Set();
 let currentFilteredIdxs = [];
@@ -10086,17 +10086,23 @@ function sincronizarPipelineSelecionado() {
   document.getElementById('pipe-2')?.classList.toggle('selected', semFiltro);
 }
 
-// ── DIA DO DSR (folga semanal do motorista, ver aplicarFolgaDsr) ──
-// Seleção única (diferente da Janela de Carregamento do Fornecedor, que é múltipla) —
-// guardada em _editingDiaDsr enquanto o modal está aberto, só grava em v.diaDsr no Salvar.
-function selecionarDiaDsr(dia) {
-  _editingDiaDsr = dia;
+// ── DIA(S) DO DSR (folga semanal do motorista, ver aplicarFolgaDsr) ──
+// Seleção múltipla (mesmo padrão da Janela de Carregamento do Fornecedor) — cobre o caso
+// de motorista com DSR em dois dias seguidos. Guardada em _editingDiasDsr enquanto o
+// modal está aberto, só grava em v.diaDsr no Salvar.
+function toggleDiaDsr(dia) {
+  if (_editingDiasDsr.has(dia)) {
+    if (_editingDiasDsr.size === 1) { alert('Mantenha ao menos um dia de DSR selecionado.'); return; }
+    _editingDiasDsr.delete(dia);
+  } else {
+    _editingDiasDsr.add(dia);
+  }
   renderChipDiaDsr();
 }
 
 function renderChipDiaDsr() {
   document.querySelectorAll('#m-diaDsr .chip').forEach(c => {
-    c.classList.toggle('active', +c.dataset.dia === _editingDiaDsr);
+    c.classList.toggle('active', _editingDiasDsr.has(+c.dataset.dia));
   });
 }
 
@@ -10133,7 +10139,7 @@ function openModal(idx) {
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
   document.getElementById('m-ajuste-seta').value    = v.volumeSetaProposto || v.volume || '';
-  _editingDiaDsr = v.diaDsr ?? 0;
+  _editingDiasDsr = new Set(diasDsrDaViagem(v));
   renderChipDiaDsr();
   ajustarCampoFrotaDedicada();
   document.getElementById('modalOverlay').classList.add('open');
@@ -10944,17 +10950,20 @@ async function salvarViagem() {
       }
     }
   }
-  // Dia do DSR: se mudou, recalcula a entrega pela mesma rotina de leadtime (mesmo
+  // Dia(s) do DSR: se mudou, recalcula a entrega pela mesma rotina de leadtime (mesmo
   // gatilho usado ao reajustar o carregamento manualmente, ver salvarDataProgramacaoInline)
   // pra já refletir a nova folga do motorista sem esperar um reprocessamento em lote.
-  const diaDsrAnterior = v.diaDsr ?? 0;
-  if (_editingDiaDsr !== diaDsrAnterior) {
-    v.diaDsr = _editingDiaDsr;
+  const diasDsrAnterior = diasDsrDaViagem(v);
+  const diasDsrNovo = [...(_editingDiasDsr)].sort((a, b) => a - b);
+  const mudouDsr = diasDsrAnterior.length !== diasDsrNovo.length
+    || diasDsrAnterior.some((d, i) => d !== diasDsrNovo[i]);
+  if (mudouDsr) {
+    v.diaDsr = diasDsrNovo;
     if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
     v.historicoProgramacao.push({
       data: new Date().toISOString(),
       usuario: _authUsuarioAtual?.nome || '',
-      evento: `Dia do DSR do motorista alterado: ${DIAS_SEMANA_ABREV[diaDsrAnterior]} → ${DIAS_SEMANA_ABREV[_editingDiaDsr]}`,
+      evento: `Dia(s) do DSR do motorista alterado(s): ${diasDsrAnterior.map(d => DIAS_SEMANA_ABREV[d]).join('/')} → ${diasDsrNovo.map(d => DIAS_SEMANA_ABREV[d]).join('/')}`,
     });
     const leadtimeHoras = recalcularDescargaPorLeadtime(v);
     if (leadtimeHoras !== null) {
@@ -12389,13 +12398,24 @@ function formatarDataHoraProg(d) {
   return { data: `${dd}/${mm}/${d.getFullYear()}`, hora: `${hh}:${mi}` };
 }
 
-// Conta quantas ocorrências do dia do DSR existem entre o dia de início (exclusive) e o
-// dia de fim (inclusive) de uma viagem. Usado pra aplicar a folga semanal do motorista
-// durante o trajeto: cada ocorrência "dentro" do trecho soma 1 dia de viagem, porque o
-// motorista não roda no dia do DSR dele (v.diaDsr, default domingo — informado pelo
-// transportador no modal da viagem; diferente do domingo fixo de ajustarDataHoraDescarga,
-// que é o fechamento da base de destino, não a folga do motorista).
-function contarDiasDsrNoIntervalo(inicio, fim, diaDsr = 0) {
+// Normaliza v.diaDsr pra um array de dias (0=domingo...6=sábado) — aceita tanto o formato
+// antigo (número único, gravado antes da folga em múltiplos dias existir) quanto o novo
+// (array, cobre motorista com DSR em dois dias seguidos). Ver contarDiasDsrNoIntervalo/
+// aplicarFolgaDsr, os únicos consumidores de v.diaDsr fora do modal.
+function diasDsrDaViagem(v) {
+  const raw = v.diaDsr;
+  if (Array.isArray(raw)) return raw.length ? [...raw].sort((a, b) => a - b) : [0];
+  if (typeof raw === 'number') return [raw];
+  return [0];
+}
+
+// Conta quantas ocorrências de algum dos dias do DSR existem entre o dia de início
+// (exclusive) e o dia de fim (inclusive) de uma viagem. Usado pra aplicar a folga semanal
+// do motorista durante o trajeto: cada ocorrência "dentro" do trecho soma 1 dia de viagem,
+// porque o motorista não roda no(s) dia(s) do DSR dele (v.diaDsr, default domingo —
+// informado pelo transportador no modal da viagem; diferente do domingo fixo de
+// ajustarDataHoraDescarga, que é o fechamento da base de destino, não a folga do motorista).
+function contarDiasDsrNoIntervalo(inicio, fim, diasDsr = [0]) {
   const d = new Date(inicio);
   d.setHours(0, 0, 0, 0);
   const fimDia = new Date(fim);
@@ -12403,19 +12423,20 @@ function contarDiasDsrNoIntervalo(inicio, fim, diaDsr = 0) {
   let count = 0;
   while (d < fimDia) {
     d.setDate(d.getDate() + 1);
-    if (d.getDay() === diaDsr) count++;
+    if (diasDsr.includes(d.getDay())) count++;
   }
   return count;
 }
 
-// Soma 24h ao leadtime bruto pra cada ocorrência do dia do DSR que cair entre o
-// carregamento e a descarga (folga do motorista). A soma pode empurrar a chegada pra
-// depois de outra ocorrência, por isso repete até a contagem parar de crescer (ponto fixo).
-function aplicarFolgaDsr(inicio, leadtimeHoras, diaDsr = 0) {
+// Soma 24h ao leadtime bruto pra cada ocorrência de dia do DSR que cair entre o
+// carregamento e a descarga (folga do motorista) — se o motorista tiver DSR em dois dias
+// seguidos, cada um conta a sua própria diária. A soma pode empurrar a chegada pra depois
+// de outra ocorrência, por isso repete até a contagem parar de crescer (ponto fixo).
+function aplicarFolgaDsr(inicio, leadtimeHoras, diasDsr = [0]) {
   let bruto = new Date(inicio.getTime() + leadtimeHoras * 3600000);
   while (true) {
-    const diasDsr = contarDiasDsrNoIntervalo(inicio, bruto, diaDsr);
-    const novoBruto = new Date(inicio.getTime() + (leadtimeHoras + diasDsr * 24) * 3600000);
+    const diasFolga = contarDiasDsrNoIntervalo(inicio, bruto, diasDsr);
+    const novoBruto = new Date(inicio.getTime() + (leadtimeHoras + diasFolga * 24) * 3600000);
     if (novoBruto.getTime() === bruto.getTime()) return novoBruto;
     bruto = novoBruto;
   }
@@ -12430,8 +12451,8 @@ function recalcularDescargaPorLeadtime(v) {
   if (!inicio) return null;
   const leadtimeHoras = buscarLeadtimeHorasParaViagem(v);
   if (leadtimeHoras === null) return null;
-  const diaDsr = v.diaDsr ?? 0;
-  const bruto = aplicarFolgaDsr(inicio, leadtimeHoras, diaDsr);
+  const diasDsr = diasDsrDaViagem(v);
+  const bruto = aplicarFolgaDsr(inicio, leadtimeHoras, diasDsr);
   const ajustado = ajustarDataHoraDescarga(bruto);
   const { data, hora } = formatarDataHoraProg(ajustado);
   v.dtDescProg = data;
