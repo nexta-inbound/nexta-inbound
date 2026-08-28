@@ -545,6 +545,7 @@
     font-family: var(--font-cond); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--accent); margin-bottom: 7px; margin-top: 4px; padding-left: 2px;
   }
+  .mon-view-tag { color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; }
   .kpi-toggle-header {
     display: flex; align-items: center; justify-content: space-between;
     cursor: pointer; user-select: none;
@@ -2676,9 +2677,13 @@
         <div class="section-title">Monitoramento Herrlog</div>
         <div class="section-sub">Visibilidade aderência chegada real vs programado e desejado por abastecimento</div>
       </div>
+      <div class="frota-modo-seletor" id="monSubViewSeletor">
+        <button class="frota-modo-btn" data-view="carregamento" onclick="mudarSubViewMonitoramento('carregamento')">📦 Visão Carregamento</button>
+        <button class="frota-modo-btn ativo" data-view="descarga" onclick="mudarSubViewMonitoramento('descarga')">📍 Visão Descarga</button>
+      </div>
     </div>
 
-    <div class="kpi-group-label">📅 Aderência à Data Programação <span class="badge badge-accent" id="badge-mon-total-prog">0 viagens</span></div>
+    <div class="kpi-group-label">📅 Aderência à Data Programação <span class="mon-view-tag" id="tag-mon-prog">(Descarga)</span> <span class="badge badge-accent" id="badge-mon-total-prog">0 viagens</span></div>
     <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
       <div class="stat-card c-success clickable" id="kpi-mon-noprazo-prog" onclick="filtrarPorIndicadorMon('noprazo-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ No Prazo</div>
@@ -2702,7 +2707,7 @@
       </div>
     </div>
 
-    <div class="kpi-group-label">🎯 Aderência à Data Desejada <span class="badge badge-accent" id="badge-mon-total-des">0 viagens</span></div>
+    <div class="kpi-group-label">🎯 Aderência à Data Desejada <span class="mon-view-tag" id="tag-mon-des">(Descarga)</span> <span class="badge badge-accent" id="badge-mon-total-des">0 viagens</span></div>
     <div class="stats-row" style="grid-template-columns:repeat(4, 1fr)">
       <div class="stat-card c-success clickable" id="kpi-mon-noprazo-des" onclick="filtrarPorIndicadorMon('noprazo-des')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ No Prazo</div>
@@ -2783,7 +2788,7 @@
               <th class="th-sortable" style="white-space:normal" data-col="frotaDedicada" onclick="ordenarColunaMon('frotaDedicada')">Frota Dedicada<span class="sort-arrow"></span></th>
               <th class="col-data-desejada th-sortable" data-col="dataDesejada" onclick="ordenarColunaMon('dataDesejada')">Data Desejada<span class="sort-arrow"></span></th>
               <th class="col-data-programacao th-sortable" data-col="dataProgramacao" onclick="ordenarColunaMon('dataProgramacao')">Data Programação<span class="sort-arrow"></span></th>
-              <th class="col-eta-herrlog th-sortable" data-col="etaReal" onclick="ordenarColunaMon('etaReal')" title="Automático via Herrlog, ou digitado manualmente em viagens CIF">ETA Real<span class="sort-arrow"></span></th>
+              <th class="col-eta-herrlog th-sortable" data-col="etaReal" onclick="ordenarColunaMon('etaReal')" id="th-mon-eta" title="Automático via Herrlog, ou digitado manualmente em viagens CIF"><span id="th-mon-eta-label">ETA Real</span><span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="vsProgramacao" onclick="ordenarColunaMon('vsProgramacao')">vs Programação<span class="sort-arrow"></span></th>
               <th class="th-sortable" style="white-space:normal" data-col="vsDesejada" onclick="ordenarColunaMon('vsDesejada')">vs Desejada<span class="sort-arrow"></span></th>
               <th class="th-sortable" data-col="statusHerrlog" onclick="ordenarColunaMon('statusHerrlog')" title="Automático via Herrlog, ou digitado manualmente em viagens CIF">Status<span class="sort-arrow"></span></th>
@@ -5417,7 +5422,8 @@ let assinaturasProgramadores = []; // [{ nome, assinatura }] — ver window._fb.
 let activeFilterMonStatus = new Set(); // filtro de estado (Status Herrlog) na aba Monitoramento — vazio = Todos
 let _monEstadosAtual = []; // estados distintos presentes no último render (para o filtro por índice)
 let activeIndicadorMon = null; // card de KPI clicado na aba Monitoramento (vsProgramacao/vsDesejada)
-let activeDiasEntregaMon = new Set(); // offsets D0..D+4 (data de entrega/descarga) selecionados na aba Monitoramento
+let activeDiasEntregaMon = new Set(); // offsets D0..D+4 (data de referência da view ativa) selecionados na aba Monitoramento
+let subViewMonitoramento = 'descarga'; // 'descarga' | 'carregamento' — toggle "Visão Carregamento"/"Visão Descarga" no topo da aba Monitoramento
 let sortColunaMon = null;
 let sortDirMon = 'asc';
 window._fbUnsub = null;
@@ -5702,6 +5708,43 @@ let subViewVeiculos = 'lista';
 
 function aplicarClasseFrotaAtiva() {
   document.body.classList.toggle('frota-tab-ativa', activeTab === 7 && subViewVeiculos === 'frota');
+}
+
+// Toggle "Visão Carregamento"/"Visão Descarga" no topo da aba Monitoramento — mesmo
+// padrão visual do seletor de Veículos Dedicados (mudarSubViewVeiculos acima), mas aqui
+// as duas views reaproveitam a mesma tabela/KPIs (ver campoProg/campoDes em
+// renderMonitoramento e testeIndicadorMonitoramento), só trocando a data/hora e o dado
+// Herrlog de referência (origem/carregamento vs destino/descarga).
+function mudarSubViewMonitoramento(view) {
+  subViewMonitoramento = view;
+  document.querySelectorAll('#monSubViewSeletor .frota-modo-btn').forEach(b => b.classList.toggle('ativo', b.dataset.view === view));
+  aplicarRotulosMonitoramento();
+  renderMonitoramento();
+}
+
+function aplicarRotulosMonitoramento() {
+  const carreg = subViewMonitoramento === 'carregamento';
+  const termoEta = carreg ? 'Chegada Real' : 'ETA Real';
+  const tag = carreg ? '(Carregamento)' : '(Descarga)';
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  set('tag-mon-prog', tag);
+  set('tag-mon-des', tag);
+  set('sub-mon-noprazo-prog',   `${termoEta} no mesmo dia da Data Programação`);
+  set('sub-mon-adiantado-prog', `${termoEta} antes da Data Programação`);
+  set('sub-mon-atraso-prog',    `${termoEta} depois da Data Programação`);
+  set('sub-mon-noprazo-des',    `${termoEta} no mesmo dia da Data Desejada`);
+  set('sub-mon-adiantado-des',  `${termoEta} antes da Data Desejada`);
+  set('sub-mon-atraso-des',     `${termoEta} depois da Data Desejada`);
+  set('th-mon-eta-label', termoEta);
+  const thEta = document.getElementById('th-mon-eta');
+  if (thEta) thEta.title = carreg
+    ? 'Automático via Herrlog (chegada registrada na origem) — sem rastreio para viagens CIF'
+    : 'Automático via Herrlog, ou digitado manualmente em viagens CIF';
+  document.querySelectorAll('#diaEntregaMonChips .chip').forEach(c => {
+    const dia = +c.dataset.dia;
+    const quando = dia === 0 ? 'hoje' : (dia === 1 ? 'amanhã' : `hoje + ${dia} dias`);
+    c.title = `${carreg ? 'Carregamento' : 'Entrega'} = ${quando}`;
+  });
 }
 
 function mudarSubViewVeiculos(view) {
@@ -7086,6 +7129,15 @@ function renderEtaHerrlog(mon) {
     return `<div class="cell-eta-label">ETA Herrlog</div><div class="cell-eta-estimada">${fmtIsoShort(mon.etaDestino)}</div>`;
   }
   return '<span style="color:var(--text-muted)">—</span>';
+}
+
+// Coluna "Chegada Real (Carregamento)" da Visão Carregamento: só existe o dado já
+// realizado (chegadaOrigem) — ao contrário do destino, a Herrlog não expõe uma previsão
+// dinâmica de chegada na origem. Viagens CIF nunca têm esse dado (frota do fornecedor,
+// fora do rastreio automático da Herrlog) — mesmo "mon" vazio usado em renderEtaHerrlog.
+function renderChegadaOrigemHerrlog(mon) {
+  if (!mon?.chegadaOrigem) return '<span style="color:var(--text-muted)">—</span>';
+  return `<div class="cell-eta-label">Chegada Real</div><div class="cell-eta-realizada">${fmtIsoShort(mon.chegadaOrigem)}</div>`;
 }
 
 // Guarda contra erro de digitação no ano (ex: 2062 em vez de 2026) — a tabela só mostra DD/MM,
@@ -11598,11 +11650,17 @@ function calcularLinhaMonitoramento(v) {
   if (!monitoramentoHerrlog[v.idViagem] && v.status === 'Viagem Finalizada') garantirHistoricoHerrlog(v.idViagem);
   const etaManualIso = etaManualParaIso(v);
   const etaIso = etaManualIso || mon.chegadaReal || mon.etaDestino || null;
+  // Carregamento (chegada na origem): só existe o dado real (chegadaOrigem) — a Herrlog não
+  // expõe previsão pra origem como faz pra destino (etaDestino), e viagens CIF nunca têm
+  // esse dado (frota do fornecedor, fora do rastreio Herrlog). Ver renderChegadaOrigemHerrlog.
+  const etaIsoCarreg = mon.chegadaOrigem || null;
   return {
-    v, mon, etaIso,
+    v, mon, etaIso, etaIsoCarreg,
     manual: !!etaManualIso,
     vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
     vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
+    vsProgramacaoCarreg: classificarAderencia(v.dtCarregProg || v.dtCarreg, etaIsoCarreg),
+    vsDesejadaCarreg:    classificarAderencia(v.dtCarreg, etaIsoCarreg),
   };
 }
 
@@ -11619,15 +11677,17 @@ function statusExibidoMon(v, mon) {
 // aba Monitoramento — clicar no card filtra a tabela exatamente pelo que ele exibe.
 function testeIndicadorMonitoramento(key) {
   const cls = v => calcularLinhaMonitoramento(v);
+  const campoProg = subViewMonitoramento === 'carregamento' ? 'vsProgramacaoCarreg' : 'vsProgramacao';
+  const campoDes  = subViewMonitoramento === 'carregamento' ? 'vsDesejadaCarreg'    : 'vsDesejada';
   switch (key) {
-    case 'atraso-prog':    return v => cls(v).vsProgramacao === 'atraso';
-    case 'adiantado-prog': return v => cls(v).vsProgramacao === 'adiantado';
-    case 'noprazo-prog':   return v => cls(v).vsProgramacao === 'no-prazo';
-    case 'aderencia-prog': return v => { const c = cls(v).vsProgramacao; return !!c && c !== 'atraso'; };
-    case 'atraso-des':     return v => cls(v).vsDesejada === 'atraso';
-    case 'adiantado-des':  return v => cls(v).vsDesejada === 'adiantado';
-    case 'noprazo-des':    return v => cls(v).vsDesejada === 'no-prazo';
-    case 'aderencia-des':  return v => { const c = cls(v).vsDesejada; return !!c && c !== 'atraso'; };
+    case 'atraso-prog':    return v => cls(v)[campoProg] === 'atraso';
+    case 'adiantado-prog': return v => cls(v)[campoProg] === 'adiantado';
+    case 'noprazo-prog':   return v => cls(v)[campoProg] === 'no-prazo';
+    case 'aderencia-prog': return v => { const c = cls(v)[campoProg]; return !!c && c !== 'atraso'; };
+    case 'atraso-des':     return v => cls(v)[campoDes] === 'atraso';
+    case 'adiantado-des':  return v => cls(v)[campoDes] === 'adiantado';
+    case 'noprazo-des':    return v => cls(v)[campoDes] === 'no-prazo';
+    case 'aderencia-des':  return v => { const c = cls(v)[campoDes]; return !!c && c !== 'atraso'; };
     default: return () => true;
   }
 }
@@ -11687,7 +11747,7 @@ function passaFiltrosMonitoramento(v, f, ignorar = '') {
     if (!hay.includes(f.busca)) return false;
   }
   if (activeDiasEntregaMon.size) {
-    const vd = parseDMY(v.dtDesc);
+    const vd = parseDMY(subViewMonitoramento === 'carregamento' ? v.dtCarreg : v.dtDesc);
     if (!vd) return false;
     const ok = [...activeDiasEntregaMon].some(n => mesmoDiaCalendario(vd, diaCarregamentoDate(n)));
     if (!ok) return false;
@@ -11738,11 +11798,20 @@ function valorOrdenacaoMon(l, coluna) {
     case 'volume':          return v.volume || 0;
     case 'transportador':   return v.transportador || '';
     case 'frotaDedicada':   return v.veiculoDedicadoId ? 1 : 0;
-    case 'dataDesejada':    return parseDMY(v.dtDesc) || new Date(8640000000000000);
-    case 'dataProgramacao': return parseDMY(v.dtDescProg || v.dtDesc) || new Date(8640000000000000);
-    case 'etaReal':         return l.etaIso ? new Date(l.etaIso) : new Date(8640000000000000);
-    case 'vsProgramacao':   return l.vsProgramacao in ordemAderencia ? ordemAderencia[l.vsProgramacao] : 99;
-    case 'vsDesejada':      return l.vsDesejada in ordemAderencia ? ordemAderencia[l.vsDesejada] : 99;
+    case 'dataDesejada':    return parseDMY(subViewMonitoramento === 'carregamento' ? v.dtCarreg : v.dtDesc) || new Date(8640000000000000);
+    case 'dataProgramacao': return parseDMY(subViewMonitoramento === 'carregamento' ? (v.dtCarregProg || v.dtCarreg) : (v.dtDescProg || v.dtDesc)) || new Date(8640000000000000);
+    case 'etaReal': {
+      const iso = subViewMonitoramento === 'carregamento' ? l.etaIsoCarreg : l.etaIso;
+      return iso ? new Date(iso) : new Date(8640000000000000);
+    }
+    case 'vsProgramacao': {
+      const c = subViewMonitoramento === 'carregamento' ? l.vsProgramacaoCarreg : l.vsProgramacao;
+      return c in ordemAderencia ? ordemAderencia[c] : 99;
+    }
+    case 'vsDesejada': {
+      const c = subViewMonitoramento === 'carregamento' ? l.vsDesejadaCarreg : l.vsDesejada;
+      return c in ordemAderencia ? ordemAderencia[c] : 99;
+    }
     case 'statusHerrlog':   return statusExibidoMon(v, mon);
     case 'statusPedagio':   return monitoramentoPamcard[v.idViagem]?.statusCompraPedagio || '';
     default: return '';
@@ -11813,24 +11882,29 @@ function renderMonitoramento() {
     : monitoradas.filter(v => passaFiltrosMonitoramento(v, f))
   ).filter(passaStatusMon).map(calcularLinhaMonitoramento);
 
-  const totalProg = comDado(paraKpis, 'vsProgramacao');
-  const totalDes  = comDado(paraKpis, 'vsDesejada');
+  // Campos usados pelos KPIs seguem a view ativa (Carregamento usa chegada na origem
+  // vs Data Desejada/Programação de Carregamento; Descarga é o comportamento original).
+  const campoProg = subViewMonitoramento === 'carregamento' ? 'vsProgramacaoCarreg' : 'vsProgramacao';
+  const campoDes  = subViewMonitoramento === 'carregamento' ? 'vsDesejadaCarreg'    : 'vsDesejada';
+
+  const totalProg = comDado(paraKpis, campoProg);
+  const totalDes  = comDado(paraKpis, campoDes);
   document.getElementById('badge-mon-total-prog').textContent = totalProg + ' viagem' + (totalProg !== 1 ? 's' : '');
   document.getElementById('badge-mon-total-des').textContent  = totalDes + ' viagem' + (totalDes !== 1 ? 's' : '');
 
   // Aderência = % de viagens NÃO atrasadas (no-prazo + adiantado contam como
   // dentro do compromisso — só atraso quebra a aderência à data de referência).
-  const atrasoProg = contar(paraKpis, 'vsProgramacao', 'atraso');
-  const atrasoDes  = contar(paraKpis, 'vsDesejada', 'atraso');
+  const atrasoProg = contar(paraKpis, campoProg, 'atraso');
+  const atrasoDes  = contar(paraKpis, campoDes, 'atraso');
 
   document.getElementById('sv-mon-atraso-prog').textContent    = atrasoProg;
-  document.getElementById('sv-mon-adiantado-prog').textContent = contar(paraKpis, 'vsProgramacao', 'adiantado');
-  document.getElementById('sv-mon-noprazo-prog').textContent   = contar(paraKpis, 'vsProgramacao', 'no-prazo');
+  document.getElementById('sv-mon-adiantado-prog').textContent = contar(paraKpis, campoProg, 'adiantado');
+  document.getElementById('sv-mon-noprazo-prog').textContent   = contar(paraKpis, campoProg, 'no-prazo');
   document.getElementById('sv-mon-aderencia-prog').textContent = pct(totalProg - atrasoProg, totalProg) + '%';
 
   document.getElementById('sv-mon-atraso-des').textContent    = atrasoDes;
-  document.getElementById('sv-mon-adiantado-des').textContent = contar(paraKpis, 'vsDesejada', 'adiantado');
-  document.getElementById('sv-mon-noprazo-des').textContent   = contar(paraKpis, 'vsDesejada', 'no-prazo');
+  document.getElementById('sv-mon-adiantado-des').textContent = contar(paraKpis, campoDes, 'adiantado');
+  document.getElementById('sv-mon-noprazo-des').textContent   = contar(paraKpis, campoDes, 'no-prazo');
   document.getElementById('sv-mon-aderencia-des').textContent = pct(totalDes - atrasoDes, totalDes) + '%';
 
   const indicadorIdsMon = {
@@ -11865,8 +11939,16 @@ function renderMonitoramento() {
   document.getElementById('badge-monitoramento').textContent = linhasFiltradas.length + ' viagem' + (linhasFiltradas.length !== 1 ? 's' : '');
 
   const tbody = document.getElementById('monitoramentoBody');
+  const ehCarreg = subViewMonitoramento === 'carregamento';
   tbody.innerHTML = linhasFiltradas.map((l) => {
-    const { v, mon, vsProgramacao, vsDesejada } = l;
+    const { v, mon, vsProgramacao, vsDesejada, vsProgramacaoCarreg, vsDesejadaCarreg } = l;
+    const dataDesejadaTxt = fmtShort(ehCarreg ? v.dtCarreg : v.dtDesc);
+    const dataProgTxt = ehCarreg
+      ? `${fmtShort(v.dtCarregProg || v.dtCarreg)} ${esc(v.horaCarregProg || '12:00')}`
+      : `${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}`;
+    const etaCelula = ehCarreg ? renderChegadaOrigemHerrlog(mon) : renderEtaCelulaMon(v, mon);
+    const badgeProg = badgeAderencia(ehCarreg ? vsProgramacaoCarreg : vsProgramacao);
+    const badgeDes  = badgeAderencia(ehCarreg ? vsDesejadaCarreg : vsDesejada);
     return `
       <tr>
         <td class="cell-id-viagem">${v.idViagem}</td>
@@ -11879,11 +11961,11 @@ function renderMonitoramento() {
         <td>${v.volume} m³</td>
         <td>${esc(v.transportador)}</td>
         <td>${badgeFrotaDedicada(v)}</td>
-        <td class="cell-periodo col-data-desejada">${fmtShort(v.dtDesc)}</td>
-        <td class="cell-periodo col-data-programacao">${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}</td>
-        <td class="cell-periodo col-eta-herrlog">${renderEtaCelulaMon(v, mon)}</td>
-        <td>${badgeAderencia(vsProgramacao)}</td>
-        <td>${badgeAderencia(vsDesejada)}</td>
+        <td class="cell-periodo col-data-desejada">${dataDesejadaTxt}</td>
+        <td class="cell-periodo col-data-programacao">${dataProgTxt}</td>
+        <td class="cell-periodo col-eta-herrlog">${etaCelula}</td>
+        <td>${badgeProg}</td>
+        <td>${badgeDes}</td>
         <td style="font-size:12px;color:var(--text-dim)">${renderStatusCelulaMon(v, mon)}</td>
         <td>${renderAnotacoesCelulaMon(v)}</td>
       </tr>
