@@ -2688,7 +2688,7 @@
       <div class="stat-card c-success clickable" id="kpi-mon-noprazo-prog" onclick="filtrarPorIndicadorMon('noprazo-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ No Prazo</div>
         <div class="stat-val" id="sv-mon-noprazo-prog">0</div>
-        <div class="stat-sub" id="sub-mon-noprazo-prog">ETA Real no mesmo dia da Data Programação</div>
+        <div class="stat-sub" id="sub-mon-noprazo-prog">Até 2h após programação (chegadas desde 08/09/2026); antes, por dia</div>
       </div>
       <div class="stat-card c-accent clickable" id="kpi-mon-adiantado-prog" onclick="filtrarPorIndicadorMon('adiantado-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🔵 Adiantado</div>
@@ -2698,7 +2698,7 @@
       <div class="stat-card c-danger clickable" id="kpi-mon-atraso-prog" onclick="filtrarPorIndicadorMon('atraso-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">🔴 Atraso</div>
         <div class="stat-val" id="sv-mon-atraso-prog">0</div>
-        <div class="stat-sub" id="sub-mon-atraso-prog">ETA Real depois da Data Programação</div>
+        <div class="stat-sub" id="sub-mon-atraso-prog">Mais de 2h após programação (chegadas desde 08/09/2026); antes, por dia</div>
       </div>
       <div class="stat-card c-success clickable" id="kpi-mon-aderencia-prog" onclick="filtrarPorIndicadorMon('aderencia-prog')" title="Clique para filtrar a tabela por estas viagens">
         <div class="stat-label">✅ Aderência à Programação</div>
@@ -5729,9 +5729,9 @@ function aplicarRotulosMonitoramento() {
   const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
   set('tag-mon-prog', tag);
   set('tag-mon-des', tag);
-  set('sub-mon-noprazo-prog',   `${termoEta} no mesmo dia da Data Programação`);
+  set('sub-mon-noprazo-prog',   'Até 2h após programação (chegadas desde 08/09/2026); antes, por dia');
   set('sub-mon-adiantado-prog', `${termoEta} antes da Data Programação`);
-  set('sub-mon-atraso-prog',    `${termoEta} depois da Data Programação`);
+  set('sub-mon-atraso-prog',    'Mais de 2h após programação (chegadas desde 08/09/2026); antes, por dia');
   set('sub-mon-noprazo-des',    `${termoEta} no mesmo dia da Data Desejada`);
   set('sub-mon-adiantado-des',  `${termoEta} antes da Data Desejada`);
   set('sub-mon-atraso-des',     `${termoEta} depois da Data Desejada`);
@@ -11606,6 +11606,24 @@ function classificarAderencia(dataRefDMY, isoEta) {
   return 'no-prazo';
 }
 
+// Corte fixo pela data da chegada/ETA, no mesmo horário local usado pelo portal.
+// O histórico anterior mantém a classificação por dia; Data Desejada não muda.
+function classificarAderenciaProgramacao(dataRefDMY, horaRef, isoEta) {
+  if (!isoEta) return null;
+  const eta = new Date(isoEta);
+  if (isNaN(eta.getTime())) return null;
+  const inicioRegra = new Date(2026, 8, 8);
+  if (eta < inicioRegra) return classificarAderencia(dataRefDMY, isoEta);
+
+  // Mesmo padrão de 12:00 usado na exibição da programação e em parseDataHora.
+  const ref = parseDataHora(dataRefDMY, horaRef);
+  if (!ref || isNaN(ref.getTime())) return null;
+  const diferencaMs = eta.getTime() - ref.getTime();
+  if (diferencaMs < 0) return 'adiantado';
+  if (diferencaMs <= 2 * 60 * 60 * 1000) return 'no-prazo';
+  return 'atraso';
+}
+
 function badgeAderencia(status) {
   if (status === 'atraso')    return `<span class="badge" style="color:var(--danger);background:var(--danger-dim)">🔴 Atraso</span>`;
   if (status === 'adiantado') return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)">🔵 Adiantado</span>`;
@@ -11657,9 +11675,9 @@ function calcularLinhaMonitoramento(v) {
   return {
     v, mon, etaIso, etaIsoCarreg,
     manual: !!etaManualIso,
-    vsProgramacao: classificarAderencia(v.dtDescProg || v.dtDesc, etaIso),
+    vsProgramacao: classificarAderenciaProgramacao(v.dtDescProg || v.dtDesc, v.horaDescProg, etaIso),
     vsDesejada:    classificarAderencia(v.dtDesc, etaIso),
-    vsProgramacaoCarreg: classificarAderencia(v.dtCarregProg || v.dtCarreg, etaIsoCarreg),
+    vsProgramacaoCarreg: classificarAderenciaProgramacao(v.dtCarregProg || v.dtCarreg, v.horaCarregProg, etaIsoCarreg),
     vsDesejadaCarreg:    classificarAderencia(v.dtCarreg, etaIsoCarreg),
   };
 }
