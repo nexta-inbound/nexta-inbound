@@ -1736,7 +1736,7 @@
 <!-- ── FIREBASE ── -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, get, update, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, runTransaction, query, orderByChild, equalTo }
+  import { getDatabase, ref, set, get, update, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, runTransaction, query, orderByChild, equalTo, startAt }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -1760,6 +1760,61 @@
   const db      = getDatabase(app);
   const auth    = getAuth(app);
   const storage = getStorage(app);
+
+  // Cache local (IndexedDB) do viagensIndice + registros completos já baixados — usado por
+  // ativarCarregamentoPorIndice (ver index.html, carregamento por viagem) pra decidir, via
+  // atualizadoEm, quando vale a pena buscar uma viagem de novo em vez de reaproveitar o que já
+  // está no navegador. Reduz recarregamento repetido (F5, login de novo) de MB pra KB — ver
+  // conversa que levou a esta mudança (Firebase estourando cota de download).
+  const CACHE_DB_NOME = 'nextaInboundCache';
+  const CACHE_DB_VERSAO = 1;
+  let _cacheDbPromise = null;
+  function abrirCacheDb() {
+    if (_cacheDbPromise) return _cacheDbPromise;
+    _cacheDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(CACHE_DB_NOME, CACHE_DB_VERSAO);
+      req.onupgradeneeded = () => {
+        const bancoCache = req.result;
+        if (!bancoCache.objectStoreNames.contains('indice')) bancoCache.createObjectStore('indice');
+        if (!bancoCache.objectStoreNames.contains('viagens')) bancoCache.createObjectStore('viagens');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return _cacheDbPromise;
+  }
+  function cacheLerTudo(nomeStore) {
+    return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
+      const tx = bancoCache.transaction(nomeStore, 'readonly');
+      const store = tx.objectStore(nomeStore);
+      const resultado = {};
+      const req = store.openCursor();
+      req.onsuccess = (ev) => {
+        const cursor = ev.target.result;
+        if (cursor) { resultado[cursor.key] = cursor.value; cursor.continue(); }
+        else resolve(resultado);
+      };
+      req.onerror = () => reject(req.error);
+    })).catch(() => ({})); // navegador sem IndexedDB (raro) ou store corrompida — cai pra sync completo
+  }
+  function cacheGravarTudo(nomeStore, mapa) {
+    return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
+      const tx = bancoCache.transaction(nomeStore, 'readwrite');
+      const store = tx.objectStore(nomeStore);
+      Object.entries(mapa).forEach(([chave, valor]) => store.put(valor, chave));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    })).catch(() => {}); // melhor esforço — se a gravação do cache falhar, a próxima carga so' faz mais rede
+  }
+  function cacheLimparTudo() {
+    return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
+      const tx = bancoCache.transaction(['indice', 'viagens'], 'readwrite');
+      tx.objectStore('indice').clear();
+      tx.objectStore('viagens').clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    })).catch(() => {});
+  }
 
   // 'DD/MM/AAAA' -> 'AAAA-MM-DD'. null se vazio/malformado (ex.: '-') OU ano implausível
   // (mesmo intervalo de anoPlausivel() em index.html: [ano atual-1, ano atual+2]) — um erro
@@ -1822,11 +1877,30 @@
     // (pequeno: um registro por viagem, não por semana); transportador (nomeTransportador
     // informado pelo chamador, mesmo padrão de carregarViagensTransportador) só a própria
     // fatia, via query indexada.
-    carregarIndiceViagens: async (nomeTransportador) => {
+    // `desdeISO` (só se aplica sem nomeTransportador — RTDB não combina duas orderByChild
+    // na mesma query): busca só as entradas com atualizadoEm >= desdeISO em vez do node
+    // inteiro. Usado pelo cache local (ver ativarCarregamentoPorIndice) pra sync incremental
+    // em recarregamentos repetidos — exige o `.indexOn: atualizadoEm` nas regras.
+    carregarIndiceViagens: async (nomeTransportador, desdeISO) => {
       if (nomeTransportador) {
         const q = query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador));
         const snap = await get(q);
         return snap.exists() ? snap.val() : {};
+      }
+      if (desdeISO) {
+        try {
+          const q = query(ref(db, 'viagensIndice'), orderByChild('atualizadoEm'), startAt(desdeISO));
+          const snap = await get(q);
+          return snap.exists() ? snap.val() : {};
+        } catch (err) {
+          // `.indexOn: atualizadoEm` ainda não publicado nas regras do Firebase (ver
+          // firebase_database.rules.json) — cai pra busca completa em vez de derrubar o
+          // carregamento inteiro. Assim que a regra for publicada, a próxima carga já usa
+          // o caminho incremental normalmente sem precisar de nenhuma mudança de código.
+          console.warn('Busca incremental de viagensIndice falhou (indexOn pendente?), caindo pra busca completa:', err);
+          const snap = await get(ref(db, 'viagensIndice'));
+          return snap.exists() ? snap.val() : {};
+        }
       }
       const snap = await get(ref(db, 'viagensIndice'));
       return snap.exists() ? snap.val() : {};
@@ -1845,13 +1919,14 @@
       const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
       return () => { u1(); u2(); u3(); };
     },
-    // Listener no registro completo de UMA viagem específica — usado por
-    // ativarCarregamentoPorIndice em vez de assinar a semana inteira (ver index.html:
-    // carregamento por viagem, não mais por semana).
-    ouvirViagemIndividual: (semana, idViagem, callback) => {
-      return onValue(ref(db, 'sessoes/' + semana + '/viagens/' + idViagem), (snap) => {
-        callback(snap.exists() ? snap.val() : null);
-      });
+    // Leitura pontual (não listener permanente) do registro completo de UMA viagem —
+    // usado por ativarCarregamentoPorIndice só quando o cache local não tem essa viagem
+    // ou o atualizadoEm dela mudou (ver cache IndexedDB acima). Um onValue permanente por
+    // viagem sempre reenvia o valor inteiro no primeiro attach, mesmo sem nada ter mudado
+    // desde a última visita — é exatamente esse reenvio que o cache existe pra evitar.
+    obterViagemIndividual: async (semana, idViagem) => {
+      const snap = await get(ref(db, 'sessoes/' + semana + '/viagens/' + idViagem));
+      return snap.exists() ? snap.val() : null;
     },
     marcarSemanaDisponivel: async (key) => {
       await set(ref(db, 'semanasDisponiveis/' + key), true);
@@ -1929,6 +2004,7 @@
       const viagemRef = ref(db, 'sessoes/' + key + '/viagens/' + idViagem);
       const gracaDatalakeMs = 10 * 60 * 1000;
       let sincronizandoAte = null;
+      let agoraCommit = null;
       const resultado = await runTransaction(viagemRef, atual => {
         if (!atual || atual.idViagem !== idViagem || !atual.herrlogReprocessamentoPendente) return;
         // Segunda barreira contra duplicidade: mesmo que um monitor antigo ou
@@ -1942,6 +2018,7 @@
           return;
         }
         const agora = new Date().toISOString();
+        agoraCommit = agora;
         delete atual.herrlogReprocessamentoPendente;
         delete atual.herrlogExportadoEm;
         delete atual.herrlogImportViaApi;
@@ -1974,7 +2051,15 @@
         }
         throw new Error('A viagem nao esta mais aguardando autorizacao. Atualize a pagina e confira o estado atual.');
       }
-      return resultado.snapshot.val();
+      // runTransaction grava só a viagem, não o viagensIndice — sem isso um cliente que
+      // decida por atualizadoEm (ver ativarCarregamentoPorIndice/cache local) nunca ia
+      // perceber essa mudança. Melhor esforço, mesmo padrão pós-conditional_set já usado
+      // em reprocessamento_herrlog.py::marcar_reprocessamentos_pendentes.
+      const viagemAtualizada = resultado.snapshot.val();
+      await update(ref(db), {
+        ['viagensIndice/' + idViagem]: entradaIndiceViagem(viagemAtualizada, key, agoraCommit || new Date().toISOString()),
+      });
+      return viagemAtualizada;
     },
     // Cadências/config mudam raramente (import de cadência, capCaminhao) — ao contrário
     // de viagens, não vale a pena granularizar por item; grava os dois paths de uma vez,
@@ -2229,6 +2314,16 @@
       if (idx >= 0) lista[idx] = { nome, assinatura }; else lista.push({ nome, assinatura });
       await set(ref(db, 'assinaturasProgramadores'), lista);
     }
+  };
+
+  // Cache local (IndexedDB) usado por ativarCarregamentoPorIndice — ver comentário na
+  // criação do banco (abrirCacheDb) acima.
+  window._fb.cache = {
+    lerIndice: () => cacheLerTudo('indice'),
+    gravarIndice: (mapa) => cacheGravarTudo('indice', mapa),
+    lerViagens: () => cacheLerTudo('viagens'),
+    gravarViagens: (mapa) => cacheGravarTudo('viagens', mapa),
+    limpar: cacheLimparTudo,
   };
 
   // Firebase pronto — disparo controlado pelo fazerLogin
@@ -4845,6 +4940,13 @@ function fazerLogout() {
   sessionStorage.removeItem(AUTH_STORAGE_KEY);
   _authUsuarioAtual = null;
   if (window._fb?.logout) window._fb.logout().catch(() => {});
+  // Evita qualquer resquício de cache (viagensIndice + registros) entre trocas de usuário
+  // no mesmo navegador — ver ativarCarregamentoPorIndice/cache local.
+  if (window._fb?.cache) window._fb.cache.limpar().catch(() => {});
+  localStorage.removeItem(CACHE_CURSOR_KEY);
+  _indiceCacheCompleto = {};
+  _viagensCacheMemoria = {};
+  _cacheInicialCarregado = false;
   document.getElementById('headerUser').style.display = 'none';
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('login-usuario').value = '';
@@ -11380,7 +11482,7 @@ const STATUS_MANUAL_CIF_OPCOES = [
 // mesmo mecanismo de qualquer edição manual da tabela.
 // idsFiltro (opcional): quando informado, só verifica essas viagens (por idViagem) em vez
 // de varrer viagensAtivo() inteiro. Usado pelos listeners em tempo real (ver agendarRefresh
-// em configurarListenerSemana e o listener individual em _abrirViagemIndividual), que já
+// em configurarListenerSemana e a busca individual em _garantirViagemCarregada), que já
 // sabem exatamente qual registro acabou de mudar — não precisam reescanear tudo a cada
 // edição de qualquer um. Sem filtro (login, troca de semana, viagem nova qualificando no
 // carregamento por índice, ou quando o node monitoramentoHerrlog em si muda — ver
@@ -13999,8 +14101,54 @@ function predicadoPeriodo(inicioISO, fimISO) {
   };
 }
 
+// Cache local (IndexedDB) do viagensIndice + registros completos, usado pra decidir se vale
+// a pena buscar uma viagem de novo em vez de reaproveitar o que o navegador já tem — ver
+// abrirCacheDb no módulo Firebase e a conversa que levou a esta mudança (Firebase mostrando
+// picos de 5-14MB/minuto mesmo depois do carregamento por viagem, a maior parte vindo de
+// reconexão/reload repetido, não de login genuinamente novo).
+//
+// Bump esta constante sempre que um backfill/migração reescrever viagensIndice SEM
+// atualizar atualizadoEm pra "agora" (ver docstring de migrar_viagens_indice.py) — sem isso
+// um cliente com cache recente nunca ia perceber a mudança, porque do ponto de vista dele
+// nada de novo aconteceu depois do cursor salvo.
+const NEXTA_CACHE_VERSAO = 1;
+const CACHE_VERSAO_KEY = 'nextaCacheVersao';
+const CACHE_CURSOR_KEY = 'nextaCacheCursor';
+const CACHE_MARGEM_RELOGIO_MS = 5 * 60 * 1000; // absorve diferença de relógio entre clientes que gravaram atualizadoEm
+const CACHE_IDADE_MAXIMA_MS = 24 * 60 * 60 * 1000; // cursor mais velho que isso força sync completo do índice de novo
+
+let _indiceCacheCompleto = {}; // cópia local completa do viagensIndice, fundida incrementalmente
+let _viagensCacheMemoria = {}; // idViagem -> { _atualizadoEmCache, dados } já visto (espelha o IndexedDB em memória)
+let _cacheInicialCarregado = false;
+
+async function _cacheCarregarInicial() {
+  const versaoSalva = localStorage.getItem(CACHE_VERSAO_KEY);
+  if (versaoSalva !== String(NEXTA_CACHE_VERSAO)) {
+    await window._fb.cache.limpar();
+    localStorage.removeItem(CACHE_CURSOR_KEY);
+    localStorage.setItem(CACHE_VERSAO_KEY, String(NEXTA_CACHE_VERSAO));
+    _indiceCacheCompleto = {};
+    _viagensCacheMemoria = {};
+    return;
+  }
+  _indiceCacheCompleto = await window._fb.cache.lerIndice();
+  _viagensCacheMemoria = await window._fb.cache.lerViagens();
+}
+
+// null força sync completo do índice (sem cursor válido) — usado no primeiro carregamento,
+// numa troca de versão de cache, num cursor velho demais (rede de segurança contra eventos
+// ao vivo perdidos), ou quando o usuário força pelo 🔄.
+function _cursorValido(forcarCompleto) {
+  if (forcarCompleto) return null;
+  const cursor = localStorage.getItem(CACHE_CURSOR_KEY);
+  if (!cursor) return null;
+  const cursorMs = Date.parse(cursor);
+  if (!Number.isFinite(cursorMs) || Date.now() - cursorMs > CACHE_IDADE_MAXIMA_MS) return null;
+  return new Date(cursorMs - CACHE_MARGEM_RELOGIO_MS).toISOString();
+}
+
 let _unsubIndiceViagens = null;
-let _unsubsViagensIndividuais = new Map(); // idViagem -> unsub
+let _idsCarregados = new Set(); // idViagem atualmente refletido em viagensMultiSemana
 let _unsubsCadenciasPorSemana = new Map(); // semana de origem -> unsub (deriva das viagens carregadas)
 let _modoSelecaoAtual = { tipo: 'ativas' }; // ou { tipo: 'periodo', inicioISO, fimISO } — pro botão 🔄 saber o que refazer
 
@@ -14041,27 +14189,64 @@ function _pararCadenciaSeSemanaVazia(semana) {
   cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
 }
 
-function _abrirViagemIndividual(idViagem, semana) {
-  if (_unsubsViagensIndividuais.has(idViagem)) return;
+// Aplica um registro completo já resolvido (do cache ou recém-baixado) em viagensMultiSemana.
+function _aplicarViagemCarregada(id, semana, registro) {
   _garantirCadenciaDaSemana(semana);
-  const unsub = window._fb.ouvirViagemIndividual(semana, idViagem, (dados) => {
-    const idx = viagensMultiSemana.findIndex(v => v.idViagem === idViagem);
-    if (dados) {
-      const registro = { ...dados, _semanaOrigem: semana };
-      if (idx >= 0) viagensMultiSemana[idx] = registro; else viagensMultiSemana.push(registro);
-    } else if (idx >= 0) {
-      viagensMultiSemana.splice(idx, 1);
-    }
-    _agendarRefreshCarregamento();
-  });
-  _unsubsViagensIndividuais.set(idViagem, unsub);
+  const idx = viagensMultiSemana.findIndex(v => v.idViagem === id);
+  const registroComOrigem = { ...registro, _semanaOrigem: semana };
+  if (idx >= 0) viagensMultiSemana[idx] = registroComOrigem; else viagensMultiSemana.push(registroComOrigem);
+  _idsCarregados.add(id);
 }
 
-function _fecharViagemIndividual(idViagem) {
-  const unsub = _unsubsViagensIndividuais.get(idViagem);
-  if (!unsub) return;
-  unsub();
-  _unsubsViagensIndividuais.delete(idViagem);
+// Busca em lote as viagens qualificadas que ainda não estão (ou mudaram) no cache local —
+// as que já tem um registro em cache com o MESMO atualizadoEm da entrada do índice são
+// reaproveitadas sem nenhuma chamada de rede. Paraleliza em lotes pequenos: sequencial seria
+// lento demais na primeira carga (centenas de viagens, um round-trip cada); tudo de uma vez
+// arriscaria abrir requisições demais simultâneas.
+async function _carregarQualificadas(entradas, predicado) {
+  const TAMANHO_LOTE = 40;
+  const paraBuscar = [];
+  for (const [id, entrada] of entradas) {
+    if (!entrada || !predicado(entrada)) continue;
+    const cacheado = _viagensCacheMemoria[id];
+    if (cacheado && cacheado._atualizadoEmCache === entrada.atualizadoEm) {
+      _aplicarViagemCarregada(id, entrada.semana, cacheado.dados);
+    } else {
+      paraBuscar.push([id, entrada]);
+    }
+  }
+  for (let i = 0; i < paraBuscar.length; i += TAMANHO_LOTE) {
+    const lote = paraBuscar.slice(i, i + TAMANHO_LOTE);
+    await Promise.all(lote.map(async ([id, entrada]) => {
+      const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
+      if (!registro) return; // índice aponta pra viagem que sumiu do registro — inconsistência rara, ignora
+      _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
+      window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
+      _aplicarViagemCarregada(id, entrada.semana, registro);
+    }));
+  }
+}
+
+// Versão de um item só, usada pelos eventos ao vivo do índice (onAdded/onChanged) — mesma
+// lógica de comparar atualizadoEm contra o cache antes de decidir se busca de novo.
+async function _garantirViagemCarregada(id, entrada) {
+  const cacheado = _viagensCacheMemoria[id];
+  if (cacheado && cacheado._atualizadoEmCache === entrada.atualizadoEm) {
+    _aplicarViagemCarregada(id, entrada.semana, cacheado.dados);
+    _agendarRefreshCarregamento();
+    return;
+  }
+  const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
+  if (!registro) { _idsCarregados.delete(id); return; }
+  _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
+  window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
+  _aplicarViagemCarregada(id, entrada.semana, registro);
+  _agendarRefreshCarregamento();
+}
+
+function _removerViagemCarregada(idViagem) {
+  if (!_idsCarregados.has(idViagem)) return;
+  _idsCarregados.delete(idViagem);
   const idx = viagensMultiSemana.findIndex(v => v.idViagem === idViagem);
   const semana = idx >= 0 ? viagensMultiSemana[idx]._semanaOrigem : null;
   if (idx >= 0) viagensMultiSemana.splice(idx, 1);
@@ -14071,10 +14256,9 @@ function _fecharViagemIndividual(idViagem) {
 
 function desativarCarregamentoPorIndice() {
   if (_unsubIndiceViagens) { _unsubIndiceViagens(); _unsubIndiceViagens = null; }
-  _unsubsViagensIndividuais.forEach(unsub => unsub());
-  _unsubsViagensIndividuais.clear();
   _unsubsCadenciasPorSemana.forEach(unsub => unsub());
   _unsubsCadenciasPorSemana.clear();
+  _idsCarregados.clear();
   viagensMultiSemana = [];
   _cadenciasCountPorSemana = new Map();
   cadenciasMultiSemanaCount = 0;
@@ -14083,20 +14267,51 @@ function desativarCarregamentoPorIndice() {
 // Motor único por trás de "Padrão" e "Período personalizado" (ver ativarSelecaoPadrao/
 // ativarPeriodoPersonalizado abaixo). Carga em lote primeiro (mesmo motivo de
 // configurarListenerMonitoramentoHerrlog: evitar que o onChildAdded reconstrua o índice
-// inteiro evento a evento na largada), depois assina o índice ao vivo pra abrir/fechar
-// listener individual conforme uma viagem passa a qualificar (ou deixa de).
-async function ativarCarregamentoPorIndice(predicado, modo) {
+// inteiro evento a evento na largada), depois assina o índice ao vivo pra buscar (ou
+// remover de viagensMultiSemana) conforme uma viagem passa a qualificar (ou deixa de).
+//
+// Não mantém mais um onValue permanente por viagem: o RTDB sempre reenvia o valor inteiro
+// no primeiro attach de um listener, então um listener por viagem pagaria o custo de rede
+// de novo a cada F5/login, mesmo sem nada ter mudado — é exatamente esse gasto que o cache
+// local (IndexedDB, comparando atualizadoEm) existe pra evitar. Isso só é seguro porque todo
+// write em `sessoes/*/viagens/<id>` também atualiza `viagensIndice/<id>/atualizadoEm` (ver
+// tabela de invariantes do CLAUDE.md) — se algum caminho de escrita futuro esquecer disso, o
+// pior caso é a viagem ficar visivelmente desatualizada até o cursor expirar (24h) ou o
+// usuário forçar 🔄 (que ignora cache e cursor por completo).
+async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = false } = {}) {
   desativarCarregamentoPorIndice();
   _modoSelecaoAtual = modo;
   modoMultiSemana = true;
   mostrarStatus('saving', 'Carregando...');
 
   const nomeTransportador = isTransportador() ? nomeTransportadorLogado() : undefined;
-  const indiceInicial = await window._fb.carregarIndiceViagens(nomeTransportador);
-  const idsConhecidos = new Set(Object.keys(indiceInicial));
-  Object.entries(indiceInicial).forEach(([id, entrada]) => {
-    if (entrada && predicado(entrada)) _abrirViagemIndividual(id, entrada.semana);
-  });
+
+  if (forcarCompleto) {
+    await window._fb.cache.limpar();
+    localStorage.removeItem(CACHE_CURSOR_KEY);
+    _indiceCacheCompleto = {};
+    _viagensCacheMemoria = {};
+    _cacheInicialCarregado = true;
+  } else if (!_cacheInicialCarregado) {
+    await _cacheCarregarInicial();
+    _cacheInicialCarregado = true;
+  }
+
+  // Transportador sempre busca a própria fatia inteira (já é pequena, e RTDB não combina
+  // duas orderByChild na mesma query) — a busca incremental por atualizadoEm só vale a pena
+  // pra staff, que vê o índice inteiro.
+  const desdeISO = nomeTransportador ? null : _cursorValido(forcarCompleto);
+  const inicioSync = new Date().toISOString();
+  const respostaIndice = await window._fb.carregarIndiceViagens(nomeTransportador, desdeISO);
+  Object.assign(_indiceCacheCompleto, respostaIndice);
+  window._fb.cache.gravarIndice(respostaIndice);
+
+  // O predicado sempre avalia sobre o índice FUNDIDO (cache + delta), nunca só o que acabou
+  // de chegar — precisa decidir também sobre entradas que não mudaram mas ainda estão
+  // dentro da janela de 15 dias, por exemplo.
+  await _carregarQualificadas(Object.entries(_indiceCacheCompleto), predicado);
+
+  if (!nomeTransportador) localStorage.setItem(CACHE_CURSOR_KEY, inicioSync);
 
   sincronizarStatusHerrlog();
   mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) carregada(s)`);
@@ -14105,31 +14320,34 @@ async function ativarCarregamentoPorIndice(predicado, modo) {
 
   _unsubIndiceViagens = window._fb.ouvirIndiceViagens(nomeTransportador, {
     onAdded: (id, entrada) => {
-      if (idsConhecidos.delete(id)) return; // reentrega da carga inicial, já tratada acima
-      if (entrada && predicado(entrada)) _abrirViagemIndividual(id, entrada.semana);
+      _indiceCacheCompleto[id] = entrada;
+      window._fb.cache.gravarIndice({ [id]: entrada });
+      if (entrada && predicado(entrada)) _garantirViagemCarregada(id, entrada);
     },
     onChanged: (id, entrada) => {
-      const qualifica = !!entrada && predicado(entrada);
-      const jaAberta = _unsubsViagensIndividuais.has(id);
-      if (qualifica && !jaAberta) _abrirViagemIndividual(id, entrada.semana);
-      else if (!qualifica && jaAberta) _fecharViagemIndividual(id);
-      // Se qualifica e já está aberta, o listener individual já recebe a mudança sozinho.
+      _indiceCacheCompleto[id] = entrada;
+      window._fb.cache.gravarIndice({ [id]: entrada });
+      if (entrada && predicado(entrada)) _garantirViagemCarregada(id, entrada);
+      else _removerViagemCarregada(id);
     },
-    onRemoved: (id) => _fecharViagemIndividual(id),
+    onRemoved: (id) => {
+      delete _indiceCacheCompleto[id];
+      _removerViagemCarregada(id);
+    },
   });
 }
 
 // Padrão ao logar/recarregar: viagens não finalizadas + finalizadas há até 15 dias.
-async function ativarSelecaoPadrao() {
+async function ativarSelecaoPadrao(opts) {
   document.getElementById('seletorModoLabel').textContent = 'Padrão';
-  await ativarCarregamentoPorIndice(predicadoAtivas, { tipo: 'ativas' });
+  await ativarCarregamentoPorIndice(predicadoAtivas, { tipo: 'ativas' }, opts);
 }
 
 // Período personalizado do Menu de Seleção — usa a data REAL da viagem (dtCarreg/
 // dtCarregProg), não a semana em que ela foi criada.
-async function ativarPeriodoPersonalizado(inicioISO, fimISO) {
+async function ativarPeriodoPersonalizado(inicioISO, fimISO, opts) {
   document.getElementById('seletorModoLabel').textContent = `${formatarIsoParaBR(inicioISO)} a ${formatarIsoParaBR(fimISO)}`;
-  await ativarCarregamentoPorIndice(predicadoPeriodo(inicioISO, fimISO), { tipo: 'periodo', inicioISO, fimISO });
+  await ativarCarregamentoPorIndice(predicadoPeriodo(inicioISO, fimISO), { tipo: 'periodo', inicioISO, fimISO }, opts);
 }
 
 function formatarIsoParaBR(iso) {
@@ -14197,11 +14415,15 @@ function aplicarPeriodoPersonalizadoMenuSelecao() {
 }
 
 // Botão 🔄 do header — refaz do zero o modo atualmente em vigor (padrão ou período).
+// 🔄 força sync completo, ignorando cache e cursor por completo — o "não confio no que
+// está na tela, traga tudo de novo" que o usuário já espera desse botão, e também a válvula
+// de escape manual caso algum caminho de escrita esqueça de atualizar viagensIndice.
 function atualizarCarregamentoAtual() {
+  const opts = { forcarCompleto: true };
   if (_modoSelecaoAtual.tipo === 'periodo') {
-    return ativarPeriodoPersonalizado(_modoSelecaoAtual.inicioISO, _modoSelecaoAtual.fimISO);
+    return ativarPeriodoPersonalizado(_modoSelecaoAtual.inicioISO, _modoSelecaoAtual.fimISO, opts);
   }
-  return ativarSelecaoPadrao();
+  return ativarSelecaoPadrao(opts);
 }
 
 // Aplica a visão multi-semana à aba que estiver aberta no momento (Gerir Viagens,
@@ -14527,7 +14749,7 @@ await carregarUsuariosFirebase();
   // dias — ver predicadoAtivas/ativarCarregamentoPorIndice), calculado por VIAGEM, não por
   // semana — quem quiser um período específico usa o Menu de Seleção. A aba Importar
   // Cadência continua usando o seletor único (semanaAtiva) normalmente. Transportador
-  // participa também: carregarIndiceViagens/ouvirIndiceViagens/ouvirViagemIndividual já
+  // participa também: carregarIndiceViagens/ouvirIndiceViagens/obterViagemIndividual já
   // usam a query restrita por transportador.
   await ativarSelecaoPadrao();
   } catch(err) {
