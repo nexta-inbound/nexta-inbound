@@ -291,6 +291,167 @@
   .upload-hint { font-size: 12px; color: var(--text-muted); }
   #fileInput { display: none; }
 
+  /* ── VISÃO DO QUE ESTÁ CADENCIADO ── */
+  .cad-indicador { margin-bottom: 24px; }
+  .cad-indicador .table-toolbar { align-items: flex-start; }
+  .cad-indicador-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-soft);
+  }
+  .cad-kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  .cad-kpi-label {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .cad-kpi-val {
+    font-family: var(--font-cond);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+    margin-top: 4px;
+  }
+  .cad-resp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cad-indicador-filtros {
+    display: grid;
+    grid-template-columns: minmax(110px, 0.75fr) minmax(220px, 1.6fr) minmax(160px, 1fr) auto auto auto;
+    gap: 10px;
+    align-items: end;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .cad-filter-field { min-width: 0; }
+  .cad-filter-field .filter-input,
+  .cad-filter-field .filter-select { width: 100%; }
+  .cad-filter-field .ms-trigger { width: 100%; min-width: 0 !important; }
+  .cad-filter-label {
+    display: block;
+    font-family: var(--font-cond);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .cad-chart {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-soft);
+  }
+  .cad-chart-title {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .cad-chart-bars { display: flex; flex-direction: column; gap: 8px; }
+  .cad-chart-row {
+    display: grid;
+    grid-template-columns: 74px 1fr 86px;
+    gap: 10px;
+    align-items: center;
+  }
+  .cad-chart-date {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .cad-chart-track {
+    height: 22px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .cad-chart-fill {
+    height: 100%;
+    min-width: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%);
+  }
+  .cad-chart-value {
+    font-family: var(--font-cond);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .cad-resp-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 12px;
+    min-width: 0;
+  }
+  .cad-resp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .cad-resp-nome { font-family: var(--font-cond); font-size: 14px; font-weight: 700; color: var(--accent); text-transform: uppercase; }
+  .cad-resp-regiao { font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cad-resp-vol { font-family: var(--font-cond); font-size: 24px; font-weight: 700; color: var(--text); }
+  .cad-resp-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .cad-detalhe-body td { vertical-align: top; }
+  .cad-cell-main { font-weight: 700; color: var(--text); }
+  .cad-cell-sub { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+  .cad-date-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    border-radius: 6px;
+    padding: 4px 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-family: var(--font-cond);
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  .cad-total-row td {
+    background: var(--panel-soft);
+    border-top: 1px solid var(--border-dk);
+    font-family: var(--font-cond);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .cad-indicador-empty { padding: 22px 18px; color: var(--text-muted); font-size: 13px; text-align: center; }
+  @media (max-width: 850px) {
+    .cad-indicador .table-toolbar { flex-direction: column; }
+    .cad-indicador-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cad-indicador-filtros { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 520px) {
+    .cad-indicador-kpis { grid-template-columns: 1fr; }
+    .cad-indicador-filtros { grid-template-columns: 1fr; }
+    .cad-chart-row { grid-template-columns: 62px 1fr 72px; }
+  }
+
   /* ── CONFIG PANEL ── */
   .config-row {
     display: grid;
@@ -1619,6 +1780,25 @@
       if (!snap.exists()) return [];
       return Object.keys(snap.val()).sort().reverse();
     },
+    // Espelho leve de todas as viagens ({semana, status, transportador, atualizadoEm} —
+    // sem historico nem os demais campos pesados), mantido em dia por
+    // salvarViagensParciais/salvarComViagensUnicas acima e pelos scripts Python que
+    // mudam status de viagem (reprocessamento_herrlog.py, corrigir_falso_cancelamento.py).
+    // Usado só pra decidir QUAIS semanas carregar por padrão (ver calcularSemanasAtivas)
+    // sem precisar baixar viagens+cadencias de todo o histórico só pra descobrir isso —
+    // essa era a causa da cota de download do Firebase estourando (ver conversa que
+    // levou a esta mudança). Staff lê o node inteiro (pequeno: um registro por viagem,
+    // não por semana); transportador (nomeTransportador informado pelo chamador, mesmo
+    // padrão de carregarViagensTransportador) só a própria fatia, via query indexada.
+    carregarIndiceViagens: async (nomeTransportador) => {
+      if (nomeTransportador) {
+        const q = query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador));
+        const snap = await get(q);
+        return snap.exists() ? snap.val() : {};
+      }
+      const snap = await get(ref(db, 'viagensIndice'));
+      return snap.exists() ? snap.val() : {};
+    },
     marcarSemanaDisponivel: async (key) => {
       await set(ref(db, 'semanasDisponiveis/' + key), true);
     },
@@ -1677,8 +1857,19 @@
     // inteira por causa de um campo.
     salvarViagensParciais: async (key, viagensPorId) => {
       const updates = {};
+      const agora = new Date().toISOString();
       Object.entries(viagensPorId).forEach(([id, v]) => {
         updates['sessoes/' + key + '/viagens/' + id] = v;
+        // viagensIndice: espelho leve (semana/status/transportador) usado pra calcular
+        // a seleção padrão "não finalizadas + últimos 15 dias" sem baixar o histórico
+        // inteiro — ver calcularSemanasAtivas/carregarIndiceViagens. Mesmo request,
+        // sem round-trip extra.
+        updates['viagensIndice/' + id] = {
+          semana: key,
+          status: v.status || '',
+          transportador: v.transportador || '',
+          atualizadoEm: agora,
+        };
       });
       await update(ref(db), updates);
     },
@@ -1706,6 +1897,8 @@
         delete atual.herrlogExportadoEm;
         delete atual.herrlogImportViaApi;
         delete atual.herrlogImportIncertoEm;
+        delete atual.herrlogReprocessamentoRecusadoEm;
+        delete atual.herrlogReprocessamentoRecusadoMotivo;
         atual.herrlogReprocessamentoSolicitadoEm = agora;
         atual.herrlogReprocessamentoSolicitadoPor = usuario || '';
         const historico = Array.isArray(atual.historico)
@@ -1876,7 +2069,20 @@
       });
 
       const sessaoSalva = { ...payload, viagens: Object.fromEntries(viagensComId.map(v => [v.idViagem, v])) };
-      await set(ref(db, 'sessoes/' + key), sessaoSalva);
+      // update() multi-path em vez de set(), pra sobrescrever 'sessoes/'+key e gravar
+      // viagensIndice (mesmo mirror leve de salvarViagensParciais) no mesmo request —
+      // ver calcularSemanasAtivas/carregarIndiceViagens.
+      const agora = new Date().toISOString();
+      const updates = { ['sessoes/' + key]: sessaoSalva };
+      viagensComId.forEach(v => {
+        updates['viagensIndice/' + v.idViagem] = {
+          semana: key,
+          status: v.status || '',
+          transportador: v.transportador || '',
+          atualizadoEm: agora,
+        };
+      });
+      await update(ref(db), updates);
       return sessaoSalva;
     },
     carregarTransportadores: async () => {
@@ -2118,10 +2324,29 @@
     <span class="logo-title">Programação Inbound</span>
   </div>
   <div class="header-sub">Logística Inbound — Programação Semanal</div>
-  <div class="semana-selector" id="semanaSelectorWrap" style="display:none">
-    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Semanas Selecionadas:</span>
+  <div class="semana-selector" id="semanaSelectorWrap" style="display:none;position:relative">
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Seleção:</span>
     <div id="ms-semanas"></div>
+    <button class="btn-reset" id="btnMenuSelecao" onclick="toggleMenuSelecaoPeriodo(event)" title="Menu de Seleção — padrão (ativas), todo o histórico ou um período personalizado">🗓️</button>
     <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora">🔄</button>
+    <div id="painelMenuSelecao" style="display:none;position:fixed;min-width:260px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:300;box-shadow:0 8px 28px rgba(0,0,0,0.5);padding:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Menu de Seleção</div>
+      <button class="btn btn-secondary" style="width:100%;margin-bottom:6px" onclick="ativarSelecaoPadrao(); toggleMenuSelecaoPeriodo()">Padrão (ativas + últimos 15 dias)</button>
+      <button class="btn btn-secondary" style="width:100%;margin-bottom:10px" onclick="ativarMultiSemana(); toggleMenuSelecaoPeriodo()">Todos (histórico completo)</button>
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;border-top:1px solid var(--border);padding-top:10px">Período personalizado</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Início</div>
+          <input id="menuSelecaoIni" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Fim</div>
+          <input id="menuSelecaoFim" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="aplicarPeriodoPersonalizadoMenuSelecao()">Aplicar período</button>
+      <div id="menuSelecaoErro" style="display:none;font-size:11px;color:var(--danger,#e05d5d);margin-top:6px"></div>
+    </div>
   </div>
   <div class="save-indicator">
     <div class="save-status" id="saveStatus">
@@ -2263,6 +2488,85 @@
     <div class="upload-text">Arraste o Excel aqui ou clique para selecionar</div>
     <div class="upload-hint">Suporta .xlsx exportado do sistema · Colunas: Id, Data de Carregamento, Data de Descarga, Produto, Origem, Base de Atendimento, CNPJ Origem, Destino, CNPJ Destino, Planejado</div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  </div>
+
+  <div class="table-wrap cad-indicador" id="cadIndicadorWrap">
+    <div class="table-toolbar">
+      <div>
+        <span class="table-title">O que está cadenciado no portal</span>
+        <div class="section-sub">Resumo por responsável, destino, produto e data de descarga</div>
+      </div>
+      <span class="badge badge-accent" id="cadIndicadorSemana">Semana ativa</span>
+    </div>
+    <div class="cad-indicador-filtros">
+      <div class="cad-filter-field">
+        <span class="cad-filter-label">Área</span>
+        <div id="ms-cadArea"></div>
+      </div>
+      <div class="cad-filter-field">
+        <span class="cad-filter-label">Destino</span>
+        <div id="ms-cadDestino"></div>
+      </div>
+      <div class="cad-filter-field">
+        <span class="cad-filter-label">Produto</span>
+        <div id="ms-cadProduto"></div>
+      </div>
+      <div class="cad-filter-field">
+        <label class="cad-filter-label" for="cadFiltroDescDe">Descarga de</label>
+        <input type="date" class="filter-input" id="cadFiltroDescDe" onchange="renderPainelCadenciado()">
+      </div>
+      <div class="cad-filter-field">
+        <label class="cad-filter-label" for="cadFiltroDescAte">Descarga até</label>
+        <input type="date" class="filter-input" id="cadFiltroDescAte" onchange="renderPainelCadenciado()">
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="limparFiltrosPainelCadenciado()">✕ Limpar</button>
+    </div>
+    <div class="cad-indicador-kpis">
+      <div class="cad-kpi">
+        <div class="cad-kpi-label">Volume filtrado</div>
+        <div class="cad-kpi-val" id="cadKpiVolume">0 m³</div>
+      </div>
+      <div class="cad-kpi">
+        <div class="cad-kpi-label">Linhas</div>
+        <div class="cad-kpi-val" id="cadKpiLinhas">0</div>
+      </div>
+      <div class="cad-kpi">
+        <div class="cad-kpi-label">Destinos</div>
+        <div class="cad-kpi-val" id="cadKpiDestinos">0</div>
+      </div>
+      <div class="cad-kpi">
+        <div class="cad-kpi-label">Produtos</div>
+        <div class="cad-kpi-val" id="cadKpiProdutos">0</div>
+      </div>
+    </div>
+    <div class="cad-chart" id="cadGraficoWrap">
+      <div class="cad-chart-title">Volume por data de descarga</div>
+      <div class="cad-chart-bars" id="cadGraficoBody"></div>
+    </div>
+    <div class="cad-resp-grid" id="cadRespGrid"></div>
+    <div class="scrollable">
+      <table id="cadIndicadorTable">
+        <thead>
+          <tr>
+            <th>Área</th>
+            <th>Destino</th>
+            <th>Produto</th>
+            <th>Descarga</th>
+            <th>Volume</th>
+            <th>Linhas</th>
+          </tr>
+        </thead>
+        <tbody class="cad-detalhe-body" id="cadIndicadorBody"></tbody>
+        <tfoot>
+          <tr class="cad-total-row">
+            <td colspan="4">Total filtrado</td>
+            <td id="cadIndicadorVolumeFinal">0</td>
+            <td id="cadIndicadorLinhasFinal">0</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="cad-indicador-empty" id="cadIndicadorEmpty">Nenhuma cadência carregada nesta semana.</div>
   </div>
 
   <div class="config-row">
@@ -4984,6 +5288,7 @@ let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEPr
 let msSemanas;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
+let msCadArea, msCadDestino, msCadProduto;
 let msPerfRegional, msPerfUf, msPerfProduto, msPerfModal, msPerfTipoOp;
 let msFrotaTransportador, msFrotaPlaca;
 
@@ -5616,6 +5921,7 @@ function aplicarPayload(payload) {
   const dt = payload.savedAt ? new Date(payload.savedAt) : null;
   const label = dt ? formatRelativo(dt) : 'anteriormente';
   mostrarStatus('saved', `Sincronizado · ${label}`);
+  renderPainelCadenciado();
   return true;
 }
 
@@ -5688,6 +5994,7 @@ function switchTab(i) {
   // mudarSubViewVeiculos) — recalcula aqui só porque activeTab mudou (entrar/sair da aba 7
   // também precisa ligar/desligar o "painel de report" se o sub-modo já estava em 'frota').
   aplicarClasseFrotaAtiva();
+  if (i === 0) renderPainelCadenciado();
   if (i === 1) renderViagensTable();
   if (i === 2) renderExport();
   if (i === 3) renderMonitoramento();
@@ -5819,6 +6126,243 @@ function valorRegionalFiltro(item) {
   return b?.regional || '';
 }
 
+function baseDestinoDaCadencia(item) {
+  return bases.find(b => b.nomeMis === item.destino)
+    || (item.cnpjDestino && bases.find(b => b.cnpj && soDigitos(b.cnpj) === soDigitos(item.cnpjDestino)))
+    || null;
+}
+
+function responsavelCadencia(item) {
+  const baseDestino = baseDestinoDaCadencia(item);
+  const regional = normalizarParaComparacao(baseDestino?.regional || valorRegionalFiltro(item));
+  const uf = normalizarParaComparacao(baseDestino?.estado || '');
+  if (regional === 'CENTRO OESTE' || ['DF', 'GO', 'MT', 'MS'].includes(uf)) {
+    return { nome: 'CO', regiao: 'Laura' };
+  }
+  if (regional === 'MINAS' || ['MG', 'RJ'].includes(uf)) {
+    return { nome: 'MG + RJ', regiao: 'Bryan' };
+  }
+  if (regional === 'SAO PAULO' || regional === 'SÃO PAULO' || uf === 'SP') {
+    return { nome: 'SP', regiao: 'Julio' };
+  }
+  return { nome: 'Outros', regiao: baseDestino?.regional || baseDestino?.estado || 'Sem regional' };
+}
+
+function ordenarDataDmy(a, b) {
+  const da = parseDMY(a) || new Date(8640000000000000);
+  const db = parseDMY(b) || new Date(8640000000000000);
+  return da - db;
+}
+
+function dataDmyParaIso(data) {
+  const d = parseDMY(data);
+  if (!d) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function dataInputParaLocal(valor) {
+  if (!valor) return null;
+  const [ano, mes, dia] = valor.split('-').map(Number);
+  if (!ano || !mes || !dia) return null;
+  return new Date(ano, mes - 1, dia);
+}
+
+function estadoFiltrosPainelCadenciado() {
+  return {
+    areas: new Set(msCadArea?.getSelected() || []),
+    destinos: new Set(msCadDestino?.getSelected() || []),
+    produtos: new Set(msCadProduto?.getSelected() || []),
+    descDe: document.getElementById('cadFiltroDescDe')?.value || '',
+    descAte: document.getElementById('cadFiltroDescAte')?.value || '',
+  };
+}
+
+function atualizarOpcoesFiltrosPainelCadenciado() {
+  msCadArea?.setOptions(valoresUnicosOrdenados(cadencias, c => responsavelCadencia(c).nome));
+  msCadDestino?.setOptions(valoresUnicosOrdenados(cadencias, c => c.destino));
+  msCadProduto?.setOptions(valoresUnicosOrdenados(cadencias, c => c.produto));
+}
+
+function passaFiltrosPainelCadenciado(c, filtros) {
+  const area = responsavelCadencia(c).nome;
+  if (filtros.areas.size && !filtros.areas.has(area)) return false;
+  if (filtros.destinos.size && !filtros.destinos.has(c.destino)) return false;
+  if (filtros.produtos.size && !filtros.produtos.has(c.produto)) return false;
+
+  const dtDesc = parseDMY(c.dtDesc);
+  const de = dataInputParaLocal(filtros.descDe);
+  const ate = dataInputParaLocal(filtros.descAte);
+  if ((de || ate) && !dtDesc) return false;
+  if (de && dtDesc < de) return false;
+  if (ate) {
+    const fim = new Date(ate);
+    fim.setHours(23, 59, 59, 999);
+    if (dtDesc > fim) return false;
+  }
+  return true;
+}
+
+function limparFiltrosPainelCadenciado() {
+  msCadArea?.clear();
+  msCadDestino?.clear();
+  msCadProduto?.clear();
+  ['cadFiltroDescDe', 'cadFiltroDescAte'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  renderPainelCadenciado();
+}
+
+function resumoCadenciadoPortal() {
+  atualizarOpcoesFiltrosPainelCadenciado();
+  const filtros = estadoFiltrosPainelCadenciado();
+  const cadenciasFiltradas = cadencias.filter(c => passaFiltrosPainelCadenciado(c, filtros));
+  const porResp = new Map();
+  const porDetalhe = new Map();
+  const porData = new Map();
+  const destinos = new Set();
+  const produtos = new Set();
+  let volumeTotal = 0;
+
+  cadenciasFiltradas.forEach(c => {
+    const volume = Number(c.volume) || 0;
+    const baseDestino = baseDestinoDaCadencia(c);
+    const resp = responsavelCadencia(c);
+    const destino = c.destino || 'Sem destino';
+    const produto = c.produto || 'Sem produto';
+    const dtDesc = c.dtDesc || '-';
+    const regional = baseDestino?.regional || valorRegionalFiltro(c) || resp.regiao;
+    const ufDestino = baseDestino?.estado || '';
+    const cidadeDestino = baseDestino?.cidade || '';
+
+    volumeTotal += volume;
+    destinos.add(destino);
+    produtos.add(produto);
+    if (!porData.has(dtDesc)) porData.set(dtDesc, { dtDesc, volume: 0, linhas: 0 });
+    const dataItem = porData.get(dtDesc);
+    dataItem.volume += volume;
+    dataItem.linhas += 1;
+
+    if (!porResp.has(resp.nome)) {
+      porResp.set(resp.nome, { responsavel: resp.nome, regiao: resp.regiao, volume: 0, linhas: 0, destinos: new Set(), produtos: new Set() });
+    }
+    const r = porResp.get(resp.nome);
+    r.volume += volume;
+    r.linhas += 1;
+    r.destinos.add(destino);
+    r.produtos.add(produto);
+
+    const key = [resp.nome, destino, produto, dtDesc].join('|');
+    if (!porDetalhe.has(key)) {
+      porDetalhe.set(key, {
+        responsavel: resp.nome,
+        regiao: resp.regiao,
+        destino,
+        produto,
+        dtDesc,
+        regional,
+        ufDestino,
+        cidadeDestino,
+        volume: 0,
+        linhas: 0,
+      });
+    }
+    const d = porDetalhe.get(key);
+    d.volume += volume;
+    d.linhas += 1;
+  });
+
+  const resp = [...porResp.values()].sort((a, b) => b.volume - a.volume || a.responsavel.localeCompare(b.responsavel));
+  const detalhe = [...porDetalhe.values()].sort((a, b) =>
+    a.responsavel.localeCompare(b.responsavel)
+    || a.destino.localeCompare(b.destino)
+    || a.produto.localeCompare(b.produto)
+    || ordenarDataDmy(a.dtDesc, b.dtDesc)
+  );
+  const grafico = [...porData.values()].sort((a, b) => ordenarDataDmy(a.dtDesc, b.dtDesc));
+  return {
+    volumeTotal,
+    linhas: cadenciasFiltradas.length,
+    linhasTotal: cadencias.length,
+    destinos: destinos.size,
+    produtos: produtos.size,
+    resp,
+    detalhe,
+    grafico,
+  };
+}
+
+function renderPainelCadenciado() {
+  const wrap = document.getElementById('cadIndicadorWrap');
+  if (!wrap) return;
+
+  const resumo = resumoCadenciadoPortal();
+  document.getElementById('cadIndicadorSemana').textContent = semanaAtiva ? formatarKeyParaLabel(semanaAtiva) : 'Semana ativa';
+  document.getElementById('cadKpiVolume').textContent = `${formatarM3(resumo.volumeTotal)} m³`;
+  document.getElementById('cadKpiLinhas').textContent = resumo.linhas;
+  document.getElementById('cadKpiDestinos').textContent = resumo.destinos;
+  document.getElementById('cadKpiProdutos').textContent = resumo.produtos;
+
+  const grid = document.getElementById('cadRespGrid');
+  const tbody = document.getElementById('cadIndicadorBody');
+  const empty = document.getElementById('cadIndicadorEmpty');
+  const table = document.getElementById('cadIndicadorTable');
+  const graficoWrap = document.getElementById('cadGraficoWrap');
+  const graficoBody = document.getElementById('cadGraficoBody');
+  const volumeFinal = document.getElementById('cadIndicadorVolumeFinal');
+  const linhasFinal = document.getElementById('cadIndicadorLinhasFinal');
+
+  empty.style.display = resumo.linhas ? 'none' : 'block';
+  empty.textContent = resumo.linhasTotal ? 'Nenhum resultado com os filtros atuais.' : 'Nenhuma cadência carregada nesta semana.';
+  table.style.display = resumo.linhas ? '' : 'none';
+  graficoWrap.style.display = resumo.linhas ? '' : 'none';
+  volumeFinal.textContent = formatarM3(resumo.volumeTotal);
+  linhasFinal.textContent = resumo.linhas;
+
+  const maiorVolumeData = Math.max(...resumo.grafico.map(g => g.volume), 1);
+  graficoBody.innerHTML = resumo.grafico.map(g => {
+    const largura = Math.max(3, Math.round((g.volume / maiorVolumeData) * 100));
+    return `
+      <div class="cad-chart-row" title="${esc(g.dtDesc)} · ${formatarM3(g.volume)} m³ · ${g.linhas} linha${g.linhas !== 1 ? 's' : ''}">
+        <div class="cad-chart-date">${esc(fmtShort(g.dtDesc))}</div>
+        <div class="cad-chart-track"><div class="cad-chart-fill" style="width:${largura}%"></div></div>
+        <div class="cad-chart-value">${formatarM3(g.volume)} m³</div>
+      </div>
+    `;
+  }).join('');
+
+  grid.innerHTML = resumo.resp.map(r => `
+    <div class="cad-resp-card">
+      <div class="cad-resp-top">
+        <div style="min-width:0">
+          <div class="cad-resp-nome">${esc(r.responsavel)}</div>
+          <div class="cad-resp-regiao" title="${esc(r.regiao)}">${esc(r.regiao)}</div>
+        </div>
+        <span class="badge badge-accent">${r.linhas} linha${r.linhas !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="cad-resp-vol">${formatarM3(r.volume)} m³</div>
+      <div class="cad-resp-meta">${r.destinos.size} destino${r.destinos.size !== 1 ? 's' : ''} · ${r.produtos.size} produto${r.produtos.size !== 1 ? 's' : ''}</div>
+    </div>
+  `).join('');
+
+  tbody.innerHTML = resumo.detalhe.map(d => `
+    <tr>
+      <td>
+        <div class="cad-cell-main">${esc(d.responsavel)}</div>
+        <div class="cad-cell-sub">${esc(d.regiao)}</div>
+      </td>
+      <td>
+        <div class="cad-cell-main">${esc(d.destino)}</div>
+        <div class="cad-cell-sub">${esc([d.cidadeDestino, d.ufDestino, d.regional].filter(Boolean).join(' · '))}</div>
+      </td>
+      <td>${prodTag(d.produto)}</td>
+      <td><span class="cad-date-pill">${esc(fmtShort(d.dtDesc))}</span></td>
+      <td class="cell-volume">${formatarM3(d.volume)}</td>
+      <td>${d.linhas}</td>
+    </tr>
+  `).join('');
+}
+
 function valoresUnicosOrdenados(arr, getter) {
   return [...new Set(arr.map(getter).filter(Boolean))].sort();
 }
@@ -5895,6 +6439,7 @@ function atualizarOpcoesFiltrosCadencia(f) {
 }
 
 function renderPreview() {
+  renderPainelCadenciado();
   const cap = parseInt(document.getElementById('capCaminhao').value) || 60;
   let filtrosCad = estadoFiltrosCadencia();
   atualizarOpcoesFiltrosCadencia(filtrosCad);
@@ -11484,6 +12029,8 @@ async function solicitarReprocessamentoHerrlog(idViagem) {
     delete v.herrlogExportadoEm;
     delete v.herrlogImportViaApi;
     delete v.herrlogImportIncertoEm;
+    delete v.herrlogReprocessamentoRecusadoEm;
+    delete v.herrlogReprocessamentoRecusadoMotivo;
     Object.assign(v, atualizada, {
       ...(v._semanaOrigem ? { _semanaOrigem: v._semanaOrigem } : {}),
       ...(v._semanaLabel ? { _semanaLabel: v._semanaLabel } : {}),
@@ -11516,6 +12063,16 @@ function renderEnvioHerrlog(v, mon) {
       const liberarEm = new Date(ultimoEnvio.getTime() + HERRLOG_GRACA_DATALAKE_MS)
         .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       return `<span class="badge" style="color:var(--pet-blue);background:var(--pet-blue-bg)" title="A Herrlog confirmou o envio recente. O botao de reprocessamento ficara bloqueado ate ${liberarEm}, enquanto o novo OuterId chega ao datalake.">ðŸ“¤ Enviado via API Â· sincronizando</span>`;
+    }
+    if (v.herrlogReprocessamentoRecusadoEm) {
+      const quandoRecusa = new Date(v.herrlogReprocessamentoRecusadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const motivoRecusa = String(v.herrlogReprocessamentoRecusadoMotivo || 'A Herrlog informou que a viagem ja existe na plataforma.')
+        .replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+      return `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <span class="badge" style="color:var(--danger);background:var(--danger-dim)" title="Recusado pela API da Herrlog em ${quandoRecusa}: ${motivoRecusa}. Nenhum novo OuterId foi criado e o mesmo ID da viagem foi preservado.">Reprocessamento recusado pela Herrlog</span>
+        <button type="button" onclick="solicitarReprocessamentoHerrlog('${v.idViagem}')"
+          style="border:1px solid var(--accent);border-radius:5px;background:var(--accent-dim);color:var(--accent);font-size:10px;font-weight:700;padding:4px 7px;cursor:pointer;white-space:nowrap">Tentar novamente</button>
+      </div>`;
     }
     const quando = v.herrlogCanceladaEm
       ? new Date(v.herrlogCanceladaEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -13237,6 +13794,7 @@ function trocarSemana(key) {
     } else {
       cadencias = [];
       viagens = [];
+      renderPainelCadenciado();
     }
     sincronizarStatusHerrlog();
     document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
@@ -13285,7 +13843,10 @@ function configurarListenerSemana(key) {
       if (idsParaSincronizar.size) sincronizarStatusHerrlog([...idsParaSincronizar]);
       idsParaSincronizar = new Set();
       if (editingIdx !== null) closeModal();
-      if (activeTab === 0 && cadencias.length > 0) renderPreview();
+      if (activeTab === 0) {
+        renderPainelCadenciado();
+        if (cadencias.length > 0) renderPreview();
+      }
       if (activeTab === 1) renderViagensTable();
       if (activeTab === 2) renderExport();
       if (activeTab === 3) renderMonitoramento();
@@ -13326,6 +13887,7 @@ function configurarListenerSemana(key) {
     let primeiraCad = true;
     unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
       cadencias = novasCadencias;
+      if (activeTab === 0) renderPainelCadenciado();
       if (primeiraCad) { primeiraCad = false; return; }
       agendarRefresh(true);
     });
@@ -13349,9 +13911,61 @@ function configurarListenerSemana(key) {
 // precisar clicar em 🔄 (que continua existindo para forçar uma releitura completa).
 // semanaSelect/btnNovaSemana não dependem do modo multi-semana (ver switchTab): eles
 // só aparecem na aba Importar Cadência, que sempre grava na `semanaAtiva` (single-week)
-// independente do filtro "Todos"/específicas usado em Gerir Viagens e afins.
-// Sempre ativo (uma vez que existam semanas) e sempre parte de "Todos" selecionado —
-// quem quiser uma semana específica desmarca as demais no multi-select.
+// independente da seleção usada em Gerir Viagens e afins.
+
+// Status considerados "finalizados" pra regra da janela de 15 dias (ver
+// calcularSemanasAtivas/ativarSelecaoPadrao) — os demais (Backlog, Ofertado, Aceito,
+// Placa Enviada, Frota Dedicada, Em Andamento) contam como "ativa": aparecem sempre,
+// não importa a idade.
+const STATUS_FINALIZADOS_JANELA = ['Viagem Finalizada', 'Cancelado', 'CIF', 'Recusado'];
+const JANELA_FINALIZADAS_DIAS = 15;
+
+// Calcula, a partir do espelho leve viagensIndice (ver window._fb.carregarIndiceViagens),
+// quais semanas têm pelo menos uma viagem "ativa" (não finalizada) ou "finalizada há até
+// `janelaDias`" — sem precisar baixar viagens+cadencias de nenhuma semana só pra decidir
+// isso. É essa decisão (antes: "todas as semanas, sempre") que estourava a cota de
+// download do Firebase (ver conversa que levou a esta mudança).
+function calcularSemanasAtivas(indice, { statusFinalizados = STATUS_FINALIZADOS_JANELA, janelaDias = JANELA_FINALIZADAS_DIAS } = {}) {
+  const limiteMs = Date.now() - janelaDias * 24 * 60 * 60 * 1000;
+  const semanas = new Set();
+  Object.values(indice || {}).forEach(v => {
+    if (!v || !v.semana) return;
+    if (!statusFinalizados.includes(v.status)) { semanas.add(v.semana); return; }
+    const t = Date.parse(v.atualizadoEm || '');
+    if (Number.isFinite(t) && t >= limiteMs) semanas.add(v.semana);
+  });
+  return semanas;
+}
+
+// Resolve quais chaves de semana (formato AAAA-MM-DD_AAAA-MM-DD, ver gerarKeySemana) têm
+// seu intervalo sobreposto ao período [inicioMs, fimMs] pedido pelo usuário no "Menu de
+// Seleção" (campos Início/Fim). Comparação direta de strings ISO — mesmo formato usado
+// nas chaves, sem parsing extra.
+function semanasNoIntervalo(inicioISO, fimISO) {
+  return [..._semanaLabelParaKey.values()].filter(key => {
+    const [ini, fim] = key.split('_');
+    return fim >= inicioISO && ini <= fimISO;
+  });
+}
+
+// Padrão ao logar/recarregar: só as semanas com viagem ativa ou finalizada recentemente
+// (ver calcularSemanasAtivas) — não mais "Todos" (ver ativarMultiSemana abaixo, que
+// continua existindo como opção explícita do usuário no Menu de Seleção).
+async function ativarSelecaoPadrao() {
+  modoMultiSemana = true;
+  await atualizarOpcoesMsSemanas();
+  const indice = await window._fb.carregarIndiceViagens(isTransportador() ? nomeTransportadorLogado() : undefined);
+  const semanasAtivas = calcularSemanasAtivas(indice);
+  msSemanas.allMode = false;
+  msSemanas.selected = new Set([...semanasAtivas].map(formatarKeyParaLabel));
+  msSemanas._renderPanel();
+  msSemanas._renderLabel();
+  await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+}
+
+// "Todos" — opção explícita do Menu de Seleção pra auditorias no histórico completo.
+// Sempre ativo (uma vez que existam semanas) — quem quiser uma semana específica
+// desmarca as demais no multi-select.
 async function ativarMultiSemana() {
   modoMultiSemana = true;
   await atualizarOpcoesMsSemanas();
@@ -13360,6 +13974,53 @@ async function ativarMultiSemana() {
   msSemanas._renderPanel();
   msSemanas._renderLabel();
   await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+}
+
+// Abre/fecha o painel do Menu de Seleção (botão 🗓️ no header — ver
+// painelMenuSelecao/btnMenuSelecao no HTML). Atualiza a lista de semanas ao abrir
+// (mesmo motivo do onOpen do MultiSelect) pra um período personalizado enxergar uma
+// semana criada há pouco.
+async function toggleMenuSelecaoPeriodo(event) {
+  event?.stopPropagation();
+  const painel = document.getElementById('painelMenuSelecao');
+  const abrir = painel.style.display !== 'block';
+  if (abrir) {
+    await atualizarOpcoesMsSemanas();
+    document.querySelectorAll('.ms-panel').forEach(p => p.style.display = 'none');
+    const rect = document.getElementById('btnMenuSelecao').getBoundingClientRect();
+    painel.style.top = (rect.bottom + 4) + 'px';
+    painel.style.left = rect.left + 'px';
+    document.getElementById('menuSelecaoErro').style.display = 'none';
+  }
+  painel.style.display = abrir ? 'block' : 'none';
+}
+
+// Período personalizado do Menu de Seleção (campos Início/Fim) — resolve pra todas as
+// semanas cujo intervalo se sobrepõe ao período pedido (ver semanasNoIntervalo) e
+// carrega do mesmo jeito que uma seleção manual no multi-select.
+function aplicarPeriodoPersonalizadoMenuSelecao() {
+  const ini = document.getElementById('menuSelecaoIni').value.trim();
+  const fim = document.getElementById('menuSelecaoFim').value.trim();
+  const erroEl = document.getElementById('menuSelecaoErro');
+  const mostrarErro = (msg) => { erroEl.textContent = msg; erroEl.style.display = 'block'; };
+
+  const re = /^\d{2}\/\d{2}\/\d{4}$/;
+  if (!re.test(ini) || !re.test(fim)) return mostrarErro('Use o formato DD/MM/AAAA em ambos os campos.');
+
+  const toISO = (d) => { const [dd, mm, yyyy] = d.split('/'); return yyyy + '-' + mm + '-' + dd; };
+  const inicioISO = toISO(ini), fimISO = toISO(fim);
+  if (fimISO < inicioISO) return mostrarErro('A data de fim não pode ser anterior à data de início.');
+
+  const keys = semanasNoIntervalo(inicioISO, fimISO);
+  if (!keys.length) return mostrarErro('Nenhuma semana cadastrada nesse período.');
+
+  modoMultiSemana = true;
+  msSemanas.allMode = false;
+  msSemanas.selected = new Set(keys.map(formatarKeyParaLabel));
+  msSemanas._renderPanel();
+  msSemanas._renderLabel();
+  carregarViagensMultiSemana(keys);
+  toggleMenuSelecaoPeriodo();
 }
 
 // Busca a lista de semanas na hora (não só na ativação) — chamada também a cada abertura
@@ -13884,12 +14545,14 @@ await carregarUsuariosFirebase();
   if (viagens.length > 0) switchTab(1);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
-  // Padrão: abre já com todas as semanas combinadas ("Todos"), pra dar uma visão geral de
-  // cara — quem quiser uma semana específica desmarca as demais no multi-select depois.
-  // A aba Importar Cadência continua usando o seletor único (semanaAtiva) normalmente.
-  // Transportador participa também: carregarViagensMultiSemana/configurarListenersMultiSemana
-  // já usam a query restrita (carregarViagensTransportador/ouvirViagensTransportador) pra ele.
-  await ativarMultiSemana();
+  // Padrão: abre já com as semanas "ativas" combinadas (não finalizadas + finalizadas
+  // nos últimos 15 dias — ver calcularSemanasAtivas/ativarSelecaoPadrao), não mais
+  // "Todos" — quem quiser o histórico completo ou um período específico usa o Menu de
+  // Seleção. A aba Importar Cadência continua usando o seletor único (semanaAtiva)
+  // normalmente. Transportador participa também: carregarViagensMultiSemana/
+  // configurarListenersMultiSemana já usam a query restrita
+  // (carregarViagensTransportador/ouvirViagensTransportador) pra ele.
+  await ativarSelecaoPadrao();
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
     console.error('iniciarFirebase error:', err);
@@ -15143,12 +15806,22 @@ window.addEventListener('DOMContentLoaded', () => {
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable, null, true);
   msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport, null, true);
   msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas, true);
+  document.addEventListener('click', e => {
+    const painel = document.getElementById('painelMenuSelecao');
+    const btn = document.getElementById('btnMenuSelecao');
+    if (painel && painel.style.display === 'block' && !painel.contains(e.target) && e.target !== btn) {
+      painel.style.display = 'none';
+    }
+  });
   msCProduto = new MultiSelect('ms-cProduto', 'Produto',  renderPreview, null, true);
   msCModal   = new MultiSelect('ms-cModal',   'Tipo de Frete', renderPreview, null, true);
   msCUf      = new MultiSelect('ms-cUf',      'UF Origem', renderPreview, null, true);
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview, null, true);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview, null, true);
   msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview, null, true);
+  msCadArea = new MultiSelect('ms-cadArea', 'CO / SP / MG + RJ', renderPainelCadenciado, null, true);
+  msCadDestino = new MultiSelect('ms-cadDestino', 'Destino', renderPainelCadenciado, null, true);
+  msCadProduto = new MultiSelect('ms-cadProduto', 'Produto', renderPainelCadenciado, null, true);
   msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento, null, true);
   msMonUf      = new MultiSelect('ms-monUf',      'UF Origem', renderMonitoramento, null, true);
   msMonOrigem  = new MultiSelect('ms-monOrigem',  'Origem',  renderMonitoramento, null, true);
@@ -15164,6 +15837,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   msFrotaTransportador = new MultiSelect('ms-frotaTransportador', 'Transportador', renderStatusFrota, null, true);
   msFrotaPlaca          = new MultiSelect('ms-frotaPlaca',          'Placa',          renderStatusFrota, null, true);
+
+  renderPainelCadenciado();
 
   if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
     mostrarStatus('saving', 'Reconectando...');
