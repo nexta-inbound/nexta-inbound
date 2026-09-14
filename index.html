@@ -1761,6 +1761,37 @@
   const auth    = getAuth(app);
   const storage = getStorage(app);
 
+  // 'DD/MM/AAAA' -> 'AAAA-MM-DD'. null se vazio/malformado (ex.: '-') OU ano implausível
+  // (mesmo intervalo de anoPlausivel() em index.html: [ano atual-1, ano atual+2]) — um erro
+  // de digitação de ano (ex.: 2062 em vez de 2026, já visto em dado real) faria o filtro de
+  // período personalizado (ver predicadoPeriodo) tratar a viagem como se cobrisse décadas,
+  // batendo com qualquer período pedido. Usado pra gravar dataInicio/dataFim em viagensIndice
+  // (ver salvarViagensParciais/salvarComViagensUnicas abaixo).
+  function dmyParaIso(valor) {
+    const partes = String(valor || '').split('/');
+    if (partes.length !== 3) return null;
+    const [dd, mm, yyyy] = partes;
+    if (!/^\d+$/.test(dd) || !/^\d+$/.test(mm) || !/^\d+$/.test(yyyy)) return null;
+    const ano = parseInt(yyyy, 10);
+    const anoAtual = new Date().getFullYear();
+    if (ano < anoAtual - 1 || ano > anoAtual + 2) return null;
+    return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+  }
+
+  // Espelho leve de viagensIndice/<id> gravado junto com a viagem em cada write (mesma
+  // convenção usada em ~15 lugares do app: a data "programada" pelo operador prevalece
+  // sobre a "desejada" vinda da cadência).
+  function entradaIndiceViagem(v, semana, agora) {
+    return {
+      semana,
+      status: v.status || '',
+      transportador: v.transportador || '',
+      atualizadoEm: agora,
+      dataInicio: dmyParaIso(v.dtCarregProg || v.dtCarreg),
+      dataFim: dmyParaIso(v.dtDescProg || v.dtDesc),
+    };
+  }
+
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
     salvar: async (key, payload) => {
@@ -1780,16 +1811,17 @@
       if (!snap.exists()) return [];
       return Object.keys(snap.val()).sort().reverse();
     },
-    // Espelho leve de todas as viagens ({semana, status, transportador, atualizadoEm} —
-    // sem historico nem os demais campos pesados), mantido em dia por
-    // salvarViagensParciais/salvarComViagensUnicas acima e pelos scripts Python que
+    // Espelho leve de todas as viagens ({semana, status, transportador, atualizadoEm,
+    // dataInicio, dataFim} — sem historico nem os demais campos pesados), mantido em dia
+    // por salvarViagensParciais/salvarComViagensUnicas acima e pelos scripts Python que
     // mudam status de viagem (reprocessamento_herrlog.py, corrigir_falso_cancelamento.py).
-    // Usado só pra decidir QUAIS semanas carregar por padrão (ver calcularSemanasAtivas)
-    // sem precisar baixar viagens+cadencias de todo o histórico só pra descobrir isso —
-    // essa era a causa da cota de download do Firebase estourando (ver conversa que
-    // levou a esta mudança). Staff lê o node inteiro (pequeno: um registro por viagem,
-    // não por semana); transportador (nomeTransportador informado pelo chamador, mesmo
-    // padrão de carregarViagensTransportador) só a própria fatia, via query indexada.
+    // Usado pra decidir QUAIS VIAGENS carregar (filtro padrão/período, ver
+    // ativarCarregamentoPorIndice) sem precisar baixar o histórico inteiro nem semanas
+    // inteiras só pra descobrir isso — essa era a causa da cota de download do Firebase
+    // estourando (ver conversa que levou a esta mudança). Staff lê o node inteiro
+    // (pequeno: um registro por viagem, não por semana); transportador (nomeTransportador
+    // informado pelo chamador, mesmo padrão de carregarViagensTransportador) só a própria
+    // fatia, via query indexada.
     carregarIndiceViagens: async (nomeTransportador) => {
       if (nomeTransportador) {
         const q = query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador));
@@ -1798,6 +1830,28 @@
       }
       const snap = await get(ref(db, 'viagensIndice'));
       return snap.exists() ? snap.val() : {};
+    },
+    // Granular (onChildAdded/Changed/Removed, mesmo padrão de ouvirMonitoramentoHerrlog) —
+    // usado por ativarCarregamentoPorIndice pra saber AO VIVO quando uma viagem passa a
+    // qualificar (ou deixa de qualificar) pro filtro padrão/período em vigor, sem precisar
+    // de F5. `nomeTransportador` opcional restringe à mesma query indexada de
+    // carregarIndiceViagens.
+    ouvirIndiceViagens: (nomeTransportador, { onAdded, onChanged, onRemoved }) => {
+      const r = nomeTransportador
+        ? query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador))
+        : ref(db, 'viagensIndice');
+      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
+      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
+      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
+      return () => { u1(); u2(); u3(); };
+    },
+    // Listener no registro completo de UMA viagem específica — usado por
+    // ativarCarregamentoPorIndice em vez de assinar a semana inteira (ver index.html:
+    // carregamento por viagem, não mais por semana).
+    ouvirViagemIndividual: (semana, idViagem, callback) => {
+      return onValue(ref(db, 'sessoes/' + semana + '/viagens/' + idViagem), (snap) => {
+        callback(snap.exists() ? snap.val() : null);
+      });
     },
     marcarSemanaDisponivel: async (key) => {
       await set(ref(db, 'semanasDisponiveis/' + key), true);
@@ -1860,16 +1914,11 @@
       const agora = new Date().toISOString();
       Object.entries(viagensPorId).forEach(([id, v]) => {
         updates['sessoes/' + key + '/viagens/' + id] = v;
-        // viagensIndice: espelho leve (semana/status/transportador) usado pra calcular
-        // a seleção padrão "não finalizadas + últimos 15 dias" sem baixar o histórico
-        // inteiro — ver calcularSemanasAtivas/carregarIndiceViagens. Mesmo request,
-        // sem round-trip extra.
-        updates['viagensIndice/' + id] = {
-          semana: key,
-          status: v.status || '',
-          transportador: v.transportador || '',
-          atualizadoEm: agora,
-        };
+        // viagensIndice: espelho leve usado pra decidir QUAIS viagens carregar (filtro
+        // padrão/período, por viagem — não mais por semana) sem baixar o histórico
+        // inteiro — ver ativarCarregamentoPorIndice/carregarIndiceViagens. Mesmo
+        // request, sem round-trip extra.
+        updates['viagensIndice/' + id] = entradaIndiceViagem(v, key, agora);
       });
       await update(ref(db), updates);
     },
@@ -2071,16 +2120,11 @@
       const sessaoSalva = { ...payload, viagens: Object.fromEntries(viagensComId.map(v => [v.idViagem, v])) };
       // update() multi-path em vez de set(), pra sobrescrever 'sessoes/'+key e gravar
       // viagensIndice (mesmo mirror leve de salvarViagensParciais) no mesmo request —
-      // ver calcularSemanasAtivas/carregarIndiceViagens.
+      // ver ativarCarregamentoPorIndice/carregarIndiceViagens.
       const agora = new Date().toISOString();
       const updates = { ['sessoes/' + key]: sessaoSalva };
       viagensComId.forEach(v => {
-        updates['viagensIndice/' + v.idViagem] = {
-          semana: key,
-          status: v.status || '',
-          transportador: v.transportador || '',
-          atualizadoEm: agora,
-        };
+        updates['viagensIndice/' + v.idViagem] = entradaIndiceViagem(v, key, agora);
       });
       await update(ref(db), updates);
       return sessaoSalva;
@@ -2326,22 +2370,29 @@
   <div class="header-sub">Logística Inbound — Programação Semanal</div>
   <div class="semana-selector" id="semanaSelectorWrap" style="display:none;position:relative">
     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">Seleção:</span>
-    <div id="ms-semanas"></div>
-    <button class="btn-reset" id="btnMenuSelecao" onclick="toggleMenuSelecaoPeriodo(event)" title="Menu de Seleção — padrão (ativas), todo o histórico ou um período personalizado">🗓️</button>
-    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarMultiSemana()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora">🔄</button>
+    <span id="seletorModoLabel" style="font-size:12px;font-weight:600;color:var(--accent)">Padrão</span>
+    <button class="btn-reset" id="btnMenuSelecao" onclick="toggleMenuSelecaoPeriodo(event)" title="Menu de Seleção — padrão (ativas) ou um período personalizado">🗓️</button>
+    <button class="btn-reset" id="btnAtualizarMultiSemana" onclick="atualizarCarregamentoAtual()" title="Já atualiza sozinho quando alguém mais edita — use aqui só se quiser forçar uma releitura completa agora">🔄</button>
     <div id="painelMenuSelecao" style="display:none;position:fixed;min-width:260px;background:var(--panel);border:1px solid var(--border);border-radius:8px;z-index:300;box-shadow:0 8px 28px rgba(0,0,0,0.5);padding:12px">
       <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Menu de Seleção</div>
-      <button class="btn btn-secondary" style="width:100%;margin-bottom:6px" onclick="ativarSelecaoPadrao(); toggleMenuSelecaoPeriodo()">Padrão (ativas + últimos 15 dias)</button>
-      <button class="btn btn-secondary" style="width:100%;margin-bottom:10px" onclick="ativarMultiSemana(); toggleMenuSelecaoPeriodo()">Todos (histórico completo)</button>
+      <button class="btn btn-secondary" style="width:100%;margin-bottom:10px" onclick="ativarSelecaoPadrao(); toggleMenuSelecaoPeriodo()">Padrão (ativas + últimos 15 dias)</button>
       <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;border-top:1px solid var(--border);padding-top:10px">Período personalizado</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div>
           <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Início</div>
-          <input id="menuSelecaoIni" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+          <div style="display:flex;gap:4px">
+            <input id="menuSelecaoIni" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioPeriodo('menuSelecaoIni','menuSelecaoIniPicker')" title="Abrir calendário">📅</button>
+            <input type="date" id="menuSelecaoIniPicker" class="fi-date-picker" tabindex="-1" onchange="aplicarCalendarioPeriodo('menuSelecaoIni','menuSelecaoIniPicker')">
+          </div>
         </div>
         <div>
           <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Fim</div>
-          <input id="menuSelecaoFim" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+          <div style="display:flex;gap:4px">
+            <input id="menuSelecaoFim" placeholder="DD/MM/AAAA" class="config-input" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px">
+            <button type="button" class="btn-cal" onclick="abrirCalendarioPeriodo('menuSelecaoFim','menuSelecaoFimPicker')" title="Abrir calendário">📅</button>
+            <input type="date" id="menuSelecaoFimPicker" class="fi-date-picker" tabindex="-1" onchange="aplicarCalendarioPeriodo('menuSelecaoFim','menuSelecaoFimPicker')">
+          </div>
         </div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="aplicarPeriodoPersonalizadoMenuSelecao()">Aplicar período</button>
@@ -5285,7 +5336,6 @@ class MultiSelect {
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
 let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEProgramador;
-let msSemanas;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
 let msCadArea, msCadDestino, msCadProduto;
@@ -5668,17 +5718,24 @@ let cadencias = [];
 let viagens = [];
 let semanaAtiva = null;
 
-// ── MULTI-SEMANA (visão combinada e editável — ver ativarMultiSemana) ──
+// ── CARREGAMENTO POR VIAGEM (visão combinada e editável — ver ativarCarregamentoPorIndice) ──
 let modoMultiSemana = false;
-let viagensMultiSemana = []; // mescla de viagens de várias semanas, cada uma com _semanaOrigem/_semanaLabel
-let cadenciasMultiSemanaCount = 0; // soma de cadencias.length das semanas selecionadas (só contagem, não editável combinada)
-let _cadenciasCountPorSemana = new Map(); // key da semana -> cadencias.length dela (permite recalcular a soma quando um listener atualiza só uma semana)
-let _semanaLabelParaKey = new Map(); // label exibido no ms-semanas -> key real da semana
-let _unsubsMultiSemana = new Map(); // key da semana -> função de unsubscribe do listener em tempo real dela
+let viagensMultiSemana = []; // viagens carregadas pelo filtro padrão/período em vigor, cada uma com _semanaOrigem
+let cadenciasMultiSemanaCount = 0; // soma de cadencias.length das semanas de origem das viagens carregadas
+let _cadenciasCountPorSemana = new Map(); // semana -> cadencias.length dela (permite recalcular a soma quando um listener atualiza só uma semana)
 
 // Fonte de dados da tabela de viagens: a semana ativa ou a combinação multi-semana.
 function viagensAtivo() {
   return modoMultiSemana ? viagensMultiSemana : viagens;
+}
+
+// Semanas de origem das viagens atualmente carregadas (deduplicadas) — usado só pelo
+// cálculo de ocupação de veículos (diasDaSemanaAtiva/garantirSemanasVizinhasCarregadas),
+// que ainda pensa em "semana" pra montar o calendário. Não é mais uma "seleção" do
+// usuário (isso não existe mais aqui) — é derivado do que o filtro padrão/período
+// carregou.
+function _semanasCarregadas() {
+  return [...new Set(viagensMultiSemana.map(v => v._semanaOrigem))];
 }
 let monitoramentoHerrlog = {}; // { [idViagem]: { statusHerrlog, etaDestino, chegadaReal, chegadaOrigem, kmRestante, placaHerrlog, atualizadoEm } }
 // Viagens Finalizadas ha mais de HERRLOG_RETENCAO_CONCLUIDA_DIAS saem de monitoramentoHerrlog
@@ -5892,7 +5949,7 @@ function salvarSessao(silencioso = false) {
   // (viagensAlteradas, ver marcarEAgendar) — nunca mais a sessão inteira de uma vez só, que
   // sobrescrevia edições concorrentes de outro admin em viagens diferentes e obrigava os
   // listeners a rebaixar a semana inteira pra todo mundo a cada save (ver
-  // configurarListenerSemana/configurarListenersMultiSemana).
+  // configurarListenerSemana/ativarCarregamentoPorIndice).
   const idsParaSalvar = [...viagensAlteradas];
   const viagensPorId = {};
   idsParaSalvar.forEach(id => {
@@ -5931,7 +5988,7 @@ function carregarSessao() {
 }
 
 function agendarAutosave() {
-  // modoMultiSemana fica ligado o tempo todo (ver ativarMultiSemana) — mas isso cobre só
+  // modoMultiSemana fica ligado o tempo todo (ver ativarCarregamentoPorIndice) — mas isso cobre só
   // as viagens (viagensMultiSemana/viagensAlteradasMultiSemana). `cadencias` é sempre da
   // semana única ativa (só usada por Importar Cadência/gerarViagens) e só é persistida por
   // salvarSessao() → salvarCadenciasEConfig; sem rodar esse caminho também, qualquer edição
@@ -8801,7 +8858,7 @@ function gerarIdVeiculoDedicado() {
 // calendário real. Em modo multi-semana, combina os dias de todas as semanas marcadas
 // (deduplicados e ordenados) em vez de só a semana ativa.
 function diasDaSemanaAtiva() {
-  const keys = modoMultiSemana ? selecaoAtualMsSemanas() : (semanaAtiva ? [semanaAtiva] : []);
+  const keys = modoMultiSemana ? _semanasCarregadas() : (semanaAtiva ? [semanaAtiva] : []);
   const diasMap = new Map();
   keys.forEach(key => {
     if (!key || !key.includes('_')) return;
@@ -8827,8 +8884,8 @@ function hojeNaSemanaAtiva() {
 }
 
 // ── OCUPAÇÃO DE VEÍCULOS: alcança viagens de semanas vizinhas ──
-// "Semana" aqui é só o lote em que a cadência foi importada/planejada (nó do Firebase — ver
-// carregarViagensMultiSemana), não uma trava da data real de carregamento/descarga: uma
+// "Semana" aqui é só o lote em que a cadência foi importada/planejada (nó do Firebase —
+// ver ativarCarregamentoPorIndice), não uma trava da data real de carregamento/descarga: uma
 // viagem cadastrada na semana anterior pode ter sido reagendada pra dentro da semana
 // seguinte (ou vice-versa) e continuar fisicamente gravada no nó antigo. Com só a semana
 // selecionada carregada em memória (viagensMultiSemana), o veículo aparecia "ocioso" nesses
@@ -8852,7 +8909,7 @@ function viagensParaOcupacaoVeiculos() {
 
 async function garantirSemanasVizinhasCarregadas() {
   if (!window._fb) return;
-  const selecionadas = modoMultiSemana ? selecaoAtualMsSemanas() : (semanaAtiva ? [semanaAtiva] : []);
+  const selecionadas = modoMultiSemana ? _semanasCarregadas() : (semanaAtiva ? [semanaAtiva] : []);
   if (!selecionadas.length) return;
 
   const todasKeys = (await window._fb.listarSemanas()).sort(); // prefixo ISO ordena cronologicamente
@@ -10568,7 +10625,7 @@ async function criarViagemFreteRetorno() {
       const payload = { cadencias: sessao.cadencias || [], config: sessao.config || {} };
       salvo = await window._fb.salvarComViagensUnicas(semanaAlvo, payload, [...viagensDaSemana, novaViagem], PREFIXO_VIAGEM_RETORNO_VAZIO);
       // Não chama aplicarPayload aqui (só cobre a semana ativa) — o listener em tempo real
-      // de viagensMultiSemana (ver configurarListenersMultiSemana) reconcilia sozinho.
+      // do índice (ver ativarCarregamentoPorIndice) detecta a viagem nova e reconcilia sozinho.
     }
 
     const novoId = Object.keys(salvo.viagens).find(id => salvo.viagens[id].criadoEm === criadoEm && salvo.viagens[id].produto === PRODUTO_RETORNO_VAZIO);
@@ -11314,20 +11371,21 @@ const STATUS_MANUAL_CIF_OPCOES = [
   'T5 - Viagem finalizada',
 ];
 
-// Roda sobre viagensAtivo() (não `viagens` isolado) porque, com a visão multi-semana
-// sempre ativa (ver ativarMultiSemana), `viagens` fica parado na 1ª semana carregada no
-// boot e nunca mais é o que está em tela nem o que é salvo — sincronizar só nele deixava
-// a promoção Em Andamento/Viagem Finalizada presa em memória e nunca gravada no Firebase.
-// marcarEAgendar() cuida de marcar a viagem certa (viagensAlteradasMultiSemana, por
-// _semanaOrigem) e disparar o autosave no modo certo — mesmo mecanismo de qualquer edição
-// manual da tabela.
+// Roda sobre viagensAtivo() (não `viagens` isolado) porque, com o carregamento por
+// viagem sempre ativo (ver ativarCarregamentoPorIndice), `viagens` fica parado na semana
+// ativa de Importar Cadência e nunca mais é o que está em tela nem o que é salvo —
+// sincronizar só nele deixava a promoção Em Andamento/Viagem Finalizada presa em memória e
+// nunca gravada no Firebase. marcarEAgendar() cuida de marcar a viagem certa
+// (viagensAlteradasMultiSemana, por _semanaOrigem) e disparar o autosave no modo certo —
+// mesmo mecanismo de qualquer edição manual da tabela.
 // idsFiltro (opcional): quando informado, só verifica essas viagens (por idViagem) em vez
 // de varrer viagensAtivo() inteiro. Usado pelos listeners em tempo real (ver agendarRefresh
-// em configurarListenerSemana/configurarListenersMultiSemana), que já sabem exatamente qual
-// registro acabou de mudar — não precisam reescanear tudo a cada edição de qualquer um. Sem
-// filtro (login, troca de semana, semana nova carregada no multi-semana, ou quando o node
-// monitoramentoHerrlog em si muda — ver configurarListenerMonitoramentoHerrlog), varre tudo;
-// esses gatilhos são raros o bastante (não um por edição) pra isso ser barato.
+// em configurarListenerSemana e o listener individual em _abrirViagemIndividual), que já
+// sabem exatamente qual registro acabou de mudar — não precisam reescanear tudo a cada
+// edição de qualquer um. Sem filtro (login, troca de semana, viagem nova qualificando no
+// carregamento por índice, ou quando o node monitoramentoHerrlog em si muda — ver
+// configurarListenerMonitoramentoHerrlog), varre tudo; esses gatilhos são raros o bastante
+// (não um por edição) pra isso ser barato.
 function sincronizarStatusHerrlog(idsFiltro) {
   const filtro = idsFiltro && idsFiltro.length ? new Set(idsFiltro) : null;
   let alterou = false;
@@ -11773,8 +11831,9 @@ function updatePipeline(list) {
   const isFiltered = list.length < viagens.length;
 
   // Cadências e Viagens: sempre totais globais. Em modo multi-semana, cadências somam
-  // cadenciasMultiSemanaCount (calculado em carregarViagensMultiSemana a partir das
-  // semanas selecionadas no multi-select) — não são editáveis combinadas, só contadas.
+  // cadenciasMultiSemanaCount (calculado em _garantirCadenciaDaSemana a partir das
+  // semanas de origem das viagens carregadas pelo filtro padrão/período) — não são
+  // editáveis combinadas, só contadas.
   document.getElementById('cnt-cadencias').textContent = modoMultiSemana ? cadenciasMultiSemanaCount : cadencias.length;
   document.getElementById('cnt-viagens').textContent   = modoMultiSemana ? viagensMultiSemana.length : viagens.length;
 
@@ -13814,7 +13873,7 @@ function trocarSemana(key) {
 // UMA viagem que estava consumindo a cota de download do Firebase (ver conversa que levou a
 // esta mudança). O resultado local (cadencias/viagens) só é realmente consumido pela aba
 // Importar Cadência e por gerarViagens() — o restante (Gerir Viagens/Exportar/Monitoramento)
-// lê de viagensMultiSemana (ver viagensAtivo/configurarListenersMultiSemana) — mas o listener
+// lê de viagensMultiSemana (ver viagensAtivo/ativarCarregamentoPorIndice) — mas o listener
 // em si roda sempre, então precisa ser barato independente de quem está usando o quê.
 function configurarListenerSemana(key) {
   if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
@@ -13902,91 +13961,189 @@ function configurarListenerSemana(key) {
   window._fbUnsub = () => { unsubViagens(); unsubCad(); unsubCfg(); };
 }
 
-// ── VISUALIZAÇÃO MULTI-SEMANA ──
-// Combina e permite editar viagens de várias semanas ao mesmo tempo (ver viagensAtivo()).
-// Cada edição é gravada direto na semana de origem da viagem (marcarEAgendar/
-// salvarAlteracoesMultiSemana), sem sobrescrever cadencias/config nem outras viagens
-// daquela semana. Cada semana selecionada tem seu próprio listener em tempo real (ver
-// configurarListenersMultiSemana) — mudanças feitas por outra aba/usuário aparecem sem
-// precisar clicar em 🔄 (que continua existindo para forçar uma releitura completa).
-// semanaSelect/btnNovaSemana não dependem do modo multi-semana (ver switchTab): eles
-// só aparecem na aba Importar Cadência, que sempre grava na `semanaAtiva` (single-week)
-// independente da seleção usada em Gerir Viagens e afins.
+// ── CARREGAMENTO POR VIAGEM (Gerir Viagens/Exportar/Monitoramento/Performance) ──
+// Semana deixou de ser critério de carregamento aqui — ela só serve pro que é fisicamente:
+// o balde onde a viagem nasce e é gravada (isso continua 100% em semanaAtiva/
+// configurarListenerSemana, usado só pela aba Importar Cadência — intocado). Uma única
+// viagem "esquisita" (reofertada/reprocessada meses depois do previsto) não arrasta mais
+// a semana inteira — antes, carregar por semana fazia isso: uma viagem recente resgatava
+// centenas de outras já finalizadas há meses, só de carona (ver conversa que levou a esta
+// mudança). Agora o filtro (padrão ou período) é avaliado por VIAGEM, usando o espelho
+// leve viagensIndice (ver window._fb.carregarIndiceViagens/ouvirIndiceViagens) — nunca a
+// semana inteira. viagensMultiSemana/_cadenciasCountPorSemana continuam sendo o destino
+// (viagensAtivo() é genérico, não se importa em como foi populado; _semanaOrigem em cada
+// viagem continua essencial — é o que marcarEAgendar usa pra saber onde gravar).
 
-// Status considerados "finalizados" pra regra da janela de 15 dias (ver
-// calcularSemanasAtivas/ativarSelecaoPadrao) — os demais (Backlog, Ofertado, Aceito,
-// Placa Enviada, Frota Dedicada, Em Andamento) contam como "ativa": aparecem sempre,
-// não importa a idade.
+// Status considerados "finalizados" pra regra da janela de 15 dias — os demais (Backlog,
+// Ofertado, Aceito, Placa Enviada, Frota Dedicada, Em Andamento) contam como "ativa":
+// aparecem sempre, não importa a idade.
 const STATUS_FINALIZADOS_JANELA = ['Viagem Finalizada', 'Cancelado', 'CIF', 'Recusado'];
 const JANELA_FINALIZADAS_DIAS = 15;
 
-// Calcula, a partir do espelho leve viagensIndice (ver window._fb.carregarIndiceViagens),
-// quais semanas têm pelo menos uma viagem "ativa" (não finalizada) ou "finalizada há até
-// `janelaDias`" — sem precisar baixar viagens+cadencias de nenhuma semana só pra decidir
-// isso. É essa decisão (antes: "todas as semanas, sempre") que estourava a cota de
-// download do Firebase (ver conversa que levou a esta mudança).
-function calcularSemanasAtivas(indice, { statusFinalizados = STATUS_FINALIZADOS_JANELA, janelaDias = JANELA_FINALIZADAS_DIAS } = {}) {
-  const limiteMs = Date.now() - janelaDias * 24 * 60 * 60 * 1000;
-  const semanas = new Set();
-  Object.values(indice || {}).forEach(v => {
-    if (!v || !v.semana) return;
-    if (!statusFinalizados.includes(v.status)) { semanas.add(v.semana); return; }
-    const t = Date.parse(v.atualizadoEm || '');
-    if (Number.isFinite(t) && t >= limiteMs) semanas.add(v.semana);
-  });
-  return semanas;
+function predicadoAtivas(entrada) {
+  if (!STATUS_FINALIZADOS_JANELA.includes(entrada.status)) return true;
+  const t = Date.parse(entrada.atualizadoEm || '');
+  if (!Number.isFinite(t)) return false;
+  return t >= Date.now() - JANELA_FINALIZADAS_DIAS * 24 * 60 * 60 * 1000;
 }
 
-// Resolve quais chaves de semana (formato AAAA-MM-DD_AAAA-MM-DD, ver gerarKeySemana) têm
-// seu intervalo sobreposto ao período [inicioMs, fimMs] pedido pelo usuário no "Menu de
-// Seleção" (campos Início/Fim). Comparação direta de strings ISO — mesmo formato usado
-// nas chaves, sem parsing extra.
-function semanasNoIntervalo(inicioISO, fimISO) {
-  return [..._semanaLabelParaKey.values()].filter(key => {
-    const [ini, fim] = key.split('_');
+// Overlap entre [dataInicio,dataFim] da viagem (data efetiva real — dtCarregProg||dtCarreg
+// — não a semana) e o período pedido no Menu de Seleção. Viagem sem nenhuma data conhecida
+// não entra num período específico (só apareceria no padrão, via status não-finalizado).
+function predicadoPeriodo(inicioISO, fimISO) {
+  return (entrada) => {
+    if (!entrada.dataInicio && !entrada.dataFim) return false;
+    const ini = entrada.dataInicio || entrada.dataFim;
+    const fim = entrada.dataFim || entrada.dataInicio;
     return fim >= inicioISO && ini <= fimISO;
+  };
+}
+
+let _unsubIndiceViagens = null;
+let _unsubsViagensIndividuais = new Map(); // idViagem -> unsub
+let _unsubsCadenciasPorSemana = new Map(); // semana de origem -> unsub (deriva das viagens carregadas)
+let _modoSelecaoAtual = { tipo: 'ativas' }; // ou { tipo: 'periodo', inicioISO, fimISO } — pro botão 🔄 saber o que refazer
+
+let _refreshCarregamentoTimer = null;
+function _agendarRefreshCarregamento() {
+  clearTimeout(_refreshCarregamentoTimer);
+  // Pequeno atraso pra agrupar uma rajada de eventos (ex.: várias viagens abrindo listener
+  // ao mesmo tempo na largada) num único refresh — mesmo padrão de configurarListenerSemana.
+  _refreshCarregamentoTimer = setTimeout(() => {
+    if (editingIdx !== null) closeModal();
+    updatePipeline(viagensAtivo());
+    renderizarAbaAtual();
+  }, 200);
+}
+
+// Cadências continuam por semana (aba Importar Cadência) — aqui só contamos quantas tem
+// nas semanas de origem das viagens atualmente carregadas, pro KPI "Cadências" do topo.
+// Transportador não lê cadencias (sem permissão — ver regras do Firebase).
+function _garantirCadenciaDaSemana(semana) {
+  if (isTransportador() || _unsubsCadenciasPorSemana.has(semana)) return;
+  let primeira = true;
+  const unsub = window._fb.ouvirCadencias(semana, (novasCadencias) => {
+    _cadenciasCountPorSemana.set(semana, novasCadencias.length);
+    cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
+    if (primeira) { primeira = false; return; }
+    _agendarRefreshCarregamento();
+  });
+  _unsubsCadenciasPorSemana.set(semana, unsub);
+}
+
+function _pararCadenciaSeSemanaVazia(semana) {
+  if (viagensMultiSemana.some(v => v._semanaOrigem === semana)) return;
+  const unsub = _unsubsCadenciasPorSemana.get(semana);
+  if (!unsub) return;
+  unsub();
+  _unsubsCadenciasPorSemana.delete(semana);
+  _cadenciasCountPorSemana.delete(semana);
+  cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
+}
+
+function _abrirViagemIndividual(idViagem, semana) {
+  if (_unsubsViagensIndividuais.has(idViagem)) return;
+  _garantirCadenciaDaSemana(semana);
+  const unsub = window._fb.ouvirViagemIndividual(semana, idViagem, (dados) => {
+    const idx = viagensMultiSemana.findIndex(v => v.idViagem === idViagem);
+    if (dados) {
+      const registro = { ...dados, _semanaOrigem: semana };
+      if (idx >= 0) viagensMultiSemana[idx] = registro; else viagensMultiSemana.push(registro);
+    } else if (idx >= 0) {
+      viagensMultiSemana.splice(idx, 1);
+    }
+    _agendarRefreshCarregamento();
+  });
+  _unsubsViagensIndividuais.set(idViagem, unsub);
+}
+
+function _fecharViagemIndividual(idViagem) {
+  const unsub = _unsubsViagensIndividuais.get(idViagem);
+  if (!unsub) return;
+  unsub();
+  _unsubsViagensIndividuais.delete(idViagem);
+  const idx = viagensMultiSemana.findIndex(v => v.idViagem === idViagem);
+  const semana = idx >= 0 ? viagensMultiSemana[idx]._semanaOrigem : null;
+  if (idx >= 0) viagensMultiSemana.splice(idx, 1);
+  if (semana) _pararCadenciaSeSemanaVazia(semana);
+  _agendarRefreshCarregamento();
+}
+
+function desativarCarregamentoPorIndice() {
+  if (_unsubIndiceViagens) { _unsubIndiceViagens(); _unsubIndiceViagens = null; }
+  _unsubsViagensIndividuais.forEach(unsub => unsub());
+  _unsubsViagensIndividuais.clear();
+  _unsubsCadenciasPorSemana.forEach(unsub => unsub());
+  _unsubsCadenciasPorSemana.clear();
+  viagensMultiSemana = [];
+  _cadenciasCountPorSemana = new Map();
+  cadenciasMultiSemanaCount = 0;
+}
+
+// Motor único por trás de "Padrão" e "Período personalizado" (ver ativarSelecaoPadrao/
+// ativarPeriodoPersonalizado abaixo). Carga em lote primeiro (mesmo motivo de
+// configurarListenerMonitoramentoHerrlog: evitar que o onChildAdded reconstrua o índice
+// inteiro evento a evento na largada), depois assina o índice ao vivo pra abrir/fechar
+// listener individual conforme uma viagem passa a qualificar (ou deixa de).
+async function ativarCarregamentoPorIndice(predicado, modo) {
+  desativarCarregamentoPorIndice();
+  _modoSelecaoAtual = modo;
+  modoMultiSemana = true;
+  mostrarStatus('saving', 'Carregando...');
+
+  const nomeTransportador = isTransportador() ? nomeTransportadorLogado() : undefined;
+  const indiceInicial = await window._fb.carregarIndiceViagens(nomeTransportador);
+  const idsConhecidos = new Set(Object.keys(indiceInicial));
+  Object.entries(indiceInicial).forEach(([id, entrada]) => {
+    if (entrada && predicado(entrada)) _abrirViagemIndividual(id, entrada.semana);
+  });
+
+  sincronizarStatusHerrlog();
+  mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) carregada(s)`);
+  updatePipeline(viagensAtivo());
+  renderizarAbaAtual();
+
+  _unsubIndiceViagens = window._fb.ouvirIndiceViagens(nomeTransportador, {
+    onAdded: (id, entrada) => {
+      if (idsConhecidos.delete(id)) return; // reentrega da carga inicial, já tratada acima
+      if (entrada && predicado(entrada)) _abrirViagemIndividual(id, entrada.semana);
+    },
+    onChanged: (id, entrada) => {
+      const qualifica = !!entrada && predicado(entrada);
+      const jaAberta = _unsubsViagensIndividuais.has(id);
+      if (qualifica && !jaAberta) _abrirViagemIndividual(id, entrada.semana);
+      else if (!qualifica && jaAberta) _fecharViagemIndividual(id);
+      // Se qualifica e já está aberta, o listener individual já recebe a mudança sozinho.
+    },
+    onRemoved: (id) => _fecharViagemIndividual(id),
   });
 }
 
-// Padrão ao logar/recarregar: só as semanas com viagem ativa ou finalizada recentemente
-// (ver calcularSemanasAtivas) — não mais "Todos" (ver ativarMultiSemana abaixo, que
-// continua existindo como opção explícita do usuário no Menu de Seleção).
+// Padrão ao logar/recarregar: viagens não finalizadas + finalizadas há até 15 dias.
 async function ativarSelecaoPadrao() {
-  modoMultiSemana = true;
-  await atualizarOpcoesMsSemanas();
-  const indice = await window._fb.carregarIndiceViagens(isTransportador() ? nomeTransportadorLogado() : undefined);
-  const semanasAtivas = calcularSemanasAtivas(indice);
-  msSemanas.allMode = false;
-  msSemanas.selected = new Set([...semanasAtivas].map(formatarKeyParaLabel));
-  msSemanas._renderPanel();
-  msSemanas._renderLabel();
-  await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+  document.getElementById('seletorModoLabel').textContent = 'Padrão';
+  await ativarCarregamentoPorIndice(predicadoAtivas, { tipo: 'ativas' });
 }
 
-// "Todos" — opção explícita do Menu de Seleção pra auditorias no histórico completo.
-// Sempre ativo (uma vez que existam semanas) — quem quiser uma semana específica
-// desmarca as demais no multi-select.
-async function ativarMultiSemana() {
-  modoMultiSemana = true;
-  await atualizarOpcoesMsSemanas();
-  msSemanas.allMode = true;
-  msSemanas.selected = new Set(_semanaLabelParaKey.keys());
-  msSemanas._renderPanel();
-  msSemanas._renderLabel();
-  await carregarViagensMultiSemana(selecaoAtualMsSemanas());
+// Período personalizado do Menu de Seleção — usa a data REAL da viagem (dtCarreg/
+// dtCarregProg), não a semana em que ela foi criada.
+async function ativarPeriodoPersonalizado(inicioISO, fimISO) {
+  document.getElementById('seletorModoLabel').textContent = `${formatarIsoParaBR(inicioISO)} a ${formatarIsoParaBR(fimISO)}`;
+  await ativarCarregamentoPorIndice(predicadoPeriodo(inicioISO, fimISO), { tipo: 'periodo', inicioISO, fimISO });
+}
+
+function formatarIsoParaBR(iso) {
+  const [yyyy, mm, dd] = iso.split('-');
+  return `${dd}/${mm}`;
 }
 
 // Abre/fecha o painel do Menu de Seleção (botão 🗓️ no header — ver
-// painelMenuSelecao/btnMenuSelecao no HTML). Atualiza a lista de semanas ao abrir
-// (mesmo motivo do onOpen do MultiSelect) pra um período personalizado enxergar uma
-// semana criada há pouco.
-async function toggleMenuSelecaoPeriodo(event) {
+// painelMenuSelecao/btnMenuSelecao no HTML).
+function toggleMenuSelecaoPeriodo(event) {
   event?.stopPropagation();
   const painel = document.getElementById('painelMenuSelecao');
   const abrir = painel.style.display !== 'block';
   if (abrir) {
-    await atualizarOpcoesMsSemanas();
-    document.querySelectorAll('.ms-panel').forEach(p => p.style.display = 'none');
     const rect = document.getElementById('btnMenuSelecao').getBoundingClientRect();
     painel.style.top = (rect.bottom + 4) + 'px';
     painel.style.left = rect.left + 'px';
@@ -13995,9 +14152,32 @@ async function toggleMenuSelecaoPeriodo(event) {
   painel.style.display = abrir ? 'block' : 'none';
 }
 
-// Período personalizado do Menu de Seleção (campos Início/Fim) — resolve pra todas as
-// semanas cujo intervalo se sobrepõe ao período pedido (ver semanasNoIntervalo) e
-// carrega do mesmo jeito que uma seleção manual no multi-select.
+// Calendário nativo do navegador pros campos Início/Fim do período personalizado — mesmo
+// padrão já usado nos filtros de data da aba Exportar (ver abrirCalendarioData/
+// aplicarDataCalendario), só que com ano (DD/MM/AAAA completo, não DD/MM): o período pode
+// cobrir qualquer intervalo, inclusive atravessando anos diferentes.
+function abrirCalendarioPeriodo(idTexto, idPicker) {
+  const picker = document.getElementById(idPicker);
+  const texto = document.getElementById(idTexto);
+  if (!picker) return;
+  const partes = (texto?.value || '').split('/');
+  if (partes.length === 3) {
+    const [dd, mm, yyyy] = partes;
+    picker.value = `${yyyy}-${mm}-${dd}`;
+  }
+  if (typeof picker.showPicker === 'function') picker.showPicker();
+  else { picker.focus(); picker.click(); }
+}
+
+function aplicarCalendarioPeriodo(idTexto, idPicker) {
+  const picker = document.getElementById(idPicker);
+  const texto = document.getElementById(idTexto);
+  if (!picker || !texto || !picker.value) return;
+  const [yyyy, mm, dd] = picker.value.split('-');
+  texto.value = `${dd}/${mm}/${yyyy}`;
+}
+
+// Período personalizado do Menu de Seleção (campos Início/Fim).
 function aplicarPeriodoPersonalizadoMenuSelecao() {
   const ini = document.getElementById('menuSelecaoIni').value.trim();
   const fim = document.getElementById('menuSelecaoFim').value.trim();
@@ -14011,216 +14191,17 @@ function aplicarPeriodoPersonalizadoMenuSelecao() {
   const inicioISO = toISO(ini), fimISO = toISO(fim);
   if (fimISO < inicioISO) return mostrarErro('A data de fim não pode ser anterior à data de início.');
 
-  const keys = semanasNoIntervalo(inicioISO, fimISO);
-  if (!keys.length) return mostrarErro('Nenhuma semana cadastrada nesse período.');
-
-  modoMultiSemana = true;
-  msSemanas.allMode = false;
-  msSemanas.selected = new Set(keys.map(formatarKeyParaLabel));
-  msSemanas._renderPanel();
-  msSemanas._renderLabel();
-  carregarViagensMultiSemana(keys);
+  erroEl.style.display = 'none';
+  ativarPeriodoPersonalizado(inicioISO, fimISO);
   toggleMenuSelecaoPeriodo();
 }
 
-// Busca a lista de semanas na hora (não só na ativação) — chamada também a cada abertura
-// do painel (ver onOpen no construtor do MultiSelect), para que uma semana criada depois
-// já apareça pra seleção sem precisar reabrir o painel manualmente.
-async function atualizarOpcoesMsSemanas() {
-  const semanas = await window._fb.listarSemanas();
-  _semanaLabelParaKey = new Map(semanas.map(key => [formatarKeyParaLabel(key), key]));
-  msSemanas.setOptions([..._semanaLabelParaKey.keys()]);
-}
-
-function selecaoAtualMsSemanas() {
-  return (msSemanas?.getSelected() || []).map(label => _semanaLabelParaKey.get(label)).filter(Boolean);
-}
-
-// keys = seleção desejada inteira (todas as semanas marcadas no multi-select), não só a
-// que mudou — por isso a função calcula o diff contra o que já está carregado/assinado
-// (_unsubsMultiSemana) em vez de recarregar tudo: reler+reassinar uma semana que já estava
-// selecionada e não mudou é banda jogada fora (era isso que estourava a cota — qualquer
-// clique no filtro de semanas, com "Todos" marcado por padrão, baixava a seleção inteira de
-// novo, listener incluído, mesmo pras semanas que já estavam ali antes do clique).
-// force=true (usado só pelo botão 🔄/atualizarMultiSemana) ignora o diff de propósito —
-// é o escape hatch explícito pra forçar uma releitura completa mesmo sem mudança de seleção.
-async function carregarViagensMultiSemana(keys, force = false) {
-  if (!keys.length) {
-    desativarListenersMultiSemana();
-    viagensMultiSemana = [];
-    _cadenciasCountPorSemana = new Map();
-    cadenciasMultiSemanaCount = 0;
-    updatePipeline(viagensAtivo());
-    renderizarAbaAtual();
-    return;
+// Botão 🔄 do header — refaz do zero o modo atualmente em vigor (padrão ou período).
+function atualizarCarregamentoAtual() {
+  if (_modoSelecaoAtual.tipo === 'periodo') {
+    return ativarPeriodoPersonalizado(_modoSelecaoAtual.inicioISO, _modoSelecaoAtual.fimISO);
   }
-
-  const keysNovasSet = new Set(keys);
-  const removidas = force ? [..._unsubsMultiSemana.keys()] : [..._unsubsMultiSemana.keys()].filter(k => !keysNovasSet.has(k));
-  const adicionadas = force ? keys : keys.filter(k => !_unsubsMultiSemana.has(k));
-
-  if (!removidas.length && !adicionadas.length) {
-    // Seleção idêntica à já carregada (ex.: reabrir o painel sem mudar nada) — nada pra
-    // buscar nem assinar de novo.
-    updatePipeline(viagensAtivo());
-    renderizarAbaAtual();
-    return;
-  }
-
-  removidas.forEach(key => {
-    _unsubsMultiSemana.get(key)?.();
-    _unsubsMultiSemana.delete(key);
-    _cadenciasCountPorSemana.delete(key);
-  });
-  if (removidas.length) {
-    const removidasSet = new Set(removidas);
-    viagensMultiSemana = viagensMultiSemana.filter(v => !removidasSet.has(v._semanaOrigem));
-  }
-
-  if (!adicionadas.length) {
-    cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
-    mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
-    updatePipeline(viagensAtivo());
-    renderizarAbaAtual();
-    return;
-  }
-
-  mostrarStatus('saving', 'Carregando semanas selecionadas...');
-  const transportador = isTransportador();
-  try {
-    // Transportador não lê o node `sessoes/<semana>` inteiro (sem permissão — ver regras
-    // do Firebase): busca só a própria fatia de viagens via query indexada, sem cadencias.
-    // Só busca as semanas de `adicionadas` — as que já estavam selecionadas ficam com os
-    // dados que já tinham (mantidos em tempo real pelo listener delas, nunca derrubado).
-    const payloads = await Promise.all(adicionadas.map(key => transportador
-      ? window._fb.carregarViagensTransportador(key, nomeTransportadorLogado()).then(viagensObj => ({ viagens: viagensObj }))
-      : window._fb.carregar(key)));
-    adicionadas.forEach((key, i) => {
-      const payload = payloads[i];
-      // O Firebase RTDB devolve `viagens` como objeto (chaveado por idViagem) sempre que
-      // há gaps nos índices — não dá pra assumir array como em outros pontos do código,
-      // por isso normalizarViagensArray() (mesma função usada em aplicarPayload()).
-      normalizarViagensArray(payload?.viagens).forEach(v => {
-        viagensMultiSemana.push({ ...v, _semanaOrigem: key, _semanaLabel: formatarKeyParaLabel(key) });
-      });
-      _cadenciasCountPorSemana.set(key, (payload?.cadencias || []).length);
-    });
-    cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
-    mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) de ${keys.length} semana(s)`);
-    configurarListenersMultiSemana(adicionadas);
-  } catch (e) {
-    console.error('Erro ao carregar viagens multi-semana:', e);
-    mostrarStatus('saving', 'Erro ao carregar semanas selecionadas');
-  }
-  // As viagens acabaram de vir direto do Firebase (com o status gravado da última vez
-  // que sincronizarStatusHerrlog rodou) — sem reaplicar aqui, uma correção pendente
-  // (ex.: Em Andamento ⇄ Viagem Finalizada) só apareceria na tela quando a Herrlog
-  // empurrasse uma atualização nova pro node monitoramentoHerrlog, e não já neste load.
-  sincronizarStatusHerrlog();
-  // updatePipeline aqui garante os totais (Cadências/Viagens) mesmo em abas que não
-  // chamam updatePipeline sozinhas (ex.: Transportadores/Bases/Fornecedores); renderizarAbaAtual
-  // roda depois e, nas abas que filtram (Gerir Viagens/Exportar/Monitoramento), refina
-  // os contadores de status com a lista já filtrada.
-  updatePipeline(viagensAtivo());
-  renderizarAbaAtual();
-}
-
-// Um listener em tempo real por semana selecionada — cada um mexe só na fatia de
-// viagensMultiSemana daquela semana (nunca nas demais). Granular por registro (mesmo
-// motivo/mecanismo de configurarListenerSemana, ver comentário lá).
-// `keys` aqui é só o diff (semanas recém-adicionadas à seleção — ver carregarViagensMultiSemana),
-// não a seleção inteira: as semanas que já estavam selecionadas mantêm o listener que já
-// tinham, sem ser derrubado e reassinado à toa. Reassinar sem necessidade era a maior fonte
-// de consumo da cota de download (qualquer clique no filtro de semanas, com "Todos" marcado
-// por padrão, derrubava e recriava o listener full-node de cada semana selecionada — não só
-// da que mudou — pra CADA admin conectado).
-function configurarListenersMultiSemana(keys) {
-  const transportador = isTransportador();
-  keys.forEach(key => {
-    const label = formatarKeyParaLabel(key);
-    // Mesmo motivo do idsConhecidos em configurarListenerSemana: onChildAdded reentrega
-    // o estado já conhecido (carregado por carregarViagensMultiSemana pouco antes) ao
-    // assinar — sem isso, essa reentrega apareceria como "outro usuário mudou algo".
-    const idsConhecidos = new Set(
-      viagensMultiSemana.filter(v => v._semanaOrigem === key).map(v => v.idViagem)
-    );
-
-    let refreshTimer = null;
-    let precisaToast = false;
-    let idsParaSincronizar = new Set();
-    function agendarRefresh(mostrarToast, idAlterado) {
-      if (mostrarToast) precisaToast = true;
-      if (idAlterado) idsParaSincronizar.add(idAlterado);
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => {
-        // Índices de viagensMultiSemana podem ter mudado com o merge — fechar o modal
-        // evita salvar por cima da viagem errada (mesma cautela da semana única).
-        if (editingIdx !== null) closeModal();
-        // Só verifica as viagens que de fato mudaram nesta rajada, não viagensAtivo()
-        // inteiro — sincronizarStatusHerrlog() já roda sozinho a cada ciclo do
-        // monitoramentoHerrlog (ver configurarListenerMonitoramentoHerrlog); aqui é só
-        // rede de segurança contra uma edição concorrente sobrescrever por acidente o
-        // status de UMA viagem específica.
-        if (idsParaSincronizar.size) sincronizarStatusHerrlog([...idsParaSincronizar]);
-        idsParaSincronizar = new Set();
-        updatePipeline(viagensAtivo());
-        renderizarAbaAtual();
-        if (precisaToast) mostrarStatus('saved', '🔄 Atualizado por outro usuário');
-        precisaToast = false;
-      }, 200);
-    }
-
-    const aplicarLocal = (id, dados) => {
-      const idx = viagensMultiSemana.findIndex(v => v.idViagem === id && v._semanaOrigem === key);
-      const registro = { ...dados, _semanaOrigem: key, _semanaLabel: label };
-      if (idx >= 0) viagensMultiSemana[idx] = registro; else viagensMultiSemana.push(registro);
-    };
-    const removerLocal = (id) => {
-      const idx = viagensMultiSemana.findIndex(v => v.idViagem === id && v._semanaOrigem === key);
-      if (idx >= 0) viagensMultiSemana.splice(idx, 1);
-    };
-    const handlers = {
-      onAdded: (id, dados) => {
-        const conhecida = idsConhecidos.has(id);
-        idsConhecidos.delete(id);
-        aplicarLocal(id, dados);
-        agendarRefresh(!conhecida, id);
-      },
-      onChanged: (id, dados) => { aplicarLocal(id, dados); agendarRefresh(true, id); },
-      onRemoved: (id) => { removerLocal(id); agendarRefresh(true); },
-    };
-
-    const unsubViagens = transportador
-      ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), handlers)
-      : window._fb.ouvirViagens(key, handlers);
-
-    // Transportador não lê cadencias (sem permissão — ver regras do Firebase); pra ele o
-    // contador fica no valor inicial (0) já setado por carregarViagensMultiSemana.
-    let unsubCad = () => {};
-    if (!transportador) {
-      let primeiraCad = true;
-      unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
-        _cadenciasCountPorSemana.set(key, novasCadencias.length);
-        cadenciasMultiSemanaCount = [..._cadenciasCountPorSemana.values()].reduce((a, b) => a + b, 0);
-        if (primeiraCad) { primeiraCad = false; return; }
-        agendarRefresh(true);
-      });
-    }
-
-    _unsubsMultiSemana.set(key, () => { unsubViagens(); unsubCad(); });
-  });
-}
-
-function desativarListenersMultiSemana() {
-  _unsubsMultiSemana.forEach(unsub => unsub());
-  _unsubsMultiSemana.clear();
-}
-
-function atualizarMultiSemana() {
-  // force=true: este é o botão 🔄 — o escape hatch explícito pra releitura completa mesmo
-  // sem mudança de seleção (ver carregarViagensMultiSemana). Cliques no multi-select em si
-  // não passam por aqui e continuam incrementais.
-  carregarViagensMultiSemana(selecaoAtualMsSemanas(), true);
+  return ativarSelecaoPadrao();
 }
 
 // Aplica a visão multi-semana à aba que estiver aberta no momento (Gerir Viagens,
@@ -14490,15 +14471,12 @@ function confirmarNovaSemana() {
   salvarSessao(true);
   window._fb.marcarSemanaDisponivel(key);
   setTimeout(() => {
-    carregarListaSemanas().then(async () => {
+    // Semana recém-criada não tem nenhuma viagem ainda — nada a carregar em Gerir Viagens/
+    // afins até que cadências sejam geradas nela (o que já atualiza viagensIndice ao vivo,
+    // ver ativarCarregamentoPorIndice).
+    carregarListaSemanas().then(() => {
       document.getElementById('semanaSelect').value = key;
       configurarListenerSemana(key);
-      // Modo multi-semana continua sempre ligado — só precisa puxar a lista de novo pra
-      // semana recém-criada entrar na seleção "Todos" já combinada em Gerir Viagens/afins.
-      if (modoMultiSemana) {
-        await atualizarOpcoesMsSemanas();
-        await carregarViagensMultiSemana(selecaoAtualMsSemanas());
-      }
     });
   }, 600);
   document.getElementById('novaSemanaOverlay')?.remove();
@@ -14545,13 +14523,12 @@ await carregarUsuariosFirebase();
   if (viagens.length > 0) switchTab(1);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
   configurarListenerSemana(semanaAtiva);
-  // Padrão: abre já com as semanas "ativas" combinadas (não finalizadas + finalizadas
-  // nos últimos 15 dias — ver calcularSemanasAtivas/ativarSelecaoPadrao), não mais
-  // "Todos" — quem quiser o histórico completo ou um período específico usa o Menu de
-  // Seleção. A aba Importar Cadência continua usando o seletor único (semanaAtiva)
-  // normalmente. Transportador participa também: carregarViagensMultiSemana/
-  // configurarListenersMultiSemana já usam a query restrita
-  // (carregarViagensTransportador/ouvirViagensTransportador) pra ele.
+  // Padrão: abre já com as viagens "ativas" (não finalizadas + finalizadas nos últimos 15
+  // dias — ver predicadoAtivas/ativarCarregamentoPorIndice), calculado por VIAGEM, não por
+  // semana — quem quiser um período específico usa o Menu de Seleção. A aba Importar
+  // Cadência continua usando o seletor único (semanaAtiva) normalmente. Transportador
+  // participa também: carregarIndiceViagens/ouvirIndiceViagens/ouvirViagemIndividual já
+  // usam a query restrita por transportador.
   await ativarSelecaoPadrao();
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
@@ -15805,7 +15782,6 @@ window.addEventListener('DOMContentLoaded', () => {
   msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable, null, true);
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable, null, true);
   msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport, null, true);
-  msSemanas = new MultiSelect('ms-semanas', 'Semanas', () => carregarViagensMultiSemana(selecaoAtualMsSemanas()), atualizarOpcoesMsSemanas, true);
   document.addEventListener('click', e => {
     const painel = document.getElementById('painelMenuSelecao');
     const btn = document.getElementById('btnMenuSelecao');
