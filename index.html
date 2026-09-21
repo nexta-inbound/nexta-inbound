@@ -8959,7 +8959,41 @@ function gerarIdVeiculoDedicado() {
 // sessão) — usados para montar a faixa de utilização por veículo, independente do
 // calendário real. Em modo multi-semana, combina os dias de todas as semanas marcadas
 // (deduplicados e ordenados) em vez de só a semana ativa.
+//
+// Período personalizado (Menu de Seleção) é um caso especial: usa direto o intervalo
+// [inicioISO,fimISO] escolhido pelo usuário, em vez da chave "sessoes/<semana>" de cada
+// viagem carregada. A chave de uma sessão pode ter um período bem maior que uma semana de
+// calendário (ver "Nova Semana de Cadência": "pode ser segunda a sexta, segunda a domingo,
+// etc." — nada impede um período de vários meses), então uma única viagem cuja data real
+// caia dentro do período pedido, mas que esteja gravada numa sessão bem mais longa, fazia o
+// calendário da aba Veículos Dedicados vazar pra fora do período filtrado no topo (ex.:
+// filtrar 01/09 a 18/09 mas a grade mostrar semanas de outubro/novembro) — a data filtrada
+// no topo não "refletia" na aba.
+//
+// Modo Padrão (ativas): pelo mesmo motivo (sessões de origem com período arbitrário), a
+// união das sessões das viagens carregadas produzia um range diferente por veículo (cada um
+// tendia a aparecer só nos dias das sessões onde tinha viagem) em vez de uma janela comum —
+// pedido do usuário (21/09): padronizar como os últimos 15 dias (hoje-14 até hoje), mesma
+// janela usada por predicadoAtivas/JANELA_FINALIZADAS_DIAS pra decidir o que é "ativa".
 function diasDaSemanaAtiva() {
+  if (modoMultiSemana && _modoSelecaoAtual.tipo === 'periodo') {
+    const { inicioISO, fimISO } = _modoSelecaoAtual;
+    const ini = new Date(inicioISO + 'T00:00:00');
+    const fim = new Date(fimISO + 'T00:00:00');
+    const dias = [];
+    if (!isNaN(ini.getTime()) && !isNaN(fim.getTime())) {
+      for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) dias.push(new Date(d));
+    }
+    return dias;
+  }
+  if (modoMultiSemana && _modoSelecaoAtual.tipo === 'ativas') {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const dias = [];
+    for (let i = JANELA_FINALIZADAS_DIAS - 1; i >= 0; i--) {
+      const d = new Date(hoje); d.setDate(d.getDate() - i); dias.push(d);
+    }
+    return dias;
+  }
   const keys = modoMultiSemana ? _semanasCarregadas() : (semanaAtiva ? [semanaAtiva] : []);
   const diasMap = new Map();
   keys.forEach(key => {
