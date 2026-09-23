@@ -4434,7 +4434,7 @@
 </div>
 
 <!-- MODAL: Motivo do Ajuste de Programação -->
-<div class="modal-overlay" id="modalMotivoProgramacao">
+<div class="modal-overlay" id="modalMotivoProgramacao" style="z-index:10000">
   <div class="modal" style="width:400px;max-width:94vw">
     <div class="modal-title">Motivo do Ajuste de Data</div>
     <div class="modal-sub">Por que a data de programação está sendo alterada? Fica registrado no histórico da viagem.</div>
@@ -4482,6 +4482,48 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="responderConfirmacaoAgendamento(false)">Cancelar</button>
       <button class="btn btn-primary" onclick="responderConfirmacaoAgendamento(true)">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Confirmar Troca de Destino -->
+<div class="modal-overlay" id="modalConfirmarTrocaDestino">
+  <div class="modal" style="width:560px;max-width:94vw;padding:36px">
+    <div class="modal-title" style="font-size:26px;display:flex;align-items:center;gap:10px">⚠️ Alteração de Destino</div>
+    <div class="modal-sub" style="color:var(--text);font-size:16px;line-height:1.5;margin-top:14px">
+      Ao realizar a mudança você está ciente que deverá obrigatoriamente avisar o transportador e fazer a alteração no sistema de monitoramento (Herrlog).
+    </div>
+    <div class="modal-actions" style="margin-top:30px">
+      <button class="btn btn-secondary" style="font-size:15px;padding:12px 22px" onclick="responderConfirmacaoTrocaDestino(false)">Cancelar</button>
+      <button class="btn btn-primary" style="font-size:15px;padding:12px 22px" onclick="responderConfirmacaoTrocaDestino(true)">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar Data Desejada -->
+<div class="modal-overlay" id="modalDataDesejada">
+  <div class="modal" style="width:380px;max-width:94vw">
+    <div class="modal-title">Editar Data Desejada</div>
+    <div class="modal-sub" id="dd-viagem-label">—</div>
+    <div class="modal-row" style="grid-template-columns:1fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">↑ Carregamento</div>
+        <input type="date" class="config-input" id="dd-carreg">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">↓ Descarga</div>
+        <input type="date" class="config-input" id="dd-desc">
+      </div>
+    </div>
+    <div class="modal-field" id="dd-aplicar-prog-wrap" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-muted)">
+        <input type="checkbox" id="dd-aplicar-prog" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
+        Aplicar essas datas também na Data Programação (viagem já tem transportador/status além de Sem Programação)
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalDataDesejada()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarModalDataDesejada()">Salvar</button>
     </div>
   </div>
 </div>
@@ -4752,6 +4794,27 @@ function responderConfirmacaoAgendamento(confirmou) {
     _confirmacaoAgendamentoResolve = null;
     resolve(null);
   }
+}
+
+// ── CONFIRMAÇÃO DE TROCA DE DESTINO ──
+// Pedida ao trocar o Destino em Gerir Viagens (ver trocarDestinoInline) quando a viagem já
+// tem transportador alocado e/ou está em andamento — sem programação nenhuma ainda, a troca
+// é aplicada direto, sem esse aviso. Mesmo contrato de pedirMotivoCancelamento: resolve
+// true/false conforme o usuário confirme ou cancele.
+let _confirmacaoTrocaDestinoResolve = null;
+
+function pedirConfirmacaoTrocaDestino() {
+  return new Promise(resolve => {
+    _confirmacaoTrocaDestinoResolve = resolve;
+    document.getElementById('modalConfirmarTrocaDestino').classList.add('open');
+  });
+}
+
+function responderConfirmacaoTrocaDestino(confirmou) {
+  document.getElementById('modalConfirmarTrocaDestino').classList.remove('open');
+  const resolve = _confirmacaoTrocaDestinoResolve;
+  _confirmacaoTrocaDestinoResolve = null;
+  if (resolve) resolve(confirmou);
 }
 
 // ── HISTÓRICO DE OFERTAS POR VIAGEM ──
@@ -6955,14 +7018,20 @@ const PRODUTO_RETORNO_VAZIO = 'Retorno Vazio';
 // do primeiro uso (adicionar "RV" em PREFIXOS lá); sem isso a criação aborta com erro.
 const PREFIXO_VIAGEM_RETORNO_VAZIO = 'RV';
 
+// dtCarregOriginal/dtDescOriginal (se existirem) são a Data Desejada "congelada" no momento
+// do 1º ajuste manual (ver salvarDataDesejadaInline) — usada aqui em vez do dtCarreg/dtDesc
+// ao vivo para casar a viagem com o grupo de cadência certo mesmo depois de editada.
+// Sem isso, editar a Data Desejada faria a viagem "sumir" do casamento na próxima
+// reconciliação (⚡ Quebrar em Viagens) e, se ainda estiver em Backlog, ser removida
+// silenciosamente (ver reconciliarViagensComCadencias > resumo.removidas).
 function assinaturaGrupoViagem(v) {
   return [
     v.produto || '',
     v.origem || '',
     v.base || '',
     v.destino || '',
-    v.dtCarreg || '',
-    v.dtDesc || '',
+    v.dtCarregOriginal || v.dtCarreg || '',
+    v.dtDescOriginal   || v.dtDesc   || '',
     v.modal || 'FOB'
   ].join('||');
 }
@@ -7031,6 +7100,12 @@ function reconciliarViagensComCadencias(grupos, cap) {
           cadenciaOrigem: travado ? anterior.cadenciaOrigem : baseViagem.cadenciaOrigem,
           pedidoProvisorio: travado ? false : baseViagem.pedidoProvisorio,
           volume: anterior.volumeAjustadoManualmente ? anterior.volume : baseViagem.volume,
+          // Data Desejada ajustada manualmente (ver salvarDataDesejadaInline) não pode ser
+          // sobrescrita pelo valor "ao vivo" da cadência (baseViagem.dtCarreg/dtDesc) —
+          // dtCarregOriginal/dtDescOriginal só existem depois do 1º ajuste, então sua
+          // presença já serve como a flag "foi editada manualmente".
+          dtCarreg: anterior.dtCarregOriginal ? anterior.dtCarreg : baseViagem.dtCarreg,
+          dtDesc:   anterior.dtDescOriginal   ? anterior.dtDesc   : baseViagem.dtDesc,
           dtCarregProg: anterior.dtCarregProg || dtCarregProgPadrao,
           dtDescProg:   anterior.dtDescProg   || g.dtDesc,
           horaCarregProg: anterior.horaCarregProg || '12:00',
@@ -7711,12 +7786,11 @@ function renderViagensTable() {
           ${v.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjOrigem)}</span>` : ''}
         </td>
         <td class="cell-truncate" data-label="Destino" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
-          ${esc(v.destino)}${v.destinoBase ? `<span style="color:var(--text-muted)"> (${esc(v.destinoBase)})</span>` : ''}
-          ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}
+          ${renderSeletorDestino(v, realIdx)}
         </td>
-        <td class="cell-periodo col-data-desejada">
-          <div class="date-start">↑ ${fmtShort(v.dtCarreg)}</div>
-          <div class="date-end">↓ ${fmtShort(v.dtDesc)}</div>
+        <td class="cell-periodo col-data-desejada"${isTransportador() ? '' : ` style="cursor:pointer" onclick="abrirModalDataDesejada(${realIdx})" title="Clique para editar a Data Desejada"`}>
+          <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtShort(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtCarregOriginal)) + '">✎</span>' : ''}</div>
+          <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtShort(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtDescOriginal)) + '">✎</span>' : ''}</div>
         </td>
         <td class="cell-periodo col-data-programacao" data-label="Data Programação">
           <div style="display:flex;align-items:center;gap:4px">
@@ -11121,6 +11195,66 @@ function salvarCnpjTransportadorInline(realIdx, cnpj) {
   renderViagensTable();
 }
 
+// ── TROCA DE DESTINO (mesma CNPJ) ──
+// Algumas bases do MIS compartilham o mesmo CNPJ/endereço de entrega (ex.: RBZ e POTENCIAL
+// em Betim/MG, ver Cadastro de Bases) — trocar entre elas não muda pra onde o caminhão vai
+// fisicamente, só o depósito lançado no MIS. Por isso a troca só é oferecida entre bases do
+// MESMO cnpj da viagem (ver basesComMesmoCnpj); mudar de fato o destino/CNPJ continua sendo
+// feito pelo modal de edição da viagem (openModal), não por aqui.
+function basesComMesmoCnpj(v) {
+  const baseAtual = buscarBaseDaViagem(v);
+  const cnpj = soDigitos(v.cnpjDestino || baseAtual?.cnpj || '');
+  if (!cnpj) return [];
+  return bases.filter(b => b.cnpj && soDigitos(b.cnpj) === cnpj);
+}
+
+// Frete Retorno guarda o fornecedor de destino em v.destino (não uma base do cadastro, ver
+// buscarBaseDaViagem) — a troca não se aplica a essas viagens.
+function renderSeletorDestino(v, realIdx) {
+  const estatico = `${esc(v.destino)}${v.destinoBase ? `<span style="color:var(--text-muted)"> (${esc(v.destinoBase)})</span>` : ''}
+    ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}`;
+  if (isTransportador() || v.produto === PRODUTO_RETORNO_VAZIO || v.status === 'Viagem Finalizada') return estatico;
+  const opcoes = basesComMesmoCnpj(v);
+  if (opcoes.length < 2) return estatico; // nenhuma outra base com o mesmo CNPJ — nada a trocar
+
+  const optsHtml = opcoes.map(b =>
+    `<option value="${esc(b.nomeMis)}" ${b.nomeMis === v.destino ? 'selected' : ''}>${esc(b.nomeMis)}</option>`
+  ).join('');
+  return `
+    <select class="placa-input" style="width:100%;text-transform:none;font-family:var(--font-cond)"
+      onchange="trocarDestinoInline(${realIdx}, this.value)"
+      title="Bases com o mesmo CNPJ${v.cnpjDestino ? ' (' + esc(v.cnpjDestino) + ')' : ''} — trocar não altera o endereço de entrega">
+      ${optsHtml}
+    </select>
+    ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}`;
+}
+
+async function trocarDestinoInline(realIdx, novoNomeMis) {
+  const v = viagensAtivo()[realIdx];
+  if (!novoNomeMis || novoNomeMis === v.destino) return;
+  if (v.status === 'Viagem Finalizada') { alert('Viagem finalizada — o destino não pode mais ser alterado.'); renderViagensTable(); return; }
+
+  // Sem transportador alocado e fora de andamento: nada pra avisar ainda, troca direto.
+  const precisaAvisar = !!(v.transportador && v.transportador.trim()) || v.status === 'Em Andamento';
+  if (precisaAvisar) {
+    const confirmou = await pedirConfirmacaoTrocaDestino();
+    if (!confirmou) { renderViagensTable(); return; }
+  }
+
+  const anterior = v.destino;
+  const novaBase = bases.find(b => b.nomeMis === novoNomeMis);
+  v.destino = novoNomeMis;
+  if (novaBase?.cnpj) v.cnpjDestino = novaBase.cnpj;
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Destino ajustado: ${anterior} → ${novoNomeMis}`,
+  });
+  marcarEAgendar(v);
+  renderViagensTable();
+}
+
 function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
   const v = viagensAtivo()[realIdx];
@@ -11136,6 +11270,120 @@ function salvarPlacaInline(realIdx, value) {
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   updatePipeline();
   marcarEAgendar(v);
+  renderViagensTable();
+}
+
+// ── EDIÇÃO DA DATA DESEJADA (dtCarreg/dtDesc) ──
+// Data Desejada é o pedido original vindo da cadência/MIS — até aqui só reprocessada via
+// importação. Editada num popup só (carregamento + descarga juntos, ver abrirModalDataDesejada/
+// salvarModalDataDesejada) pra não pedir motivo duas vezes numa mesma alteração. Editar aqui
+// muda v.dtCarreg/v.dtDesc na hora (por isso a Data Programação, que já cai pra dtCarreg/dtDesc
+// quando ainda não tem valor próprio — ver progCarreg/progDesc em renderViagensTable —
+// acompanha o ajuste automaticamente, sem código extra). No 1º ajuste de cada campo, congela
+// o valor anterior em dtCarregOriginal/dtDescOriginal: é essa âncora (não o valor ao vivo) que
+// a reconciliação usa pra casar a viagem com a cadência de origem (ver assinaturaGrupoViagem)
+// — sem ela a viagem editada "sumiria" do casamento no próximo ⚡ Quebrar em Viagens.
+let _ddRealIdx = null;
+
+function abrirModalDataDesejada(realIdx) {
+  const v = viagensAtivo()[realIdx];
+  if (!v) return;
+  if (v.status === 'Viagem Finalizada') { alert('Viagem finalizada — a Data Desejada não pode mais ser alterada.'); return; }
+  _ddRealIdx = realIdx;
+  document.getElementById('dd-viagem-label').textContent = `Viagem ${v.idViagem} · ${v.origem || ''} → ${v.destino || ''}`;
+  document.getElementById('dd-carreg').value = dataDmyParaIso(v.dtCarreg);
+  document.getElementById('dd-desc').value = dataDmyParaIso(v.dtDesc);
+  // Backlog puro (ver viagemTemProgramacao) aplica direto sem perguntar (ver
+  // salvarModalDataDesejada) — só oferece a opção quando já tem algo em andamento que a
+  // Data Programação por acaso poderia atropelar.
+  const aplicarWrap = document.getElementById('dd-aplicar-prog-wrap');
+  aplicarWrap.style.display = viagemTemProgramacao(v) ? '' : 'none';
+  document.getElementById('dd-aplicar-prog').checked = false;
+  document.getElementById('modalDataDesejada').classList.add('open');
+}
+
+function fecharModalDataDesejada() {
+  fecharModal('modalDataDesejada', () => { _ddRealIdx = null; });
+}
+
+async function salvarModalDataDesejada() {
+  const realIdx = _ddRealIdx;
+  const v = realIdx !== null ? viagensAtivo()[realIdx] : null;
+  if (!v) { fecharModalDataDesejada(); return; }
+
+  const isoCarreg = document.getElementById('dd-carreg').value;
+  const isoDesc = document.getElementById('dd-desc').value;
+  if (!isoDesc) { alert('Informe a Data de Descarga.'); return; }
+
+  const novoCarreg = isoCarreg ? isoParaDMY(isoCarreg) : '-';
+  const novoDesc = isoParaDMY(isoDesc);
+  if (!anoPlausivel(novoCarreg) || !anoPlausivel(novoDesc)) {
+    alert('Ano da data parece incorreto — verifique se não é um erro de digitação.');
+    return;
+  }
+
+  const anteriorCarreg = v.dtCarreg || '-';
+  const anteriorDesc = v.dtDesc || '-';
+  if (novoCarreg === anteriorCarreg && novoDesc === anteriorDesc) { fecharModalDataDesejada(); return; }
+
+  const motivo = await pedirMotivoProgramacao();
+  if (!motivo) return; // mantém o modal de edição aberto pra ajustar ou cancelar
+
+  // dtCarregProg/dtDescProg já nascem preenchidos na criação da viagem (ver
+  // ajustarCarregamentoParaJanela em reconciliarViagensComCadencias), então o fallback
+  // dtCarregProg||dtCarreg quase nunca cai pro dtCarreg na prática — "ainda não tem
+  // Data Programação própria" de verdade é a viagem ainda estar em Backlog (nada
+  // ofertado/aceito/alocado), não o campo estar vazio. Reaproveita viagemTemProgramacao,
+  // já usado com esse exato sentido em reconciliarViagensComCadencias. Fora do Backlog,
+  // quem decide é o usuário via checkbox (dd-aplicar-prog, só visível nesse caso — ver
+  // abrirModalDataDesejada) pra não atropelar uma programação já combinada com o
+  // transportador sem avisar.
+  const semProgramacaoAinda = !viagemTemProgramacao(v);
+  const aplicarNaProgramacao = semProgramacaoAinda || document.getElementById('dd-aplicar-prog').checked;
+
+  if (novoCarreg !== anteriorCarreg) {
+    if (!v.dtCarregOriginal) v.dtCarregOriginal = anteriorCarreg; // congela só no 1º ajuste
+    v.dtCarreg = novoCarreg;
+  }
+  if (novoDesc !== anteriorDesc) {
+    if (!v.dtDescOriginal) v.dtDescOriginal = anteriorDesc;
+    v.dtDesc = novoDesc;
+  }
+
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  let leadtimeHoras = null;
+  if (aplicarNaProgramacao) {
+    // Mesmo padrão de uma viagem nova saindo da cadência (ver reconciliarViagensComCadencias
+    // > recalcularDescargaPorLeadtime): a Descarga da Programação é derivada do Carregamento
+    // + leadtime cadastrado da rota, não copiada direto da Data Desejada digitada — o valor
+    // digitado só vale como fallback pra rota ainda sem leadtime cadastrado.
+    v.dtCarregProg = novoCarreg;
+    v.dtDescProg = novoDesc;
+    leadtimeHoras = recalcularDescargaPorLeadtime(v);
+  }
+  const notaProgramacao = semProgramacaoAinda
+    ? ' (Data Programação acompanhou, viagem ainda sem alocação)'
+    : aplicarNaProgramacao
+      ? ' (aplicado também na Data Programação, a pedido do usuário)'
+      : ' (Data Programação mantida)';
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Data Desejada ajustada — Carregamento: ${anteriorCarreg === '-' ? '—' : anteriorCarreg} → ${novoCarreg === '-' ? '—' : novoCarreg} · Descarga: ${anteriorDesc} → ${novoDesc}${notaProgramacao}`,
+    motivo,
+  });
+  if (leadtimeHoras !== null) {
+    v.historicoProgramacao.push({
+      data: new Date().toISOString(),
+      usuario: _authUsuarioAtual?.nome || '',
+      evento: `Descarga da Programação recalculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${v.dtDescProg} ${v.horaDescProg}`,
+    });
+  }
+  if (['Aceito', 'Placa Enviada'].includes(v.status)) {
+    v.alertaProgramacao = true;
+  }
+  marcarEAgendar(v);
+  fecharModalDataDesejada();
   renderViagensTable();
 }
 
