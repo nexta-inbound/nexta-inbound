@@ -3835,7 +3835,9 @@
           <option value="Anidro">Anidro</option>
           <option value="Biodiesel B100">Biodiesel B100</option>
           <option value="Diesel A S10">Diesel A S10</option>
+          <option value="Diesel B S10">Diesel B S10</option>
           <option value="Diesel A S500">Diesel A S500</option>
+          <option value="Diesel B S500">Diesel B S500</option>
           <option value="Gasolina A">Gasolina A</option>
           <option value="Gasolina Premium A">Gasolina Premium A</option>
           <option value="Hidratado">Hidratado</option>
@@ -5660,8 +5662,10 @@ async function aplicarEmLote() {
     if (!motivoCancelamento) return;
   }
   const arr = viagensAtivo();
+  let bloqueadasPedagio = 0;
   selectedViagens.forEach(idx => {
     const v = arr[idx];
+    if (pedagioComprado(v)) { bloqueadasPedagio++; return; } // pula, sem interromper o resto do lote
     const statusAnterior = v.status;
     const agendamentoAnterior = v.statusAgendamento || 'Não Agendado';
     if (removerAlocacao) {
@@ -5702,6 +5706,9 @@ async function aplicarEmLote() {
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
+  if (bloqueadasPedagio > 0) {
+    alert(`${bloqueadasPedagio} viagem(ns) não foram alteradas por já terem o pedágio comprado — para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.`);
+  }
 }
 
 // ── ENVIO DE OFERTA POR E-MAIL ──
@@ -7764,6 +7771,7 @@ function renderViagensTable() {
     // (frete por conta do cliente/destino) a Nexta não controla o transporte até a
     // descarga, então libera o ajuste manual da data — mesmo padrão do carregamento.
     const descEditavel = v.status === 'CIF' && !isTransportador();
+    const pedagioTravado = pedagioComprado(v);
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -7771,13 +7779,13 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td class="cell-id-viagem">${v.idViagem}</td>
+        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ) e Datas continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
         <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
             onblur="salvarPedidoMisInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-            ${(isTransportador() || !v.pedidoProvisorio) ? 'disabled' : ''}>
+            ${(isTransportador() || !v.pedidoProvisorio || pedagioTravado) ? 'disabled' : ''}>
           ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
         </td>
         <td data-label="Produto">${prodTag(v.produto)}</td>
@@ -7819,7 +7827,7 @@ function renderViagensTable() {
             value="${v.volume}"
             onblur="salvarVolumeInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-            ${isTransportador() ? 'disabled' : ''}>
+            ${(isTransportador() || pedagioTravado) ? 'disabled' : ''}>
           ${renderBadgeAjusteSeta(v, realIdx)}
         </td>
         <td data-label="Status">${renderSeletorStatus(v, realIdx)}</td>
@@ -10972,8 +10980,11 @@ function renderChipDiaDsr() {
 
 // ── MODAL ──
 function openModal(idx) {
-  editingIdx = idx;
   const v = viagensAtivo()[idx];
+  // Com pedágio comprado, o modal ainda abre normal — é a única forma de ver
+  // histórico/log e os dados completos da viagem (motorista, obs, etc.); só o SALVAR fica
+  // bloqueado (ver salvarViagem), pra não impedir a consulta.
+  editingIdx = idx;
   document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
   const vinculoLabel = document.getElementById('modal-vinculo-label');
   const vinculoTexto = v.viagemOrigemId ? `↩ Retorno de ${v.viagemOrigemId}`
@@ -11074,6 +11085,7 @@ function aceitarOfertaTransportador(idx) {
   if (i === null || i === undefined) return;
   const v = viagensAtivo()[i];
   if (!v) return;
+  if (bloqueadoPorPedagio(v)) return;
   _aplicarAceiteViagem(v);
   if (editingIdx === i) closeModal();
   updatePipeline();
@@ -11084,9 +11096,10 @@ function aceitarOfertaTransportador(idx) {
 function recusarOfertaTransportador(idx) {
   const i = idx !== undefined ? idx : editingIdx;
   if (i === null || i === undefined) return;
-  if (!confirm('Recusar esta oferta? A viagem sairá de sua lista e voltará para o time interno reatribuir.')) return;
   const v = viagensAtivo()[i];
   if (!v) return;
+  if (bloqueadoPorPedagio(v)) return;
+  if (!confirm('Recusar esta oferta? A viagem sairá de sua lista e voltará para o time interno reatribuir.')) return;
   _aplicarRecusaViagem(v);
   if (editingIdx === i) closeModal();
   updatePipeline();
@@ -11132,6 +11145,7 @@ function recusarOfertasSelecionadasTransportador() {
 function salvarPedidoMisInline(realIdx, valorInput) {
   const v = viagensAtivo()[realIdx];
   if (!v.pedidoProvisorio) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const novo = valorInput.trim();
   const anterior = v.cadenciaOrigem || '';
   if (!novo) {
@@ -11154,6 +11168,7 @@ function salvarPedidoMisInline(realIdx, valorInput) {
 
 function renderSeletorCnpjTransportador(v, realIdx) {
   if (!['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Em Andamento', 'Viagem Finalizada'].includes(v.status)) return '';
+  if (pedagioComprado(v)) return '';
   const t = buscarTransportadorPorNome(v.transportador);
   const cnpjs = t?.cnpjs || [];
   if (cnpjs.length < 2) return ''; // 0 ou 1 CNPJ: nada a escolher (já selecionado automaticamente)
@@ -11182,6 +11197,7 @@ function alternarOpcoesCnpjSelect(select, mostrarRazao) {
 function salvarCnpjTransportadorInline(realIdx, cnpj) {
   const v = viagensAtivo()[realIdx];
   if (v.transportadorCnpj === cnpj) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const anterior = v.transportadorCnpj || '';
   v.transportadorCnpj = cnpj;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
@@ -11259,6 +11275,7 @@ function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
   const v = viagensAtivo()[realIdx];
   if (v.placa === placa) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   v.placa = placa;
   if (placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
@@ -11466,6 +11483,7 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
 
 function salvarVolumeInline(realIdx, valorInput) {
   const v = viagensAtivo()[realIdx];
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const anterior = v.volume;
   const valor = valorInput.trim().replace(',', '.');
   const novo = parseFloat(valor);
@@ -11619,7 +11637,7 @@ function renderSeletorStatus(v, realIdx) {
     .map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''} ${STATUS_SOMENTE_AUTOMATICO.includes(op) ? 'disabled' : ''}>${labelStatus(op)}</option>`)
     .join('');
   let html = `<select class="placa-input sel-status ${claseStatus(v.status)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
-      onchange="salvarStatusInline(${realIdx}, this.value)" ${transportador ? 'disabled' : ''}>
+      onchange="salvarStatusInline(${realIdx}, this.value)" ${(transportador || pedagioComprado(v)) ? 'disabled' : ''}>
       ${opcoes}
     </select>`;
   if (v.status === 'Frota Dedicada' && !transportador) {
@@ -11654,7 +11672,7 @@ function renderPlacaCelula(v, realIdx) {
   return `<input class="placa-input" style="width:100%;max-width:96px;font-size:11px" value="${esc(v.placa||'')}" placeholder="AAA0A000"
       onblur="salvarPlacaInline(${realIdx}, this.value)"
       onkeydown="if(event.key==='Enter')this.blur()"
-      ${transportador && !['Aceito','Placa Enviada'].includes(v.status) ? 'disabled' : ''}
+      ${(transportador && !['Aceito','Placa Enviada'].includes(v.status)) || pedagioComprado(v) ? 'disabled' : ''}
       maxlength="8">${badgePlacaConflitante(v)}`;
 }
 
@@ -11681,6 +11699,7 @@ function badgePlacaConflitante(v) {
 async function salvarStatusInline(realIdx, novoStatus) {
   const v = viagensAtivo()[realIdx];
   if (novoStatus === v.status) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   if (novoStatus === 'Frota Dedicada') {
     renderViagensTable(); // mantém o select no status anterior até a troca ser concluída no modal
     openModal(realIdx);
@@ -11710,6 +11729,7 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
   const v = viagensAtivo()[realIdx];
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   if (!vd) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   v.veiculoDedicadoId = veiculoId;
   v.transportador = vd.transportador || '';
   v.placa = vd.placaCavalo || '';
@@ -11822,7 +11842,7 @@ function renderSeletorAgendamento(v, realIdx) {
   const atual = v.statusAgendamento || 'Não Agendado';
   const opcoes = OPCOES_AGENDAMENTO.map(op => `<option value="${op}" ${op === atual ? 'selected' : ''}>${op}</option>`).join('');
   return `<select class="placa-input sel-agend ${claseAgendamento(atual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
-      onchange="salvarAgendamentoInline(${realIdx}, this.value)" ${isTransportador() ? 'disabled' : ''}>
+      onchange="salvarAgendamentoInline(${realIdx}, this.value)" ${(isTransportador() || pedagioComprado(v)) ? 'disabled' : ''}>
       ${opcoes}
     </select>`;
 }
@@ -11831,6 +11851,7 @@ async function salvarAgendamentoInline(realIdx, valor) {
   const v = viagensAtivo()[realIdx];
   const anterior = v.statusAgendamento || 'Não Agendado';
   if (valor === anterior) return;
+  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
 
   // Virar "Agendado" pede confirmação da data/hora de carregamento — é o momento em que
   // o agendamento junto ao fornecedor normalmente confirma (ou corrige) o horário
@@ -11886,6 +11907,7 @@ async function salvarAgendamentoInline(realIdx, valor) {
 async function salvarViagem() {
   if (editingIdx === null) return;
   const v = viagensAtivo()[editingIdx];
+  if (bloqueadoPorPedagio(v)) return; // modal abre normal pra consulta — só o salvar é travado
   const statusAnterior = v.status;
   const novoStatus = document.getElementById('m-status').value;
   const novoVeiculoId = document.getElementById('m-veiculo-dedicado').value;
@@ -13033,6 +13055,23 @@ function renderStatusCelulaMon(v, mon) {
       ${STATUS_MANUAL_CIF_OPCOES.map(op => `<option value="${esc(op)}" ${op === atual ? 'selected' : ''}>${esc(op)}</option>`).join('')}
     </select>
   `;
+}
+
+// ── TRAVA DE EDIÇÃO PÓS-COMPRA DO PEDÁGIO ──
+// Uma vez que o vale-pedágio Pamcard foi de fato COMPRADO, o valor/rota já está fechado
+// com a Pamcard — trocar transportador/placa/status (inclusive cancelar) depois disso
+// deixa a compra órfã/incorreta sem que ninguém do time perceba. Único jeito de destravar é
+// operacional (estornar na Pamcard + excluir o log em monitoramentoPamcard), não tem bypass
+// no app. Destino (mesmo CNPJ, ver trocarDestinoInline) e as duas Datas (Desejada/Programação)
+// ficam de fora da trava — são os únicos ajustes que não mexem com o que já foi comprado.
+function pedagioComprado(v) {
+  return monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio === 'COMPRADO';
+}
+
+function bloqueadoPorPedagio(v) {
+  if (!pedagioComprado(v)) return false;
+  alert('Não é possível alterar esta viagem considerando que o pedágio já foi comprado, para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.');
+  return true;
 }
 
 // Vale-pedágio Pamcard (aba Monitoramento) — status vem do node monitoramentoPamcard,
