@@ -1806,6 +1806,24 @@
       tx.onerror = () => reject(tx.error);
     })).catch(() => {}); // melhor esforço — se a gravação do cache falhar, a próxima carga so' faz mais rede
   }
+  function cacheRemover(nomeStore, chaves) {
+    if (!chaves.length) return Promise.resolve();
+    return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
+      const tx = bancoCache.transaction(nomeStore, 'readwrite');
+      const store = tx.objectStore(nomeStore);
+      chaves.forEach(chave => store.delete(chave));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    })).catch(() => {});
+  }
+  function cacheLimparStore(nomeStore) {
+    return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
+      const tx = bancoCache.transaction(nomeStore, 'readwrite');
+      tx.objectStore(nomeStore).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    })).catch(() => {});
+  }
   function cacheLimparTudo() {
     return abrirCacheDb().then(bancoCache => new Promise((resolve, reject) => {
       const tx = bancoCache.transaction(['indice', 'viagens'], 'readwrite');
@@ -1831,6 +1849,24 @@
     const anoAtual = new Date().getFullYear();
     if (ano < anoAtual - 1 || ano > anoAtual + 2) return null;
     return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+  }
+
+  // IDs (só as chaves) de sessoes/<semana>/viagens. Via REST `shallow=true` porque o SDK
+  // não tem leitura rasa e um get() normal baixaria a semana inteira (com histórico) só
+  // pra descobrir as chaves. Se o REST falhar (rede/token), cai no get() completo — mais
+  // caro, mas nunca deixa salvarComViagensUnicas sem saber o que vai ser removido.
+  async function listarIdsViagensDaSemana(semana) {
+    const caminho = 'sessoes/' + semana + '/viagens';
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const resp = await fetch(`${firebaseConfig.databaseURL}/${caminho}.json?shallow=true&auth=${encodeURIComponent(token)}`);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      return Object.keys((await resp.json()) || {});
+    } catch (err) {
+      console.warn('Leitura rasa de ' + caminho + ' falhou, usando get() completo:', err);
+      const snap = await get(ref(db, caminho));
+      return snap.exists() ? Object.keys(snap.val()) : [];
+    }
   }
 
   // Espelho leve de viagensIndice/<id> gravado junto com a viagem em cada write (mesma
@@ -2211,6 +2247,19 @@
       viagensComId.forEach(v => {
         updates['viagensIndice/' + v.idViagem] = entradaIndiceViagem(v, key, agora);
       });
+      // Viagens que existiam na semana e saíram da lista (reconciliação com cadência
+      // reimportada descarta Backlog sem programação e cria IDs novos) somem de
+      // 'sessoes/'+key com a sobrescrita acima — a entrada delas em viagensIndice tem que
+      // sair no MESMO request. Sem isso ficava órfã, e quem já tinha a viagem no cache
+      // local continuava vendo um "fantasma" que os demais não viam (caso NXT-004255).
+      const idsNovos = new Set(viagensComId.map(v => v.idViagem));
+      const idsRemovidos = (await listarIdsViagensDaSemana(key)).filter(id => !idsNovos.has(id));
+      // Só apaga se o índice ainda aponta pra esta semana — não derruba a entrada de uma
+      // viagem que por algum motivo esteja registrada em outra semana.
+      const semanasNoIndice = await Promise.all(idsRemovidos.map(id => get(ref(db, 'viagensIndice/' + id + '/semana')).then(s => s.val())));
+      idsRemovidos.forEach((id, i) => {
+        if (semanasNoIndice[i] === key || semanasNoIndice[i] === null) updates['viagensIndice/' + id] = null;
+      });
       await update(ref(db), updates);
       return sessaoSalva;
     },
@@ -2323,6 +2372,11 @@
     gravarIndice: (mapa) => cacheGravarTudo('indice', mapa),
     lerViagens: () => cacheLerTudo('viagens'),
     gravarViagens: (mapa) => cacheGravarTudo('viagens', mapa),
+    // Troca o índice local inteiro pelo que veio num sync completo (não mescla) — é o
+    // único jeito de o cache descobrir viagens apagadas enquanto o usuário estava offline.
+    substituirIndice: (mapa) => cacheLimparStore('indice').then(() => cacheGravarTudo('indice', mapa)),
+    removerIndice: (ids) => cacheRemover('indice', ids),
+    removerViagens: (ids) => cacheRemover('viagens', ids),
     limpar: cacheLimparTudo,
   };
 
@@ -3927,6 +3981,10 @@
 
     <div class="alert alert-warn" id="alertaPlacaDuplicadaBanner" style="display:none"></div>
 
+    <div class="alert alert-warn" id="alertaPedagioCompradoBanner" style="display:none">
+      🔒 Pedágio já comprado — só Motorista, CPF do Motorista e Observação podem ser alterados aqui.
+    </div>
+
     <div class="info-row">
       <div class="info-item">
         <div class="info-lbl">Produto</div>
@@ -4948,6 +5006,9 @@ async function fazerLogin() {
       transportadorNome: perfil?.transportadorNome || '',
     };
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessao));
+    // Zera o relógio de inatividade — sem isso uma marca antiga (de antes do logout)
+    // derrubaria a sessão recém-aberta no primeiro verificarInatividade.
+    registrarAtividade(true);
     aplicarSessaoUsuario(sessao);
     // Aguarda token ser propagado antes de acessar o banco
     await cred.user.getIdToken(true);
@@ -5009,6 +5070,7 @@ function fazerLogout() {
   // no mesmo navegador — ver ativarCarregamentoPorIndice/cache local.
   if (window._fb?.cache) window._fb.cache.limpar().catch(() => {});
   localStorage.removeItem(CACHE_CURSOR_KEY);
+  localStorage.removeItem(CACHE_ULTIMO_COMPLETO_KEY);
   _indiceCacheCompleto = {};
   _viagensCacheMemoria = {};
   _cacheInicialCarregado = false;
@@ -5020,9 +5082,87 @@ function fazerLogout() {
   document.getElementById('login-usuario').focus();
 }
 
+// ── LOGOUT POR INATIVIDADE ──
+// Usuários deixam a aba aberta indefinidamente (bloqueiam o PC e voltam já logados): sem
+// senha no retorno e rodando um index.html velho, que não recebe correção nenhuma até um
+// F5. Após INATIVIDADE_LIMITE_MS sem mouse/teclado/rolagem/toque, grava o que estiver
+// pendente, encerra a sessão e recarrega na tela de login (o reload já traz a versão
+// publicada mais recente). A última atividade fica em localStorage — compartilhada entre
+// abas, então mexer em qualquer aba do portal mantém todas vivas.
+// Diferente do ✕ (fazerLogout), NÃO limpa o cache local (IndexedDB): quase sempre é o
+// mesmo usuário voltando, e limpar faria cada retorno rebaixar todas as viagens (cota de
+// download do Firebase). Troca de usuário no mesmo navegador é tratada em
+// _cacheCarregarInicial (CACHE_DONO_KEY).
+const INATIVIDADE_LIMITE_MS = 2 * 60 * 60 * 1000;
+const ULTIMA_ATIVIDADE_KEY = 'nextaUltimaAtividade';
+const LOGOUT_INATIVIDADE_FLAG = 'nextaLogoutInatividade';
+let _ultimaAtividadeGravadaMs = 0;
+let _encerrandoPorInatividade = false;
+
+function registrarAtividade(forcar = false) {
+  const agora = Date.now();
+  // Throttle: mousemove dispara dezenas de vezes por segundo — gravar a cada 30s basta
+  // pra uma janela de 2h.
+  if (!forcar && agora - _ultimaAtividadeGravadaMs < 30 * 1000) return;
+  _ultimaAtividadeGravadaMs = agora;
+  try { localStorage.setItem(ULTIMA_ATIVIDADE_KEY, String(agora)); } catch (e) {}
+}
+
+function _inativoHaMuitoTempo() {
+  let salvo = NaN;
+  try { salvo = parseInt(localStorage.getItem(ULTIMA_ATIVIDADE_KEY), 10); } catch (e) {}
+  const ultima = Math.max(Number.isFinite(salvo) ? salvo : 0, _ultimaAtividadeGravadaMs);
+  return ultima > 0 && Date.now() - ultima > INATIVIDADE_LIMITE_MS;
+}
+
+async function verificarInatividade() {
+  if (!_authUsuarioAtual || _encerrandoPorInatividade || !_inativoHaMuitoTempo()) return;
+  _encerrandoPorInatividade = true;
+  // Melhor esforço: depois de 2h parado quase nunca há algo pendente (autosave roda 1,5s
+  // após cada edição), mas se houver, grava antes de sair.
+  try {
+    clearTimeout(autosaveMultiSemanaTimer);
+    await salvarAlteracoesMultiSemana();
+  } catch (e) {}
+  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  try { sessionStorage.setItem(LOGOUT_INATIVIDADE_FLAG, '1'); } catch (e) {}
+  try { if (window._fb?.logout) await window._fb.logout(); } catch (e) {}
+  location.reload();
+}
+
+function iniciarMonitorInatividade() {
+  ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(evt =>
+    document.addEventListener(evt, () => registrarAtividade(), { capture: true, passive: true }));
+  // Desbloquear o PC / voltar pra aba: checa ANTES de contar a volta como atividade.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') verificarInatividade();
+  });
+  setInterval(verificarInatividade, 60 * 1000);
+}
+
 function restaurarSessaoUsuario() {
+  if (sessionStorage.getItem(LOGOUT_INATIVIDADE_FLAG)) {
+    sessionStorage.removeItem(LOGOUT_INATIVIDADE_FLAG);
+    const erroEl = document.getElementById('login-erro');
+    erroEl.textContent = 'Sessão encerrada após 2h sem uso. Entre novamente.';
+    erroEl.classList.add('visible');
+  }
   const sessao = sessionStorage.getItem(AUTH_STORAGE_KEY);
   if (!sessao) return;
+  // Aba recarregada (F5, PC reiniciado com restauração de abas) depois de 2h parada: não
+  // restaura a sessão — mesmo efeito de verificarInatividade, sem precisar de outro reload.
+  if (_inativoHaMuitoTempo()) {
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    const erroEl = document.getElementById('login-erro');
+    erroEl.textContent = 'Sessão encerrada após 2h sem uso. Entre novamente.';
+    erroEl.classList.add('visible');
+    const sairFirebase = (tentativas = 0) => {
+      if (window._fb?.logout) window._fb.logout().catch(() => {});
+      else if (tentativas < 20) setTimeout(() => sairFirebase(tentativas + 1), 200);
+    };
+    sairFirebase();
+    return;
+  }
   try {
     const usuario = JSON.parse(sessao);
     aplicarSessaoUsuario(usuario);
@@ -7215,6 +7355,22 @@ async function gerarViagens() {
     if (!semanaAtiva) throw new Error('Crie ou selecione uma semana antes de gerar viagens.');
     if (!window._fb?.salvarComViagensUnicas) throw new Error('Firebase indisponível para gerar IDs únicos.');
     const conciliacao = reconciliarViagensComCadencias(grupos, cap);
+    const { removidas, criadas } = conciliacao.resumo;
+    // Reimportar uma cadência com produto/origem/base/destino/datas diferentes faz as
+    // viagens em Backlog sem programação daquele grupo serem descartadas e recriadas com
+    // IDs novos (ver assinaturaGrupoViagem) — deixa isso visível antes de gravar.
+    if (removidas > 0 && !confirm(
+      `${removidas} viagem(ns) em Backlog sem programação não batem mais com a cadência e serão REMOVIDAS ` +
+      `(${criadas} nova(s) será(ão) criada(s) com IDs novos).
+
+` +
+      `Isso acontece quando produto, origem, base, destino ou datas mudaram na planilha.
+
+Continuar?`
+    )) {
+      mostrarStatus('saved', 'Geração de viagens cancelada');
+      return;
+    }
 
     mostrarStatus('saving', 'Gravando viagens com IDs únicos...');
     const payload = {
@@ -7779,7 +7935,7 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ) e Datas continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
+        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
         <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
@@ -10982,8 +11138,9 @@ function renderChipDiaDsr() {
 function openModal(idx) {
   const v = viagensAtivo()[idx];
   // Com pedágio comprado, o modal ainda abre normal — é a única forma de ver
-  // histórico/log e os dados completos da viagem (motorista, obs, etc.); só o SALVAR fica
-  // bloqueado (ver salvarViagem), pra não impedir a consulta.
+  // histórico/log e os dados completos da viagem; os campos que mexem com a compra ficam
+  // desabilitados e o salvar grava só Motorista/CPF/Observação (ver
+  // ajustarModalParaTipoUsuario/salvarViagemCamposLiberadosPedagio).
   editingIdx = idx;
   document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
   const vinculoLabel = document.getElementById('modal-vinculo-label');
@@ -11048,6 +11205,24 @@ function ajustarModalParaTipoUsuario(v) {
   document.getElementById('btnAceitarOferta').style.display = podeAceitar ? '' : 'none';
   document.getElementById('btnRecusarOferta').style.display = podeRecusar ? '' : 'none';
   document.getElementById('btnSalvarViagem').style.display = (transportador && !podeEditarPlaca) ? 'none' : '';
+
+  // Pedágio comprado: tudo que mexe com o que foi comprado na Pamcard fica travado (ver
+  // pedagioComprado). Motorista/CPF/Observação continuam liberados — não entram na compra
+  // (bot_pamcard.py usa placa/rota/transportador) — e são os únicos que salvarViagem grava
+  // nesse caso. Mantém a regra de janela do transportador acima (podeEditarPlaca).
+  const travadoPedagio = pedagioComprado(v);
+  document.getElementById('alertaPedagioCompradoBanner').style.display = travadoPedagio ? '' : 'none';
+  if (travadoPedagio) {
+    ['m-transportador', 'm-transportador-cnpj', 'm-status', 'm-veiculo-dedicado', 'm-programador',
+     'm-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-ajuste-seta']
+      .forEach(id => { document.getElementById(id).disabled = true; });
+    document.getElementById('m-diaDsr').classList.add('chip-group-disabled');
+  } else {
+    // Selects abaixo não são tocados pela regra de transportador — reabilita ao abrir
+    // outra viagem sem pedágio comprado (o modal é reaproveitado entre viagens).
+    ['m-transportador-cnpj', 'm-veiculo-dedicado', 'm-programador']
+      .forEach(id => { document.getElementById(id).disabled = false; });
+  }
 }
 
 function closeModal() {
@@ -11907,7 +12082,9 @@ async function salvarAgendamentoInline(realIdx, valor) {
 async function salvarViagem() {
   if (editingIdx === null) return;
   const v = viagensAtivo()[editingIdx];
-  if (bloqueadoPorPedagio(v)) return; // modal abre normal pra consulta — só o salvar é travado
+  // Pedágio comprado: grava só os campos liberados (ver ajustarModalParaTipoUsuario) e
+  // ignora o resto do formulário, mesmo que algo tenha sido alterado por fora da trava.
+  if (pedagioComprado(v)) return salvarViagemCamposLiberadosPedagio(v);
   const statusAnterior = v.status;
   const novoStatus = document.getElementById('m-status').value;
   const novoVeiculoId = document.getElementById('m-veiculo-dedicado').value;
@@ -12038,6 +12215,32 @@ async function salvarViagem() {
       v.alertaProgramacao = true;
     }
   }
+  if (isTransportador()) viagensAlteradas.add(v.idViagem);
+  closeModal();
+  updatePipeline();
+  marcarEAgendar(v);
+  renderViagensTable();
+}
+
+function salvarViagemCamposLiberadosPedagio(v) {
+  const novoNome = document.getElementById('m-nomeMotorista').value.trim();
+  const novoCpf  = document.getElementById('m-cpfMotorista').value.trim();
+  const novaObs  = document.getElementById('m-obs').value;
+  const mudouMotorista = novoNome !== (v.nomeMotorista || '') || novoCpf !== (v.cpfMotorista || '');
+  if (!mudouMotorista && novaObs === (v.obs || '')) { closeModal(); return; }
+  if (mudouMotorista) {
+    // Troca de motorista depois da compra fica registrada — ajuda a conferir a ordem de
+    // carregamento/comprovante emitidos antes da troca.
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    v.historicoProgramacao.push({
+      data: new Date().toISOString(),
+      usuario: _authUsuarioAtual?.nome || '',
+      evento: `Motorista alterado com pedágio já comprado: ${v.nomeMotorista || '—'} (${v.cpfMotorista || '—'}) → ${novoNome || '—'} (${novoCpf || '—'})`,
+    });
+  }
+  v.nomeMotorista = novoNome;
+  v.cpfMotorista  = novoCpf;
+  v.obs           = novaObs;
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   closeModal();
   updatePipeline();
@@ -13062,8 +13265,9 @@ function renderStatusCelulaMon(v, mon) {
 // com a Pamcard — trocar transportador/placa/status (inclusive cancelar) depois disso
 // deixa a compra órfã/incorreta sem que ninguém do time perceba. Único jeito de destravar é
 // operacional (estornar na Pamcard + excluir o log em monitoramentoPamcard), não tem bypass
-// no app. Destino (mesmo CNPJ, ver trocarDestinoInline) e as duas Datas (Desejada/Programação)
-// ficam de fora da trava — são os únicos ajustes que não mexem com o que já foi comprado.
+// no app. Destino (mesmo CNPJ, ver trocarDestinoInline), as duas Datas (Desejada/Programação)
+// e, no modal, Motorista/CPF/Observação (ver salvarViagemCamposLiberadosPedagio) ficam de
+// fora da trava — são os únicos ajustes que não mexem com o que já foi comprado.
 function pedagioComprado(v) {
   return monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio === 'COMPRADO';
 }
@@ -14432,11 +14636,23 @@ function predicadoPeriodo(inicioISO, fimISO) {
 // atualizar atualizadoEm pra "agora" (ver docstring de migrar_viagens_indice.py) — sem isso
 // um cliente com cache recente nunca ia perceber a mudança, porque do ponto de vista dele
 // nada de novo aconteceu depois do cursor salvo.
-const NEXTA_CACHE_VERSAO = 1;
+// v2: zera o cache de todo mundo uma vez pra descartar viagens "fantasma" (entradas órfãs
+// de viagensIndice cujo registro já tinha sido apagado por salvarComViagensUnicas — ex.:
+// NXT-004255), que o cache v1 nunca conseguia perceber.
+const NEXTA_CACHE_VERSAO = 2;
 const CACHE_VERSAO_KEY = 'nextaCacheVersao';
 const CACHE_CURSOR_KEY = 'nextaCacheCursor';
+// Separado do cursor: o cursor avança a cada carga, então "cursor velho" nunca acontecia
+// pra quem abre o portal todo dia e o sync completo de segurança nunca rodava. Este marca
+// o último sync COMPLETO — o único que enxerga exclusões (a busca incremental por
+// atualizadoEm só traz entradas que existem).
+const CACHE_ULTIMO_COMPLETO_KEY = 'nextaCacheUltimoCompleto';
+// uid dono do cache local. O ✕ (fazerLogout) limpa o cache, mas o logout por inatividade
+// (verificarInatividade) não — se OUTRO usuário entrar no mesmo navegador depois, o cache
+// do anterior é descartado aqui em vez de reaproveitado.
+const CACHE_DONO_KEY = 'nextaCacheDono';
 const CACHE_MARGEM_RELOGIO_MS = 5 * 60 * 1000; // absorve diferença de relógio entre clientes que gravaram atualizadoEm
-const CACHE_IDADE_MAXIMA_MS = 24 * 60 * 60 * 1000; // cursor mais velho que isso força sync completo do índice de novo
+const CACHE_IDADE_MAXIMA_MS = 24 * 60 * 60 * 1000; // último sync completo mais velho que isso força outro
 
 let _indiceCacheCompleto = {}; // cópia local completa do viagensIndice, fundida incrementalmente
 let _viagensCacheMemoria = {}; // idViagem -> { _atualizadoEmCache, dados } já visto (espelha o IndexedDB em memória)
@@ -14444,10 +14660,13 @@ let _cacheInicialCarregado = false;
 
 async function _cacheCarregarInicial() {
   const versaoSalva = localStorage.getItem(CACHE_VERSAO_KEY);
-  if (versaoSalva !== String(NEXTA_CACHE_VERSAO)) {
+  const uidAtual = _authUsuarioAtual?.uid || '';
+  if (versaoSalva !== String(NEXTA_CACHE_VERSAO) || localStorage.getItem(CACHE_DONO_KEY) !== uidAtual) {
     await window._fb.cache.limpar();
     localStorage.removeItem(CACHE_CURSOR_KEY);
+    localStorage.removeItem(CACHE_ULTIMO_COMPLETO_KEY);
     localStorage.setItem(CACHE_VERSAO_KEY, String(NEXTA_CACHE_VERSAO));
+    localStorage.setItem(CACHE_DONO_KEY, uidAtual);
     _indiceCacheCompleto = {};
     _viagensCacheMemoria = {};
     return;
@@ -14457,10 +14676,13 @@ async function _cacheCarregarInicial() {
 }
 
 // null força sync completo do índice (sem cursor válido) — usado no primeiro carregamento,
-// numa troca de versão de cache, num cursor velho demais (rede de segurança contra eventos
-// ao vivo perdidos), ou quando o usuário força pelo 🔄.
+// numa troca de versão de cache, quando o último sync completo passou de 24h (rede de
+// segurança contra eventos ao vivo perdidos e exclusões feitas com o usuário offline), ou
+// quando o usuário força pelo 🔄.
 function _cursorValido(forcarCompleto) {
   if (forcarCompleto) return null;
+  const ultimoCompletoMs = Date.parse(localStorage.getItem(CACHE_ULTIMO_COMPLETO_KEY) || '');
+  if (!Number.isFinite(ultimoCompletoMs) || Date.now() - ultimoCompletoMs > CACHE_IDADE_MAXIMA_MS) return null;
   const cursor = localStorage.getItem(CACHE_CURSOR_KEY);
   if (!cursor) return null;
   const cursorMs = Date.parse(cursor);
@@ -14540,7 +14762,7 @@ async function _carregarQualificadas(entradas, predicado) {
     const lote = paraBuscar.slice(i, i + TAMANHO_LOTE);
     await Promise.all(lote.map(async ([id, entrada]) => {
       const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
-      if (!registro) return; // índice aponta pra viagem que sumiu do registro — inconsistência rara, ignora
+      if (!registro) { _esquecerViagemEmCache(id); return; } // índice órfão — registro já não existe
       _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
       window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
       _aplicarViagemCarregada(id, entrada.semana, registro);
@@ -14558,11 +14780,18 @@ async function _garantirViagemCarregada(id, entrada) {
     return;
   }
   const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
-  if (!registro) { _idsCarregados.delete(id); return; }
+  if (!registro) { _esquecerViagemEmCache(id); _removerViagemCarregada(id); return; }
   _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
   window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
   _aplicarViagemCarregada(id, entrada.semana, registro);
   _agendarRefreshCarregamento();
+}
+
+// Índice apontando pra um registro que não existe mais (entrada órfã): descarta a cópia
+// completa em cache pra ela não voltar a ser servida sem rede numa próxima carga.
+function _esquecerViagemEmCache(id) {
+  delete _viagensCacheMemoria[id];
+  window._fb.cache.removerViagens([id]);
 }
 
 function _removerViagemCarregada(idViagem) {
@@ -14610,6 +14839,7 @@ async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = f
   if (forcarCompleto) {
     await window._fb.cache.limpar();
     localStorage.removeItem(CACHE_CURSOR_KEY);
+    localStorage.removeItem(CACHE_ULTIMO_COMPLETO_KEY);
     _indiceCacheCompleto = {};
     _viagensCacheMemoria = {};
     _cacheInicialCarregado = true;
@@ -14624,15 +14854,29 @@ async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = f
   const desdeISO = nomeTransportador ? null : _cursorValido(forcarCompleto);
   const inicioSync = new Date().toISOString();
   const respostaIndice = await window._fb.carregarIndiceViagens(nomeTransportador, desdeISO);
-  Object.assign(_indiceCacheCompleto, respostaIndice);
-  window._fb.cache.gravarIndice(respostaIndice);
+  if (desdeISO) {
+    Object.assign(_indiceCacheCompleto, respostaIndice);
+    window._fb.cache.gravarIndice(respostaIndice);
+  } else {
+    // Sync completo: substitui (não mescla) — entradas que sumiram do Firebase têm que
+    // sumir daqui também, junto com o registro completo em cache, senão viram "fantasma"
+    // servido do IndexedDB sem nenhuma chamada de rede (ver _carregarQualificadas).
+    const idsSumidos = Object.keys(_indiceCacheCompleto).filter(id => !(id in respostaIndice));
+    idsSumidos.forEach(id => delete _viagensCacheMemoria[id]);
+    window._fb.cache.removerViagens(idsSumidos);
+    _indiceCacheCompleto = { ...respostaIndice };
+    window._fb.cache.substituirIndice(respostaIndice);
+  }
 
   // O predicado sempre avalia sobre o índice FUNDIDO (cache + delta), nunca só o que acabou
   // de chegar — precisa decidir também sobre entradas que não mudaram mas ainda estão
   // dentro da janela de 15 dias, por exemplo.
   await _carregarQualificadas(Object.entries(_indiceCacheCompleto), predicado);
 
-  if (!nomeTransportador) localStorage.setItem(CACHE_CURSOR_KEY, inicioSync);
+  if (!nomeTransportador) {
+    localStorage.setItem(CACHE_CURSOR_KEY, inicioSync);
+    if (!desdeISO) localStorage.setItem(CACHE_ULTIMO_COMPLETO_KEY, inicioSync);
+  }
 
   sincronizarStatusHerrlog();
   mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) carregada(s)`);
@@ -14653,6 +14897,9 @@ async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = f
     },
     onRemoved: (id) => {
       delete _indiceCacheCompleto[id];
+      delete _viagensCacheMemoria[id];
+      window._fb.cache.removerIndice([id]);
+      window._fb.cache.removerViagens([id]);
       _removerViagemCarregada(id);
     },
   });
@@ -16313,6 +16560,7 @@ function renderPerformance() {
 
 window.addEventListener('DOMContentLoaded', () => {
   restaurarSessaoUsuario();
+  iniciarMonitorInatividade();
   aplicarEstadoKpisViagens();
 
   // initialize multiselects
