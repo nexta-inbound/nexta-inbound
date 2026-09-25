@@ -14057,6 +14057,7 @@ function normalizarParaComparacao(s) {
 // 3) Não bate nem normalizado, mas o CNPJ identifica com certeza o fornecedor/base -> corrige
 //    pelo CNPJ e avisa o usuário (evita que "BETIM" entre como destino diferente de
 //    "BETIM - NEXTA RBZ" só porque o CNPJ foi preenchido certo e o nome não).
+// 4) Destino bate, mas o CNPJ Destino é de outra base -> corrige o CNPJ para o do cadastro e avisa.
 function validarCadastroImportacao(linhasArquivo) {
   const validas = [];
   const invalidas = [];
@@ -14099,6 +14100,16 @@ function validarCadastroImportacao(linhasArquivo) {
       }
     }
 
+    // 4) Nome do Destino bate, mas o CNPJ da planilha é de outra base -> o cadastro manda: o
+    //    CNPJ entra com o da base e o usuário é avisado. Sem isso o par fica inconsistente e o
+    //    seletor de troca de destino (basesComMesmoCnpj) lista as bases do CNPJ errado — caso
+    //    NXT-004472: "BRASILIA - NEXTA TEC" com o CNPJ de Betim aparecia como BETIM - NEXTA RBZ.
+    const bDestino = c.destino && c.cnpjDestino && bases.find(b => b.nomeMis === c.destino);
+    if (bDestino?.cnpj && soDigitos(bDestino.cnpj) !== soDigitos(c.cnpjDestino)) {
+      corrigidas.push({ linha: c, campo: 'CNPJ Destino', de: c.cnpjDestino, para: bDestino.cnpj });
+      c.cnpjDestino = bDestino.cnpj;
+    }
+
     if (erros.length) invalidas.push({ linha: c, erros });
     else validas.push(c);
   });
@@ -14139,7 +14150,7 @@ function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas 
       ${fornecedoresFaltantes.length ? `<div style="font-size:11px;margin-bottom:6px"><strong>Fornecedores (Origem) sem cadastro:</strong> ${fornecedoresFaltantes.map(esc).join(', ')}</div>` : ''}
       ${basesFaltantes.length ? `<div style="font-size:11px;margin-bottom:10px"><strong>Bases (Destino) sem cadastro:</strong> ${basesFaltantes.map(esc).join(', ')}</div>` : ''}
       ${corrigidas.length ? `
-      <div style="font-size:11px;color:var(--accent);margin-bottom:6px">✓ ${corrigidas.length} ajuste(s) automático(s) em linha(s) válida(s) (nome digitado não batia com o cadastro, mas o CNPJ identificou certo):</div>
+      <div style="font-size:11px;color:var(--accent);margin-bottom:6px">✓ ${corrigidas.length} ajuste(s) automático(s) em linha(s) válida(s) (nome ou CNPJ da planilha não batia com o cadastro; corrigido para o cadastro):</div>
       <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;max-height:130px">
         <table style="width:100%;font-size:11px;border-collapse:collapse">
           <thead style="position:sticky;top:0;background:var(--panel)">
@@ -14211,9 +14222,9 @@ function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
   overlay.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:600px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
-      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent)">✓ ${corrigidas.length} ajuste(s) automático(s) pelo CNPJ</div>
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent)">✓ ${corrigidas.length} ajuste(s) automático(s) pelo cadastro</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-        Em "${esc(file.name)}" — o nome digitado na planilha não batia com o cadastro, mas o CNPJ identificou exatamente qual fornecedor/base é. O texto foi corrigido para o nome oficial antes de importar:
+        Em "${esc(file.name)}" — alguns valores da planilha não batiam com o cadastro: nome que não existia, mas o CNPJ identificou exatamente qual fornecedor/base é, ou nome de base certo com o CNPJ de outra base. Os valores foram corrigidos para o cadastro antes de importar:
       </div>
       <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
         <table style="width:100%;font-size:11px;border-collapse:collapse">
