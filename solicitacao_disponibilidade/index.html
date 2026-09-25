@@ -1,0 +1,1845 @@
+<!doctype html><html lang="pt-BR"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Gestão Solicitações Disponibilidade Produto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #F2F4F3;
+    --surface: #FCFDFC;
+    --surface-2: #E9EEEF;
+    --line: #D5DCDF;
+    --ink: #10283A;
+    --ink-2: #46586A;
+    --ink-3: #6E7F8C;
+    --accent: #1F6F95;
+    --accent-ink: #F5F8F9;
+    --navy: #10283A;
+    --navy-ink: #F2F5F6;
+    --crit: #B8412F; --crit-bg: #F7E4E0;
+    --warn: #9A6212; --warn-bg: #F7EBD6;
+    --ok: #2B7352;   --ok-bg: #DDEFE5;
+    --info: #1F6F95; --info-bg: #DDEBF2;
+    --wait: #4F5F6D; --wait-bg: #E4E9EC;
+    --shadow: 0 12px 40px rgba(16, 40, 58, .18);
+    --sans: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+    --mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0D1820; --surface: #13222D; --surface-2: #1A2D3A; --line: #2A3F4D;
+      --ink: #E6EDF1; --ink-2: #B3C2CC; --ink-3: #8599A6;
+      --accent: #5BA8CF; --accent-ink: #0D1820; --navy: #1D3A50; --navy-ink: #E6EDF1;
+      --crit: #EE8A78; --crit-bg: #3A1F1B; --warn: #E3B266; --warn-bg: #362A17;
+      --ok: #7CCBA2; --ok-bg: #173228; --info: #7FC0E0; --info-bg: #16303F;
+      --wait: #B3C2CC; --wait-bg: #22323D; --shadow: 0 12px 40px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0D1820; --surface: #13222D; --surface-2: #1A2D3A; --line: #2A3F4D;
+    --ink: #E6EDF1; --ink-2: #B3C2CC; --ink-3: #8599A6;
+    --accent: #5BA8CF; --accent-ink: #0D1820; --navy: #1D3A50; --navy-ink: #E6EDF1;
+    --crit: #EE8A78; --crit-bg: #3A1F1B; --warn: #E3B266; --warn-bg: #362A17;
+    --ok: #7CCBA2; --ok-bg: #173228; --info: #7FC0E0; --info-bg: #16303F;
+    --wait: #B3C2CC; --wait-bg: #22323D; --shadow: 0 12px 40px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.45; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 24px; padding-block: 0 48px; }
+  @media (max-width: 640px) { .wrap { padding-inline: 16px; } }
+
+  /* Top bar */
+  .topbar { background: var(--navy); color: var(--navy-ink); }
+  .topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-block: 16px; }
+  .brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+  .brand b { font-size: 20px; font-weight: 600; letter-spacing: .2px; }
+  .brand span { font-size: 13px; opacity: .75; }
+  .sessao { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .quem { display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; text-align: right; }
+  .quem small { opacity: .75; }
+  .role { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .role select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); color: var(--navy-ink); border-radius: 8px; padding: 8px 10px; }
+  .role select option { color: #10283A; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--surface-2); color: var(--ink); }
+  .btn:hover { filter: brightness(.97); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.ghost { background: transparent; border-color: var(--line); }
+  .btn.danger { background: var(--crit); color: #FFF7F5; }
+  .btn.ok { background: var(--ok); color: #F4FBF7; }
+  .btn.sm { padding: 5px 10px; font-size: 13px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .topbar .btn.primary { background: #5BA8CF; color: #0D1820; }
+  .topbar .btn.ghost { border-color: rgba(255,255,255,.3); color: var(--navy-ink); }
+
+  .banner { margin-top: 16px; padding: 10px 14px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 14px; }
+
+  /* Login / acesso */
+  .gate { min-height: calc(100vh - 90px); display: grid; place-items: center; padding: 24px 16px; }
+  .card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
+  .card h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .uid { font-family: var(--mono); font-size: 13px; background: var(--surface-2); padding: 8px 10px; border-radius: 6px; overflow-wrap: anywhere; user-select: all; }
+  .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 14px; text-align: left; }
+
+  /* KPIs */
+  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; text-align: left; }
+  .kpi[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .kpi .n { font-family: var(--mono); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 13px; color: var(--ink-2); }
+  .kpi.crit .n { color: var(--crit); }
+
+  /* Toolbar */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 24px; }
+  .toolbar h2 { font-size: 18px; margin: 0 auto 0 0; font-weight: 600; }
+  .search { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 12px; min-width: 0; width: 240px; max-width: 100%; }
+  .toolbar select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; }
+
+  /* Table */
+  .tablebox { margin-top: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 920px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:last-child td { border-bottom: none; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .num { text-align: right; }
+  .sub { color: var(--ink-3); font-size: 13px; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--ink-3); }
+
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .t-crit { background: var(--crit-bg); color: var(--crit); }
+  .t-warn { background: var(--warn-bg); color: var(--warn); }
+  .t-ok { background: var(--ok-bg); color: var(--ok); }
+  .t-info { background: var(--info-bg); color: var(--info); }
+  .t-wait { background: var(--wait-bg); color: var(--wait); }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-2); margin-left: 6px; }
+  .tag.d0 { border-color: var(--warn); color: var(--warn); }
+
+  .sla { font-size: 13px; white-space: nowrap; }
+  .sla.late { color: var(--crit); font-weight: 600; }
+
+  .rules { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--ink-3); font-size: 13px; }
+  .rules b { color: var(--ink-2); font-weight: 600; }
+
+  /* Drawer */
+  .scrim { position: fixed; inset: 0; background: rgba(8, 20, 30, .45); z-index: 20; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--surface); z-index: 21; box-shadow: var(--shadow); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .drawer header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+  .drawer header h3 { margin: 0; font-size: 18px; font-weight: 600; text-wrap: balance; }
+  .drawer header .x { margin-left: auto; background: none; border: none; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-2); padding: 4px 8px; }
+  .drawer .body { overflow-y: auto; padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 22px; }
+  @media (max-width: 640px) { .drawer header, .drawer .body { padding-inline: 16px; } }
+
+  .kv { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 20px; }
+  .kv div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .kv dt { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .kv .full { grid-column: 1 / -1; }
+
+  .section-t { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); font-weight: 600; margin: 0 0 10px; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .step { border-top: 4px solid var(--line); padding-top: 8px; font-size: 13px; color: var(--ink-3); }
+  .step b { display: block; color: var(--ink-2); font-size: 13.5px; }
+  .step.done { border-color: var(--ok); }
+  .step.now { border-color: var(--accent); }
+  .step.now b { color: var(--accent); }
+  .step.fail { border-color: var(--crit); }
+  .step.fail b { color: var(--crit); }
+
+  .timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+  .timeline li { display: grid; grid-template-columns: 12px 1fr; gap: 12px; }
+  .timeline .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-top: 6px; }
+  .timeline .meta { font-size: 12.5px; color: var(--ink-3); }
+  .timeline .note { margin-top: 2px; color: var(--ink-2); font-size: 14px; overflow-wrap: anywhere; }
+
+  .action { background: var(--surface-2); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .action p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; }
+
+  /* Usuários (admin) */
+  .ulist { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; }
+  .urow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; }
+  .urow + .urow { border-top: 1px solid var(--line); }
+  .urow .who { flex: 1 1 200px; min-width: 0; }
+  .urow .who div { overflow-wrap: anywhere; }
+  .urow .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+
+  /* Abas (Chamados / Cadastros) */
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 20px; border-bottom: 1px solid var(--line); }
+  .tabs button { background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 14px; font-weight: 600; color: var(--ink-3); cursor: pointer; }
+  .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  .tabs.sub { margin-top: 16px; }
+  .tabs.sub button { font-size: 14px; padding: 8px 12px; }
+  .section-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-top: 24px; }
+  .section-header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .section-header p { margin: 2px 0 0; color: var(--ink-3); font-size: 13px; }
+  .section-header select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; }
+  table.resumo th.num { white-space: normal; max-width: 150px; }
+  table.resumo td.zero { color: var(--ink-3); }
+  table.resumo td.pend { color: var(--warn); font-weight: 600; }
+  table.resumo tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; background: var(--surface-2); }
+  /* Navegador de data ◀ data ▶ (mesmo formato do Portal Inbound) */
+  .nav-data { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .nav-seta { padding: 8px 12px; font-size: 12px; color: var(--ink-2); }
+  .nav-data-inp { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .nav-data-rel { margin-left: 2px; min-width: 42px; text-align: center; }
+  .nav-data .linkbtn { font-size: 13px; margin-left: 4px; }
+  /* Filtros multisseleção (mesmo padrão do MultiSelect do Portal Inbound) */
+  .filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .ms { position: relative; }
+  .ms-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 150px; max-width: 240px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 14px; color: var(--ink-2); }
+  .ms.narrow .ms-trigger { min-width: 90px; }
+  .ms-trigger.ativo { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .ms-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-seta { font-size: 9px; color: var(--ink-3); flex-shrink: 0; }
+  .ms-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 25; min-width: 240px; max-width: min(340px, calc(100vw - 32px)); max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+  .ms-topo { position: sticky; top: 0; background: var(--surface); padding: 6px; border-bottom: 1px solid var(--line); z-index: 1; }
+  .ms-busca { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: var(--surface); }
+  .ms-opt { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  .ms-opt:hover { background: var(--surface-2); }
+  .ms-opt input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; flex-shrink: 0; }
+  .ms-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-vazio { padding: 10px 12px; font-size: 12px; color: var(--ink-3); }
+  tbody.plain tr { cursor: default; }
+  tbody.plain tr:hover { background: none; }
+  table.lista { min-width: 0; }
+  table.bases td { white-space: normal; font-size: 14px; }
+  .acoes { display: flex; gap: 4px; justify-content: flex-end; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+  @media (max-width: 480px) { .grid3 { grid-template-columns: 1fr; } }
+
+  /* Form */
+  form { display: flex; flex-direction: column; gap: 14px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+  @media (max-width: 480px) { .grid2, .kv { grid-template-columns: 1fr; } }
+  /* Combobox com busca (mesmo padrão do Portal Inbound): digita parte do nome e a lista filtra */
+  .campo { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ink-2); min-width: 0; }
+  .combo { position: relative; }
+  .combo input { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 32px 9px 11px; font-weight: 400; font-size: 15px; width: 100%; min-width: 0; }
+  .combo::after { content: ""; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+  .combo-lista { display: none; position: absolute; z-index: 30; top: 100%; left: 0; right: 0; margin-top: 4px; max-height: 260px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); font-weight: 400; }
+  .combo-lista.open { display: block; }
+  .combo-item { padding: 8px 11px; cursor: pointer; font-size: 14px; color: var(--ink); }
+  .combo-item + .combo-item { border-top: 1px solid var(--line); }
+  .combo-item.ativo { background: var(--info-bg); }
+  .combo-item .sub { font-size: 12px; }
+  /* Linhas de cliente no novo chamado */
+  .clientes { display: flex; flex-direction: column; gap: 10px; }
+  /* Novo chamado em painel largo: Data | Produto | Base numa linha; cada cliente numa linha */
+  .drawer.largo { width: min(900px, 100%); }
+  @media (min-width: 761px) { .drawer.largo .kv { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .novo-topo { display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px; align-items: end; }
+  .cli-linha { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) 170px 150px 110px 28px; gap: 10px 12px; align-items: end; background: var(--surface); }
+  .cli-num { display: block; }
+  .cli-remover { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 16px; padding: 0; height: 40px; }
+  .cli-remover:hover { color: var(--crit); }
+  @media (max-width: 760px) {
+    .novo-topo { grid-template-columns: 1fr; }
+    .cli-linha { grid-template-columns: 1fr 1fr; }
+    .cli-linha .cli-nome { grid-column: 1 / -1; }
+    .cli-remover { grid-column: 1 / -1; height: auto; text-align: right; }
+  }
+  .cli-rodape { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+  .cli-rodape .mono { font-weight: 600; color: var(--ink); }
+  .cli-linha .seg label { padding: 9px 4px; }
+  /* Aprovação parcial: volume aprovado por cliente na tabela do detalhe */
+  .vol-aprov { width: 96px; border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 6px 8px; text-align: right; font-family: var(--mono); font-size: 14px; }
+  .modal-sel { border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 5px 8px; }
+  table.clientes-det td.corte { color: var(--warn); font-weight: 600; }
+  table.clientes-det tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; background: var(--surface-2); }
+  .aprov-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; color: var(--ink-2); }
+  .aprov-barra .mono { font-weight: 600; color: var(--ink); }
+  /* Modal avaliado por cliente (Logística) */
+  .modais { display: flex; flex-direction: column; gap: 8px; }
+  .modal-linha { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 14px; color: var(--ink); }
+  .modal-linha > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .modal-linha select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; }
+  .combo-vazio { padding: 8px 11px; color: var(--ink-3); font-size: 13px; font-style: italic; }
+  label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  label.f input, label.f select, label.f textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-weight: 400; font-size: 15px; min-width: 0; width: 100%; }
+  label.f input:read-only, label.f input:disabled { background: var(--surface-2); color: var(--ink-3); }
+  label.f textarea { resize: vertical; min-height: 84px; }
+  .drawer.largo label.f textarea { min-height: 64px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg label { flex: 1; text-align: center; padding: 9px 8px; cursor: pointer; font-weight: 500; font-size: 14px; color: var(--ink-2); background: var(--surface); }
+  .seg label + label { border-left: 1px solid var(--line); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg input:checked + span { color: var(--accent); font-weight: 700; }
+  .seg label:has(input:checked) { background: var(--info-bg); }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .hint { font-size: 13px; padding: 10px 12px; border-radius: 8px; }
+  .err { color: var(--crit); font-size: 13px; }
+  .err:empty { display: none; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+  .check input { margin-top: 3px; width: 16px; height: 16px; }
+
+  dialog.confirma { border: 1px solid var(--line); border-radius: 12px; padding: 24px; width: min(440px, calc(100% - 32px)); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  dialog.confirma::backdrop { background: rgba(8, 20, 30, .55); }
+  dialog.confirma p { margin: 0 0 20px; font-size: 15px; line-height: 1.5; }
+  dialog.confirma .row { justify-content: flex-end; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--navy); color: var(--navy-ink); padding: 12px 18px; border-radius: 10px; box-shadow: var(--shadow); z-index: 40; font-size: 14px; max-width: calc(100% - 32px); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .drawer { animation: slide .18s ease-out; }
+    @keyframes slide { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+  }
+</style>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <b>Gestão Solicitações Disponibilidade Produto</b>
+      <span>Chamados de volume adicional · Comercial → Demanda → Logística</span>
+    </div>
+    <div class="sessao" id="sessao" hidden>
+      <div class="quem"><span id="quem"></span><small id="papel-fixo"></small></div>
+      <label class="role" for="papel" id="papel-wrap" hidden>Atuando como
+        <select id="papel"></select>
+      </label>
+      <button class="btn ghost" id="usuarios" type="button" hidden>Usuários</button>
+      <button class="btn primary" id="novo" type="button">+ Novo chamado</button>
+      <button class="btn ghost" id="sair" type="button">Sair</button>
+    </div>
+  </div>
+</div>
+
+<!-- Carregando / login / sem perfil -->
+<section class="gate" id="tela-carregando"><p class="sub">Conectando…</p></section>
+
+<section class="gate" id="tela-login" hidden>
+  <form class="card" id="form-login" novalidate>
+    <h2>Entrar</h2>
+    <p>Use o e-mail e a senha cadastrados pelo administrador.</p>
+    <label class="f" for="l-email">E-mail <input type="email" id="l-email" autocomplete="username" required></label>
+    <label class="f" for="l-senha">Senha <input type="password" id="l-senha" autocomplete="current-password" required></label>
+    <div class="err" id="l-err" role="alert"></div>
+    <button class="btn primary" type="submit" id="l-btn">Entrar</button>
+    <button class="linkbtn" type="button" id="l-esqueci">Esqueci minha senha</button>
+  </form>
+</section>
+
+<section class="gate" id="tela-sem-perfil" hidden>
+  <div class="card">
+    <h2>Acesso pendente</h2>
+    <p id="sp-msg"></p>
+    <p>Envie este código ao administrador:</p>
+    <div class="uid" id="sp-uid"></div>
+    <button class="btn ghost" type="button" id="sp-sair">Sair</button>
+  </div>
+</section>
+
+<main class="wrap" id="app" hidden>
+  <div class="banner" id="banner" hidden></div>
+
+  <nav class="tabs" id="nav" role="tablist" hidden>
+    <button type="button" role="tab" data-view="chamados" aria-selected="true">Chamados</button>
+    <button type="button" role="tab" data-view="resumo" aria-selected="false">Resumo</button>
+    <button type="button" role="tab" data-view="cadastros" aria-selected="false" id="nav-cad" hidden>Cadastros</button>
+  </nav>
+
+  <div id="view-cadastros" hidden></div>
+  <div id="view-resumo" hidden></div>
+
+  <div id="view-chamados">
+  <section class="kpis" id="kpis" aria-label="Resumo da fila"></section>
+
+  <div class="toolbar">
+    <h2 id="lista-titulo">Chamados</h2>
+    <div id="nav-data-chamados"></div>
+    <input class="search" id="busca" type="search" placeholder="Buscar cliente, base, produto…" aria-label="Buscar">
+    <button class="btn ghost" id="exportar" type="button">Exportar CSV</button>
+  </div>
+  <div class="filtros" id="filtros-chamados" aria-label="Filtros por base"></div>
+
+  <div class="tablebox">
+    <table>
+      <thead>
+        <tr>
+          <th>Chamado</th><th>Faturamento</th><th>Base</th><th>Produto</th><th>Cliente</th>
+          <th class="num">Volume</th><th>Status</th><th>Prazo de retorno</th>
+        </tr>
+      </thead>
+      <tbody id="linhas"></tbody>
+    </table>
+    <div class="empty" id="vazio" hidden></div>
+  </div>
+
+  <div class="rules" id="regras"></div>
+  </div>
+</main>
+
+<div id="overlay" hidden>
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-titulo">
+    <header>
+      <div>
+        <h3 id="dr-titulo"></h3>
+        <div class="sub" id="dr-sub"></div>
+      </div>
+      <button class="x" id="fechar" type="button" aria-label="Fechar">×</button>
+    </header>
+    <div class="body" id="dr-body"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+    sendPasswordResetEmail, createUserWithEmailAndPassword }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  // ---------- Firebase ----------
+  // Config pública (não é segredo): o acesso aos dados é protegido pelas regras em firebase_database.rules.json
+  const firebaseConfig = {
+    apiKey:            "AIzaSyAOc4LYwpQr0gFHShz5c2xHZcb1EwnyoqY",
+    authDomain:        "nexta-dispo-adicionais.firebaseapp.com",
+    databaseURL:       "https://nexta-dispo-adicionais-default-rtdb.firebaseio.com",
+    projectId:         "nexta-dispo-adicionais",
+    storageBucket:     "nexta-dispo-adicionais.firebasestorage.app",
+    messagingSenderId: "753633828801",
+    appId:             "1:753633828801:web:59eb2e3407445174481940",
+  };
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app);
+  // Instância auxiliar só para o admin criar usuários sem perder a própria sessão
+  const authCadastro = initializeAuth(initializeApp(firebaseConfig, "cadastro"), { persistence: inMemoryPersistence });
+
+  // ---------- Regras da política (ajuste aqui) ----------
+  const REGRAS = {
+    limiteD0: { h: 10, m: 0 },      // D-0 abertos a partir deste horário: seguem o fluxo, mas sem SLA / sem garantia de atendimento
+    slaDemanda: { h: 10, m: 30 },   // retorno do Time Demanda
+    slaLogistica: { h: 11, m: 0 },  // retorno do Time Logística
+    portalD1: { h: 15, m: 0 },      // até este horário o pedido D+1 ainda entra direto no portal revendedor (pede confirmação)
+  };
+
+  // ---------- Cadastros (bases no mesmo formato do Portal Inbound) ----------
+  const CAD = {
+    bases:    { label: "Bases",    titulo: "Cadastro de Bases",    sub: "Referência de Empresa, Depósito, CNPJ, SAP, MIS e Herrlog por base", gen: "a", chave: "nomeMis" },
+    produtos: { label: "Produtos", titulo: "Cadastro de Produtos", sub: "Produtos que aparecem ao abrir um chamado", gen: "o", chave: "nome", exemplo: "Diesel S10\nGasolina C" },
+  };
+  const BASE_CAMPOS = {
+    empresa:        { l: "Empresa",          req: true, ph: "Nexta" },
+    cidade:         { l: "Cidade",           req: true, ph: "Betim" },
+    estado:         { l: "Estado",           req: true, ph: "MG" },
+    deposito:       { l: "Depósito",         req: true, ph: "RBZ" },
+    regional:       { l: "Regional",         req: true, ph: "Minas" },
+    nomeMis:        { l: "Nome MIS",         req: true, ph: "BETIM - NEXTA RBZ" },
+    empresaSap:     { l: "Empresa SAP",      ph: "6016" },
+    localExpedicao: { l: "Local Expedição",  ph: "74" },
+    idHerrlog:      { l: "ID Herrlog",       ph: "6016-74" },
+    cnpj:           { l: "CNPJ",             ph: "00.000.000/0000-00" },
+    cidadeCnpj:     { l: "Cidade CNPJ",      ph: "BETIM - MG" },
+    razaoSocial:    { l: "Razão Social",     ph: "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS" },
+  };
+  const BASE_FORM = [["empresa", "cidade", "estado"], ["deposito", "regional"], ["nomeMis"], ["empresaSap", "localExpedicao", "idHerrlog"], ["cnpj", "cidadeCnpj"], ["razaoSocial"]];
+  // Cópia das bases do Portal Inbound (Firebase nexta-inbound, nó `bases`) em 25/09/2026 — usada só para a importação inicial
+  const BASES_INBOUND = [
+    {"empresa": "SIM", "cidade": "CUBATAO", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "CUBATAO - SIM IPIRANGA", "empresaSap": "2013", "localExpedicao": "100", "idHerrlog": "2013-100", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "GUARULHOS", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - SIM TR", "empresaSap": "2013", "localExpedicao": "48", "idHerrlog": "2013-48", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "GUARULHOS", "deposito": "BAGUAR", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - SIM BAGUAR", "empresaSap": "2013", "localExpedicao": "54", "idHerrlog": "2013-54", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "PAULINIA", "deposito": "OPLA", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM OPLA", "empresaSap": "2013", "localExpedicao": "49", "idHerrlog": "2013-49", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "PAULINIA", "deposito": "TRANSO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM TRANSO", "empresaSap": "2013", "localExpedicao": "39", "idHerrlog": "2013-39", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "PAULINIA", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - SIM TORRÃO", "empresaSap": "2013", "localExpedicao": "64", "idHerrlog": "2013-64", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "RIBEIRAO PRETO", "deposito": "RUFF", "estado": "SP", "regional": "São Paulo", "nomeMis": "RIB PRETO - SIM RUFF", "empresaSap": "2013", "localExpedicao": "35", "idHerrlog": "2013-35", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "SAO CAETANO DO SUL", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - SIM VIBRA", "empresaSap": "2013", "localExpedicao": "13", "idHerrlog": "2013-13", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "SAO CAETANO DO SUL", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - SIM IPIRANGA", "empresaSap": "2013", "localExpedicao": "90", "idHerrlog": "2013-90", "cnpj": "07.857.168/0013-09", "cidadeCnpj": "SÃO PAULO - SP", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "BETIM", "deposito": "POTENCIAL", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "BETIM - SIM POTENCIAL", "empresaSap": "2015", "localExpedicao": "40", "idHerrlog": "2015-40", "cnpj": "07.857.168/0015-62", "cidadeCnpj": "BETIM - MG", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "UBERLANDIA", "deposito": "LIDERPETRO", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "UBERLANDIA - SIM LIDERPETRO", "empresaSap": "2015", "localExpedicao": "97", "idHerrlog": "2015-97", "cnpj": "07.857.168/0015-62", "cidadeCnpj": "BETIM - MG", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "RIO VERDE", "deposito": "DTC", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "RIO VERDE - NEXTA DTC", "empresaSap": "6006", "localExpedicao": "72", "idHerrlog": "6006-72", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "RIO VERDE - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SENADOR CANEDO", "deposito": "TESCAN", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA TESCAN", "empresaSap": "6006", "localExpedicao": "69", "idHerrlog": "6006-69", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SENADOR CANEDO", "deposito": "CCO", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA CCO", "empresaSap": "6006", "localExpedicao": "70", "idHerrlog": "6006-70", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SENADOR CANEDO", "deposito": "DTC", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA DTC", "empresaSap": "6006", "localExpedicao": "71", "idHerrlog": "6006-71", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SENADOR CANEDO", "deposito": "TRANSPETRO", "estado": "GO", "regional": "Centro Oeste", "nomeMis": "SEN CANEDO - NEXTA TRANSPETRO", "empresaSap": "6006", "localExpedicao": "68", "idHerrlog": "6006-68", "cnpj": "71.770.689/0006-96", "cidadeCnpj": "SENADOR CANEDO - GO", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "VARZEA GRANDE", "deposito": "PETROLUZ", "estado": "MT", "regional": "Centro Oeste", "nomeMis": "VÁRZEA G - NEXTA PETROLUZ", "empresaSap": "6007", "localExpedicao": "84", "idHerrlog": "6007-84", "cnpj": "71.770.689/0007-77", "cidadeCnpj": "VARZEA GRANDE - MT", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "BARRA DO GARCAS", "deposito": "NEXTA", "estado": "MT", "regional": "Centro Oeste", "nomeMis": "BARRA DO GARÇAS", "empresaSap": "6008", "localExpedicao": "73", "idHerrlog": "6008-73", "cnpj": "71.770.689/0008-58", "cidadeCnpj": "BARRA DO GARÇAS - MT", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "DUQUE DE CAXIAS", "deposito": "VIBRA", "estado": "RJ", "regional": "Rio de Janeiro", "nomeMis": "DUQUE - NEXTA VIBRA", "empresaSap": "6009", "localExpedicao": "86", "idHerrlog": "6009-86", "cnpj": "71.770.689/0009-39", "cidadeCnpj": "DUQUE DE CAXIAS - RJ", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "DUQUE DE CAXIAS", "deposito": "IPIRANGA", "estado": "RJ", "regional": "Rio de Janeiro", "nomeMis": "DUQUE - NEXTA IPIRANGA", "empresaSap": "6009", "localExpedicao": "85", "idHerrlog": "6009-85", "cnpj": "71.770.689/0009-39", "cidadeCnpj": "DUQUE DE CAXIAS - RJ", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "CUBATAO", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "CUBATAO - NEXTA IPIRANGA", "empresaSap": "6011", "localExpedicao": "98", "idHerrlog": "6011-98", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "GUARULHOS", "deposito": "BAGUAR", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - NEXTA BAGUAR", "empresaSap": "6011", "localExpedicao": "80", "idHerrlog": "6011-80", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "GUARULHOS", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "GUARULHOS - NEXTA TORRÃO", "empresaSap": "6011", "localExpedicao": "81", "idHerrlog": "6011-81", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SAO CAETANO DO SUL", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - NEXTA VIBRA", "empresaSap": "6011", "localExpedicao": "82", "idHerrlog": "6011-82", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SAO CAETANO DO SUL", "deposito": "IPIRANGA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SAO CAETANO - NEXTA IPIRANGA", "empresaSap": "6011", "localExpedicao": "83", "idHerrlog": "6011-83", "cnpj": "71.770.689/0011-53", "cidadeCnpj": "GUARULHOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "PAULINIA", "deposito": "TORRÃO", "estado": "SP", "regional": "São Paulo", "nomeMis": "PAULINIA - NEXTA TORRAO", "empresaSap": "6012", "localExpedicao": "77", "idHerrlog": "6012-77", "cnpj": "71.770.689/0012-34", "cidadeCnpj": "PAULÍNIA - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "UBERLANDIA", "deposito": "TRANSPETRO", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "UBERLANDIA - NEXTA TRANSPETRO", "empresaSap": "6014", "localExpedicao": "66", "idHerrlog": "6014-66", "cnpj": "71.770.689/0014-04", "cidadeCnpj": "UBERLÂNDIA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "UBERLANDIA", "deposito": "LIDERPETRO", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "UBERLANDIA - NEXTA LIDERPETRO", "empresaSap": "6014", "localExpedicao": "95", "idHerrlog": "6014-95", "cnpj": "71.770.689/0014-04", "cidadeCnpj": "UBERLÂNDIA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "UBERABA", "deposito": "TRANSPETRO", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "UBERABA - NEXTA TRANSPETRO", "empresaSap": "6015", "localExpedicao": "65", "idHerrlog": "6015-65", "cnpj": "71.770.689/0015-87", "cidadeCnpj": "UBERABA - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "BETIM", "deposito": "RBZ", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "BETIM - NEXTA RBZ", "empresaSap": "6016", "localExpedicao": "74", "idHerrlog": "6016-74", "cnpj": "71.770.689/0016-68", "cidadeCnpj": "BETIM - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "BETIM", "deposito": "POTENCIAL", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "BETIM - NEXTA POTENCIAL", "empresaSap": "6016", "localExpedicao": "75", "idHerrlog": "6016-75", "cnpj": "71.770.689/0016-68", "cidadeCnpj": "BETIM - MG", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "RIBEIRAO PRETO", "deposito": "POOL", "estado": "SP", "regional": "São Paulo", "nomeMis": "RIB PRETO - NEXTA PETRO", "empresaSap": "6018", "localExpedicao": "76", "idHerrlog": "6018-76", "cnpj": "71.770.689/0018-20", "cidadeCnpj": "RIBEIRÃO PRETO - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "SAO JOSE DOS CAMPOS", "deposito": "VIBRA", "estado": "SP", "regional": "São Paulo", "nomeMis": "SJ CAMPOS - NEXTA VIBRA", "empresaSap": "6019", "localExpedicao": "79", "idHerrlog": "6019-79", "cnpj": "71.770.689/0019-00", "cidadeCnpj": "S. J. DOS CAMPOS - SP", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "Nexta", "cidade": "BRASILIA", "deposito": "TECBRAS", "estado": "DF", "regional": "Centro Oeste", "nomeMis": "BRASILIA - NEXTA TEC", "empresaSap": "6020", "localExpedicao": "87", "idHerrlog": "6020-87", "cnpj": "71.770.689/0020-44", "cidadeCnpj": "BRASÍLIA - DF", "razaoSocial": "NEXTA DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "SIM", "cidade": "ARAUCARIA", "deposito": "ARAUCARIA", "estado": "PR", "regional": "Sul", "nomeMis": "SIM DISTRIBUIDORA ARAUCARIA", "empresaSap": "2004", "localExpedicao": "4", "idHerrlog": "8200005", "cnpj": "07.857.168/0004-00", "cidadeCnpj": "ARAUCARIA - PR", "razaoSocial": "SIM DISTRIBUIDORA DE COMBUSTÍVEIS"},
+    {"empresa": "NEXTA", "cidade": "ARAXA", "deposito": "ARAXÁ", "estado": "MG", "regional": "Minas Gerais", "nomeMis": "NEXTA ARAXA", "empresaSap": "", "localExpedicao": "", "idHerrlog": "06088295000186", "cnpj": "06.088.295/0001-86", "cidadeCnpj": "ARAXA - MG", "razaoSocial": "NEXTA ARAXA"},
+  ];
+
+  const STATUS = {
+    recusa_auto:        { label: "Recusa automática",       tone: "crit", final: true }, // não é mais gerado; mantido para chamados antigos
+    fila_demanda:       { label: "Aguardando Demanda",      tone: "wait" },
+    recusado_demanda:   { label: "Recusado pela Demanda",   tone: "crit", final: true },
+    fila_logistica:     { label: "Aguardando Logística",    tone: "wait" },
+    recusado_logistica: { label: "Recusado pela Logística", tone: "crit", final: true },
+    aprovado:           { label: "Aprovado · ajustar MIS",  tone: "info" },
+    concluido:          { label: "Concluído",               tone: "ok",   final: true },
+  };
+  const PAPEIS = { comercial: "Comercial", demanda: "Time Demanda", logistica: "Time Logística", consulta: "Somente consulta" };
+  const PAPEIS_ATIVOS = ["comercial", "demanda", "logistica"];
+  const SEGMENTOS = ["Petronas", "Bravo", "Total", "Bandeira Branca"]; // segmento (bandeira) de cada cliente do chamado
+
+  const FILTROS = [
+    { id: "todos", label: "Todos os chamados", test: () => true },
+    // semData: filas e atrasos sempre mostram tudo, sem o filtro de data de faturamento
+    { id: "fila_demanda", label: "Na fila da Demanda", test: c => c.status === "fila_demanda", semData: true },
+    { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica" || c.status === "aprovado", semData: true },
+    { id: "atrasados", label: "Fora do prazo", test: c => atrasado(c), crit: true, semData: true },
+    { id: "encerrados", label: "Encerrados", test: c => !!STATUS[c.status]?.final },
+  ];
+
+  // ---------- Estado ----------
+  const S = {
+    chamados: [],
+    filtro: "todos",
+    busca: "",
+    fData: "",         // data de faturamento (AAAA-MM-DD) da aba Chamados; "" = todas. Começa em hoje (D0), ver "Eventos"
+    papel: lsGet("adc.papel") || "comercial",
+    abertoId: null,
+    abertoVer: null,
+    meuId: null,
+    me: null,          // { uid, nome, email, admin, papeis: [...] }
+    modo: "carregando",
+    view: "chamados",
+    cad: { bases: [], produtos: [] },
+    cadTab: "bases",
+    resumoData: "",    // idem para a aba Resumo
+    cadBusca: "",
+  };
+
+  // ---------- Utilidades ----------
+  function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  const $ = id => document.getElementById(id);
+  function el(tag, attrs = {}, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+    return n;
+  }
+  const pad = n => String(n).padStart(2, "0");
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hojeStr = () => ymd(new Date());
+  const amanhaStr = () => { const d = new Date(); d.setDate(d.getDate() + 1); return ymd(d); };
+  const fmtHora = ({ h, m }) => `${h}h${m ? pad(m) : ""}`;
+  function fmtData(s) { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${d}/${m}/${y}`; }
+  function fmtDataHora(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function fmtVol(v) { return (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " m³"; }
+  function difDias(dataEntrega) {
+    const [y, m, d] = dataEntrega.split("-").map(Number);
+    const alvo = new Date(y, m - 1, d); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return Math.round((alvo - hoje) / 86400000);
+  }
+  function passouDe(agora, { h, m }) { return agora.getHours() * 60 + agora.getMinutes() >= h * 60 + m; }
+  function proximo(base, { h, m }) {
+    const d = new Date(base); d.setHours(h, m, 0, 0);
+    if (d <= base) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  function prazos(criado) {
+    const pd = proximo(criado, REGRAS.slaDemanda);
+    const pl = new Date(pd); pl.setHours(REGRAS.slaLogistica.h, REGRAS.slaLogistica.m, 0, 0);
+    return { prazoDemanda: pd.toISOString(), prazoLogistica: pl.toISOString() };
+  }
+  function prazoAtual(c) {
+    if (c.semSla) return null;
+    if (c.status === "fila_demanda") return { quem: "Demanda", iso: c.prazoDemanda };
+    if (c.status === "fila_logistica") return { quem: "Logística", iso: c.prazoLogistica };
+    return null;
+  }
+  function atrasado(c) { const p = prazoAtual(c); return !!p && new Date() > new Date(p.iso); }
+  // Lista de clientes do chamado ({ nome, segmento, modal, volume }). Chamados antigos tinham um cliente só, em campos soltos.
+  function clientesDe(c) {
+    const lista = Array.isArray(c.clientes) ? c.clientes : Object.values(c.clientes || {});
+    if (lista.length) return lista;
+    return c.cliente ? [{ nome: c.cliente, segmento: c.segmento, modal: c.modal, volume: c.volume }] : [];
+  }
+  // ---- Aprovação parcial ----
+  // Volumes aprovados por cliente numa etapa ("demanda" | "logistica"), alinhados com clientesDe(c); null se a
+  // etapa não aprovou. A Logística aprova em cima do que a Demanda aprovou. Chamados de antes da aprovação
+  // parcial não têm `volumes`: valem como aprovação integral (ou o que a etapa anterior aprovou).
+  const soma = a => Math.round((a || []).reduce((s, v) => s + (Number(v) || 0), 0) * 10) / 10;
+  const fmtNum = v => (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  const lerNum = s => { const t = String(s ?? "").trim().replace(",", "."); return t === "" ? NaN : Number(t); };
+  function volsAprovados(c, etapa) {
+    const d = c[etapa];
+    if (!d || d.decisao !== "aprovado") return null;
+    const anterior = etapa === "logistica" ? volsAprovados(c, "demanda") : null;
+    const vs = Array.isArray(d.volumes) ? d.volumes : Object.values(d.volumes || {});
+    return clientesDe(c).map((x, i) => Number(vs[i] ?? anterior?.[i] ?? x.volume) || 0);
+  }
+  const aprovadoFinal = c => c.status === "aprovado" || c.status === "concluido";
+  function volumeAprovado(c) { return aprovadoFinal(c) ? soma(volsAprovados(c, "logistica")) : 0; }
+  function ehParcial(c) { return aprovadoFinal(c) && volumeAprovado(c) < (Number(c.volume) || 0); }
+  function statusDe(c) {
+    const st = STATUS[c.status] || { label: c.status, tone: "wait" };
+    if (!ehParcial(c)) return st;
+    return { ...st, label: c.status === "concluido" ? "Concluído (parcial)" : "Aprovado parcial · ajustar MIS" };
+  }
+  function modalAvaliadoDe(c, i) {
+    const l = c.logistica;
+    return l?.modaisAvaliados?.[i] ?? (i === 0 ? l?.modalAvaliado : undefined);
+  }
+  function resumoClientes(c) {
+    const cs = clientesDe(c);
+    return cs.length > 1 ? `${cs[0].nome} +${cs.length - 1}` : cs[0]?.nome || "—";
+  }
+  // ID sequencial (ADC-000001, ADC-000002…) via contador em `contadores/chamados`, mesmo padrão do
+  // contadoresViagem do Portal Inbound: runTransaction garante número único mesmo com duas pessoas
+  // abrindo chamado ao mesmo tempo. Se a gravação do chamado falhar depois, aquele número fica pulado.
+  async function novoCodigo() {
+    let r;
+    try { r = await runTransaction(ref(db, "contadores/chamados"), atual => (atual || 0) + 1); }
+    catch (e) { e.etapa = "o número do chamado (contadores/chamados)"; throw e; }
+    if (!r.committed) throw new Error("Contador de chamados não confirmado");
+    return `ADC-${String(r.snapshot.val()).padStart(6, "0")}`;
+  }
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 3200);
+  }
+  // Confirmação com botões Continuar/Cancelar; resolve true/false. O foco começa em Cancelar (o caminho seguro).
+  function confirmar(msg, { ok = "Continuar", cancelar = "Cancelar" } = {}) {
+    return new Promise(resolve => {
+      const dlg = el("dialog", { class: "confirma", "aria-labelledby": "confirma-msg" });
+      const fim = v => { dlg.close(); dlg.remove(); resolve(v); };
+      const btnCancelar = el("button", { class: "btn ghost", type: "button", onclick: () => fim(false) }, cancelar);
+      dlg.append(el("p", { id: "confirma-msg", text: msg }),
+        el("div", { class: "row" }, btnCancelar, el("button", { class: "btn primary", type: "button", onclick: () => fim(true) }, ok)));
+      dlg.addEventListener("cancel", e => { e.preventDefault(); fim(false); });
+      document.body.append(dlg);
+      dlg.showModal();
+      btnCancelar.focus();
+    });
+  }
+  function mostrarBanner(msg) { const b = $("banner"); b.textContent = msg; b.hidden = false; }
+  function msgErro(e) {
+    if (e?.code === "PERMISSION_DENIED" || /permission/i.test(e?.message || "")) {
+      // Admin passa em qualquer regra de escrita; se ainda assim foi negado, é a validação das regras publicadas
+      if (S.me?.admin) return `O banco recusou a gravação${e.etapa ? ` de ${e.etapa}` : ""}. As regras publicadas no Firebase provavelmente estão desatualizadas: publique de novo o firebase_database.rules.json.`;
+      return `Sem permissão para esta ação${e.etapa ? ` (${e.etapa})` : ""}. Confira seu papel com o administrador.`;
+    }
+    return "Não foi possível salvar. Verifique a conexão e tente de novo.";
+  }
+
+  // ---------- Armazenamento (Firebase Realtime Database) ----------
+  const store = {
+    async salvar(c) {
+      c.atualizadoEm = new Date().toISOString();
+      // O Realtime Database rejeita campos undefined; o round-trip JSON remove esses campos
+      await set(ref(db, "chamados/" + c.id), JSON.parse(JSON.stringify(c)));
+    },
+  };
+
+  // ---------- Sessão ----------
+  function mostrarTela(t) {
+    $("tela-carregando").hidden = t !== "carregando";
+    $("tela-login").hidden = t !== "login";
+    $("tela-sem-perfil").hidden = t !== "sem-perfil";
+    $("app").hidden = t !== "app";
+    $("sessao").hidden = t !== "app";
+  }
+
+  function papeisDe(perfil) {
+    const ps = PAPEIS_ATIVOS.filter(p => perfil?.papeis?.[p] === true);
+    return ps.length ? ps : ["consulta"];
+  }
+
+  function filtroPadrao() {
+    return S.papel === "demanda" ? "fila_demanda" : S.papel === "logistica" ? "fila_logistica" : "todos";
+  }
+
+  function configurarSessao() {
+    const ps = S.me.papeis;
+    if (!ps.includes(S.papel)) S.papel = ps[0];
+    const sel = $("papel");
+    sel.replaceChildren(...ps.map(p => el("option", { value: p, text: PAPEIS[p] })));
+    sel.value = S.papel;
+    $("papel-wrap").hidden = ps.length < 2;
+    $("papel-fixo").textContent = [ps.length < 2 ? PAPEIS[S.papel] : null, S.me.admin ? "Administrador" : null].filter(Boolean).join(" · ");
+    $("quem").textContent = S.me.nome;
+    $("usuarios").hidden = !S.me.admin;
+    $("nav").hidden = false;
+    $("nav-cad").hidden = !S.me.admin;
+    if (!S.me.admin && S.view === "cadastros") mostrarView("chamados");
+    S.filtro = filtroPadrao();
+  }
+
+  function mostrarView(v) {
+    S.view = v;
+    for (const x of ["chamados", "resumo", "cadastros"]) $("view-" + x).hidden = v !== x;
+    for (const b of $("nav").querySelectorAll("[data-view]")) b.setAttribute("aria-selected", String(b.dataset.view === v));
+    if (v === "cadastros") renderCadastros();
+    if (v === "resumo") renderResumo();
+  }
+
+  let parar = [];
+  onAuthStateChanged(auth, async user => {
+    for (const p of parar) p();
+    parar = [];
+    S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
+    S.cad = { bases: [], produtos: [] };
+    if (!user) { mostrarTela("login"); return; }
+
+    mostrarTela("carregando");
+    S.meuId = user.uid;
+    let perfil = null, erroLeitura = null;
+    try { perfil = (await get(ref(db, "perfis/" + user.uid))).val(); }
+    catch (e) { console.error(e); erroLeitura = e; }
+    if (!perfil) {
+      $("sp-msg").textContent = erroLeitura
+        ? `Você entrou como ${user.email}, mas o banco recusou a leitura do seu perfil (${erroLeitura.message || erroLeitura.code}). Confira se as regras do Realtime Database foram publicadas.`
+        : `Você entrou como ${user.email}, mas seu usuário ainda não tem perfil no portal.`;
+      $("sp-uid").textContent = user.uid;
+      mostrarTela("sem-perfil");
+      return;
+    }
+
+    S.me = { uid: user.uid, nome: perfil.nome || user.email, email: user.email, admin: perfil.admin === true, papeis: papeisDe(perfil) };
+    configurarSessao();
+    $("banner").hidden = true;
+    mostrarTela("app");
+    render();
+
+    parar.push(onValue(ref(db, "chamados"), snap => {
+      S.chamados = Object.values(snap.val() || {});
+      S.modo = "online";
+      render();
+    }, err => {
+      console.error(err);
+      mostrarBanner("Não foi possível carregar os chamados (sem permissão ou sem conexão). Recarregue a página.");
+    }));
+
+    parar.push(onValue(ref(db, "cadastros"), snap => {
+      const v = snap.val() || {};
+      for (const [t, cfg] of Object.entries(CAD)) {
+        S.cad[t] = Object.entries(v[t] || {}).map(([id, x]) => ({ ...x, id }))
+          .sort((a, b) => String(a[cfg.chave] || "").localeCompare(String(b[cfg.chave] || ""), "pt-BR"));
+      }
+      if (S.view === "cadastros") renderCadTabela();
+      render(); // cidade/UF/região dos filtros vêm do cadastro de bases
+    }, err => {
+      console.error(err);
+      mostrarBanner("Não foi possível carregar os cadastros de bases e produtos. Confira se as regras do banco foram atualizadas.");
+    }));
+  });
+
+  // ---------- Login ----------
+  $("form-login").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $("l-email").value.trim(), senha = $("l-senha").value;
+    const err = $("l-err"); err.textContent = "";
+    if (!email || !senha) { err.textContent = "Informe e-mail e senha."; return; }
+    const btn = $("l-btn"); btn.disabled = true;
+    try {
+      await signInWithEmailAndPassword(auth, email, senha);
+      $("l-senha").value = "";
+    } catch (e2) {
+      err.textContent = {
+        "auth/invalid-credential": "E-mail ou senha incorretos.",
+        "auth/invalid-email": "E-mail inválido.",
+        "auth/user-disabled": "Usuário desativado.",
+        "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos ou redefina a senha.",
+        "auth/network-request-failed": "Sem conexão com o servidor.",
+      }[e2?.code] || "Não foi possível entrar. Tente de novo.";
+    } finally { btn.disabled = false; }
+  });
+  $("l-esqueci").addEventListener("click", async () => {
+    const email = $("l-email").value.trim(), err = $("l-err");
+    if (!email) { err.textContent = "Digite seu e-mail acima e clique de novo em “Esqueci minha senha”."; return; }
+    try { await sendPasswordResetEmail(auth, email); err.textContent = ""; toast("Se o e-mail estiver cadastrado, você vai receber um link para criar nova senha."); }
+    catch (e2) { err.textContent = e2?.code === "auth/invalid-email" ? "E-mail inválido." : "Não foi possível enviar o e-mail agora."; }
+  });
+  $("sair").addEventListener("click", () => signOut(auth));
+  $("sp-sair").addEventListener("click", () => signOut(auth));
+
+  // ---------- Render principal ----------
+  // Chamados que passam nos filtros de Base/Cidade/UF/Região (os KPIs contam só estes)
+  function chamadosFiltrados() {
+    const mapa = mapaBases();
+    return S.chamados.filter(c => passaFiltros(FC, c, mapa));
+  }
+  function visiveis() {
+    const f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0];
+    const q = S.busca.trim().toLowerCase();
+    const alvo = f.semData ? null : S.fData || null;
+    const encerrado = c => STATUS[c.status]?.final ? 1 : 0;
+    return chamadosFiltrados()
+      .filter(f.test)
+      .filter(c => !alvo || c.dataEntrega === alvo)
+      .filter(c => !q || [c.codigo, ...clientesDe(c).map(x => x.nome), c.base, c.produto, c.motivo].join(" ").toLowerCase().includes(q))
+      // Primeiro os que aguardam alguma ação, depois os encerrados; em cada grupo, faturamento mais recente
+      // primeiro (empate: abertura mais recente)
+      .sort((a, b) => encerrado(a) - encerrado(b)
+        || (b.dataEntrega || "").localeCompare(a.dataEntrega || "")
+        || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  }
+
+  function render() {
+    if (!S.me) return;
+    NC.sync(); // etiqueta D0/D+1 muda sozinha se a página ficar aberta na virada do dia
+    NC.el.hidden = !!(FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).semData;
+    atualizarOpcoesFiltros(FC, S.chamados);
+    const base = chamadosFiltrados();
+    // KPIs
+    const k = $("kpis"); k.replaceChildren();
+    for (const f of FILTROS) {
+      const n = base.filter(f.test).length;
+      k.append(el("button", {
+        class: "kpi" + (f.crit && n ? " crit" : ""), type: "button", "aria-pressed": String(S.filtro === f.id),
+        onclick: () => { S.filtro = f.id; S.fData = ""; render(); }, // toda visão abre com todas as datas
+      }, el("span", { class: "n", text: S.modo === "carregando" ? "–" : n }), el("span", { class: "l", text: f.label })));
+    }
+    $("lista-titulo").textContent = (FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).label;
+
+    // Tabela
+    const rows = visiveis();
+    const tb = $("linhas"); tb.replaceChildren();
+    for (const c of rows) {
+      const st = statusDe(c);
+      const p = prazoAtual(c);
+      const late = atrasado(c);
+      tb.append(el("tr", { tabindex: "0", onclick: () => abrir(c.id), onkeydown: e => { if (e.key === "Enter") abrir(c.id); } },
+        el("td", {}, el("span", { class: "mono", text: c.codigo }),
+          el("div", { class: "sub", text: "Aberto " + fmtDataHora(c.criadoEm) })),
+        el("td", {}, fmtData(c.dataEntrega), el("span", { class: "tag" + (c.tipo === "D-0" ? " d0" : ""), text: c.tipo })),
+        el("td", { text: c.base }),
+        el("td", { text: c.produto }),
+        el("td", {}, ...(cs => cs.length > 1
+          ? [el("div", { text: resumoClientes(c) }), el("div", { class: "sub", text: `${cs.length} clientes` })]
+          : [el("div", { text: cs[0]?.nome || "—" }), el("div", { class: "sub", text: cs[0] ? `${cs[0].segmento} · ${cs[0].modal}` : "" })])(clientesDe(c))),
+        el("td", { class: "num mono" }, fmtVol(c.volume), ehParcial(c) ? el("div", { class: "sub", text: `aprovado ${fmtVol(volumeAprovado(c))}` }) : null),
+        el("td", {}, el("span", { class: "pill t-" + st.tone, text: st.label })),
+        el("td", {}, p
+          ? el("span", { class: "sla" + (late ? " late" : ""), text: `${p.quem} até ${fmtDataHora(p.iso)}${late ? " · atrasado" : ""}` })
+          : c.semSla && !STATUS[c.status]?.final
+            ? el("span", { class: "pill t-warn", text: "Sem SLA", title: "D-0 aberto após o limite: sem garantia de atendimento" })
+            : el("span", { class: "sub", text: "—" })),
+      ));
+    }
+    const vazio = $("vazio");
+    vazio.hidden = rows.length > 0;
+    vazio.textContent = S.modo === "carregando" ? "Carregando chamados…"
+      : S.chamados.length === 0 ? "Nenhum chamado ainda. Use “+ Novo chamado” para registrar a primeira solicitação."
+      : "Nenhum chamado neste filtro.";
+
+    // Regras
+    const r = $("regras"); r.replaceChildren(
+      el("span", {}, el("b", { text: "Com SLA: " }), `D-1 após o horário de corte · D-0 até ${fmtHora(REGRAS.limiteD0)}`),
+      el("span", {}, el("b", { text: "Sem SLA: " }), `D-0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
+      el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)}`),
+      el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)}`),
+    );
+
+    // Só redesenha o detalhe aberto se o chamado mudou (não apaga o que a pessoa está digitando)
+    if (S.view === "resumo") renderResumo();
+
+    if (S.abertoId) {
+      const c = S.chamados.find(x => x.id === S.abertoId);
+      if (!c || c.atualizadoEm !== S.abertoVer) renderDetalhe();
+    }
+  }
+
+  // ---------- Drawer ----------
+  // largo: painel mais largo (formulário de novo chamado cabe sem rolar em tela de notebook)
+  function abrirDrawer(titulo, sub, { largo = false } = {}) {
+    $("dr-titulo").textContent = titulo; $("dr-sub").textContent = sub || "";
+    document.querySelector(".drawer").classList.toggle("largo", largo);
+    $("dr-body").scrollTop = 0; // senão herda a rolagem do último conteúdo aberto no painel
+    $("overlay").hidden = false;
+    setTimeout(() => $("fechar").focus(), 0);
+  }
+  function fechar() { $("overlay").hidden = true; S.abertoId = null; }
+  function abrir(id) { S.abertoId = id; renderDetalhe(); }
+
+  function renderDetalhe() {
+    const c = S.chamados.find(x => x.id === S.abertoId);
+    if (!c) { fechar(); return; }
+    S.abertoVer = c.atualizadoEm;
+    const st = statusDe(c);
+    abrirDrawer(`${resumoClientes(c)} · ${fmtVol(c.volume)}`, `${c.codigo} · aberto por ${c.criadoPorNome || "—"} em ${fmtDataHora(c.criadoEm)}`, { largo: true });
+    const body = $("dr-body"); body.replaceChildren();
+
+    body.append(el("div", {}, el("span", { class: "pill t-" + st.tone, text: st.label }),
+      atrasado(c) ? el("span", { class: "pill t-crit", style: "margin-left:8px", text: "Fora do prazo" }) : null,
+      c.semSla ? el("span", { class: "pill t-warn", style: "margin-left:8px", text: "Sem SLA" }) : null));
+    if (c.semSla) body.append(el("div", { class: "hint t-warn", role: "note",
+      text: `D-0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.` }));
+
+    // Etapas
+    const etapa = (nome, estado, txt) => el("div", { class: "step " + estado }, el("b", { text: nome }), txt);
+    const d = c.demanda, l = c.logistica;
+    const ateOuSemSla = iso => c.semSla ? "Sem SLA" : `Até ${fmtDataHora(iso)}`;
+    const eDem = c.status === "recusa_auto" ? ["fail", "Não chegou"] :
+      d ? [d.decisao === "aprovado" ? "done" : "fail", d.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
+      ["now", ateOuSemSla(c.prazoDemanda)];
+    const eLog = l ? [l.decisao === "aprovado" ? "done" : "fail", l.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
+      c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] : ["", "—"];
+    const eMis = c.status === "concluido" ? ["done", "Ajustado e enviado"] : c.status === "aprovado" ? ["now", "Pendente"] : ["", "—"];
+    body.append(el("div", {}, el("p", { class: "section-t", text: "Etapas" }),
+      el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("MIS e portal", ...eMis))));
+
+    // Dados
+    const kv = (k, v, full) => el("div", { class: full ? "full" : "" }, el("dt", { text: k }), el("dd", { text: v || "—" }));
+    body.append(el("div", {}, el("p", { class: "section-t", text: "Solicitação" }),
+      el("dl", { class: "kv" },
+        kv("Data de faturamento", `${fmtData(c.dataEntrega)} (${c.tipo})`),
+        kv("Volume adicional total", fmtVol(c.volume)),
+        kv("Base", c.base), kv("Produto", c.produto),
+        kv("Motivo / observações", c.motivo, true),
+        d?.tradeoff ? kv("Trade-off que subsidia o aumento", d.tradeoff, true) : null,
+      )));
+
+    // Clientes: solicitado × aprovado por etapa. Quem está decidindo preenche a coluna da própria etapa
+    // (e a Logística escolhe o modal avaliado de cada cliente na própria tabela).
+    const cs = clientesDe(c);
+    const etapaEdit = S.papel === "demanda" && c.status === "fila_demanda" ? "demanda"
+      : S.papel === "logistica" && c.status === "fila_logistica" ? "logistica" : null;
+    const vDem = volsAprovados(c, "demanda"), vLog = volsAprovados(c, "logistica");
+    // Teto de cada cliente: Demanda aprova até o solicitado; Logística até o que a Demanda aprovou
+    const tetos = cs.map((x, i) => etapaEdit === "logistica" ? (vDem?.[i] ?? (Number(x.volume) || 0)) : Number(x.volume) || 0);
+    const inputsVol = etapaEdit ? cs.map((x, i) => el("input", { type: "number", class: "vol-aprov", min: "0", max: String(tetos[i]), step: "0.5",
+      inputmode: "decimal", placeholder: `até ${fmtNum(tetos[i])}`, "aria-label": `Volume aprovado para ${x.nome} (até ${fmtNum(tetos[i])} m³)` })) : null;
+    const selsModal = etapaEdit === "logistica" ? cs.map(x => {
+      const s = el("select", { class: "modal-sel", "aria-label": `Modal avaliado para ${x.nome}` },
+        el("option", { value: "CIF", text: "CIF" }), el("option", { value: "FOB", text: "FOB" }));
+      s.value = x.modal || "FOB";
+      return s;
+    }) : null;
+    const totEdit = el("td", { class: "num mono" });
+    const temAvaliado = !!selsModal || cs.some((_, i) => modalAvaliadoDe(c, i));
+    const colDem = !!vDem || etapaEdit === "demanda", colLog = !!vLog || etapaEdit === "logistica";
+    // Volume abaixo do teto da etapa (corte) aparece destacado
+    const celVol = (v, teto) => el("td", { class: "num mono" + (v < teto ? " corte" : ""), text: fmtVol(v), title: v < teto ? `Corte de ${fmtVol(teto - v)}` : null });
+    const colAprov = (etapa, vs, i, teto) => etapaEdit === etapa ? el("td", { class: "num" }, inputsVol[i]) : vs ? celVol(vs[i], teto) : el("td", { class: "num sub", text: "—" });
+    body.append(el("div", {}, el("p", { class: "section-t", text: `Clientes (${cs.length})` }),
+      el("div", { class: "tablebox", style: "margin-top:0" }, el("table", { class: "lista clientes-det" },
+        el("thead", {}, el("tr", {}, el("th", { text: "Cliente" }), el("th", { text: "Segmento" }), el("th", { text: "Modal" }),
+          temAvaliado ? el("th", { text: "Modal avaliado" }) : null, el("th", { class: "num", text: "Solicitado" }),
+          colDem ? el("th", { class: "num", text: "Aprovado Demanda" }) : null,
+          colLog ? el("th", { class: "num", text: "Aprovado Logística" }) : null)),
+        el("tbody", { class: "plain" }, cs.map((x, i) => el("tr", {},
+          el("td", { text: x.nome }), el("td", { text: x.segmento || "—" }), el("td", { text: x.modal || "—" }),
+          temAvaliado ? el("td", {}, selsModal ? selsModal[i] : modalAvaliadoDe(c, i) || "—") : null,
+          el("td", { class: "num mono", text: fmtVol(x.volume) }),
+          colDem ? colAprov("demanda", vDem, i, Number(x.volume) || 0) : null,
+          colLog ? colAprov("logistica", vLog, i, vDem?.[i] ?? (Number(x.volume) || 0)) : null))),
+        el("tfoot", {}, el("tr", {},
+          el("td", { text: "Total", colspan: String(temAvaliado ? 4 : 3) }),
+          el("td", { class: "num mono", text: fmtVol(c.volume) }),
+          colDem ? (etapaEdit === "demanda" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vDem)) })) : null,
+          colLog ? (etapaEdit === "logistica" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vLog)) })) : null))))));
+
+    // Ação conforme papel
+    const acao = painelAcao(c, { inputsVol, tetos, selsModal, totEdit });
+    if (acao) body.append(acao);
+
+    // Histórico
+    const hist = el("ol", { class: "timeline" });
+    for (const h of [...(c.historico || [])].reverse()) {
+      hist.append(el("li", {}, el("span", { class: "dot" }),
+        el("div", {}, el("div", {}, el("b", { text: h.acao })),
+          el("div", { class: "meta", text: `${fmtDataHora(h.em)} · ${PAPEIS[h.papel] || h.papel} · ${h.porNome || "—"}` }),
+          h.nota ? el("div", { class: "note", text: h.nota }) : null)));
+    }
+    body.append(el("div", {}, el("p", { class: "section-t", text: "Histórico" }), hist));
+  }
+
+  function evento(c, acao, nota) {
+    c.historico = [...(c.historico || []), { em: new Date().toISOString(), por: S.meuId, porNome: S.me.nome, papel: S.papel, acao, nota: nota || "" }];
+  }
+
+  async function gravar(c, msg) {
+    try { await store.salvar(c); toast(msg); }
+    catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  // Controles de aprovação por cliente: "Aprovar tudo" (preenche cada cliente com o teto da etapa), total ao vivo
+  // e leitura/validação dos volumes digitados na tabela de clientes.
+  function controlesAprovacao({ inputsVol, tetos, totEdit }) {
+    const teto = soma(tetos);
+    const totalEl = el("span", { class: "mono" });
+    const atualizar = () => {
+      const t = soma(inputsVol.map(i => lerNum(i.value) || 0));
+      const pend = inputsVol.filter(i => i.value.trim() === "").length;
+      totalEl.textContent = `${fmtVol(t)} de ${fmtVol(teto)}` + (pend ? ` · ${pend} cliente(s) sem valor` : t < teto ? " · parcial" : " · integral");
+      totEdit.textContent = fmtVol(t);
+    };
+    inputsVol.forEach(i => i.addEventListener("input", atualizar));
+    atualizar();
+    const barra = el("div", { class: "aprov-barra" },
+      el("button", { class: "btn ghost sm", type: "button", onclick: () => { inputsVol.forEach((i, k) => (i.value = tetos[k])); atualizar(); } }, "Aprovar tudo"),
+      el("span", {}, "Total aprovado: ", totalEl),
+      el("span", { class: "sub", text: "Preencha o volume aprovado de cada cliente na tabela acima (0 = não atender o cliente)." }));
+    function ler() {
+      const vals = inputsVol.map(i => lerNum(i.value));
+      const i = vals.findIndex((v, k) => !(v >= 0 && v <= tetos[k]));
+      if (i >= 0) {
+        inputsVol[i].focus();
+        return { erro: Number.isNaN(vals[i]) ? "Preencha o volume aprovado de todos os clientes (ou use “Aprovar tudo”)."
+          : `O volume aprovado de cada cliente precisa ficar entre 0 e ${fmtNum(tetos[i])} m³ (limite da linha ${i + 1}).` };
+      }
+      const total = soma(vals);
+      if (total <= 0) return { erro: "Nenhum volume aprovado. Para não atender o chamado, use “Recusar”." };
+      return { vals, total, teto, parcial: total < teto };
+    }
+    return { barra, ler };
+  }
+
+  function painelAcao(c, ctx = {}) {
+    const box = el("div", { class: "action" });
+    const titulo = t => el("p", { class: "section-t", text: t, style: "margin:0" });
+
+    if (S.papel === "demanda" && c.status === "fila_demanda") {
+      const ap = controlesAprovacao(ctx);
+      const trade = el("textarea", { id: "a-trade", placeholder: "Ex.: reduzir 20 m³ do cliente X na mesma base" });
+      const mot = el("textarea", { id: "a-mot", placeholder: "Motivo da recusa" });
+      const err = el("div", { class: "err", role: "alert" });
+      box.append(titulo("Decisão do Time Demanda"), ap.barra,
+        el("div", { class: "grid2" },
+          el("label", { class: "f", for: "a-trade" }, "Se aprovar: trade-off que subsidia o aumento", trade),
+          el("label", { class: "f", for: "a-mot" }, "Se recusar: motivo", mot)), err,
+        el("div", { class: "row" },
+          el("button", { class: "btn ok", type: "button", onclick: () => {
+            err.textContent = "";
+            const r = ap.ler();
+            if (r.erro) { err.textContent = r.erro; return; }
+            if (!trade.value.trim()) { err.textContent = "Descreva o trade-off antes de aprovar."; trade.focus(); return; }
+            const n = structuredClone(c);
+            n.demanda = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, tradeoff: trade.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.status = "fila_logistica";
+            evento(n, r.parcial ? `Aprovado parcialmente pela Demanda (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : "Aprovado pela Demanda", trade.value.trim());
+            gravar(n, r.parcial ? "Aprovado parcialmente e enviado para a Logística" : "Aprovado e enviado para a Logística");
+          } }, "Aprovar e enviar à Logística"),
+          el("button", { class: "btn danger", type: "button", onclick: () => {
+            if (!mot.value.trim()) { err.textContent = "Informe o motivo da recusa."; return; }
+            const n = structuredClone(c);
+            n.demanda = { decisao: "recusado", motivo: mot.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.status = "recusado_demanda"; evento(n, "Recusado pela Demanda", mot.value.trim());
+            gravar(n, "Chamado recusado");
+          } }, "Recusar")));
+      return box;
+    }
+
+    if (S.papel === "logistica" && c.status === "fila_logistica") {
+      // Modal avaliado e volume aprovado de cada cliente ficam na tabela de clientes (ctx.selsModal / ctx.inputsVol)
+      const cs = clientesDe(c);
+      const sels = ctx.selsModal;
+      const modais = () => sels.map(s => s.value);
+      const resumoModais = () => cs.length > 1 ? cs.map((x, i) => `${x.nome}: ${sels[i].value}`).join(" · ") : sels[0]?.value || "";
+      const ap = controlesAprovacao(ctx);
+      const obs = el("textarea", { id: "a-obs", placeholder: "Obrigatório ao recusar ou ao aprovar menos do que a Demanda aprovou" });
+      const err = el("div", { class: "err", role: "alert" });
+      box.append(titulo("Decisão do Time Logística"), ap.barra,
+        el("label", { class: "f", for: "a-obs" }, "Observações", obs), err,
+        el("div", { class: "row" },
+          el("button", { class: "btn ok", type: "button", onclick: () => {
+            err.textContent = "";
+            const r = ap.ler();
+            if (r.erro) { err.textContent = r.erro; return; }
+            if (r.parcial && !obs.value.trim()) { err.textContent = "Aprovação parcial: explique nas observações o motivo do corte."; obs.focus(); return; }
+            const n = structuredClone(c);
+            n.logistica = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, modaisAvaliados: modais(), obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.status = "aprovado";
+            evento(n, (r.parcial ? `Aprovado parcialmente pela Logística (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : `Aprovado pela Logística (${fmtVol(r.total)})`) + ` · modal ${resumoModais()}`, obs.value.trim());
+            gravar(n, `Aprovado ${fmtVol(r.total)}. Falta ajustar o MIS e enviar ao portal.`);
+          } }, "Aprovar"),
+          el("button", { class: "btn danger", type: "button", onclick: () => {
+            if (!obs.value.trim()) { err.textContent = "Informe o motivo da recusa nas observações."; return; }
+            const n = structuredClone(c);
+            n.logistica = { decisao: "recusado", modaisAvaliados: modais(), obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.status = "recusado_logistica"; evento(n, "Recusado pela Logística", obs.value.trim());
+            gravar(n, "Chamado recusado");
+          } }, "Recusar")));
+      return box;
+    }
+
+    if (S.papel === "logistica" && c.status === "aprovado") {
+      const chk = el("input", { type: "checkbox", id: "a-mis" });
+      const btn = el("button", { class: "btn primary", type: "button", disabled: true, onclick: () => {
+        const n = structuredClone(c);
+        n.logistica = { ...n.logistica, misEm: new Date().toISOString(), misPor: S.meuId };
+        n.status = "concluido"; evento(n, "Ajustado no MIS e enviado ao portal");
+        gravar(n, "Chamado concluído");
+      } }, "Concluir chamado");
+      chk.addEventListener("change", () => (btn.disabled = !chk.checked));
+      const cs = clientesDe(c), vs = volsAprovados(c, "logistica") || [];
+      box.append(titulo("Ajuste no MIS"),
+        el("p", {}, "Volume a ajustar: ", el("b", { class: "mono", text: fmtVol(volumeAprovado(c)) }),
+          ehParcial(c) ? ` (aprovação parcial — solicitado ${fmtVol(c.volume)})` : "",
+          cs.length > 1 ? el("span", { class: "sub", text: " · " + cs.map((x, i) => `${x.nome}: ${fmtVol(vs[i])}`).join(" · ") }) : null),
+        el("label", { class: "check", for: "a-mis" }, chk, `Confirmo que ${fmtVol(volumeAprovado(c))} foram ajustados no MIS e enviados ao portal`), btn);
+      return box;
+    }
+
+    if (c.criadoPor === S.meuId && c.status === "fila_demanda") {
+      box.append(titulo("Seu chamado"),
+        el("p", { text: c.semSla ? "Aguardando o Time Demanda (sem SLA)." : `Aguardando o Time Demanda até ${fmtDataHora(c.prazoDemanda)}.` }),
+        el("div", { class: "row" }, el("button", { class: "btn ghost", type: "button", onclick: () => {
+          const n = structuredClone(c); n.status = "recusado_demanda";
+          n.demanda = { decisao: "recusado", motivo: "Cancelado pelo solicitante", em: new Date().toISOString(), por: S.meuId };
+          evento(n, "Cancelado pelo Comercial"); gravar(n, "Chamado cancelado");
+        } }, "Cancelar chamado")));
+      return box;
+    }
+
+    const quem = c.status === "fila_demanda" ? "Time Demanda" : c.status === "fila_logistica" || c.status === "aprovado" ? "Time Logística" : null;
+    if (quem) {
+      box.append(el("p", { text: `Próxima ação é do ${quem}.` }));
+      return box;
+    }
+    return null;
+  }
+
+  // ---------- Navegador de data (◀ data ▶, mesmo formato do Portal Inbound) ----------
+  // get/set leem e gravam a data escolhida (AAAA-MM-DD, "" = todas as datas); set já redesenha a aba.
+  function navData(get, set) {
+    const inp = el("input", { type: "date", class: "nav-data-inp", "aria-label": "Data de faturamento" });
+    const rel = el("span", { class: "tag nav-data-rel" });
+    const mover = dias => {
+      const [y, m, d] = (get() || hojeStr()).split("-").map(Number);
+      set(ymd(new Date(y, m - 1, d + dias))); sync();
+    };
+    const btnHoje = el("button", { class: "linkbtn", type: "button", onclick: () => { set(hojeStr()); sync(); } }, "Hoje");
+    const btnTodas = el("button", { class: "linkbtn", type: "button", onclick: () => { set(""); sync(); } }, "Todas as datas");
+    inp.addEventListener("change", () => { set(inp.value); sync(); });
+    function sync() {
+      const v = get();
+      inp.value = v;
+      const dd = v ? difDias(v) : null;
+      rel.textContent = dd === null ? "todas" : dd === 0 ? "D0" : dd > 0 ? `D+${dd}` : `D${dd}`;
+      rel.classList.toggle("d0", dd === 0);
+      btnHoje.hidden = dd === 0;
+      btnTodas.hidden = !v;
+    }
+    sync();
+    return {
+      sync,
+      el: el("div", { class: "nav-data", role: "group", "aria-label": "Data de faturamento" },
+        el("button", { class: "btn ghost nav-seta", type: "button", "aria-label": "Dia anterior", title: "Dia anterior", onclick: () => mover(-1) }, "◀"),
+        inp,
+        el("button", { class: "btn ghost nav-seta", type: "button", "aria-label": "Próximo dia", title: "Próximo dia", onclick: () => mover(1) }, "▶"),
+        rel, btnHoje, btnTodas),
+    };
+  }
+
+  // ---------- Filtro multisseleção ----------
+  // Porte do MultiSelect do Portal Inbound: botão que abre um painel com busca (ignora acento/caixa) e
+  // caixas de seleção. Sem nada marcado = sem filtro. A busca só esconde opções, não mexe na seleção.
+  class MultiSelect {
+    constructor(placeholder, onChange, { narrow = false } = {}) {
+      this.ph = placeholder; this.onChange = onChange;
+      this.selected = new Set(); this.options = []; this.busca = "";
+      this._label = el("span", { class: "ms-lbl", text: placeholder });
+      this._trigger = el("button", { type: "button", class: "ms-trigger", "aria-haspopup": "true", "aria-expanded": "false" },
+        this._label, el("span", { class: "ms-seta", "aria-hidden": "true", text: "▼" }));
+      this._busca = el("input", { type: "search", class: "ms-busca", placeholder: "Buscar…", "aria-label": "Buscar " + placeholder.toLowerCase() });
+      this._opts = el("div", { class: "ms-opts" });
+      this._panel = el("div", { class: "ms-panel", hidden: true }, el("div", { class: "ms-topo" }, this._busca), this._opts);
+      this.el = el("div", { class: "ms" + (narrow ? " narrow" : "") }, this._trigger, this._panel);
+      this._busca.addEventListener("input", () => { this.busca = this._busca.value; this._renderPanel(); });
+      this._trigger.addEventListener("click", () => this._panel.hidden ? this.abrir() : this.fechar());
+      MultiSelect.todos.push(this);
+    }
+    get aberto() { return !this._panel.hidden; }
+    abrir() {
+      for (const m of MultiSelect.todos) if (m !== this) m.fechar();
+      // Busca sempre nasce vazia a cada abertura (mesmo comportamento do inbound)
+      this.busca = ""; this._busca.value = ""; this._renderPanel();
+      this._panel.hidden = false; this._trigger.setAttribute("aria-expanded", "true");
+      setTimeout(() => this._busca.focus(), 0);
+    }
+    fechar() { if (this._panel.hidden) return; this._panel.hidden = true; this._trigger.setAttribute("aria-expanded", "false"); }
+    setOptions(opts) {
+      const igual = opts.length === this.options.length && opts.every((v, i) => v === this.options[i]);
+      this.options = opts;
+      this.selected = new Set([...this.selected].filter(v => opts.includes(v)));
+      if (!igual && this.aberto) this._renderPanel();
+      this._renderLabel();
+    }
+    clear() { this.selected.clear(); if (this.aberto) this._renderPanel(); this._renderLabel(); }
+    _toggle(v) { this.selected.has(v) ? this.selected.delete(v) : this.selected.add(v); this._renderLabel(); this.onChange(); }
+    _renderLabel() {
+      const n = this.selected.size;
+      this._label.textContent = n === 0 ? this.ph : n === 1 ? [...this.selected][0] : `${this.ph}: ${n}`;
+      this._trigger.classList.toggle("ativo", n > 0);
+      this._trigger.title = n ? `${this.ph}: ${[...this.selected].join(", ")}` : this.ph;
+    }
+    _renderPanel() {
+      const t = semAcento(this.busca.trim());
+      const lista = t ? this.options.filter(o => semAcento(o).includes(t)) : this.options;
+      this._opts.replaceChildren(...(lista.length
+        ? lista.map(o => {
+            const cb = el("input", { type: "checkbox", checked: this.selected.has(o) });
+            cb.addEventListener("change", () => this._toggle(o));
+            return el("label", { class: "ms-opt", title: o }, cb, el("span", { text: o }));
+          })
+        : [el("div", { class: "ms-vazio", text: this.options.length ? `Nenhuma opção com “${this.busca}”` : "Sem opções" })]));
+    }
+  }
+  MultiSelect.todos = [];
+  document.addEventListener("click", e => { for (const m of MultiSelect.todos) if (!m.el.contains(e.target)) m.fechar(); });
+
+  // Filtros por base: Base (Nome MIS), Cidade, UF e Região vêm do cadastro de bases, cruzando pelo Nome MIS do chamado
+  const CAMPOS_FILTRO = { base: b => b.nomeMis, cidade: b => b.cidade, uf: b => b.estado, regiao: b => b.regional };
+  const mapaBases = () => new Map(S.cad.bases.map(b => [b.nomeMis, b]));
+  function criarFiltrosBase(container, onChange) {
+    const f = {
+      base: new MultiSelect("Base", onChange), cidade: new MultiSelect("Cidade", onChange),
+      uf: new MultiSelect("UF", onChange, { narrow: true }), regiao: new MultiSelect("Região", onChange),
+    };
+    const limpar = el("button", { class: "linkbtn", type: "button", hidden: true, onclick: () => { for (const [, m] of filtrosDe(f)) m.clear(); onChange(); } }, "Limpar filtros");
+    f._limpar = limpar;
+    container.replaceChildren(...filtrosDe(f).map(([, m]) => m.el), limpar);
+    return f;
+  }
+  function filtrosDe(f) { return Object.keys(CAMPOS_FILTRO).map(k => [k, f[k]]); }
+  // Opções = só valores que aparecem em algum chamado (listas curtas, como no inbound)
+  function atualizarOpcoesFiltros(f, chamados) {
+    const mapa = mapaBases();
+    for (const [k, m] of filtrosDe(f)) {
+      const vals = new Set(chamados.map(c => CAMPOS_FILTRO[k](mapa.get(c.base) || { nomeMis: c.base })).filter(Boolean));
+      m.setOptions([...vals].sort((a, b) => String(a).localeCompare(String(b), "pt-BR")));
+    }
+    f._limpar.hidden = !filtrosDe(f).some(([, m]) => m.selected.size);
+  }
+  function passaFiltros(f, c, mapa) {
+    const b = mapa.get(c.base) || { nomeMis: c.base };
+    return filtrosDe(f).every(([k, m]) => !m.selected.size || m.selected.has(CAMPOS_FILTRO[k](b)));
+  }
+
+  // ---------- Combobox com busca ----------
+  // Mesmo padrão do Portal Inbound (Frete Retorno): campo de texto que filtra a lista + input hidden
+  // com o valor escolhido. Se a pessoa digita e sai sem escolher, o texto volta para a seleção real —
+  // nunca fica um texto "solto" que não existe no cadastro.
+  const semAcento = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function combo({ id, name, itens, placeholder }) {
+    const hidden = el("input", { type: "hidden", name });
+    const inp = el("input", { id, type: "text", placeholder, autocomplete: "off", spellcheck: "false",
+      role: "combobox", "aria-expanded": "false", "aria-autocomplete": "list", "aria-controls": id + "-lista" });
+    const lista = el("div", { class: "combo-lista", id: id + "-lista", role: "listbox" });
+    let visiveis = [], ativo = -1;
+
+    function abrir(termo) {
+      const t = semAcento(termo.trim());
+      // Todas as palavras digitadas precisam aparecer (em qualquer ordem): "betim rbz" acha "BETIM - NEXTA RBZ"
+      const palavras = t.split(/\s+/).filter(Boolean);
+      visiveis = itens.filter(i => palavras.every(p => i.busca.includes(p))).slice(0, 100);
+      ativo = visiveis.length ? 0 : -1;
+      desenhar();
+      lista.classList.add("open"); inp.setAttribute("aria-expanded", "true");
+    }
+    function desenhar() {
+      lista.replaceChildren(...(visiveis.length
+        ? visiveis.map((i, n) => el("div", { class: "combo-item" + (n === ativo ? " ativo" : ""), role: "option", id: `${id}-op${n}`,
+            "aria-selected": String(n === ativo), onmousedown: () => escolher(i), onmousemove: () => { if (ativo !== n) { ativo = n; marcar(); } } },
+            el("div", { text: i.texto }), i.sub ? el("div", { class: "sub", text: i.sub }) : null))
+        : [el("div", { class: "combo-vazio", text: itens.length ? "Nada encontrado" : "Nenhum item cadastrado" })]));
+      marcar();
+    }
+    function marcar() {
+      [...lista.children].forEach((c, n) => { c.classList.toggle("ativo", n === ativo); c.setAttribute("aria-selected", String(n === ativo)); });
+      const at = lista.children[ativo];
+      if (at) { at.scrollIntoView({ block: "nearest" }); inp.setAttribute("aria-activedescendant", at.id); }
+      else inp.removeAttribute("aria-activedescendant");
+    }
+    function fecharLista() {
+      lista.classList.remove("open"); inp.setAttribute("aria-expanded", "false");
+      inp.value = itens.find(i => i.valor === hidden.value)?.texto || "";
+    }
+    function escolher(i) { hidden.value = i.valor; fecharLista(); }
+
+    // mousedown na lista não tira o foco do campo (clicar num item ou na barra de rolagem não fecha a lista antes da hora)
+    lista.addEventListener("mousedown", e => e.preventDefault());
+    inp.addEventListener("focus", () => { inp.select(); abrir(""); });
+    inp.addEventListener("click", () => { if (!lista.classList.contains("open")) abrir(""); });
+    inp.addEventListener("input", () => { hidden.value = ""; abrir(inp.value); });
+    inp.addEventListener("blur", fecharLista);
+    inp.addEventListener("keydown", e => {
+      const aberta = lista.classList.contains("open");
+      if (e.key === "ArrowDown") { e.preventDefault(); if (!aberta) return abrir(""); ativo = Math.min(ativo + 1, visiveis.length - 1); marcar(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (aberta) { ativo = Math.max(ativo - 1, 0); marcar(); } }
+      else if (e.key === "Enter" && aberta) { e.preventDefault(); if (visiveis[ativo]) escolher(visiveis[ativo]); }
+      else if (e.key === "Escape" && aberta) { e.stopPropagation(); fecharLista(); }
+      else if (e.key === "Tab" && aberta && inp.value.trim() && visiveis[ativo]) escolher(visiveis[ativo]);
+    });
+    return el("div", { class: "combo" }, inp, hidden, lista);
+  }
+
+  // ---------- Novo chamado ----------
+  function abrirNovo() {
+    S.abertoId = null;
+    abrirDrawer("Novo chamado de adicional", "Preencha todos os campos. A solicitação vai para o Time Demanda.", { largo: true });
+    const body = $("dr-body"); body.replaceChildren();
+
+    // Base busca por Nome MIS, empresa, cidade, UF e depósito; produto pelo nome
+    const cBase = combo({ id: "n-base", name: "base", placeholder: "Digite cidade, depósito ou nome MIS…",
+      itens: S.cad.bases.map(b => {
+        // Mostra só o Nome MIS, mas a busca continua achando por empresa/cidade/UF/depósito/regional
+        return { valor: b.nomeMis, texto: b.nomeMis, busca: semAcento([b.nomeMis, b.empresa, b.cidade, b.estado, b.deposito, b.regional].join(" ")) };
+      }) });
+    const cProd = combo({ id: "n-prod", name: "produto", placeholder: "Digite parte do nome…",
+      itens: S.cad.produtos.map(p => ({ valor: p.nome, texto: p.nome, busca: semAcento(p.nome) })) });
+    const campo = (id, rotulo, c) => el("div", { class: "campo" }, el("label", { for: id, text: rotulo }), c);
+    const faltamCad = Object.entries(CAD).filter(([t]) => !S.cad[t].length).map(([, c]) => c.label.toLowerCase());
+
+    const seg = (name, opts, padrao = opts[0]) => el("div", { class: "seg", role: "radiogroup" },
+      opts.map((o, i) => el("label", {}, el("input", { type: "radio", name, value: o, id: `n-${name}-${i}`, checked: o === padrao }), el("span", { text: o }))));
+
+    // Clientes: texto livre (sugere nomes já usados em chamados anteriores), uma linha por cliente
+    const sugestoes = [...new Set(S.chamados.flatMap(c => clientesDe(c).map(x => x.nome)).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const boxClientes = el("div", { class: "clientes" });
+    const totalEl = el("span", { class: "mono" });
+    let seqLinha = 0;
+    const linhasCli = () => [...boxClientes.querySelectorAll(".cli-linha")];
+    function atualizarTotal() {
+      const tot = linhasCli().reduce((s, ln) => s + (parseFloat(ln.querySelector("[data-vol]").value.replace(",", ".")) || 0), 0);
+      totalEl.textContent = fmtVol(tot);
+      const ls = linhasCli();
+      ls.forEach((ln, i) => {
+        ln.querySelector(".cli-num").textContent = ls.length > 1 ? `Cliente ${i + 1}` : "Cliente";
+        ln.querySelector("[data-remover]").style.visibility = ls.length < 2 ? "hidden" : "";
+      });
+    }
+    function novaLinha() {
+      const k = ++seqLinha;
+      const nome = el("input", { id: `n-cli-${k}`, list: "dl-clientes", placeholder: "Nome do cliente", autocomplete: "off", "data-nome": true });
+      const vol = el("input", { type: "number", id: `n-vol-${k}`, min: "0.5", step: "0.5", inputmode: "decimal", placeholder: "Ex.: 15", "data-vol": true });
+      vol.addEventListener("input", atualizarTotal);
+      // Uma linha só por cliente: nome | segmento | modal | volume | ✕
+      const linha = el("div", { class: "cli-linha" },
+        el("label", { class: "f cli-nome", for: `n-cli-${k}` }, el("span", { class: "cli-num" }), nome),
+        el("label", { class: "f", for: `n-seg-${k}` }, "Segmento",
+          el("select", { id: `n-seg-${k}`, name: `segmento-${k}`, required: true },
+            el("option", { value: "", text: "Selecione…", disabled: true, selected: true }),
+            SEGMENTOS.map(s => el("option", { value: s, text: s })))),
+        el("div", { class: "campo" }, "Modal", seg(`modal-${k}`, ["CIF", "FOB"], "FOB")), // FOB é ~90% dos casos
+        el("label", { class: "f", for: `n-vol-${k}` }, "Volume (m³)", vol),
+        el("button", { class: "cli-remover", type: "button", "data-remover": true, title: "Remover cliente", "aria-label": "Remover cliente",
+          onclick: () => { linha.remove(); atualizarTotal(); } }, "✕"));
+      boxClientes.append(linha);
+      atualizarTotal();
+      return nome;
+    }
+    novaLinha();
+
+    const aviso = el("div", { class: "hint", role: "status" });
+    const err = el("div", { class: "err", role: "alert" });
+    const data = el("input", { type: "date", id: "n-data", required: true, min: hojeStr(), max: amanhaStr(), value: amanhaStr() });
+
+    function atualizarAviso() {
+      const v = data.value; aviso.className = "hint"; aviso.textContent = "";
+      if (!v) return;
+      const dd = difDias(v);
+      if (dd === 0 && passouDe(new Date(), REGRAS.limiteD0)) {
+        aviso.className = "hint t-crit";
+        aviso.textContent = `Faturamento hoje (D-0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`;
+      } else if (dd === 0) {
+        aviso.className = "hint t-warn";
+        aviso.textContent = `Faturamento hoje (D-0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)} e da Logística até ${fmtHora(REGRAS.slaLogistica)}.`;
+      } else if (dd === 1) {
+        const p = prazos(new Date());
+        const portalAberto = !passouDe(new Date(), REGRAS.portalD1);
+        aviso.className = "hint " + (portalAberto ? "t-warn" : "t-info");
+        aviso.textContent = (portalAberto ? `Ingresso de pedido D+1 ainda liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. ` : "")
+          + `Faturamento amanhã (D-1). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
+      }
+    }
+    data.addEventListener("input", atualizarAviso);
+
+    const form = el("form", { novalidate: true },
+      el("div", { class: "novo-topo" },
+        el("label", { class: "f", for: "n-data" }, "Data de faturamento", data),
+        campo("n-prod", "Produto", cProd),
+        campo("n-base", "Base", cBase)),
+      aviso,
+      el("div", {},
+        el("p", { class: "section-t", text: "Clientes" }),
+        boxClientes,
+        el("datalist", { id: "dl-clientes" }, sugestoes.map(s => el("option", { value: s }))),
+        el("div", { class: "cli-rodape" },
+          el("button", { class: "btn ghost sm", type: "button", onclick: () => novaLinha().focus() }, "+ Adicionar cliente"),
+          el("span", {}, "Total: ", totalEl))),
+      el("label", { class: "f", for: "n-mot" }, "Observações com o motivo",
+        el("textarea", { id: "n-mot", name: "motivo", required: true, placeholder: "Por que o cliente precisa do adicional? Houve corte? Qual o impacto de não atender?" })),
+      err,
+      el("div", { class: "row" },
+        el("button", { class: "btn primary", type: "submit" }, "Abrir chamado"),
+        el("button", { class: "btn ghost", type: "button", onclick: fechar }, "Cancelar")),
+    );
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); err.textContent = "";
+      const fd = new FormData(form);
+      const clientes = linhasCli().map((ln, i) => {
+        const k = ln.querySelector("[data-nome]").id.split("-").pop();
+        return {
+          n: i + 1,
+          nome: normaliza(ln.querySelector("[data-nome]").value),
+          segmento: String(fd.get(`segmento-${k}`) || ""),
+          modal: String(fd.get(`modal-${k}`) || "FOB"),
+          volume: parseFloat(ln.querySelector("[data-vol]").value.replace(",", ".")),
+        };
+      });
+      const v = {
+        dataEntrega: data.value,
+        base: String(fd.get("base") || "").trim(),
+        produto: String(fd.get("produto") || "").trim(),
+        motivo: String(fd.get("motivo") || "").trim(),
+      };
+      const faltando = [];
+      if (!v.dataEntrega) faltando.push("data de faturamento");
+      if (!v.produto) faltando.push("produto");
+      if (!v.base) faltando.push("base");
+      for (const x of clientes) {
+        if (!x.nome) faltando.push(`nome do cliente ${x.n}`);
+        if (!x.segmento) faltando.push(`segmento do cliente ${x.n}`);
+        if (!(x.volume > 0)) faltando.push(`volume do cliente ${x.n}`);
+      }
+      if (!v.motivo) faltando.push("motivo");
+      if (faltando.length) { err.textContent = "Preencha: " + faltando.join(", ") + "."; return; }
+      const nomes = clientes.map(x => x.nome.toLowerCase());
+      if (new Set(nomes).size < nomes.length) { err.textContent = "Há cliente repetido. Junte os volumes numa linha só."; return; }
+      v.clientes = clientes.map(({ n, ...x }) => x);
+      v.volume = Math.round(clientes.reduce((s, x) => s + x.volume, 0) * 10) / 10;
+      const dd = difDias(v.dataEntrega);
+      if (dd !== 0 && dd !== 1) { err.textContent = "O faturamento precisa ser hoje (D-0) ou amanhã (D-1)."; return; }
+
+      const tipo = dd === 0 ? "D-0" : "D-1";
+      if (tipo === "D-1" && !passouDe(new Date(), REGRAS.portalD1)) {
+        const seguir = await confirmar(`Ingresso de pedido D+1 liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. Deseja realmente prosseguir?`);
+        if (!seguir) return;
+      }
+
+      const btn = form.querySelector("button[type=submit]"); btn.disabled = true;
+      let id;
+      try {
+        id = await novoCodigo();
+        const agora = new Date();
+        // D-0 depois do limite segue o fluxo normal, mas sem SLA: não recebe prazos e nunca fica "fora do prazo"
+        const semSla = tipo === "D-0" && passouDe(agora, REGRAS.limiteD0);
+        const c = {
+          id, codigo: id, criadoEm: agora.toISOString(), criadoPor: S.meuId, criadoPorNome: S.me.nome, tipo, ...v,
+          status: "fila_demanda", ...(semSla ? { semSla: true } : prazos(agora)), historico: [],
+        };
+        evento(c, "Chamado aberto", v.motivo);
+        if (semSla) evento(c, "Aberto sem SLA", `D-0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
+        await store.salvar(c);
+        toast(semSla ? "Chamado aberto sem SLA (D-0 após o limite) e enviado ao Time Demanda." : "Chamado aberto e enviado ao Time Demanda.");
+        S.abertoId = id; S.abertoVer = null;
+        if (S.chamados.some(x => x.id === id)) renderDetalhe();
+      } catch (e2) {
+        console.error(e2);
+        btn.disabled = false;
+        err.textContent = msgErro(e2);
+      }
+    });
+
+    if (faltamCad.length) {
+      form.querySelector("button[type=submit]").disabled = true;
+      body.append(el("div", { class: "hint t-warn", role: "status",
+        text: `Ainda não há ${faltamCad.join(", ")} cadastrados. ` + (S.me.admin ? "Cadastre na aba Cadastros antes de abrir chamados." : "Peça ao administrador para cadastrar.") }));
+    }
+    body.append(form);
+    atualizarAviso();
+  }
+
+  // ---------- Usuários (admin) ----------
+  function abrirUsuarios() {
+    S.abertoId = null;
+    abrirDrawer("Usuários", "Quem acessa o portal e o que cada um pode fazer.");
+    const body = $("dr-body"); body.replaceChildren();
+
+    const fUid = el("input", { id: "u-uid", placeholder: "Deixe vazio para criar um usuário novo" });
+    const fNome = el("input", { id: "u-nome", autocomplete: "off" });
+    const fEmail = el("input", { id: "u-email", type: "email", autocomplete: "off" });
+    const fSenha = el("input", { id: "u-senha", type: "text", autocomplete: "off", placeholder: "Mínimo 6 caracteres" });
+    const chk = Object.fromEntries(PAPEIS_ATIVOS.map(p => [p, el("input", { type: "checkbox", id: "u-p-" + p })]));
+    const adm = el("input", { type: "checkbox", id: "u-adm" });
+    const err = el("div", { class: "err", role: "alert" });
+    const tituloForm = el("p", { class: "section-t", style: "margin:0" });
+    const lista = el("div", { class: "ulist" });
+    const btnSalvar = el("button", { class: "btn primary", type: "submit" }, "Salvar usuário");
+
+    function limpar() {
+      tituloForm.textContent = "Novo usuário";
+      for (const i of [fUid, fNome, fEmail, fSenha]) i.value = "";
+      fUid.readOnly = false; fSenha.disabled = false; fEmail.readOnly = false;
+      for (const c of Object.values(chk)) c.checked = false;
+      adm.checked = false; err.textContent = "";
+    }
+    function editar(uid, p) {
+      tituloForm.textContent = `Editando ${p.nome || p.email || uid}`;
+      fUid.value = uid; fUid.readOnly = true;
+      fNome.value = p.nome || ""; fEmail.value = p.email || ""; fEmail.readOnly = true;
+      fSenha.value = ""; fSenha.disabled = true;
+      for (const [k, c] of Object.entries(chk)) c.checked = p.papeis?.[k] === true;
+      adm.checked = p.admin === true; err.textContent = "";
+      fNome.focus();
+    }
+
+    async function carregar() {
+      lista.replaceChildren(el("div", { class: "urow sub", text: "Carregando…" }));
+      let perfis;
+      try { perfis = (await get(ref(db, "perfis"))).val() || {}; }
+      catch (e) { console.error(e); lista.replaceChildren(el("div", { class: "urow err", text: "Não foi possível carregar os usuários." })); return; }
+      const itens = Object.entries(perfis).sort((a, b) => (a[1].nome || "").localeCompare(b[1].nome || "", "pt-BR"));
+      if (!itens.length) { lista.replaceChildren(el("div", { class: "urow sub", text: "Nenhum usuário cadastrado." })); return; }
+      lista.replaceChildren(...itens.map(([uid, p]) => el("div", { class: "urow" },
+        el("div", { class: "who" }, el("div", { text: p.nome || "—" }), el("div", { class: "sub", text: p.email || uid })),
+        el("div", { class: "pills" },
+          papeisDe(p).map(x => el("span", { class: "pill " + (x === "consulta" ? "t-wait" : "t-info"), text: PAPEIS[x] })),
+          p.admin ? el("span", { class: "pill t-warn", text: "Admin" }) : null),
+        el("div", { class: "row" },
+          el("button", { class: "btn ghost sm", type: "button", onclick: () => editar(uid, p) }, "Editar"),
+          el("button", { class: "btn ghost sm", type: "button", disabled: uid === S.meuId, title: uid === S.meuId ? "Você não pode remover o próprio acesso" : null,
+            onclick: async () => {
+              if (!confirm(`Remover o acesso de ${p.nome || p.email}? O login continua existindo, mas a pessoa não verá mais o portal.`)) return;
+              try { await remove(ref(db, "perfis/" + uid)); toast("Acesso removido"); if (fUid.value === uid) limpar(); carregar(); }
+              catch (e) { console.error(e); toast(msgErro(e)); }
+            } }, "Remover")))));
+    }
+
+    const form = el("form", { novalidate: true },
+      tituloForm,
+      el("div", { class: "grid2" },
+        el("label", { class: "f", for: "u-nome" }, "Nome", fNome),
+        el("label", { class: "f", for: "u-email" }, "E-mail", fEmail)),
+      el("div", { class: "grid2" },
+        el("label", { class: "f", for: "u-senha" }, "Senha inicial", fSenha),
+        el("label", { class: "f", for: "u-uid" }, "UID (se o login já existir)", fUid)),
+      el("div", {}, el("p", { class: "section-t", text: "Papéis" }),
+        el("div", { class: "checks" },
+          PAPEIS_ATIVOS.map(p => el("label", { class: "check", for: "u-p-" + p }, chk[p], PAPEIS[p])),
+          el("label", { class: "check", for: "u-adm" }, adm, "Administrador"))),
+      el("p", { class: "sub", style: "margin:0", text: "Sem nenhum papel marcado, o usuário fica como somente consulta." }),
+      err,
+      el("div", { class: "row" }, btnSalvar, el("button", { class: "btn ghost", type: "button", onclick: limpar }, "Limpar")),
+    );
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); err.textContent = "";
+      const nome = fNome.value.trim(), email = fEmail.value.trim().toLowerCase();
+      let uid = fUid.value.trim();
+      if (!nome || !email) { err.textContent = "Preencha nome e e-mail."; return; }
+      if (!uid && fSenha.value.length < 6) { err.textContent = "A senha inicial precisa ter pelo menos 6 caracteres."; return; }
+      btnSalvar.disabled = true;
+      try {
+        if (!uid) {
+          try {
+            const cred = await createUserWithEmailAndPassword(authCadastro, email, fSenha.value);
+            uid = cred.user.uid;
+            await signOut(authCadastro);
+          } catch (e2) {
+            err.textContent = {
+              "auth/email-already-in-use": "Esse e-mail já tem login. Copie o UID dele no console do Firebase (Authentication → Usuários) e cole no campo UID.",
+              "auth/invalid-email": "E-mail inválido.",
+              "auth/weak-password": "Senha fraca: use pelo menos 6 caracteres.",
+            }[e2?.code] || "Não foi possível criar o login.";
+            return;
+          }
+        }
+        const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(p => chk[p].checked).map(p => [p, true]));
+        const perfil = { nome, email, papeis, admin: adm.checked, atualizadoEm: new Date().toISOString() };
+        await set(ref(db, "perfis/" + uid), perfil);
+        toast(`Usuário ${nome} salvo`);
+        if (uid === S.meuId) { S.me = { ...S.me, nome, admin: perfil.admin, papeis: papeisDe(perfil) }; configurarSessao(); render(); }
+        limpar(); carregar();
+      } catch (e3) {
+        console.error(e3); err.textContent = msgErro(e3);
+      } finally { btnSalvar.disabled = false; }
+    });
+
+    body.append(form, el("div", {}, el("p", { class: "section-t", text: "Cadastrados" }), lista));
+    limpar(); carregar();
+  }
+
+  // ---------- Resumo (volume por base × produto) ----------
+  // Solicitado = todos os chamados (inclui recusados/cancelados); Aprovado = aprovado pela Logística (com ou sem
+  // ajuste no MIS); Pendentes = volume parado na fila de cada time. Solicitado − demais colunas = recusado.
+  const COLS_RESUMO = [
+    { k: "sol",  l: "Volume adicional solicitado" },
+    { k: "apr",  l: "Volume adicional aprovado" },
+    { k: "pDem", l: "Pendente Demanda", pend: true },
+    { k: "pLog", l: "Pendente Logística", pend: true },
+  ];
+  // Estrutura da aba (título, data, filtros) montada uma vez; renderResumo() só redesenha a tabela,
+  // senão um filtro aberto fecharia sozinho a cada atualização de chamado em tempo real.
+  let FR = null;
+  let NR = null;
+  function montarResumo() {
+    NR = navData(() => S.resumoData, v => { S.resumoData = v; renderResumo(); });
+    const filtrosEl = el("div", { class: "filtros", "aria-label": "Filtros por base" });
+    $("view-resumo").replaceChildren(
+      el("div", { class: "section-header" },
+        el("div", {}, el("h2", { text: "Resumo por base e produto" }),
+          el("p", { text: "Soma do volume adicional dos chamados. O solicitado inclui recusados e cortes parciais; o aprovado é o volume final aprovado pela Logística." })),
+        NR.el),
+      filtrosEl,
+      el("div", { class: "tablebox", id: "resumo-box" }));
+    FR = criarFiltrosBase(filtrosEl, () => renderResumo());
+  }
+  function renderResumo() {
+    if (!FR) montarResumo();
+    NR.sync();
+    atualizarOpcoesFiltros(FR, S.chamados);
+
+    const mapa = mapaBases();
+    const alvo = S.resumoData || null;
+    const grupos = new Map();
+    const total = { sol: 0, apr: 0, pDem: 0, pLog: 0 };
+    for (const c of S.chamados) {
+      if (alvo && c.dataEntrega !== alvo) continue;
+      if (!passaFiltros(FR, c, mapa)) continue;
+      const k = `${c.base}\u0000${c.produto}`;
+      if (!grupos.has(k)) grupos.set(k, { base: c.base || "—", produto: c.produto || "—", sol: 0, apr: 0, pDem: 0, pLog: 0 });
+      const g = grupos.get(k), vol = Number(c.volume) || 0;
+      // Aprovado = volume final da Logística (pode ser parcial); Pendente Logística = o que a Demanda aprovou
+      const [col, v] = aprovadoFinal(c) ? ["apr", volumeAprovado(c)]
+        : c.status === "fila_demanda" ? ["pDem", vol]
+        : c.status === "fila_logistica" ? ["pLog", soma(volsAprovados(c, "demanda")) || vol] : [null, 0];
+      g.sol += vol; total.sol += vol;
+      if (col) { g[col] += v; total[col] += v; }
+    }
+    const linhas = [...grupos.values()].sort((a, b) => a.base.localeCompare(b.base, "pt-BR") || a.produto.localeCompare(b.produto, "pt-BR"));
+
+    const celula = (g, c) => el("td", { class: "num mono" + (g[c.k] ? (c.pend ? " pend" : "") : " zero"), text: g[c.k] ? fmtVol(g[c.k]) : "—" });
+    const filtrando = alvo || filtrosDe(FR).some(([, m]) => m.selected.size);
+    $("resumo-box").replaceChildren(linhas.length
+      ? el("table", { class: "resumo", style: "min-width:760px" },
+          el("thead", {}, el("tr", {}, el("th", { text: "Base" }), el("th", { text: "Produto" }),
+            COLS_RESUMO.map(c => el("th", { class: "num", text: c.l })))),
+          el("tbody", { class: "plain" }, linhas.map(g => el("tr", {},
+            el("td", { text: g.base }), el("td", { text: g.produto }), COLS_RESUMO.map(c => celula(g, c))))),
+          el("tfoot", {}, el("tr", {}, el("td", { text: "Total", colspan: "2" }), COLS_RESUMO.map(c => celula(total, c)))))
+      : el("div", { class: "empty", text: filtrando ? "Nenhum chamado com esses filtros." : "Nenhum chamado ainda." }));
+  }
+
+  // ---------- Cadastros (admin) ----------
+  const mascaraCNPJ = v => v.replace(/\D/g, "").slice(0, 14)
+    .replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
+  const normaliza = s => String(s || "").trim().replace(/\s+/g, " ");
+  function existe(t, nome, ignorarId) {
+    const k = CAD[t].chave, n = nome.toLowerCase();
+    return S.cad[t].some(x => x.id !== ignorarId && String(x[k] || "").toLowerCase() === n);
+  }
+
+  // Estrutura da aba (sub-abas, cabeçalho, busca); a tabela é redesenhada à parte para não perder o foco da busca
+  function renderCadastros() {
+    const v = $("view-cadastros");
+    const t = S.cadTab, cfg = CAD[t];
+    const busca = el("input", { class: "search", type: "search", value: S.cadBusca, "aria-label": "Filtrar",
+      placeholder: t === "bases" ? "Cidade, depósito, nome MIS, CNPJ, regional…" : `Buscar ${cfg.label.toLowerCase()}…` });
+    busca.addEventListener("input", () => { S.cadBusca = busca.value; renderCadTabela(); });
+    v.replaceChildren(
+      el("div", { class: "tabs sub", role: "tablist" }, Object.entries(CAD).map(([k, c]) =>
+        el("button", { type: "button", role: "tab", "data-cad": k, "aria-selected": String(k === t),
+          onclick: () => { S.cadTab = k; S.cadBusca = ""; renderCadastros(); } }, c.label, el("span", { class: "cnt" })))),
+      el("div", { class: "section-header" },
+        el("div", {}, el("h2", { text: cfg.titulo }), el("p", { text: cfg.sub })),
+        t === "bases" ? el("button", { class: "btn primary", type: "button", onclick: () => abrirBase(null) }, "+ Nova base") : null),
+      t === "bases" ? null : formAdicionarLista(t),
+      el("div", { class: "toolbar" }, el("span", { class: "pill t-info", id: "cad-badge", style: "margin-right:auto" }), busca),
+      el("div", { class: "tablebox", id: "cad-box" }),
+    );
+    renderCadTabela();
+  }
+
+  function renderCadTabela() {
+    const box = $("cad-box"); if (!box) return;
+    for (const b of document.querySelectorAll("[data-cad]")) b.querySelector(".cnt").textContent = ` (${S.cad[b.dataset.cad].length})`;
+    const t = S.cadTab, cfg = CAD[t], todos = S.cad[t];
+    const q = S.cadBusca.trim().toLowerCase();
+    const lista = todos.filter(x => !q || Object.values(x).join(" ").toLowerCase().includes(q));
+    const plural = n => `cadastrad${cfg.gen}${n !== 1 ? "s" : ""}`;
+    $("cad-badge").textContent = lista.length < todos.length ? `${lista.length} de ${todos.length} ${plural(todos.length)}` : `${todos.length} ${plural(todos.length)}`;
+
+    if (!todos.length) {
+      box.replaceChildren(el("div", { class: "empty" },
+        el("div", { text: `Nenhum${cfg.gen === "a" ? "a" : ""} ${cfg.label.toLowerCase().replace(/s$/, "")} ${plural(1)}.` }),
+        t === "bases" ? el("div", { class: "row", style: "justify-content:center;margin-top:14px" },
+          el("button", { class: "btn primary", type: "button", onclick: importarBasesInbound }, `Importar as ${BASES_INBOUND.length} bases do Portal Inbound`),
+          el("button", { class: "btn ghost", type: "button", onclick: () => abrirBase(null) }, "+ Nova base")) : null));
+      return;
+    }
+
+    const acoes = x => el("td", {}, el("div", { class: "acoes" },
+      el("button", { class: "btn ghost sm", type: "button", title: "Editar", "aria-label": "Editar", onclick: () => t === "bases" ? abrirBase(x) : renomearItem(t, x) }, "✏️"),
+      el("button", { class: "btn danger sm", type: "button", title: "Remover", "aria-label": "Remover", onclick: () => removerItem(t, x) }, "✕")));
+
+    if (t === "bases") {
+      const cols = Object.keys(BASE_CAMPOS);
+      box.replaceChildren(el("table", { class: "bases", style: "min-width:1400px" },
+        el("thead", {}, el("tr", {}, cols.map(k => el("th", { text: BASE_CAMPOS[k].l })), el("th", { class: "num", text: "Ações" }))),
+        el("tbody", { class: "plain" }, lista.map(b => el("tr", {},
+          cols.map(k => el("td", { class: k === "cnpj" ? "mono" : null, text: b[k] || "" })), acoes(b))))));
+    } else {
+      box.replaceChildren(el("table", { class: "lista" },
+        el("thead", {}, el("tr", {}, el("th", { text: "Nome" }), el("th", { class: "num", text: "Ações" }))),
+        el("tbody", { class: "plain" }, lista.map(x => el("tr", {}, el("td", { text: x.nome }), acoes(x))))));
+    }
+  }
+
+  function formAdicionarLista(t) {
+    const cfg = CAD[t];
+    const ta = el("textarea", { id: "cad-novos", rows: "3", placeholder: cfg.exemplo });
+    const err = el("div", { class: "err", role: "alert" });
+    const btn = el("button", { class: "btn primary", type: "submit" }, "Adicionar");
+    const form = el("form", { class: "action", novalidate: true, style: "margin-top:16px" },
+      el("label", { class: "f", for: "cad-novos" }, `Adicionar ${cfg.label.toLowerCase()}: um por linha (dá para colar uma coluna do Excel)`, ta),
+      err, el("div", { class: "row" }, btn));
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); err.textContent = "";
+      // Remove vazios e repetidos dentro do próprio texto colado
+      const nomes = [...new Map(ta.value.split(/\r?\n/).map(normaliza).filter(Boolean).map(n => [n.toLowerCase(), n])).values()];
+      if (!nomes.length) { err.textContent = "Digite ao menos um nome."; return; }
+      const novos = nomes.filter(n => !existe(t, n));
+      if (!novos.length) { err.textContent = "Todos esses nomes já estão cadastrados."; return; }
+      const agora = new Date().toISOString(), upd = {};
+      for (const nome of novos) upd[push(ref(db, `cadastros/${t}`)).key] = { nome, criadoEm: agora };
+      btn.disabled = true;
+      try {
+        await update(ref(db, `cadastros/${t}`), upd);
+        ta.value = "";
+        const rep = nomes.length - novos.length;
+        toast(`${novos.length} adicionado(s)` + (rep ? ` · ${rep} já existia(m)` : ""));
+      } catch (e2) { console.error(e2); err.textContent = msgErro(e2); }
+      finally { btn.disabled = false; }
+    });
+    return form;
+  }
+
+  async function renomearItem(t, x) {
+    const nome = normaliza(prompt("Novo nome:", x.nome));
+    if (!nome || nome === x.nome) return;
+    if (existe(t, nome, x.id)) { toast("Já existe um item com esse nome."); return; }
+    try { await update(ref(db, `cadastros/${t}/${x.id}`), { nome }); toast("Nome atualizado. Chamados antigos mantêm o nome anterior."); }
+    catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  async function removerItem(t, x) {
+    const nome = x[CAD[t].chave];
+    if (!confirm(`Remover “${nome}” do cadastro? Chamados já abertos não mudam.`)) return;
+    try { await remove(ref(db, `cadastros/${t}/${x.id}`)); toast("Removido"); }
+    catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  async function importarBasesInbound() {
+    if (!confirm(`Importar as ${BASES_INBOUND.length} bases copiadas do Portal Inbound?`)) return;
+    const upd = {};
+    for (const b of BASES_INBOUND) if (!existe("bases", b.nomeMis)) upd[push(ref(db, "cadastros/bases")).key] = b;
+    try { await update(ref(db, "cadastros/bases"), upd); toast(`${Object.keys(upd).length} bases importadas`); }
+    catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  function abrirBase(b) {
+    S.abertoId = null;
+    const novo = !b;
+    abrirDrawer(novo ? "Nova base" : "Editar base", "Dados de referência da base — usados para consulta de CNPJ, SAP, MIS e Herrlog");
+    const body = $("dr-body"); body.replaceChildren();
+    const inp = {};
+    for (const [k, c] of Object.entries(BASE_CAMPOS)) {
+      inp[k] = el("input", { id: "b-" + k, placeholder: c.ph, value: b?.[k] || "", autocomplete: "off",
+        maxlength: k === "estado" ? "2" : k === "cnpj" ? "18" : null });
+    }
+    inp.estado.addEventListener("input", () => (inp.estado.value = inp.estado.value.toUpperCase()));
+    inp.cnpj.addEventListener("input", () => (inp.cnpj.value = mascaraCNPJ(inp.cnpj.value)));
+    const err = el("div", { class: "err", role: "alert" });
+    const btn = el("button", { class: "btn primary", type: "submit" }, "Salvar");
+    const campo = k => el("label", { class: "f", for: "b-" + k }, BASE_CAMPOS[k].l + (BASE_CAMPOS[k].req ? " *" : ""), inp[k]);
+    const form = el("form", { novalidate: true },
+      BASE_FORM.map(linha => linha.length === 1 ? campo(linha[0]) : el("div", { class: linha.length === 3 ? "grid3" : "grid2" }, linha.map(campo))),
+      err,
+      el("div", { class: "row" }, btn, el("button", { class: "btn ghost", type: "button", onclick: fechar }, "Cancelar")));
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); err.textContent = "";
+      const reg = Object.fromEntries(Object.keys(BASE_CAMPOS).map(k => [k, normaliza(inp[k].value)]));
+      const falta = Object.entries(BASE_CAMPOS).filter(([k, c]) => c.req && !reg[k]).map(([, c]) => c.l);
+      if (falta.length) { err.textContent = "Preencha: " + falta.join(", ") + "."; return; }
+      if (existe("bases", reg.nomeMis, b?.id)) { err.textContent = `O Nome MIS “${reg.nomeMis}” já está cadastrado.`; return; }
+      const id = b?.id || push(ref(db, "cadastros/bases")).key;
+      btn.disabled = true;
+      try { await set(ref(db, "cadastros/bases/" + id), reg); toast(novo ? "Base cadastrada" : "Base atualizada"); fechar(); }
+      catch (e2) { console.error(e2); err.textContent = msgErro(e2); btn.disabled = false; }
+    });
+    body.append(form);
+    setTimeout(() => inp.empresa.focus(), 50);
+  }
+
+  // ---------- Exportar ----------
+  function exportar() {
+    // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
+    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "motivo", "tradeoff", "modalAvaliado", "obsLogistica"];
+    const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const num = v => String(v ?? "").replace(".", ",");
+    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.tipo, fmtData(c.dataEntrega), c.base, c.produto,
+      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", c.motivo, c.demanda?.tradeoff, modalAvaliadoDe(c, i), c.logistica?.obs].map(esc).join(";")));
+    const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = el("a", { href: url, download: `chamados_adicionais_${hojeStr()}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ---------- Eventos ----------
+  $("papel").addEventListener("change", e => {
+    S.papel = e.target.value; lsSet("adc.papel", S.papel);
+    S.filtro = filtroPadrao(); S.abertoVer = null; render();
+  });
+  $("novo").addEventListener("click", abrirNovo);
+  $("usuarios").addEventListener("click", abrirUsuarios);
+  for (const b of $("nav").querySelectorAll("[data-view]")) b.addEventListener("click", () => mostrarView(b.dataset.view));
+  $("fechar").addEventListener("click", fechar);
+  $("scrim").addEventListener("click", fechar);
+  // Com a confirmação aberta, o Esc fecha só ela (evento "cancel" do <dialog>), não o painel lateral
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    const ms = MultiSelect.todos.find(m => m.aberto);
+    if (ms) { ms.fechar(); ms._trigger.focus(); return; }
+    if (!$("overlay").hidden && !document.querySelector("dialog[open]")) fechar();
+  });
+  $("busca").addEventListener("input", e => { S.busca = e.target.value; render(); });
+  S.resumoData = hojeStr(); // Resumo abre no D0; a lista de chamados abre sem filtro de data (S.fData = "")
+  const NC = navData(() => S.fData, v => { S.fData = v; render(); });
+  $("nav-data-chamados").replaceWith(NC.el);
+  $("exportar").addEventListener("click", exportar);
+  // Filtros por base da aba Chamados (criados uma vez; render() só atualiza as opções)
+  const FC = criarFiltrosBase($("filtros-chamados"), () => render());
+  setInterval(render, 60000); // atualiza prazos/atrasos a cada minuto
+</script>
+
+</body></html>
