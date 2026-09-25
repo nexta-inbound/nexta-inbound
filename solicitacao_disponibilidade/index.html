@@ -55,13 +55,19 @@
 
   /* Top bar */
   .topbar { background: var(--navy); color: var(--navy-ink); }
-  .topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-block: 16px; }
-  .brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+  .topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-block: 16px; max-width: none; } /* barra em largura total: logotipo + título + login cabem numa linha */
+  .brand { display: flex; align-items: center; gap: 18px; margin-right: auto; min-width: 0; }
+  .brand-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-left: 18px; border-left: 1px solid rgba(255,255,255,.2); }
   .brand b { font-size: 20px; font-weight: 600; letter-spacing: .2px; }
-  .brand span { font-size: 13px; opacity: .75; }
-  .sessao { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  /* Logotipo NEXTA (mesmo SVG do Portal Inbound; a cor vem de "color" via currentColor) */
+  .nexta-logo-svg { height: 26px; width: auto; display: block; flex-shrink: 0; color: #EEFE7A; }
+  @media (max-width: 640px) { .brand-txt { padding-left: 0; border-left: none; } .brand { flex-wrap: wrap; gap: 8px; } }
+  .sessao { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; } /* login e botões sempre à direita */
   .quem { display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; text-align: right; }
   .quem small { opacity: .75; }
+  button.quem { background: none; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+  button.quem:hover { background: rgba(255,255,255,.08); }
+  #quem::after { content: " ▾"; font-size: 11px; opacity: .7; }
   .role { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .role select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); color: var(--navy-ink); border-radius: 8px; padding: 8px 10px; }
   .role select option { color: #10283A; }
@@ -186,8 +192,14 @@
   .section-header p { margin: 2px 0 0; color: var(--ink-3); font-size: 13px; }
   .section-header select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; }
   table.resumo th.num { white-space: normal; max-width: 150px; }
+  table.resumo th.num, table.resumo td.num { text-align: center; } /* colunas de volume centralizadas */
   table.resumo td.zero { color: var(--ink-3); }
   table.resumo td.pend { color: var(--warn); font-weight: 600; }
+  table.resumo td.rep { color: var(--crit); }
+  table.resumo .quebra { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-top: 3px; font-family: var(--sans); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  table.resumo .q-ok { color: var(--ok); }
+  table.resumo .q-atr { color: var(--crit); font-weight: 700; }
+  table.resumo .q-sla { color: var(--ink-3); }
   table.resumo tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; background: var(--surface-2); }
   /* Navegador de data ◀ data ▶ (mesmo formato do Portal Inbound) */
   .nav-data { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -293,11 +305,15 @@
 <div class="topbar">
   <div class="wrap">
     <div class="brand">
-      <b>Gestão Solicitações Disponibilidade Produto</b>
-      <span>Chamados de volume adicional · Comercial → Demanda → Logística</span>
+      <svg class="nexta-logo-svg" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+      <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+    </svg>
+      <div class="brand-txt">
+        <b>Gestão Solicitações Disponibilidade Produto</b>
+      </div>
     </div>
     <div class="sessao" id="sessao" hidden>
-      <div class="quem"><span id="quem"></span><small id="papel-fixo"></small></div>
+      <button class="quem" id="minha-conta" type="button" title="Minha conta: trocar senha"><span id="quem"></span><small id="papel-fixo"></small></button>
       <label class="role" for="papel" id="papel-wrap" hidden>Atuando como
         <select id="papel"></select>
       </label>
@@ -314,7 +330,6 @@
 <section class="gate" id="tela-login" hidden>
   <form class="card" id="form-login" novalidate>
     <h2>Entrar</h2>
-    <p>Use o e-mail e a senha cadastrados pelo administrador.</p>
     <label class="f" for="l-email">E-mail <input type="email" id="l-email" autocomplete="username" required></label>
     <label class="f" for="l-senha">Senha <input type="password" id="l-senha" autocomplete="current-password" required></label>
     <div class="err" id="l-err" role="alert"></div>
@@ -331,6 +346,19 @@
     <div class="uid" id="sp-uid"></div>
     <button class="btn ghost" type="button" id="sp-sair">Sair</button>
   </div>
+</section>
+
+<section class="gate" id="tela-trocar-senha" hidden>
+  <form class="card" id="form-troca" novalidate>
+    <h2>Defina sua nova senha</h2>
+    <p>Por segurança, troque a senha inicial (a que você recebeu do administrador) antes de continuar.</p>
+    <label class="f" for="ts-atual">Senha atual <input type="password" id="ts-atual" autocomplete="current-password" required></label>
+    <label class="f" for="ts-nova">Nova senha <input type="password" id="ts-nova" autocomplete="new-password" placeholder="Mínimo 6 caracteres" required></label>
+    <label class="f" for="ts-conf">Confirme a nova senha <input type="password" id="ts-conf" autocomplete="new-password" required></label>
+    <div class="err" id="ts-err" role="alert"></div>
+    <button class="btn primary" type="submit" id="ts-btn">Salvar e entrar</button>
+    <button class="linkbtn" type="button" id="ts-sair">Sair</button>
+  </form>
 </section>
 
 <main class="wrap" id="app" hidden>
@@ -351,7 +379,6 @@
   <div class="toolbar">
     <h2 id="lista-titulo">Chamados</h2>
     <div id="nav-data-chamados"></div>
-    <input class="search" id="busca" type="search" placeholder="Buscar cliente, base, produto…" aria-label="Buscar">
     <button class="btn ghost" id="exportar" type="button">Exportar CSV</button>
   </div>
   <div class="filtros" id="filtros-chamados" aria-label="Filtros por base"></div>
@@ -394,7 +421,7 @@
   import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-    sendPasswordResetEmail, createUserWithEmailAndPassword }
+    sendPasswordResetEmail, createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ---------- Firebase ----------
@@ -508,7 +535,6 @@
   const S = {
     chamados: [],
     filtro: "todos",
-    busca: "",
     fData: "",         // data de faturamento (AAAA-MM-DD) da aba Chamados; "" = todas. Começa em hoje (D0), ver "Eventos"
     papel: lsGet("adc.papel") || "comercial",
     abertoId: null,
@@ -598,7 +624,11 @@
     return clientesDe(c).map((x, i) => Number(vs[i] ?? anterior?.[i] ?? x.volume) || 0);
   }
   const aprovadoFinal = c => c.status === "aprovado" || c.status === "concluido";
-  function volumeAprovado(c) { return aprovadoFinal(c) ? soma(volsAprovados(c, "logistica")) : 0; }
+  function volumeAprovado(c) {
+    if (!aprovadoFinal(c)) return 0;
+    const vs = volsAprovados(c, "logistica");
+    return vs ? soma(vs) : Number(c.volume) || 0; // sem registro da decisão: conta como aprovação integral
+  }
   function ehParcial(c) { return aprovadoFinal(c) && volumeAprovado(c) < (Number(c.volume) || 0); }
   function statusDe(c) {
     const st = STATUS[c.status] || { label: c.status, tone: "wait" };
@@ -661,6 +691,7 @@
     $("tela-carregando").hidden = t !== "carregando";
     $("tela-login").hidden = t !== "login";
     $("tela-sem-perfil").hidden = t !== "sem-perfil";
+    $("tela-trocar-senha").hidden = t !== "trocar-senha";
     $("app").hidden = t !== "app";
     $("sessao").hidden = t !== "app";
   }
@@ -720,6 +751,19 @@
       return;
     }
 
+    // Senha inicial definida pelo admin: só entra depois de trocar
+    if (perfil.trocarSenha === true) {
+      S.trocaPendente = { user, perfil };
+      for (const id of ["ts-atual", "ts-nova", "ts-conf"]) $(id).value = "";
+      $("ts-err").textContent = "";
+      mostrarTela("trocar-senha");
+      setTimeout(() => $("ts-atual").focus(), 0);
+      return;
+    }
+    iniciarApp(user, perfil);
+  });
+
+  function iniciarApp(user, perfil) {
     S.me = { uid: user.uid, nome: perfil.nome || user.email, email: user.email, admin: perfil.admin === true, papeis: papeisDe(perfil) };
     configurarSessao();
     $("banner").hidden = true;
@@ -747,7 +791,90 @@
       console.error(err);
       mostrarBanner("Não foi possível carregar os cadastros de bases e produtos. Confira se as regras do banco foram atualizadas.");
     }));
+  }
+
+  // ---------- Senha ----------
+  // Troca a senha do usuário logado. O Firebase exige login recente para updatePassword, então
+  // reautentica com a senha atual antes (também confirma que é a própria pessoa).
+  async function trocarSenha(atual, nova, conf) {
+    if (!atual || !nova) throw new Error("Preencha a senha atual e a nova senha.");
+    if (nova.length < 6) throw new Error("A nova senha precisa ter pelo menos 6 caracteres.");
+    if (nova !== conf) throw new Error("A confirmação não confere com a nova senha.");
+    if (nova === atual) throw new Error("A nova senha precisa ser diferente da atual.");
+    const u = auth.currentUser;
+    try {
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, atual));
+      await updatePassword(u, nova);
+    } catch (e) {
+      console.error(e);
+      throw new Error({
+        "auth/invalid-credential": "Senha atual incorreta.",
+        "auth/wrong-password": "Senha atual incorreta.",
+        "auth/weak-password": "Senha fraca: use pelo menos 6 caracteres.",
+        "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos.",
+        "auth/network-request-failed": "Sem conexão com o servidor.",
+      }[e?.code] || "Não foi possível trocar a senha. Tente de novo.");
+    }
+  }
+
+  // Tela de troca obrigatória (primeiro login ou troca exigida pelo admin)
+  $("form-troca").addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("ts-err"), btn = $("ts-btn"); err.textContent = "";
+    const { user, perfil } = S.trocaPendente || {};
+    if (!user) return;
+    btn.disabled = true;
+    try {
+      await trocarSenha($("ts-atual").value, $("ts-nova").value, $("ts-conf").value);
+    } catch (e2) { err.textContent = e2.message; btn.disabled = false; return; }
+    try {
+      // Libera o acesso: a regra do banco só deixa o próprio usuário gravar trocarSenha = false
+      await set(ref(db, `perfis/${user.uid}/trocarSenha`), false);
+    } catch (e3) {
+      console.error(e3);
+      err.textContent = "Sua senha foi trocada, mas o banco recusou liberar o acesso (regras do Firebase desatualizadas). Avise o administrador.";
+      btn.disabled = false; return;
+    }
+    btn.disabled = false;
+    S.trocaPendente = null;
+    toast("Senha trocada. Bem-vindo!");
+    iniciarApp(user, { ...perfil, trocarSenha: false });
   });
+  $("ts-sair").addEventListener("click", () => signOut(auth));
+
+  // Minha conta: dados do usuário + trocar senha
+  function abrirMinhaConta() {
+    S.abertoId = null;
+    abrirDrawer("Minha conta", `${S.me.nome} · ${S.me.email}`);
+    const body = $("dr-body"); body.replaceChildren();
+    const atual = el("input", { type: "password", id: "mc-atual", autocomplete: "current-password" });
+    const nova = el("input", { type: "password", id: "mc-nova", autocomplete: "new-password", placeholder: "Mínimo 6 caracteres" });
+    const conf = el("input", { type: "password", id: "mc-conf", autocomplete: "new-password" });
+    const err = el("div", { class: "err", role: "alert" });
+    const btn = el("button", { class: "btn primary", type: "submit" }, "Trocar senha");
+    const form = el("form", { novalidate: true },
+      el("p", { class: "section-t", style: "margin:0", text: "Trocar senha" }),
+      el("label", { class: "f", for: "mc-atual" }, "Senha atual", atual),
+      el("div", { class: "grid2" },
+        el("label", { class: "f", for: "mc-nova" }, "Nova senha", nova),
+        el("label", { class: "f", for: "mc-conf" }, "Confirme a nova senha", conf)),
+      err, el("div", { class: "row" }, btn));
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); err.textContent = ""; btn.disabled = true;
+      try {
+        await trocarSenha(atual.value, nova.value, conf.value);
+        toast("Senha trocada"); fechar();
+      } catch (e2) { err.textContent = e2.message; }
+      finally { btn.disabled = false; }
+    });
+    const kv = (k, v) => el("div", {}, el("dt", { text: k }), el("dd", { text: v || "—" }));
+    body.append(
+      el("dl", { class: "kv" }, kv("Nome", S.me.nome), kv("E-mail", S.me.email),
+        kv("Papéis", S.me.papeis.map(x => PAPEIS[x]).join(", ")), kv("Administrador", S.me.admin ? "Sim" : "Não")),
+      form);
+    setTimeout(() => atual.focus(), 50);
+  }
+  $("minha-conta").addEventListener("click", abrirMinhaConta);
 
   // ---------- Login ----------
   $("form-login").addEventListener("submit", async e => {
@@ -786,13 +913,11 @@
   }
   function visiveis() {
     const f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0];
-    const q = S.busca.trim().toLowerCase();
     const alvo = f.semData ? null : S.fData || null;
     const encerrado = c => STATUS[c.status]?.final ? 1 : 0;
     return chamadosFiltrados()
       .filter(f.test)
       .filter(c => !alvo || c.dataEntrega === alvo)
-      .filter(c => !q || [c.codigo, ...clientesDe(c).map(x => x.nome), c.base, c.produto, c.motivo].join(" ").toLowerCase().includes(q))
       // Primeiro os que aguardam alguma ação, depois os encerrados; em cada grupo, faturamento mais recente
       // primeiro (empate: abertura mais recente)
       .sort((a, b) => encerrado(a) - encerrado(b)
@@ -1194,12 +1319,14 @@
   document.addEventListener("click", e => { for (const m of MultiSelect.todos) if (!m.el.contains(e.target)) m.fechar(); });
 
   // Filtros por base: Base (Nome MIS), Cidade, UF e Região vêm do cadastro de bases, cruzando pelo Nome MIS do chamado
-  const CAMPOS_FILTRO = { base: b => b.nomeMis, cidade: b => b.cidade, uf: b => b.estado, regiao: b => b.regional };
+  // Cada filtro lê o valor da base do chamado (cadastro de bases) ou do próprio chamado (produto)
+  const CAMPOS_FILTRO = { base: b => b.nomeMis, cidade: b => b.cidade, uf: b => b.estado, regiao: b => b.regional, produto: (b, c) => c.produto };
   const mapaBases = () => new Map(S.cad.bases.map(b => [b.nomeMis, b]));
   function criarFiltrosBase(container, onChange) {
     const f = {
       base: new MultiSelect("Base", onChange), cidade: new MultiSelect("Cidade", onChange),
       uf: new MultiSelect("UF", onChange, { narrow: true }), regiao: new MultiSelect("Região", onChange),
+      produto: new MultiSelect("Produto", onChange),
     };
     const limpar = el("button", { class: "linkbtn", type: "button", hidden: true, onclick: () => { for (const [, m] of filtrosDe(f)) m.clear(); onChange(); } }, "Limpar filtros");
     f._limpar = limpar;
@@ -1211,14 +1338,14 @@
   function atualizarOpcoesFiltros(f, chamados) {
     const mapa = mapaBases();
     for (const [k, m] of filtrosDe(f)) {
-      const vals = new Set(chamados.map(c => CAMPOS_FILTRO[k](mapa.get(c.base) || { nomeMis: c.base })).filter(Boolean));
+      const vals = new Set(chamados.map(c => CAMPOS_FILTRO[k](mapa.get(c.base) || { nomeMis: c.base }, c)).filter(Boolean));
       m.setOptions([...vals].sort((a, b) => String(a).localeCompare(String(b), "pt-BR")));
     }
     f._limpar.hidden = !filtrosDe(f).some(([, m]) => m.selected.size);
   }
   function passaFiltros(f, c, mapa) {
     const b = mapa.get(c.base) || { nomeMis: c.base };
-    return filtrosDe(f).every(([k, m]) => !m.selected.size || m.selected.has(CAMPOS_FILTRO[k](b)));
+    return filtrosDe(f).every(([k, m]) => !m.selected.size || m.selected.has(CAMPOS_FILTRO[k](b, c)));
   }
 
   // ---------- Combobox com busca ----------
@@ -1470,6 +1597,7 @@
     const fSenha = el("input", { id: "u-senha", type: "text", autocomplete: "off", placeholder: "Mínimo 6 caracteres" });
     const chk = Object.fromEntries(PAPEIS_ATIVOS.map(p => [p, el("input", { type: "checkbox", id: "u-p-" + p })]));
     const adm = el("input", { type: "checkbox", id: "u-adm" });
+    const fTrocar = el("input", { type: "checkbox", id: "u-trocar" });
     const err = el("div", { class: "err", role: "alert" });
     const tituloForm = el("p", { class: "section-t", style: "margin:0" });
     const lista = el("div", { class: "ulist" });
@@ -1480,7 +1608,7 @@
       for (const i of [fUid, fNome, fEmail, fSenha]) i.value = "";
       fUid.readOnly = false; fSenha.disabled = false; fEmail.readOnly = false;
       for (const c of Object.values(chk)) c.checked = false;
-      adm.checked = false; err.textContent = "";
+      adm.checked = false; fTrocar.checked = true; err.textContent = ""; // usuário novo: troca a senha inicial no 1º login
     }
     function editar(uid, p) {
       tituloForm.textContent = `Editando ${p.nome || p.email || uid}`;
@@ -1488,7 +1616,7 @@
       fNome.value = p.nome || ""; fEmail.value = p.email || ""; fEmail.readOnly = true;
       fSenha.value = ""; fSenha.disabled = true;
       for (const [k, c] of Object.entries(chk)) c.checked = p.papeis?.[k] === true;
-      adm.checked = p.admin === true; err.textContent = "";
+      adm.checked = p.admin === true; fTrocar.checked = p.trocarSenha === true; err.textContent = "";
       fNome.focus();
     }
 
@@ -1503,9 +1631,17 @@
         el("div", { class: "who" }, el("div", { text: p.nome || "—" }), el("div", { class: "sub", text: p.email || uid })),
         el("div", { class: "pills" },
           papeisDe(p).map(x => el("span", { class: "pill " + (x === "consulta" ? "t-wait" : "t-info"), text: PAPEIS[x] })),
-          p.admin ? el("span", { class: "pill t-warn", text: "Admin" }) : null),
+          p.admin ? el("span", { class: "pill t-warn", text: "Admin" }) : null,
+          p.trocarSenha ? el("span", { class: "pill t-wait", text: "Troca de senha pendente" }) : null),
         el("div", { class: "row" },
           el("button", { class: "btn ghost sm", type: "button", onclick: () => editar(uid, p) }, "Editar"),
+          el("button", { class: "btn ghost sm", type: "button", title: "Envia para o e-mail da pessoa um link para ela mesma criar uma nova senha",
+            onclick: async () => {
+              if (!p.email) { toast("Esse usuário não tem e-mail cadastrado no perfil."); return; }
+              if (!confirm(`Enviar para ${p.email} um link de redefinição de senha?`)) return;
+              try { await sendPasswordResetEmail(auth, p.email); toast(`Link de redefinição enviado para ${p.email}`); }
+              catch (e) { console.error(e); toast("Não foi possível enviar o e-mail agora."); }
+            } }, "Redefinir senha"),
           el("button", { class: "btn ghost sm", type: "button", disabled: uid === S.meuId, title: uid === S.meuId ? "Você não pode remover o próprio acesso" : null,
             onclick: async () => {
               if (!confirm(`Remover o acesso de ${p.nome || p.email}? O login continua existindo, mas a pessoa não verá mais o portal.`)) return;
@@ -1527,6 +1663,7 @@
           PAPEIS_ATIVOS.map(p => el("label", { class: "check", for: "u-p-" + p }, chk[p], PAPEIS[p])),
           el("label", { class: "check", for: "u-adm" }, adm, "Administrador"))),
       el("p", { class: "sub", style: "margin:0", text: "Sem nenhum papel marcado, o usuário fica como somente consulta." }),
+      el("label", { class: "check", for: "u-trocar" }, fTrocar, "Exigir troca de senha no próximo login"),
       err,
       el("div", { class: "row" }, btnSalvar, el("button", { class: "btn ghost", type: "button", onclick: limpar }, "Limpar")),
     );
@@ -1554,7 +1691,7 @@
           }
         }
         const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(p => chk[p].checked).map(p => [p, true]));
-        const perfil = { nome, email, papeis, admin: adm.checked, atualizadoEm: new Date().toISOString() };
+        const perfil = { nome, email, papeis, admin: adm.checked, ...(fTrocar.checked ? { trocarSenha: true } : {}), atualizadoEm: new Date().toISOString() };
         await set(ref(db, "perfis/" + uid), perfil);
         toast(`Usuário ${nome} salvo`);
         if (uid === S.meuId) { S.me = { ...S.me, nome, admin: perfil.admin, papeis: papeisDe(perfil) }; configurarSessao(); render(); }
@@ -1569,10 +1706,14 @@
   }
 
   // ---------- Resumo (volume por base × produto) ----------
+  // Solicitado = Reprovado + Aprovado + Pendente Demanda + Pendente Logística.
+  // Reprovado = recusados/cancelados + cortes parciais (da Demanda e da Logística).
+  // Pendentes trazem a quebra no prazo / atrasado / sem SLA (chaves <col>_ok, <col>_atr, <col>_sla).
   // Solicitado = todos os chamados (inclui recusados/cancelados); Aprovado = aprovado pela Logística (com ou sem
   // ajuste no MIS); Pendentes = volume parado na fila de cada time. Solicitado − demais colunas = recusado.
   const COLS_RESUMO = [
     { k: "sol",  l: "Volume adicional solicitado" },
+    { k: "rep",  l: "Volume adicional reprovado", rep: true },
     { k: "apr",  l: "Volume adicional aprovado" },
     { k: "pDem", l: "Pendente Demanda", pend: true },
     { k: "pLog", l: "Pendente Logística", pend: true },
@@ -1586,8 +1727,8 @@
     const filtrosEl = el("div", { class: "filtros", "aria-label": "Filtros por base" });
     $("view-resumo").replaceChildren(
       el("div", { class: "section-header" },
-        el("div", {}, el("h2", { text: "Resumo por base e produto" }),
-          el("p", { text: "Soma do volume adicional dos chamados. O solicitado inclui recusados e cortes parciais; o aprovado é o volume final aprovado pela Logística." })),
+        // Solicitado = reprovado + aprovado + pendentes (reprovado inclui recusas, cancelamentos e cortes parciais)
+        el("div", {}, el("h2", { text: "Resumo por base e produto" })),
         NR.el),
       filtrosEl,
       el("div", { class: "tablebox", id: "resumo-box" }));
@@ -1601,26 +1742,42 @@
     const mapa = mapaBases();
     const alvo = S.resumoData || null;
     const grupos = new Map();
-    const total = { sol: 0, apr: 0, pDem: 0, pLog: 0 };
+    const zerado = () => ({ sol: 0, rep: 0, apr: 0, pDem: 0, pDem_ok: 0, pDem_atr: 0, pDem_sla: 0, pLog: 0, pLog_ok: 0, pLog_atr: 0, pLog_sla: 0 });
+    const total = zerado();
     for (const c of S.chamados) {
       if (alvo && c.dataEntrega !== alvo) continue;
       if (!passaFiltros(FR, c, mapa)) continue;
       const k = `${c.base}\u0000${c.produto}`;
-      if (!grupos.has(k)) grupos.set(k, { base: c.base || "—", produto: c.produto || "—", sol: 0, apr: 0, pDem: 0, pLog: 0 });
+      if (!grupos.has(k)) grupos.set(k, { base: c.base || "—", produto: c.produto || "—", ...zerado() });
       const g = grupos.get(k), vol = Number(c.volume) || 0;
-      // Aprovado = volume final da Logística (pode ser parcial); Pendente Logística = o que a Demanda aprovou
+      // Aprovado = volume final da Logística (pode ser parcial); Pendente Logística = o que a Demanda aprovou;
+      // o que sobra do solicitado foi reprovado (recusa, cancelamento ou corte parcial)
       const [col, v] = aprovadoFinal(c) ? ["apr", volumeAprovado(c)]
         : c.status === "fila_demanda" ? ["pDem", vol]
         : c.status === "fila_logistica" ? ["pLog", soma(volsAprovados(c, "demanda")) || vol] : [null, 0];
-      g.sol += vol; total.sol += vol;
-      if (col) { g[col] += v; total[col] += v; }
+      const add = (chave, x) => { g[chave] += x; total[chave] += x; };
+      add("sol", vol);
+      add("rep", Math.max(0, vol - v));
+      if (col) {
+        add(col, v);
+        if (col !== "apr") add(`${col}_${c.semSla ? "sla" : atrasado(c) ? "atr" : "ok"}`, v);
+      }
     }
     const linhas = [...grupos.values()].sort((a, b) => a.base.localeCompare(b.base, "pt-BR") || a.produto.localeCompare(b.produto, "pt-BR"));
 
-    const celula = (g, c) => el("td", { class: "num mono" + (g[c.k] ? (c.pend ? " pend" : "") : " zero"), text: g[c.k] ? fmtVol(g[c.k]) : "—" });
+    const celula = (g, c) => {
+      const v = Math.round(g[c.k] * 10) / 10;
+      if (!v) return el("td", { class: "num mono zero", text: "—" });
+      // Pendentes: valor + quebra no prazo / atrasado / sem SLA (só as partes que existem)
+      const quebra = c.pend ? [["ok", "no prazo"], ["atr", "atrasado"], ["sla", "sem SLA"]]
+        .filter(([s]) => g[`${c.k}_${s}`] > 0)
+        .map(([s, rot]) => el("span", { class: "q-" + s, text: `${fmtVol(g[`${c.k}_${s}`])} ${rot}` })) : [];
+      return el("td", { class: "num mono" + (c.pend ? " pend" : c.rep ? " rep" : "") }, fmtVol(v),
+        quebra.length ? el("div", { class: "quebra" }, quebra) : null);
+    };
     const filtrando = alvo || filtrosDe(FR).some(([, m]) => m.selected.size);
     $("resumo-box").replaceChildren(linhas.length
-      ? el("table", { class: "resumo", style: "min-width:760px" },
+      ? el("table", { class: "resumo", style: "min-width:900px" },
           el("thead", {}, el("tr", {}, el("th", { text: "Base" }), el("th", { text: "Produto" }),
             COLS_RESUMO.map(c => el("th", { class: "num", text: c.l })))),
           el("tbody", { class: "plain" }, linhas.map(g => el("tr", {},
@@ -1813,7 +1970,6 @@
     if (ms) { ms.fechar(); ms._trigger.focus(); return; }
     if (!$("overlay").hidden && !document.querySelector("dialog[open]")) fechar();
   });
-  $("busca").addEventListener("input", e => { S.busca = e.target.value; render(); });
   S.resumoData = hojeStr(); // Resumo abre no D0; a lista de chamados abre sem filtro de data (S.fData = "")
   const NC = navData(() => S.fData, v => { S.fData = v; render(); });
   $("nav-data-chamados").replaceWith(NC.el);
