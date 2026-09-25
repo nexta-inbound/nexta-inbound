@@ -424,7 +424,7 @@
 
   // ---------- Regras da política (ajuste aqui) ----------
   const REGRAS = {
-    limiteD0: { h: 10, m: 0 },      // D-0 abertos a partir deste horário: seguem o fluxo, mas sem SLA / sem garantia de atendimento
+    limiteD0: { h: 10, m: 0 },      // D0 abertos a partir deste horário: seguem o fluxo, mas sem SLA / sem garantia de atendimento
     slaDemanda: { h: 10, m: 30 },   // retorno do Time Demanda
     slaLogistica: { h: 11, m: 0 },  // retorno do Time Logística
     portalD1: { h: 15, m: 0 },      // até este horário o pedido D+1 ainda entra direto no portal revendedor (pede confirmação)
@@ -583,6 +583,9 @@
   }
   function atrasado(c) { const p = prazoAtual(c); return !!p && new Date() > new Date(p.iso); }
   // Lista de clientes do chamado ({ nome, segmento, modal, volume }). Chamados antigos tinham um cliente só, em campos soltos.
+  // Tipo do pedido na abertura: D0 = faturamento no mesmo dia, D+1 = no dia seguinte.
+  // Chamados antigos gravaram "D-0"/"D-1" (dias antes do faturamento); exibidos no formato novo.
+  const tipoDe = c => ({ "D-0": "D0", "D-1": "D+1" })[c.tipo] || c.tipo || "—";
   function clientesDe(c) {
     const lista = Array.isArray(c.clientes) ? c.clientes : Object.values(c.clientes || {});
     if (lista.length) return lista;
@@ -836,7 +839,7 @@
       tb.append(el("tr", { tabindex: "0", onclick: () => abrir(c.id), onkeydown: e => { if (e.key === "Enter") abrir(c.id); } },
         el("td", {}, el("span", { class: "mono", text: c.codigo }),
           el("div", { class: "sub", text: "Aberto " + fmtDataHora(c.criadoEm) })),
-        el("td", {}, fmtData(c.dataEntrega), el("span", { class: "tag" + (c.tipo === "D-0" ? " d0" : ""), text: c.tipo })),
+        el("td", {}, fmtData(c.dataEntrega), el("span", { class: "tag" + (tipoDe(c) === "D0" ? " d0" : ""), text: tipoDe(c) })),
         el("td", { text: c.base }),
         el("td", { text: c.produto }),
         el("td", {}, ...(cs => cs.length > 1
@@ -847,7 +850,7 @@
         el("td", {}, p
           ? el("span", { class: "sla" + (late ? " late" : ""), text: `${p.quem} até ${fmtDataHora(p.iso)}${late ? " · atrasado" : ""}` })
           : c.semSla && !STATUS[c.status]?.final
-            ? el("span", { class: "pill t-warn", text: "Sem SLA", title: "D-0 aberto após o limite: sem garantia de atendimento" })
+            ? el("span", { class: "pill t-warn", text: "Sem SLA", title: "D0 aberto após o limite: sem garantia de atendimento" })
             : el("span", { class: "sub", text: "—" })),
       ));
     }
@@ -859,8 +862,8 @@
 
     // Regras
     const r = $("regras"); r.replaceChildren(
-      el("span", {}, el("b", { text: "Com SLA: " }), `D-1 após o horário de corte · D-0 até ${fmtHora(REGRAS.limiteD0)}`),
-      el("span", {}, el("b", { text: "Sem SLA: " }), `D-0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
+      el("span", {}, el("b", { text: "Com SLA: " }), `D+1 após o horário de corte · D0 até ${fmtHora(REGRAS.limiteD0)}`),
+      el("span", {}, el("b", { text: "Sem SLA: " }), `D0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
       el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)}`),
       el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)}`),
     );
@@ -898,7 +901,7 @@
       atrasado(c) ? el("span", { class: "pill t-crit", style: "margin-left:8px", text: "Fora do prazo" }) : null,
       c.semSla ? el("span", { class: "pill t-warn", style: "margin-left:8px", text: "Sem SLA" }) : null));
     if (c.semSla) body.append(el("div", { class: "hint t-warn", role: "note",
-      text: `D-0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.` }));
+      text: `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.` }));
 
     // Etapas
     const etapa = (nome, estado, txt) => el("div", { class: "step " + estado }, el("b", { text: nome }), txt);
@@ -917,7 +920,7 @@
     const kv = (k, v, full) => el("div", { class: full ? "full" : "" }, el("dt", { text: k }), el("dd", { text: v || "—" }));
     body.append(el("div", {}, el("p", { class: "section-t", text: "Solicitação" }),
       el("dl", { class: "kv" },
-        kv("Data de faturamento", `${fmtData(c.dataEntrega)} (${c.tipo})`),
+        kv("Data de faturamento", `${fmtData(c.dataEntrega)} (${tipoDe(c)})`),
         kv("Volume adicional total", fmtVol(c.volume)),
         kv("Base", c.base), kv("Produto", c.produto),
         kv("Motivo / observações", c.motivo, true),
@@ -1368,16 +1371,16 @@
       const dd = difDias(v);
       if (dd === 0 && passouDe(new Date(), REGRAS.limiteD0)) {
         aviso.className = "hint t-crit";
-        aviso.textContent = `Faturamento hoje (D-0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`;
+        aviso.textContent = `Faturamento hoje (D0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`;
       } else if (dd === 0) {
         aviso.className = "hint t-warn";
-        aviso.textContent = `Faturamento hoje (D-0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)} e da Logística até ${fmtHora(REGRAS.slaLogistica)}.`;
+        aviso.textContent = `Faturamento hoje (D0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)} e da Logística até ${fmtHora(REGRAS.slaLogistica)}.`;
       } else if (dd === 1) {
         const p = prazos(new Date());
         const portalAberto = !passouDe(new Date(), REGRAS.portalD1);
         aviso.className = "hint " + (portalAberto ? "t-warn" : "t-info");
         aviso.textContent = (portalAberto ? `Ingresso de pedido D+1 ainda liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. ` : "")
-          + `Faturamento amanhã (D-1). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
+          + `Faturamento amanhã (D+1). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
       }
     }
     data.addEventListener("input", atualizarAviso);
@@ -1438,10 +1441,10 @@
       v.clientes = clientes.map(({ n, ...x }) => x);
       v.volume = Math.round(clientes.reduce((s, x) => s + x.volume, 0) * 10) / 10;
       const dd = difDias(v.dataEntrega);
-      if (dd !== 0 && dd !== 1) { err.textContent = "O faturamento precisa ser hoje (D-0) ou amanhã (D-1)."; return; }
+      if (dd !== 0 && dd !== 1) { err.textContent = "O faturamento precisa ser hoje (D0) ou amanhã (D+1)."; return; }
 
-      const tipo = dd === 0 ? "D-0" : "D-1";
-      if (tipo === "D-1" && !passouDe(new Date(), REGRAS.portalD1)) {
+      const tipo = dd === 0 ? "D0" : "D+1";
+      if (tipo === "D+1" && !passouDe(new Date(), REGRAS.portalD1)) {
         const seguir = await confirmar(`Ingresso de pedido D+1 liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. Deseja realmente prosseguir?`);
         if (!seguir) return;
       }
@@ -1451,16 +1454,16 @@
       try {
         id = await novoCodigo();
         const agora = new Date();
-        // D-0 depois do limite segue o fluxo normal, mas sem SLA: não recebe prazos e nunca fica "fora do prazo"
-        const semSla = tipo === "D-0" && passouDe(agora, REGRAS.limiteD0);
+        // D0 depois do limite segue o fluxo normal, mas sem SLA: não recebe prazos e nunca fica "fora do prazo"
+        const semSla = tipo === "D0" && passouDe(agora, REGRAS.limiteD0);
         const c = {
           id, codigo: id, criadoEm: agora.toISOString(), criadoPor: S.meuId, criadoPorNome: S.me.nome, tipo, ...v,
           status: "fila_demanda", ...(semSla ? { semSla: true } : prazos(agora)), historico: [],
         };
         evento(c, "Chamado aberto", v.motivo);
-        if (semSla) evento(c, "Aberto sem SLA", `D-0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
+        if (semSla) evento(c, "Aberto sem SLA", `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
         await store.salvar(c);
-        toast(semSla ? "Chamado aberto sem SLA (D-0 após o limite) e enviado ao Time Demanda." : "Chamado aberto e enviado ao Time Demanda.");
+        toast(semSla ? "Chamado aberto sem SLA (D0 após o limite) e enviado ao Time Demanda." : "Chamado aberto e enviado ao Time Demanda.");
         S.abertoId = id; S.abertoVer = null;
         if (S.chamados.some(x => x.id === id)) renderDetalhe();
       } catch (e2) {
@@ -1808,7 +1811,7 @@
     const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "motivo", "tradeoff", "modalAvaliado", "obsLogistica"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
-    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.tipo, fmtData(c.dataEntrega), c.base, c.produto,
+    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
       x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", c.motivo, c.demanda?.tradeoff, modalAvaliadoDe(c, i), c.logistica?.obs].map(esc).join(";")));
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
