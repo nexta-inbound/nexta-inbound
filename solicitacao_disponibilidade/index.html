@@ -1,7 +1,5 @@
-<!doctype html><html lang="pt-BR"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><!-- Ícone "N" da Nexta (mesmo favicon do Portal Inbound); precisa ficar no <head> --><link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg=="></head><body>
 <title>Gestão Solicitações Disponibilidade Produto</title>
-<!-- Ícone "N" da Nexta (mesmo favicon do Portal Inbound) -->
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -257,16 +255,10 @@
   .cli-linha .seg label { padding: 9px 4px; }
   /* Aprovação parcial: volume aprovado por cliente na tabela do detalhe */
   .vol-aprov { width: 96px; border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 6px 8px; text-align: right; font-family: var(--mono); font-size: 14px; }
-  .modal-sel { border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 5px 8px; }
   table.clientes-det td.corte { color: var(--warn); font-weight: 600; }
   table.clientes-det tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; background: var(--surface-2); }
   .aprov-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; color: var(--ink-2); }
   .aprov-barra .mono { font-weight: 600; color: var(--ink); }
-  /* Modal avaliado por cliente (Logística) */
-  .modais { display: flex; flex-direction: column; gap: 8px; }
-  .modal-linha { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 14px; color: var(--ink); }
-  .modal-linha > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-  .modal-linha select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; }
   .combo-vazio { padding: 8px 11px; color: var(--ink-3); font-size: 13px; font-style: italic; }
   label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
   label.f input, label.f select, label.f textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-weight: 400; font-size: 15px; min-width: 0; width: 100%; }
@@ -613,10 +605,6 @@
     if (!ehParcial(c)) return st;
     return { ...st, label: c.status === "concluido" ? "Concluído (parcial)" : "Aprovado parcial · ajustar MIS" };
   }
-  function modalAvaliadoDe(c, i) {
-    const l = c.logistica;
-    return l?.modaisAvaliados?.[i] ?? (i === 0 ? l?.modalAvaliado : undefined);
-  }
   function resumoClientes(c) {
     const cs = clientesDe(c);
     return cs.length > 1 ? `${cs[0].nome} +${cs.length - 1}` : cs[0]?.nome || "—";
@@ -927,8 +915,8 @@
         d?.tradeoff ? kv("Trade-off que subsidia o aumento", d.tradeoff, true) : null,
       )));
 
-    // Clientes: solicitado × aprovado por etapa. Quem está decidindo preenche a coluna da própria etapa
-    // (e a Logística escolhe o modal avaliado de cada cliente na própria tabela).
+    // Clientes: solicitado × aprovado por etapa. Quem está decidindo preenche a coluna da própria etapa.
+    // O modal é só informação do pedido: a Logística decide se consegue atender (e quanto), não o modal.
     const cs = clientesDe(c);
     const etapaEdit = S.papel === "demanda" && c.status === "fila_demanda" ? "demanda"
       : S.papel === "logistica" && c.status === "fila_logistica" ? "logistica" : null;
@@ -937,14 +925,7 @@
     const tetos = cs.map((x, i) => etapaEdit === "logistica" ? (vDem?.[i] ?? (Number(x.volume) || 0)) : Number(x.volume) || 0);
     const inputsVol = etapaEdit ? cs.map((x, i) => el("input", { type: "number", class: "vol-aprov", min: "0", max: String(tetos[i]), step: "0.5",
       inputmode: "decimal", placeholder: `até ${fmtNum(tetos[i])}`, "aria-label": `Volume aprovado para ${x.nome} (até ${fmtNum(tetos[i])} m³)` })) : null;
-    const selsModal = etapaEdit === "logistica" ? cs.map(x => {
-      const s = el("select", { class: "modal-sel", "aria-label": `Modal avaliado para ${x.nome}` },
-        el("option", { value: "CIF", text: "CIF" }), el("option", { value: "FOB", text: "FOB" }));
-      s.value = x.modal || "FOB";
-      return s;
-    }) : null;
     const totEdit = el("td", { class: "num mono" });
-    const temAvaliado = !!selsModal || cs.some((_, i) => modalAvaliadoDe(c, i));
     const colDem = !!vDem || etapaEdit === "demanda", colLog = !!vLog || etapaEdit === "logistica";
     // Volume abaixo do teto da etapa (corte) aparece destacado
     const celVol = (v, teto) => el("td", { class: "num mono" + (v < teto ? " corte" : ""), text: fmtVol(v), title: v < teto ? `Corte de ${fmtVol(teto - v)}` : null });
@@ -952,23 +933,22 @@
     body.append(el("div", {}, el("p", { class: "section-t", text: `Clientes (${cs.length})` }),
       el("div", { class: "tablebox", style: "margin-top:0" }, el("table", { class: "lista clientes-det" },
         el("thead", {}, el("tr", {}, el("th", { text: "Cliente" }), el("th", { text: "Segmento" }), el("th", { text: "Modal" }),
-          temAvaliado ? el("th", { text: "Modal avaliado" }) : null, el("th", { class: "num", text: "Solicitado" }),
+          el("th", { class: "num", text: "Solicitado" }),
           colDem ? el("th", { class: "num", text: "Aprovado Demanda" }) : null,
           colLog ? el("th", { class: "num", text: "Aprovado Logística" }) : null)),
         el("tbody", { class: "plain" }, cs.map((x, i) => el("tr", {},
           el("td", { text: x.nome }), el("td", { text: x.segmento || "—" }), el("td", { text: x.modal || "—" }),
-          temAvaliado ? el("td", {}, selsModal ? selsModal[i] : modalAvaliadoDe(c, i) || "—") : null,
           el("td", { class: "num mono", text: fmtVol(x.volume) }),
           colDem ? colAprov("demanda", vDem, i, Number(x.volume) || 0) : null,
           colLog ? colAprov("logistica", vLog, i, vDem?.[i] ?? (Number(x.volume) || 0)) : null))),
         el("tfoot", {}, el("tr", {},
-          el("td", { text: "Total", colspan: String(temAvaliado ? 4 : 3) }),
+          el("td", { text: "Total", colspan: "3" }),
           el("td", { class: "num mono", text: fmtVol(c.volume) }),
           colDem ? (etapaEdit === "demanda" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vDem)) })) : null,
           colLog ? (etapaEdit === "logistica" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vLog)) })) : null))))));
 
     // Ação conforme papel
-    const acao = painelAcao(c, { inputsVol, tetos, selsModal, totEdit });
+    const acao = painelAcao(c, { inputsVol, tetos, totEdit });
     if (acao) body.append(acao);
 
     // Histórico
@@ -1059,11 +1039,7 @@
     }
 
     if (S.papel === "logistica" && c.status === "fila_logistica") {
-      // Modal avaliado e volume aprovado de cada cliente ficam na tabela de clientes (ctx.selsModal / ctx.inputsVol)
-      const cs = clientesDe(c);
-      const sels = ctx.selsModal;
-      const modais = () => sels.map(s => s.value);
-      const resumoModais = () => cs.length > 1 ? cs.map((x, i) => `${x.nome}: ${sels[i].value}`).join(" · ") : sels[0]?.value || "";
+      // O volume aprovado de cada cliente fica na tabela de clientes (ctx.inputsVol)
       const ap = controlesAprovacao(ctx);
       const obs = el("textarea", { id: "a-obs", placeholder: "Obrigatório ao recusar ou ao aprovar menos do que a Demanda aprovou" });
       const err = el("div", { class: "err", role: "alert" });
@@ -1076,15 +1052,15 @@
             if (r.erro) { err.textContent = r.erro; return; }
             if (r.parcial && !obs.value.trim()) { err.textContent = "Aprovação parcial: explique nas observações o motivo do corte."; obs.focus(); return; }
             const n = structuredClone(c);
-            n.logistica = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, modaisAvaliados: modais(), obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.logistica = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
             n.status = "aprovado";
-            evento(n, (r.parcial ? `Aprovado parcialmente pela Logística (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : `Aprovado pela Logística (${fmtVol(r.total)})`) + ` · modal ${resumoModais()}`, obs.value.trim());
+            evento(n, (r.parcial ? `Aprovado parcialmente pela Logística (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : `Aprovado pela Logística (${fmtVol(r.total)})`), obs.value.trim());
             gravar(n, `Aprovado ${fmtVol(r.total)}. Falta ajustar o MIS e enviar ao portal.`);
           } }, "Aprovar"),
           el("button", { class: "btn danger", type: "button", onclick: () => {
             if (!obs.value.trim()) { err.textContent = "Informe o motivo da recusa nas observações."; return; }
             const n = structuredClone(c);
-            n.logistica = { decisao: "recusado", modaisAvaliados: modais(), obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.logistica = { decisao: "recusado", obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
             n.status = "recusado_logistica"; evento(n, "Recusado pela Logística", obs.value.trim());
             gravar(n, "Chamado recusado");
           } }, "Recusar")));
@@ -1808,11 +1784,11 @@
   // ---------- Exportar ----------
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "motivo", "tradeoff", "modalAvaliado", "obsLogistica"];
+    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "motivo", "tradeoff", "obsLogistica"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
     const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
-      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", c.motivo, c.demanda?.tradeoff, modalAvaliadoDe(c, i), c.logistica?.obs].map(esc).join(";")));
+      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = el("a", { href: url, download: `chamados_adicionais_${hojeStr()}.csv` });
