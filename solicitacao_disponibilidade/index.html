@@ -294,6 +294,14 @@
   dialog.confirma::backdrop { background: rgba(8, 20, 30, .55); }
   dialog.confirma p { margin: 0 0 20px; font-size: 15px; line-height: 1.5; }
   dialog.confirma .row { justify-content: flex-end; }
+  /* Notificações (sino no topo + lista no painel lateral) */
+  .sino { position: relative; padding: 9px 12px; }
+  .sino svg { width: 18px; height: 18px; display: block; }
+  .sino .badge { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--crit); color: #FFF7F5; font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; }
+  .notifs { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .notif { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+  .notif:hover { background: var(--surface-2); }
+  .notif.nova { border-left: 4px solid var(--accent); }
   .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--navy); color: var(--navy-ink); padding: 12px 18px; border-radius: 10px; box-shadow: var(--shadow); z-index: 40; font-size: 14px; max-width: calc(100% - 32px); }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -317,6 +325,10 @@
       <label class="role" for="papel" id="papel-wrap" hidden>Atuando como
         <select id="papel"></select>
       </label>
+      <button class="btn ghost sino" id="sino" type="button" aria-label="Notificações" title="Notificações">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="badge" id="sino-n" hidden></span>
+      </button>
       <button class="btn ghost" id="usuarios" type="button" hidden>Usuários</button>
       <button class="btn primary" id="novo" type="button">+ Novo chamado</button>
       <button class="btn ghost" id="sair" type="button">Sair</button>
@@ -734,6 +746,7 @@
     for (const p of parar) p();
     parar = [];
     S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
+    NOTIF.chave = ""; NOTIF.lista = []; atualizarSino();
     S.cad = { bases: [], produtos: [] };
     if (!user) { mostrarTela("login"); return; }
 
@@ -770,9 +783,11 @@
     mostrarTela("app");
     render();
 
+    carregarNotifs();
     parar.push(onValue(ref(db, "chamados"), snap => {
       S.chamados = Object.values(snap.val() || {});
       S.modo = "online";
+      processarNotifs();
       render();
     }, err => {
       console.error(err);
@@ -1094,6 +1109,120 @@
   async function gravar(c, msg) {
     try { await store.salvar(c); toast(msg); }
     catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  // ---------- Notificações ----------
+  // Não há servidor: cada navegador compara o status de cada chamado com o último que este usuário viu
+  // (localStorage, por uid) e gera os avisos. Quem estava fora recebe no sino o que mudou ao entrar de novo;
+  // o alerta do Windows (Notification API) só sai com o portal aberto em alguma aba.
+  //   Time Demanda    → chamado novo na fila da Demanda
+  //   Time Logística  → chamado aprovado pela Demanda (entrou na fila da Logística)
+  //   Quem abriu      → chamado respondido (aprovado pela Logística ou recusado por Demanda/Logística)
+  // Ninguém é avisado da própria ação (ex.: solicitante que cancela o próprio chamado).
+  const NOTIF = { chave: "", vistos: null, lista: [], primeira: true };
+  const NOTIF_MAX = 50;
+
+  function carregarNotifs() {
+    NOTIF.chave = "adc.notif." + S.meuId;
+    NOTIF.primeira = true;
+    let d = null;
+    try { d = JSON.parse(lsGet(NOTIF.chave) || "null"); } catch {}
+    NOTIF.vistos = d?.vistos || null; // null = primeiro acesso neste navegador: só guarda a linha de base
+    NOTIF.lista = Array.isArray(d?.lista) ? d.lista : [];
+    atualizarSino();
+  }
+  function salvarNotifs() { lsSet(NOTIF.chave, JSON.stringify({ vistos: NOTIF.vistos, lista: NOTIF.lista })); }
+  const mesmoAviso = (a, b) => a.id === b.id && a.status === b.status && a.titulo === b.titulo;
+
+  function avisosDe(c, antes) {
+    if (antes === c.status) return [];
+    const me = S.meuId, ps = S.me.papeis, out = [];
+    if (c.status === "fila_demanda" && !antes && ps.includes("demanda") && c.criadoPor !== me)
+      out.push({ titulo: `Novo chamado ${c.codigo}`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
+    if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
+      out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}. Aguardando o Time Logística.` });
+    if (c.criadoPor === me) {
+      if (c.status === "aprovado" && c.logistica?.por !== me) {
+        const tot = soma(volsAprovados(c, "logistica")) || c.volume;
+        out.push({ titulo: `Seu chamado ${c.codigo} foi aprovado`, txt: tot < c.volume ? `Aprovado parcialmente: ${fmtVol(tot)} de ${fmtVol(c.volume)}.` : `Aprovado integralmente: ${fmtVol(tot)}.` });
+      }
+      if (c.status === "recusado_demanda" && c.demanda?.por !== me)
+        out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pela Demanda`, txt: c.demanda?.motivo || "" });
+      if (c.status === "recusado_logistica" && c.logistica?.por !== me)
+        out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pela Logística`, txt: c.logistica?.obs || "" });
+    }
+    return out.map(a => ({ ...a, id: c.id, status: c.status, em: c.atualizadoEm || new Date().toISOString(), lida: false }));
+  }
+
+  function processarNotifs() {
+    if (!S.me || !NOTIF.chave) return;
+    const atual = Object.fromEntries(S.chamados.map(c => [c.id, c.status]));
+    if (!NOTIF.vistos) { NOTIF.vistos = atual; NOTIF.primeira = false; salvarNotifs(); return; }
+    const novos = S.chamados.flatMap(c => avisosDe(c, NOTIF.vistos[c.id]))
+      .filter(a => !NOTIF.lista.some(x => mesmoAviso(x, a))); // outra aba do mesmo usuário pode já ter registrado
+    NOTIF.vistos = atual; // reconstruído a cada leitura: chamados apagados saem sozinhos
+    if (novos.length) {
+      NOTIF.lista = [...novos.sort((a, b) => String(b.em).localeCompare(String(a.em))), ...NOTIF.lista].slice(0, NOTIF_MAX);
+      if (NOTIF.primeira) toast(novos.length === 1 ? "Você tem 1 notificação nova." : `Você tem ${novos.length} notificações novas.`);
+      else for (const a of novos) alertar(a);
+    }
+    NOTIF.primeira = false;
+    salvarNotifs();
+    atualizarSino();
+  }
+
+  function alertar(a) {
+    if (!document.hidden) toast(a.titulo);
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      // tag: com várias abas abertas o alerta é substituído em vez de duplicado
+      const n = new Notification(a.titulo, { body: a.txt, tag: `${a.id}:${a.status}` });
+      n.onclick = () => { window.focus(); marcarLida(a); abrir(a.id); n.close(); };
+    } catch (e) { console.error(e); }
+  }
+
+  function atualizarSino() {
+    const n = NOTIF.lista.filter(x => !x.lida).length;
+    const b = $("sino-n");
+    b.hidden = !n; b.textContent = n > 99 ? "99+" : n;
+    $("sino").setAttribute("aria-label", n ? `Notificações (${n} não lidas)` : "Notificações");
+    document.title = (n ? `(${n}) ` : "") + document.title.replace(/^\(\d+\+?\) /, "");
+  }
+  function marcarLida(a) {
+    const x = NOTIF.lista.find(y => mesmoAviso(y, a));
+    if (x) x.lida = true;
+    salvarNotifs(); atualizarSino();
+  }
+
+  function abrirNotifs() {
+    abrirDrawer("Notificações", "Avisos dos chamados que dependem de você ou que você abriu");
+    const body = $("dr-body"); body.replaceChildren();
+    // Aberto como arquivo (file://) o navegador mostra o pedido de permissão mas não guarda a resposta
+    if (location.protocol === "file:")
+      body.append(el("div", { class: "hint t-warn", role: "note",
+        text: "Os alertas do Windows não funcionam com o portal aberto como arquivo local. Abra pelo endereço publicado (ou http://localhost) para ativá-los. O sino continua funcionando normalmente." }));
+    else if ("Notification" in window && Notification.permission === "default")
+      body.append(el("div", { class: "hint t-warn", role: "note" },
+        "Ative os alertas para ser avisado no Windows mesmo com o portal em segundo plano. ",
+        el("button", { class: "linkbtn", type: "button", text: "Ativar alertas", onclick: async () => {
+          const p = await Notification.requestPermission();
+          // alerta de teste: se não aparecer, o bloqueio está no navegador/Windows (Não incomodar, Edge desativado nas notificações)
+          if (p === "granted") try { new Notification("Alertas ativados", { body: "Você será avisado aqui quando um chamado precisar de você." }); } catch (e) { console.error(e); }
+          else toast("O navegador não liberou os alertas. Abra o portal pelo endereço publicado (não como arquivo local).");
+          abrirNotifs();
+        } })));
+    else if ("Notification" in window && Notification.permission === "denied")
+      body.append(el("div", { class: "hint t-warn", role: "note",
+        text: "Os alertas do navegador estão bloqueados para este site. Libere em Configurações do site (cadeado ao lado do endereço) para receber avisos no Windows." }));
+    if (NOTIF.lista.some(x => !x.lida)) body.append(el("div", { class: "row" }, el("button", { class: "btn ghost", type: "button", text: "Marcar todas como lidas", onclick: () => {
+      for (const x of NOTIF.lista) x.lida = true;
+      salvarNotifs(); atualizarSino(); abrirNotifs();
+    } })));
+    if (!NOTIF.lista.length) { body.append(el("p", { class: "sub", text: "Nenhuma notificação por enquanto." })); return; }
+    body.append(el("div", { class: "notifs" }, ...NOTIF.lista.map(a => el("button", {
+      class: "notif" + (a.lida ? "" : " nova"), type: "button",
+      onclick: () => { marcarLida(a); if (S.chamados.some(c => c.id === a.id)) abrir(a.id); else toast("Esse chamado não existe mais."); },
+    }, el("div", {}, el("b", { text: a.titulo })), a.txt ? el("div", { text: a.txt }) : null, el("div", { class: "sub", text: fmtDataHora(a.em) })))));
   }
 
   // Controles de aprovação por cliente: "Aprovar tudo" (preenche cada cliente com o teto da etapa), total ao vivo
@@ -1960,6 +2089,7 @@
   });
   $("novo").addEventListener("click", abrirNovo);
   $("usuarios").addEventListener("click", abrirUsuarios);
+  $("sino").addEventListener("click", abrirNotifs);
   for (const b of $("nav").querySelectorAll("[data-view]")) b.addEventListener("click", () => mostrarView(b.dataset.view));
   $("fechar").addEventListener("click", fechar);
   $("scrim").addEventListener("click", fechar);
