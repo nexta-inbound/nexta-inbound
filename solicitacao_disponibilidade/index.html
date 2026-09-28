@@ -50,7 +50,7 @@
   button, input, select, textarea { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 24px; padding-block: 0 48px; }
+  .wrap { max-width: 1680px; margin: 0 auto; padding-inline: 24px; padding-block: 0 48px; }
   @media (max-width: 640px) { .wrap { padding-inline: 16px; } }
 
   /* Top bar */
@@ -116,6 +116,13 @@
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--surface-2); }
   tbody tr:last-child td { border-bottom: none; }
+  /* Tabela de chamados compacta: menos respiro e sem quebra nas colunas curtas (chamado, faturamento, volume,
+     status, prazo), para cada chamado caber em uma ou duas linhas */
+  #view-chamados th, #view-chamados td { padding: 8px 12px; }
+  #view-chamados td { font-size: 14px; line-height: 1.35; }
+  #view-chamados td .sub { font-size: 12px; }
+  #view-chamados td:nth-child(1), #view-chamados td:nth-child(1) .sub, #view-chamados td:nth-child(2),
+  #view-chamados td:nth-child(6), #view-chamados td:nth-child(7), #view-chamados td:nth-child(8) { white-space: nowrap; }
   .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .num { text-align: right; }
   .sub { color: var(--ink-3); font-size: 13px; }
