@@ -94,7 +94,7 @@
   .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 14px; text-align: left; }
 
   /* KPIs */
-  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
   @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; text-align: left; }
   .kpi[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -122,7 +122,7 @@
   #view-chamados td { font-size: 14px; line-height: 1.35; }
   #view-chamados td .sub { font-size: 12px; }
   #view-chamados td:nth-child(1), #view-chamados td:nth-child(1) .sub, #view-chamados td:nth-child(2),
-  #view-chamados td:nth-child(6), #view-chamados td:nth-child(7), #view-chamados td:nth-child(8) { white-space: nowrap; }
+  #view-chamados td:nth-child(6), #view-chamados td:nth-child(7), #view-chamados td:nth-child(8), #view-chamados td:nth-child(9) { white-space: nowrap; }
   .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .num { text-align: right; }
   .sub { color: var(--ink-3); font-size: 13px; }
@@ -138,7 +138,22 @@
   .tag.d0 { border-color: var(--warn); color: var(--warn); }
 
   .sla { font-size: 13px; white-space: nowrap; }
+  /* Quem abriu, ao lado do ID do chamado */
+  .autor { display: inline-block; vertical-align: bottom; max-width: 140px; overflow: hidden; text-overflow: ellipsis; margin-left: 8px; font-size: 13px; color: var(--ink-2); }
+  /* Cabeçalhos ordenáveis (clique: crescente → decrescente → ordem padrão) */
+  #view-chamados th[data-ord] { padding: 0; } /* o respiro fica no botão (área de clique = célula inteira) */
+  th[data-ord] button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 4px; width: 100%; padding: 8px 12px; cursor: pointer; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; }
+  th.num[data-ord] button { justify-content: flex-end; }
+  th[data-ord] button:hover { color: var(--ink); }
+  th[data-ord] button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  th[data-ord] .seta-ord { font-size: 9px; opacity: .35; }
+  th[aria-sort] { color: var(--accent); }
+  th[aria-sort] .seta-ord { opacity: 1; }
   .sla.late { color: var(--crit); font-weight: 600; }
+  /* SLA de resposta dos chamados já respondidos (uma linha por etapa) */
+  .sla-res { display: flex; flex-direction: column; gap: 1px; font-size: 12.5px; line-height: 1.35; white-space: nowrap; }
+  .sla-res .ok { color: var(--ok); }
+  .sla-res .late { color: var(--crit); font-weight: 600; }
 
   .rules { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--ink-3); font-size: 13px; }
   .rules b { color: var(--ink-2); font-weight: 600; }
@@ -216,6 +231,29 @@
   .nav-data .linkbtn { font-size: 13px; margin-left: 4px; }
   /* Filtros multisseleção (mesmo padrão do MultiSelect do Portal Inbound) */
   .filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  /* Busca por ID do chamado (lupa, mesmo visual da busca do Portal Inbound) */
+  .busca-id { position: relative; display: flex; align-items: center; }
+  .busca-id svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--ink-3); pointer-events: none; }
+  .busca-id input { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px 8px 32px; width: 230px; max-width: 100%; font-size: 14px; }
+  .busca-id input.ativo { border-color: var(--accent); }
+  @media (max-width: 640px) { .busca-id, .busca-id input { width: 100%; } }
+  /* Filtro por status (chips liga/desliga, multisseleção) */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .chip:hover { background: var(--surface-2); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .8; }
+  .chip .cnt { font-family: var(--mono); font-size: 12px; font-weight: 500; opacity: .75; }
+  .chip.c-crit .dot { background: var(--crit); } .chip.c-warn .dot { background: var(--warn); } .chip.c-ok .dot { background: var(--ok); }
+  .chip.c-info .dot { background: var(--info); } .chip.c-wait .dot { background: var(--wait); }
+  .chip[aria-pressed="true"] { border-color: currentColor; }
+  .chip[aria-pressed="true"].c-crit { background: var(--crit-bg); color: var(--crit); }
+  .chip[aria-pressed="true"].c-warn { background: var(--warn-bg); color: var(--warn); }
+  .chip[aria-pressed="true"].c-ok { background: var(--ok-bg); color: var(--ok); }
+  .chip[aria-pressed="true"].c-info { background: var(--info-bg); color: var(--info); }
+  .chip[aria-pressed="true"].c-wait { background: var(--wait-bg); color: var(--wait); }
+  .chip:disabled { opacity: .45; cursor: default; }
+  .chip:disabled:hover { background: var(--surface); }
+  .chips .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 4px; }
   .ms { position: relative; }
   .ms-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 150px; max-width: 240px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 14px; color: var(--ink-2); }
   .ms.narrow .ms-trigger { min-width: 90px; }
@@ -401,13 +439,14 @@
     <button class="btn ghost" id="exportar" type="button">Exportar CSV</button>
   </div>
   <div class="filtros" id="filtros-chamados" aria-label="Filtros por base"></div>
+  <div class="chips" id="filtros-status" role="group" aria-label="Filtrar por status"></div>
 
   <div class="tablebox">
     <table>
       <thead>
         <tr>
-          <th>Chamado</th><th>Faturamento</th><th>Base</th><th>Produto</th><th>Cliente</th>
-          <th class="num">Volume</th><th>Status</th><th>Prazo de retorno</th>
+          <th data-ord="chamado">Chamado</th><th data-ord="faturamento">Faturamento</th><th data-ord="base">Base</th><th data-ord="produto">Produto</th><th data-ord="cliente">Cliente</th>
+          <th class="num" data-ord="volume">Volume</th><th data-ord="status">Status</th><th data-ord="atendente">Atendido por</th><th data-ord="prazo">Prazo de retorno</th>
         </tr>
       </thead>
       <tbody id="linhas"></tbody>
@@ -550,7 +589,6 @@
     { id: "fila_demanda", label: "Na fila da Demanda", test: c => c.status === "fila_demanda", semData: true },
     { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica" || c.status === "aprovado", semData: true },
     { id: "atrasados", label: "Fora do prazo", test: c => atrasado(c), crit: true, semData: true },
-    { id: "encerrados", label: "Encerrados", test: c => !!STATUS[c.status]?.final },
   ];
 
   // ---------- Estado ----------
@@ -558,6 +596,9 @@
     chamados: [],
     filtro: "todos",
     fData: "",         // data de faturamento (AAAA-MM-DD) da aba Chamados; "" = todas. Começa em hoje (D0), ver "Eventos"
+    busca: "",         // busca por ID do chamado (lupa); com texto, ignora o filtro de data
+    fStatus: new Set(), // chips de status marcados (vazio = todos)
+    ordem: { col: null, dir: 1 }, // ordenação pelos cabeçalhos da tabela; col null = ordem padrão
     papel: lsGet("adc.papel") || "comercial",
     abertoId: null,
     abertoVer: null,
@@ -622,6 +663,28 @@
     return null;
   }
   function atrasado(c) { const p = prazoAtual(c); return !!p && new Date() > new Date(p.iso); }
+  // SLA de resposta já cumprido/estourado: compara quando cada time respondeu (demanda.em / logistica.em) com o prazo
+  // gravado na abertura. Só etapas que tiveram resposta; chamados sem SLA não entram.
+  function slaRespostas(c) {
+    if (c.semSla) return [];
+    return [["Demanda", c.demanda?.em, c.prazoDemanda], ["Logística", c.logistica?.em, c.prazoLogistica]]
+      .filter(([, em, prazo]) => em && prazo)
+      .map(([quem, em, prazo]) => ({ quem, em, prazo, atrasoMs: new Date(em) - new Date(prazo) }));
+  }
+  // "Matheus Piva Sanches" → "Matheus Sanches" (primeiro + último nome; o nome completo fica no hover)
+  function nomeCurto(nome) { const p = String(nome).trim().split(/\s+/); return p.length > 2 ? `${p[0]} ${p[p.length - 1]}` : p.join(" "); }
+  // Última pessoa do Time Demanda/Logística que agiu no chamado (histórico); abertura e cancelamento do solicitante não contam
+  function ultimoAtendente(c) {
+    const doSolicitante = /^(Chamado aberto|Aberto sem SLA|Cancelado pelo solicitante)/;
+    return [...(c.historico || [])].reverse()
+      .find(h => (h.papel === "demanda" || h.papel === "logistica") && h.porNome && !doSolicitante.test(h.acao || "")) || null;
+  }
+  function fmtAtraso(ms) {
+    const min = Math.ceil(ms / 60000);
+    if (min < 60) return `${min} min`;
+    if (min < 24 * 60) return `${Math.floor(min / 60)}h${pad(min % 60)}`;
+    return `${Math.floor(min / 1440)} d`;
+  }
   // Lista de clientes do chamado ({ nome, segmento, modal, volume }). Chamados antigos tinham um cliente só, em campos soltos.
   // Tipo do pedido na abertura: D0 = faturamento no mesmo dia, D+1 = no dia seguinte.
   // Chamados antigos gravaram "D-0"/"D-1" (dias antes do faturamento); exibidos no formato novo.
@@ -936,24 +999,110 @@
     const mapa = mapaBases();
     return S.chamados.filter(c => passaFiltros(FC, c, mapa));
   }
-  function visiveis() {
+  // "ADC-000010", "adc10", "000010" e "10" encontram ADC-000010 (ignora maiúsculas, hífen e zeros à esquerda)
+  function casaId(c, q) {
+    const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/(^|[a-z])0+(?=\d)/g, "$1");
+    return norm(c.codigo).includes(norm(q));
+  }
+  // Chips extras (depois do separador): marcas que cortam todos os status; combinam com os chips de status (E)
+  const MARCAS = [
+    { id: "parcial", label: "Parcial", titulo: "Aprovação parcial", tone: "warn", test: c => ehParcial(c) },
+  ];
+  // Rótulos curtos dos chips de status (todos cabem numa linha); o nome completo aparece no hover
+  const CHIP_LABEL = {
+    recusa_auto: "Recusa auto", fila_demanda: "Ag. Demanda", recusado_demanda: "Recusado Demanda",
+    fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ajustar MIS",
+    concluido: "Concluído", cancelado: "Cancelado",
+  };
+  // Tudo menos os chips (base para as contagens dos chips)
+  function antesDosChips() {
     const f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0];
-    const alvo = f.semData ? null : S.fData || null;
-    const encerrado = c => STATUS[c.status]?.final ? 1 : 0;
+    const q = S.busca.trim();
+    const alvo = f.semData || q ? null : S.fData || null; // buscando um ID, procura em todas as datas
     return chamadosFiltrados()
       .filter(f.test)
       .filter(c => !alvo || c.dataEntrega === alvo)
+      .filter(c => !q || casaId(c, q));
+  }
+  // Chips de status só existem em "Todos os chamados"; nas filas das áreas (cards) não aparecem nem filtram
+  const chipsAtivos = () => S.filtro === "todos";
+  function passaChips(c) {
+    if (!chipsAtivos()) return true;
+    const st = [...S.fStatus].filter(k => STATUS[k]), mc = MARCAS.filter(m => S.fStatus.has(m.id));
+    return (!st.length || st.includes(c.status)) && mc.every(m => m.test(c));
+  }
+  // Valor de cada coluna para ordenar (cabeçalhos clicáveis)
+  const ORDENS = {
+    chamado: c => c.codigo || "",
+    faturamento: c => (c.dataEntrega || "") + (c.criadoEm || ""),
+    base: c => c.base || "",
+    produto: c => c.produto || "",
+    cliente: c => resumoClientes(c),
+    volume: c => Number(c.volume) || 0,
+    status: c => statusDe(c).label,
+    atendente: c => ultimoAtendente(c)?.porNome || "",
+    // Pendentes pelo prazo; respondidos pelo maior atraso (no prazo = negativo); sem prazo por último
+    prazo: c => { const p = prazoAtual(c); if (p) return new Date(p.iso).getTime();
+      const rs = slaRespostas(c); return rs.length ? Math.max(...rs.map(r => r.atrasoMs)) : null; },
+  };
+  function ordenar(lista) {
+    const { col, dir } = S.ordem, f = ORDENS[col];
+    if (!f) return lista;
+    return lista.map(c => [f(c), c]).sort(([a], [b]) => {
+      if (a == null || a === "") return b == null || b === "" ? 0 : 1; // vazios sempre no fim
+      if (b == null || b === "") return -1;
+      return dir * (typeof a === "number" ? a - b : String(a).localeCompare(String(b), "pt-BR", { numeric: true }));
+    }).map(([, c]) => c);
+  }
+  function renderCabecalhos() {
+    for (const th of document.querySelectorAll("#view-chamados th[data-ord]")) {
+      const ativo = S.ordem.col === th.dataset.ord;
+      if (ativo) th.setAttribute("aria-sort", S.ordem.dir > 0 ? "ascending" : "descending"); else th.removeAttribute("aria-sort");
+      th.querySelector(".seta-ord").textContent = ativo ? (S.ordem.dir > 0 ? "▲" : "▼") : "↕";
+    }
+  }
+  function visiveis() {
+    const encerrado = c => STATUS[c.status]?.final ? 1 : 0;
+    return ordenar(antesDosChips()
+      .filter(passaChips)
       // Primeiro os que aguardam alguma ação, depois os encerrados; em cada grupo, faturamento mais recente
       // primeiro (empate: abertura mais recente)
       .sort((a, b) => encerrado(a) - encerrado(b)
         || (b.dataEntrega || "").localeCompare(a.dataEntrega || "")
-        || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+        || (b.criadoEm || "").localeCompare(a.criadoEm || ""))); // ordem padrão = desempate da coluna clicada
+  }
+
+  // Chips de status: contagem respeita os demais filtros (cartão, data, busca, base e o outro grupo de chips)
+  function renderChips() {
+    $("filtros-status").hidden = !chipsAtivos();
+    if (!chipsAtivos()) return;
+    const pre = antesDosChips();
+    const marcasOn = MARCAS.filter(m => S.fStatus.has(m.id));
+    const statusOn = [...S.fStatus].filter(k => STATUS[k]);
+    const chip = (id, label, tone, n) => el("button", {
+      class: "chip c-" + tone, type: "button", "aria-pressed": String(S.fStatus.has(id)),
+      title: STATUS[id]?.label || MARCAS.find(m => m.id === id)?.titulo || label, // nome completo no hover
+      disabled: !n && !S.fStatus.has(id),
+      onclick: () => { S.fStatus.has(id) ? S.fStatus.delete(id) : S.fStatus.add(id); render(); },
+    }, el("span", { class: "dot" }), label, el("span", { class: "cnt", text: S.modo === "carregando" ? "–" : n }));
+    const doStatus = pre.filter(c => marcasOn.every(m => m.test(c)));
+    const doMarca = pre.filter(c => !statusOn.length || statusOn.includes(c.status));
+    const ids = Object.keys(STATUS).filter(k => k !== "recusa_auto" || S.chamados.some(c => c.status === k));
+    const limpar = el("button", { class: "linkbtn", type: "button", style: "margin-left:6px;font-size:13px", hidden: !S.fStatus.size,
+      onclick: () => { S.fStatus.clear(); render(); } }, "Limpar status");
+    $("filtros-status").replaceChildren(
+      ...ids.map(k => chip(k, CHIP_LABEL[k] || STATUS[k].label, STATUS[k].tone, doStatus.filter(c => c.status === k).length)),
+      el("span", { class: "sep", "aria-hidden": "true" }),
+      ...MARCAS.map(m => chip(m.id, m.label, m.tone, doMarca.filter(c => marcasOn.filter(x => x !== m).every(x => x.test(c)) && m.test(c)).length)),
+      limpar,
+    );
   }
 
   function render() {
     if (!S.me) return;
     NC.sync(); // etiqueta D0/D+1 muda sozinha se a página ficar aberta na virada do dia
-    NC.el.hidden = !!(FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).semData;
+    NC.el.hidden = !!(FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).semData || !!S.busca.trim(); // buscando ID, a data não vale
+    BUSCA.classList.toggle("ativo", !!S.busca.trim());
     atualizarOpcoesFiltros(FC, S.chamados);
     const base = chamadosFiltrados();
     // KPIs
@@ -966,6 +1115,8 @@
       }, el("span", { class: "n", text: S.modo === "carregando" ? "–" : n }), el("span", { class: "l", text: f.label })));
     }
     $("lista-titulo").textContent = (FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).label;
+    renderChips();
+    renderCabecalhos();
 
     // Tabela
     const rows = visiveis();
@@ -976,6 +1127,7 @@
       const late = atrasado(c);
       tb.append(el("tr", { tabindex: "0", onclick: () => abrir(c.id), onkeydown: e => { if (e.key === "Enter") abrir(c.id); } },
         el("td", {}, el("span", { class: "mono", text: c.codigo }),
+          c.criadoPorNome ? el("span", { class: "autor", title: "Aberto por " + c.criadoPorNome, text: nomeCurto(c.criadoPorNome) }) : null,
           el("div", { class: "sub", text: "Aberto " + fmtDataHora(c.criadoEm) })),
         el("td", {}, fmtData(c.dataEntrega), el("span", { class: "tag" + (tipoDe(c) === "D0" ? " d0" : ""), text: tipoDe(c) })),
         el("td", { text: c.base }),
@@ -985,17 +1137,28 @@
           : [el("div", { text: cs[0]?.nome || "—" }), el("div", { class: "sub", text: cs[0] ? `${cs[0].segmento} · ${cs[0].modal}` : "" })])(clientesDe(c))),
         el("td", { class: "num mono" }, fmtVol(c.volume), ehParcial(c) ? el("div", { class: "sub", text: `aprovado ${fmtVol(volumeAprovado(c))}` }) : null),
         el("td", {}, el("span", { class: "pill t-" + st.tone, text: st.label })),
+        el("td", {}, (u => u
+          ? el("span", { title: `Última resposta: ${u.porNome} (${PAPEIS[u.papel] || u.papel}) em ${fmtDataHora(u.em)}`, text: nomeCurto(u.porNome) })
+          : el("span", { class: "sub", text: "—" }))(ultimoAtendente(c))),
         el("td", {}, p
           ? el("span", { class: "sla" + (late ? " late" : ""), text: `${p.quem} até ${fmtDataHora(p.iso)}${late ? " · atrasado" : ""}` })
           : c.semSla && !STATUS[c.status]?.final
             ? el("span", { class: "pill t-warn", text: "Sem SLA", title: "D0 aberto após o limite: sem garantia de atendimento" })
-            : el("span", { class: "sub", text: "—" })),
+            : (rs => rs.length
+              // Já respondido: cada etapa no prazo ou com quanto estourou
+              ? el("div", { class: "sla-res" }, rs.map(r => el("span", {
+                  class: r.atrasoMs > 0 ? "late" : "ok",
+                  title: `${r.quem} respondeu ${fmtDataHora(r.em)} · prazo ${fmtDataHora(r.prazo)}`,
+                  text: r.atrasoMs > 0 ? `✗ ${r.quem}: fora do prazo (+${fmtAtraso(r.atrasoMs)})` : `✓ ${r.quem}: no prazo`,
+                })))
+              : el("span", { class: "sub", text: c.semSla ? "Sem SLA" : "—" }))(slaRespostas(c))),
       ));
     }
     const vazio = $("vazio");
     vazio.hidden = rows.length > 0;
     vazio.textContent = S.modo === "carregando" ? "Carregando chamados…"
       : S.chamados.length === 0 ? "Nenhum chamado ainda. Use “+ Novo chamado” para registrar a primeira solicitação."
+      : S.busca.trim() ? `Nenhum chamado com ID “${S.busca.trim()}” neste filtro.`
       : "Nenhum chamado neste filtro.";
 
     // Regras
@@ -1486,13 +1649,15 @@
 
   // Filtros por base: Base (Nome MIS), Cidade, UF e Região vêm do cadastro de bases, cruzando pelo Nome MIS do chamado
   // Cada filtro lê o valor da base do chamado (cadastro de bases) ou do próprio chamado (produto)
-  const CAMPOS_FILTRO = { base: b => b.nomeMis, cidade: b => b.cidade, uf: b => b.estado, regiao: b => b.regional, produto: (b, c) => c.produto };
+  const CAMPOS_FILTRO = { base: b => b.nomeMis, cidade: b => b.cidade, uf: b => b.estado, regiao: b => b.regional, produto: (b, c) => c.produto,
+    abriu: (b, c) => c.criadoPorNome, atendeu: (b, c) => ultimoAtendente(c)?.porNome }; // quem abriu / último que atendeu (nome completo)
   const mapaBases = () => new Map(S.cad.bases.map(b => [b.nomeMis, b]));
   function criarFiltrosBase(container, onChange) {
     const f = {
       base: new MultiSelect("Base", onChange), cidade: new MultiSelect("Cidade", onChange),
       uf: new MultiSelect("UF", onChange, { narrow: true }), regiao: new MultiSelect("Região", onChange),
       produto: new MultiSelect("Produto", onChange),
+      abriu: new MultiSelect("Aberto por", onChange), atendeu: new MultiSelect("Atendido por", onChange),
     };
     const limpar = el("button", { class: "linkbtn", type: "button", hidden: true, onclick: () => { for (const [, m] of filtrosDe(f)) m.clear(); onChange(); } }, "Limpar filtros");
     f._limpar = limpar;
@@ -2106,13 +2271,18 @@
   }
 
   // ---------- Exportar ----------
+  // "No prazo" / "Fora do prazo (+25 min)" / "" (etapa ainda sem resposta ou chamado sem SLA)
+  function slaCsv(c, quem) {
+    const r = slaRespostas(c).find(x => x.quem === quem);
+    return !r ? "" : r.atrasoMs > 0 ? `Fora do prazo (+${fmtAtraso(r.atrasoMs)})` : "No prazo";
+  }
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "motivo", "tradeoff", "obsLogistica"];
+    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
     const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
-      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
+      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = el("a", { href: url, download: `chamados_adicionais_${hojeStr()}.csv` });
@@ -2142,8 +2312,27 @@
   const NC = navData(() => S.fData, v => { S.fData = v; render(); });
   $("nav-data-chamados").replaceWith(NC.el);
   $("exportar").addEventListener("click", exportar);
+  // Cabeçalhos ordenáveis: crescente → decrescente → ordem padrão
+  for (const th of document.querySelectorAll("#view-chamados th[data-ord]")) {
+    const nome = th.textContent;
+    th.replaceChildren(el("button", { type: "button", title: "Ordenar por " + nome.toLowerCase(), onclick: () => {
+      const o = S.ordem;
+      if (o.col !== th.dataset.ord) S.ordem = { col: th.dataset.ord, dir: 1 };
+      else if (o.dir > 0) o.dir = -1;
+      else S.ordem = { col: null, dir: 1 };
+      render();
+    } }, nome, el("span", { class: "seta-ord", "aria-hidden": "true", text: "↕" })));
+  }
   // Filtros por base da aba Chamados (criados uma vez; render() só atualiza as opções)
   const FC = criarFiltrosBase($("filtros-chamados"), () => render());
+  // Busca por ID do chamado (lupa), antes dos filtros de base
+  const BUSCA = el("input", { type: "search", placeholder: "ID do chamado", "aria-label": "Buscar por ID do chamado",
+    autocomplete: "off", oninput: e => { S.busca = e.target.value; render(); },
+    onkeydown: e => { if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; S.busca = ""; render(); } } });
+  const lupa = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  lupa.setAttribute("viewBox", "0 0 24 24"); lupa.setAttribute("aria-hidden", "true");
+  lupa.innerHTML = '<circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  $("filtros-chamados").prepend(el("div", { class: "busca-id" }, lupa, BUSCA));
   setInterval(render, 60000); // atualiza prazos/atrasos a cada minuto
 </script>
 
