@@ -529,7 +529,10 @@
     recusado_logistica: { label: "Recusado pela Logística", tone: "crit", final: true },
     aprovado:           { label: "Aprovado · ajustar MIS",  tone: "info" },
     concluido:          { label: "Concluído",               tone: "ok",   final: true },
+    cancelado:          { label: "Cancelado pelo solicitante", tone: "wait", final: true },
   };
+  // Etapas em que quem abriu ainda pode cancelar (depois do ajuste no MIS o chamado já foi executado)
+  const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado"];
   const PAPEIS = { comercial: "Comercial", demanda: "Time Demanda", logistica: "Time Logística", consulta: "Somente consulta" };
   const PAPEIS_ATIVOS = ["comercial", "demanda", "logistica"];
   const SEGMENTOS = ["Petronas", "Bravo", "Total", "Bandeira Branca"]; // segmento (bandeira) de cada cliente do chamado
@@ -1035,12 +1038,16 @@
     const etapa = (nome, estado, txt) => el("div", { class: "step " + estado }, el("b", { text: nome }), txt);
     const d = c.demanda, l = c.logistica;
     const ateOuSemSla = iso => c.semSla ? "Sem SLA" : `Até ${fmtDataHora(iso)}`;
+    const cancelado = c.status === "cancelado";
+    // No cancelamento, a etapa que estava em aberto aparece como "Cancelado"; as seguintes ficam "—"
     const eDem = c.status === "recusa_auto" ? ["fail", "Não chegou"] :
       d ? [d.decisao === "aprovado" ? "done" : "fail", d.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
-      ["now", ateOuSemSla(c.prazoDemanda)];
+      cancelado ? ["fail", "Cancelado"] : ["now", ateOuSemSla(c.prazoDemanda)];
     const eLog = l ? [l.decisao === "aprovado" ? "done" : "fail", l.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
-      c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] : ["", "—"];
-    const eMis = c.status === "concluido" ? ["done", "Ajustado e enviado"] : c.status === "aprovado" ? ["now", "Pendente"] : ["", "—"];
+      c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] :
+      cancelado && d?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+    const eMis = c.status === "concluido" ? ["done", "Ajustado e enviado"] : c.status === "aprovado" ? ["now", "Pendente"] :
+      cancelado && l?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
     body.append(el("div", {}, el("p", { class: "section-t", text: "Etapas" }),
       el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("MIS e portal", ...eMis))));
 
@@ -1141,6 +1148,13 @@
       out.push({ titulo: `Novo chamado ${c.codigo}`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
     if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
       out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}. Aguardando o Time Logística.` });
+    if (c.status === "cancelado" && c.cancelamento?.por !== me) {
+      // avisa o time que estava com o chamado na hora do cancelamento
+      const de = c.cancelamento?.deStatus || antes;
+      const time = de === "fila_demanda" ? "demanda" : de === "fila_logistica" || de === "aprovado" ? "logistica" : null;
+      if (time && ps.includes(time))
+        out.push({ titulo: `Chamado ${c.codigo} cancelado pelo solicitante`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base}. Motivo: ${c.cancelamento?.motivo || "—"}` });
+    }
     if (c.criadoPor === me) {
       if (c.status === "aprovado" && c.logistica?.por !== me) {
         const tot = soma(volsAprovados(c, "logistica")) || c.volume;
@@ -1339,13 +1353,29 @@
       return box;
     }
 
-    if (c.criadoPor === S.meuId && c.status === "fila_demanda") {
-      box.append(titulo("Seu chamado"),
-        el("p", { text: c.semSla ? "Aguardando o Time Demanda (sem SLA)." : `Aguardando o Time Demanda até ${fmtDataHora(c.prazoDemanda)}.` }),
-        el("div", { class: "row" }, el("button", { class: "btn ghost", type: "button", onclick: () => {
-          const n = structuredClone(c); n.status = "recusado_demanda";
-          n.demanda = { decisao: "recusado", motivo: "Cancelado pelo solicitante", em: new Date().toISOString(), por: S.meuId };
-          evento(n, "Cancelado pelo Comercial"); gravar(n, "Chamado cancelado");
+    // Quem abriu pode cancelar enquanto o chamado não foi encerrado nem ajustado no MIS. O chamado não é apagado:
+    // vai para o status "cancelado" (final), continua na lista e no CSV, mas fica fora do Resumo.
+    if (c.criadoPor === S.meuId && CANCELAVEL.includes(c.status)) {
+      const situacao = c.status === "fila_demanda"
+        ? (c.semSla ? "Aguardando o Time Demanda (sem SLA)." : `Aguardando o Time Demanda até ${fmtDataHora(c.prazoDemanda)}.`)
+        : c.status === "fila_logistica"
+          ? (c.semSla ? "Aprovado pela Demanda. Aguardando o Time Logística (sem SLA)." : `Aprovado pela Demanda. Aguardando o Time Logística até ${fmtDataHora(c.prazoLogistica)}.`)
+          : "Aprovado pela Logística. Aguardando o ajuste no MIS.";
+      const mot = el("textarea", { id: "a-cancel", placeholder: "Por que o chamado está sendo cancelado?" });
+      const err = el("div", { class: "err", role: "alert" });
+      box.append(titulo("Seu chamado"), el("p", { text: situacao }),
+        el("label", { class: "f", for: "a-cancel" }, "Motivo do cancelamento", mot), err,
+        el("div", { class: "row" }, el("button", { class: "btn danger", type: "button", onclick: async () => {
+          const motivo = mot.value.trim();
+          if (!motivo) { err.textContent = "Informe o motivo do cancelamento."; mot.focus(); return; }
+          err.textContent = "";
+          const quem = c.status === "fila_demanda" ? "o Time Demanda" : "o Time Logística";
+          if (!await confirmar(`Cancelar o chamado ${c.codigo}? Ele fica registrado como cancelado e ${quem} será avisado.`, { ok: "Cancelar chamado", cancelar: "Voltar" })) return;
+          const n = structuredClone(c);
+          n.cancelamento = { motivo, deStatus: c.status, em: new Date().toISOString(), por: S.meuId };
+          n.status = "cancelado";
+          evento(n, "Cancelado pelo solicitante", motivo);
+          gravar(n, "Chamado cancelado");
         } }, "Cancelar chamado")));
       return box;
     }
@@ -1874,6 +1904,7 @@
     const zerado = () => ({ sol: 0, rep: 0, apr: 0, pDem: 0, pDem_ok: 0, pDem_atr: 0, pDem_sla: 0, pLog: 0, pLog_ok: 0, pLog_atr: 0, pLog_sla: 0 });
     const total = zerado();
     for (const c of S.chamados) {
+      if (c.status === "cancelado") continue; // cancelado pelo solicitante não conta como solicitado nem reprovado
       if (alvo && c.dataEntrega !== alvo) continue;
       if (!passaFiltros(FR, c, mapa)) continue;
       const k = `${c.base}\u0000${c.produto}`;
