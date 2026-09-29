@@ -694,6 +694,27 @@
   .modal-label { font-family: var(--font-cond); font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
   .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+
+  /* ── REVISÃO DA QUEBRA EM VIAGENS (ver revisarQuebraViagens) ── */
+  .rq-resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .rq-secao { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .rq-secao > summary {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer;
+    background: var(--panel); font-family: var(--font-cond); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; list-style: none;
+  }
+  .rq-secao > summary::-webkit-details-marker { display: none; }
+  .rq-secao > summary .rq-hint { margin-left: auto; font-family: inherit; font-weight: 400; text-transform: none; letter-spacing: normal; font-size: 11.5px; color: var(--text-muted); }
+  .rq-tabela-wrap { max-height: 280px; overflow: auto; }
+  .rq-secao table th, .rq-secao table td { font-size: 12px; padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .rq-secao table th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .rq-secao table td.rq-mudancas { white-space: normal; min-width: 260px; }
+  .rq-secao tr.rq-desmarcada td:not(:first-child) { opacity: 0.45; }
+  .rq-mud { display: block; }
+  .rq-mud s { color: var(--danger); }
+  .rq-mud b { color: var(--success); font-weight: 600; }
+  .rq-rodape { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .rq-rodape .rq-contagem { font-size: 12px; color: var(--text-muted); margin-right: auto; }
   .info-row { display: flex; gap: 20px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
   .info-item { flex: 1; }
   .info-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 3px; }
@@ -1963,6 +1984,13 @@
     obterViagemIndividual: async (semana, idViagem) => {
       const snap = await get(ref(db, 'sessoes/' + semana + '/viagens/' + idViagem));
       return snap.exists() ? snap.val() : null;
+    },
+    // Leitura pontual, direto do servidor, só das viagens da semana (sem cadencias/config) —
+    // usada por gerarViagens() pra conciliar contra o estado real do banco em vez do array
+    // `viagens` em memória, que pode estar atrás de edições de outros usuários.
+    carregarViagensSemana: async (key) => {
+      const snap = await get(ref(db, 'sessoes/' + key + '/viagens'));
+      return snap.exists() ? snap.val() : {};
     },
     marcarSemanaDisponivel: async (key) => {
       await set(ref(db, 'semanasDisponiveis/' + key), true);
@@ -3969,6 +3997,21 @@
 </div>
 
 <!-- MODAL: Gerir Viagem -->
+<div class="modal-overlay" id="modalRevisaoQuebra">
+  <div class="modal" style="width:1100px;max-width:96vw;max-height:92vh;overflow-y:auto">
+    <div class="modal-title">Revisar Quebra em Viagens</div>
+    <div class="modal-sub" id="rqSub">—</div>
+    <div class="rq-resumo" id="rqResumo"></div>
+    <div id="rqSecoes"></div>
+    <div class="rq-rodape">
+      <span class="rq-contagem" id="rqContagem"></span>
+      <button class="btn btn-secondary" id="rqCancelar">Cancelar</button>
+      <button class="btn btn-secondary" id="rqAplicarSelecionados">Aplicar selecionados</button>
+      <button class="btn btn-primary" id="rqAplicarTudo">Aplicar tudo</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" style="width:860px;max-width:96vw;max-height:90vh;overflow-y:auto">
     <div class="modal-title">Gerenciar Viagem</div>
@@ -6176,8 +6219,10 @@ function agendarAutosaveMultiSemana() {
   autosaveMultiSemanaTimer = setTimeout(salvarAlteracoesMultiSemana, 1500);
 }
 
+// Retorna false se a gravação falhou (os pendentes voltam pra fila) — gerarViagens() usa
+// isso pra não conciliar/sobrescrever a semana por cima de uma edição que não chegou ao banco.
 async function salvarAlteracoesMultiSemana() {
-  if (!viagensAlteradasMultiSemana.size) return;
+  if (!viagensAlteradasMultiSemana.size) return true;
   const pendentes = new Map(viagensAlteradasMultiSemana);
   viagensAlteradasMultiSemana.clear();
   const porSemana = new Map();
@@ -6195,9 +6240,12 @@ async function salvarAlteracoesMultiSemana() {
     // outras informações em memória aqui, então uma gravação da sessão inteira as apagaria).
     await Promise.all([...porSemana].map(([semana, porId]) => window._fb.salvarViagensParciais(semana, porId)));
     mostrarStatusSalvo();
+    return true;
   } catch (e) {
     console.error('Erro ao salvar viagens (multi-semana):', e);
     mostrarStatus('saving', 'Erro ao salvar');
+    pendentes.forEach((semana, id) => { if (!viagensAlteradasMultiSemana.has(id)) viagensAlteradasMultiSemana.set(id, semana); });
+    return false;
   }
 }
 
@@ -7206,14 +7254,39 @@ function reconciliarViagensComCadencias(grupos, cap) {
   });
   existentesPorGrupo.forEach(lista => lista.sort(ordenarViagensDoGrupo));
 
-  const novasViagens = [];
+  // Em vez de devolver direto a lista final, devolve as OPERAÇÕES (ver revisarQuebraViagens):
+  //   criar      — viagem nova saindo da cadência            (desmarcada = não cria)
+  //   atualizar  — viagem existente com campo relevante mudando (desmarcada = fica como está)
+  //   remover    — Backlog sem programação que saiu da cadência (desmarcada = mantém)
+  //   manter     — existente sem mudança relevante (sempre aplicada, sem escolha)
+  //   preservar  — programada cuja cadência não bate mais (sempre mantida, só informativo)
+  // `chave` é estável entre duas leituras do banco (grupo+posição pra criar, idViagem pro
+  // resto) — gerarViagens() usa isso pra reaplicar a seleção do usuário numa releitura.
+  const ops = [];
   const gruposAtuais = new Set();
-  const resumo = { mantidas: 0, criadas: 0, removidas: 0, preservadasComProgramacao: 0 };
+  const resumo = { mantidas: 0, criadas: 0, atualizadas: 0, removidas: 0, preservadasComProgramacao: 0 };
+  const idsRemovidos = [];
+  const opSaida = (v, motivo) => {
+    // Frete Retorno nasce sem cadência por design (ver criarViagemFreteRetorno) — não é
+    // "programada fora da cadência", então não polui o popup de revisão.
+    if (v.produto === PRODUTO_RETORNO_VAZIO) {
+      ops.push({ tipo: 'manter', chave: 'id:' + v.idViagem, viagem: v });
+      resumo.mantidas++;
+    } else if (viagemTemProgramacao(v)) {
+      ops.push({ tipo: 'preservar', chave: 'id:' + v.idViagem, viagem: v, motivo });
+      resumo.preservadasComProgramacao++;
+    } else {
+      ops.push({ tipo: 'remover', chave: 'id:' + v.idViagem, viagem: v, motivo });
+      resumo.removidas++;
+      idsRemovidos.push(v.idViagem);
+    }
+  };
 
   grupos.forEach(g => {
     const key = assinaturaGrupoViagem(g);
     gruposAtuais.add(key);
     const existentes = existentesPorGrupo.get(key) || [];
+    const grupoNovo = existentes.length === 0;
     const n = Math.ceil(g.volume / cap);
     const volPorViagem = +(g.volume / n).toFixed(1);
     const cadOrigem = g.ids.join(' / ');
@@ -7241,7 +7314,7 @@ function reconciliarViagensComCadencias(grupos, cap) {
         // Uma vez que o pedido provisório é confirmado (flag false), trava cadenciaOrigem/flag
         // contra sobrescrita por reimportações futuras que ainda contenham o pedido provisório original.
         const travado = anterior.pedidoProvisorio === false;
-        novasViagens.push({
+        const atualizada = {
           ...anterior,
           ...baseViagem,
           cadenciaOrigem: travado ? anterior.cadenciaOrigem : baseViagem.cadenciaOrigem,
@@ -7268,8 +7341,15 @@ function reconciliarViagensComCadencias(grupos, cap) {
           transportador: anterior.transportador || '',
           placa: anterior.placa || '',
           obs: anterior.obs || '',
-        });
-        resumo.mantidas++;
+        };
+        const mudancas = camposAlteradosNaQuebra(anterior, atualizada);
+        if (mudancas.length) {
+          ops.push({ tipo: 'atualizar', chave: 'id:' + anterior.idViagem, viagem: atualizada, anterior, mudancas });
+          resumo.atualizadas++;
+        } else {
+          ops.push({ tipo: 'manter', chave: 'id:' + anterior.idViagem, viagem: atualizada, anterior });
+          resumo.mantidas++;
+        }
       } else {
         const criadoEm = new Date().toISOString();
         const criadoPor = _authUsuarioAtual?.nome || '';
@@ -7307,34 +7387,154 @@ function reconciliarViagensComCadencias(grupos, cap) {
             evento: `Descarga calculada via leadtime (${leadtimeHoras.toFixed(2)}h): ${nova.dtDescProg} ${nova.horaDescProg}`,
           });
         }
-        novasViagens.push(nova);
+        ops.push({ tipo: 'criar', chave: `grupo:${key}#${i}`, viagem: nova, motivo: grupoNovo ? 'Cadência nova' : 'Volume aumentou' });
         resumo.criadas++;
       }
     }
 
-    existentes.slice(n).forEach(v => {
-      if (viagemTemProgramacao(v)) {
-        novasViagens.push(v);
-        resumo.preservadasComProgramacao++;
-      } else {
-        resumo.removidas++;
-      }
-    });
+    existentes.slice(n).forEach(v => opSaida(v, 'Volume reduziu'));
   });
 
   existentesPorGrupo.forEach((lista, key) => {
     if (gruposAtuais.has(key)) return;
-    lista.forEach(v => {
-      if (viagemTemProgramacao(v)) {
-        novasViagens.push(v);
-        resumo.preservadasComProgramacao++;
-      } else {
-        resumo.removidas++;
-      }
-    });
+    lista.forEach(v => opSaida(v, 'Cadência saiu da planilha'));
   });
 
-  return { viagens: novasViagens, resumo };
+  return { ops, resumo, idsRemovidos };
+}
+
+// Campos que o usuário reconhece como "a viagem mudou" — diferenças só em campos de
+// controle preenchidos com padrão (statusAgendamento, horas 12:00 etc.) não viram
+// "atualizar" no popup de revisão; são aplicadas junto com as viagens mantidas.
+// idCadencia fica de fora de propósito: não aparece em nenhuma tela, só serve pra ordenar
+// as viagens do grupo (sufixo -Vn, ver ordenarViagensDoGrupo) — a renumeração quando o
+// volume muda (ex.: -V1 some porque o grupo passou a gerar 1 viagem) é aplicada em silêncio.
+const CAMPOS_REVISAO_QUEBRA = {
+  cadenciaOrigem: 'Cadência', produto: 'Produto', origem: 'Origem',
+  base: 'Base', destino: 'Destino', cnpjOrigem: 'CNPJ Origem', cnpjDestino: 'CNPJ Destino',
+  dtCarreg: 'Carreg. desejado', dtDesc: 'Desc. desejada', volume: 'Volume', modal: 'Modal',
+  status: 'Status', pedidoProvisorio: 'Pedido provisório',
+};
+function camposAlteradosNaQuebra(antes, depois) {
+  const norm = x => (x === undefined || x === null) ? '' : String(x);
+  return Object.entries(CAMPOS_REVISAO_QUEBRA)
+    .filter(([campo]) => norm(antes[campo]) !== norm(depois[campo]))
+    .map(([campo, rotulo]) => ({ campo, rotulo, de: antes[campo], para: depois[campo] }));
+}
+
+// Lista final a gravar: `selecionadas` = Set de chaves marcadas no popup (null = tudo).
+function viagensDoPlanoQuebra(ops, selecionadas) {
+  const marcada = op => !selecionadas || selecionadas.has(op.chave);
+  const final = [];
+  ops.forEach(op => {
+    if (op.tipo === 'manter' || op.tipo === 'preservar') final.push(op.viagem);
+    else if (op.tipo === 'criar') { if (marcada(op)) final.push(op.viagem); }
+    else if (op.tipo === 'atualizar') final.push(marcada(op) ? op.viagem : op.anterior);
+    else if (op.tipo === 'remover') { if (!marcada(op)) final.push(op.viagem); }
+  });
+  return final;
+}
+
+// Popup de revisão antes de gravar: mostra tudo o que a quebra vai fazer (cadências novas,
+// viagens a criar/atualizar/remover e as programadas preservadas) e deixa o usuário
+// desmarcar linhas. Resolve com o Set de chaves marcadas (todas, em "Aplicar tudo") ou
+// null se cancelar.
+function revisarQuebraViagens(plano) {
+  const overlay = document.getElementById('modalRevisaoQuebra');
+  const acionaveis = plano.ops.filter(op => ['criar', 'atualizar', 'remover'].includes(op.tipo));
+  const marcadas = new Set(acionaveis.map(op => op.chave));
+  const porTipo = tipo => plano.ops.filter(op => op.tipo === tipo);
+  const fmtNum = n => { const x = Number(n) || 0; return x.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); };
+  const rota = v => `${esc(v.origem)}${v.base ? ' (' + esc(v.base) + ')' : ''} → ${esc(v.destino)}`;
+  const vol = v => esc(fmtNum(v.volume));
+  const fmtValor = x => (x === undefined || x === null || x === '') ? '—' : esc(typeof x === 'number' ? fmtNum(x) : x);
+
+  // Cadências novas = grupos que ainda não tinham nenhuma viagem — só a contagem no resumo;
+  // as viagens delas já aparecem em "Viagens a criar" com o motivo "Cadência nova".
+  const cadNovas = new Set(porTipo('criar').filter(op => op.motivo === 'Cadência nova').map(op => op.chave.split('#')[0]));
+  const cadSairam = new Set(plano.ops.filter(op => op.motivo === 'Cadência saiu da planilha').map(op => op.viagem.cadenciaOrigem || op.viagem.idCadencia || '—'));
+
+  const chk = op => `<input type="checkbox" data-rq-chave="${esc(op.chave)}" checked>`;
+  const secao = (tipo, titulo, badge, hint, cabecalho, linha, lista) => {
+    if (!lista.length) return '';
+    const comCheck = ['criar', 'atualizar', 'remover'].includes(tipo);
+    return `<details class="rq-secao" open>
+      <summary>${comCheck ? `<input type="checkbox" data-rq-todos="${tipo}" checked onclick="event.stopPropagation()">` : ''}
+        <span class="badge ${badge}">${lista.length}</span> ${titulo}<span class="rq-hint">${hint}</span></summary>
+      <div class="rq-tabela-wrap"><table>
+        <thead><tr>${comCheck ? '<th></th>' : ''}${cabecalho.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>${lista.map(op => `<tr data-rq-linha="${esc(op.chave)}" data-rq-tipo="${tipo}">${comCheck ? `<td>${chk(op)}</td>` : ''}${linha(op)}</tr>`).join('')}</tbody>
+      </table></div>
+    </details>`;
+  };
+
+  const r = plano.resumo;
+  document.getElementById('rqSub').textContent =
+    `Semana ${formatarKeyParaLabel(semanaAtiva)} · ${cadencias.length} linha(s) de cadência · dados relidos do servidor agora`;
+  document.getElementById('rqResumo').innerHTML = [
+    `<span class="badge badge-accent">${cadNovas.size} cadência(s) nova(s)</span>`,
+    `<span class="badge badge-success">${r.criadas} a criar</span>`,
+    `<span class="badge badge-warn">${r.atualizadas} a atualizar</span>`,
+    `<span class="badge badge-danger">${r.removidas} a remover</span>`,
+    `<span class="badge">${r.preservadasComProgramacao} programada(s) preservada(s)</span>`,
+    `<span class="badge">${r.mantidas} sem alteração</span>`,
+    cadSairam.size ? `<span class="badge badge-danger">${cadSairam.size} cadência(s) saíram da planilha</span>` : '',
+  ].join('');
+
+  document.getElementById('rqSecoes').innerHTML = [
+    secao('criar', 'Viagens a criar', 'badge-success', 'desmarcada = não cria agora',
+      ['Motivo', 'ID Cadência', 'Produto', 'Rota', 'Carreg.', 'Desc.', 'Volume', 'Modal'],
+      op => `<td><span class="badge ${op.motivo === 'Cadência nova' ? 'badge-accent' : 'badge-success'}">${esc(op.motivo)}</span></td><td>${esc(op.viagem.idCadencia)}</td><td>${esc(op.viagem.produto)}</td><td>${rota(op.viagem)}</td><td>${esc(op.viagem.dtCarreg)}</td><td>${esc(op.viagem.dtDesc)}</td><td>${vol(op.viagem)}</td><td>${esc(op.viagem.modal)}</td>`,
+      porTipo('criar')),
+    secao('atualizar', 'Viagens a atualizar', 'badge-warn', 'desmarcada = viagem fica como está hoje',
+      ['Viagem', 'Status', 'Produto', 'Rota', 'Alterações'],
+      op => `<td>${esc(op.anterior.idViagem)}</td><td>${esc(op.anterior.status)}</td><td>${esc(op.anterior.produto)}</td><td>${rota(op.anterior)}</td><td class="rq-mudancas">${op.mudancas.map(m => `<span class="rq-mud">${esc(m.rotulo)}: <s>${fmtValor(m.de)}</s> → <b>${fmtValor(m.para)}</b></span>`).join('')}</td>`,
+      porTipo('atualizar')),
+    secao('remover', 'Viagens a remover (Backlog sem programação)', 'badge-danger', 'desmarcada = mantém a viagem',
+      ['Motivo', 'Viagem', 'Cadência', 'Produto', 'Rota', 'Carreg.', 'Volume'],
+      op => `<td><span class="badge badge-danger">${esc(op.motivo)}</span></td><td>${esc(op.viagem.idViagem)}</td><td>${esc(op.viagem.cadenciaOrigem)}</td><td>${esc(op.viagem.produto)}</td><td>${rota(op.viagem)}</td><td>${esc(op.viagem.dtCarreg)}</td><td>${vol(op.viagem)}</td>`,
+      porTipo('remover')),
+    secao('preservar', 'Programadas fora da cadência (preservadas)', '', 'informativo — já têm programação, nunca são removidas',
+      ['Motivo', 'Viagem', 'Status', 'Transportador', 'Cadência', 'Produto', 'Rota', 'Carreg.', 'Volume'],
+      op => `<td><span class="badge badge-warn">${esc(op.motivo)}</span></td><td>${esc(op.viagem.idViagem)}</td><td>${esc(op.viagem.status)}</td><td>${esc(op.viagem.transportador)}</td><td>${esc(op.viagem.cadenciaOrigem)}</td><td>${esc(op.viagem.produto)}</td><td>${rota(op.viagem)}</td><td>${esc(op.viagem.dtCarreg)}</td><td>${vol(op.viagem)}</td>`,
+      porTipo('preservar')),
+  ].join('');
+
+  const atualizarContagem = () => {
+    document.getElementById('rqContagem').textContent = `${marcadas.size} de ${acionaveis.length} alteração(ões) selecionada(s)`;
+    document.querySelectorAll('#rqSecoes tr[data-rq-linha]').forEach(tr => {
+      if (tr.dataset.rqTipo !== 'preservar') tr.classList.toggle('rq-desmarcada', !marcadas.has(tr.dataset.rqLinha));
+    });
+    document.querySelectorAll('#rqSecoes input[data-rq-todos]').forEach(cb => {
+      const doTipo = acionaveis.filter(op => op.tipo === cb.dataset.rqTodos);
+      const n = doTipo.filter(op => marcadas.has(op.chave)).length;
+      cb.checked = n === doTipo.length;
+      cb.indeterminate = n > 0 && n < doTipo.length;
+    });
+    document.getElementById('rqAplicarSelecionados').disabled = marcadas.size === acionaveis.length;
+  };
+  document.getElementById('rqSecoes').onchange = (ev) => {
+    const cb = ev.target;
+    if (cb.dataset.rqChave) {
+      cb.checked ? marcadas.add(cb.dataset.rqChave) : marcadas.delete(cb.dataset.rqChave);
+    } else if (cb.dataset.rqTodos) {
+      acionaveis.filter(op => op.tipo === cb.dataset.rqTodos).forEach(op => cb.checked ? marcadas.add(op.chave) : marcadas.delete(op.chave));
+      document.querySelectorAll(`#rqSecoes tr[data-rq-tipo="${cb.dataset.rqTodos}"] input[data-rq-chave]`).forEach(x => { x.checked = cb.checked; });
+    }
+    atualizarContagem();
+  };
+  atualizarContagem();
+  overlay.classList.add('open');
+
+  return new Promise(resolve => {
+    const fechar = (resultado) => { overlay.classList.remove('open'); resolve(resultado); };
+    document.getElementById('rqCancelar').onclick = () => fechar(null);
+    document.getElementById('rqAplicarTudo').onclick = () => fechar(new Set(acionaveis.map(op => op.chave)));
+    document.getElementById('rqAplicarSelecionados').onclick = () => {
+      if (!marcadas.size && !confirm('Nenhuma alteração selecionada — só as cadências/configuração da semana serão gravadas. Continuar?')) return;
+      fechar(new Set(marcadas));
+    };
+  });
 }
 
 async function gerarViagens() {
@@ -7354,24 +7554,59 @@ async function gerarViagens() {
   try {
     if (!semanaAtiva) throw new Error('Crie ou selecione uma semana antes de gerar viagens.');
     if (!window._fb?.salvarComViagensUnicas) throw new Error('Firebase indisponível para gerar IDs únicos.');
-    const conciliacao = reconciliarViagensComCadencias(grupos, cap);
-    const { removidas, criadas } = conciliacao.resumo;
-    // Reimportar uma cadência com produto/origem/base/destino/datas diferentes faz as
-    // viagens em Backlog sem programação daquele grupo serem descartadas e recriadas com
-    // IDs novos (ver assinaturaGrupoViagem) — deixa isso visível antes de gravar.
-    if (removidas > 0 && !confirm(
-      `${removidas} viagem(ns) em Backlog sem programação não batem mais com a cadência e serão REMOVIDAS ` +
-      `(${criadas} nova(s) será(ão) criada(s) com IDs novos).
 
-` +
-      `Isso acontece quando produto, origem, base, destino ou datas mudaram na planilha.
-
-Continuar?`
-    )) {
-      mostrarStatus('saved', 'Geração de viagens cancelada');
-      return;
+    // A conciliação decide o que manter/remover olhando `viagens` em memória e depois
+    // sobrescreve a semana inteira — então ela tem que partir do estado real do banco:
+    // (1) grava antes as edições ainda no debounce do autosave (senão uma viagem recém-
+    // programada em Gerir Viagens ainda parece "Backlog sem programação" e é apagada);
+    // (2) relê as viagens da semana direto do servidor, ignorando o que estiver em memória.
+    if (btn) btn.textContent = 'Atualizando dados...';
+    clearTimeout(autosaveMultiSemanaTimer);
+    if (!(await salvarAlteracoesMultiSemana())) {
+      throw new Error('Há edições de viagens que não foram salvas no servidor. Verifique a conexão e tente de novo.');
     }
+    const pendentesSemana = [...viagensAlteradas].map(id => viagens.find(v => v.idViagem === id)).filter(Boolean);
+    if (pendentesSemana.length) {
+      await window._fb.salvarViagensParciais(semanaAtiva, Object.fromEntries(pendentesSemana.map(v => [v.idViagem, v])));
+      pendentesSemana.forEach(v => viagensAlteradas.delete(v.idViagem));
+    }
+    const recarregarViagens = async () => {
+      viagens = normalizarViagensArray(await window._fb.carregarViagensSemana(semanaAtiva));
+    };
+    await recarregarViagens();
+    if (btn) btn.textContent = 'Conciliando viagens...';
 
+    let plano = reconciliarViagensComCadencias(grupos, cap);
+    const acionaveis = p => p.ops.filter(op => ['criar', 'atualizar', 'remover'].includes(op.tipo));
+    // Popup de revisão (substitui o antigo confirm() de remoção): mostra tudo o que a quebra
+    // vai criar/atualizar/remover e deixa o usuário escolher o que subir. Sem nenhuma
+    // operação a revisar (só viagens sem mudança), segue direto pra gravação.
+    let selecionadas = null;
+    if (acionaveis(plano).length) {
+      if (btn) btn.textContent = 'Aguardando revisão...';
+      selecionadas = await revisarQuebraViagens(plano);
+      if (!selecionadas) {
+        mostrarStatus('saved', 'Geração de viagens cancelada');
+        return;
+      }
+
+      // Enquanto o popup estava aberto, outro usuário pode ter mexido nas viagens — relê e
+      // reconcilia de novo, reaplicando a seleção pela chave de cada operação. Se surgir uma
+      // operação que o usuário não revisou (ex.: viagem que ficou "a remover" nesse meio
+      // tempo), aborta em vez de gravar algo que ele não viu.
+      if (btn) btn.textContent = 'Conferindo alterações...';
+      const revisadas = new Set(acionaveis(plano).map(op => op.chave));
+      await recarregarViagens();
+      plano = reconciliarViagensComCadencias(grupos, cap);
+      if (acionaveis(plano).some(op => !revisadas.has(op.chave))) {
+        throw new Error('As viagens da semana foram alteradas por outro usuário durante a revisão. Clique em "Quebrar em Viagens" de novo para revisar.');
+      }
+    }
+    const aplicadas = acionaveis(plano).filter(op => !selecionadas || selecionadas.has(op.chave));
+    const qtd = tipo => aplicadas.filter(op => op.tipo === tipo).length;
+    const ignoradas = acionaveis(plano).length - aplicadas.length;
+
+    if (btn) btn.textContent = 'Gravando viagens...';
     mostrarStatus('saving', 'Gravando viagens com IDs únicos...');
     const payload = {
       cadencias,
@@ -7381,15 +7616,15 @@ Continuar?`
       },
       savedAt: new Date().toISOString()
     };
-    const salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, conciliacao.viagens, PREFIXO_VIAGEM);
+    const salvo = await window._fb.salvarComViagensUnicas(semanaAtiva, payload, viagensDoPlanoQuebra(plano.ops, selecionadas), PREFIXO_VIAGEM);
     aplicarPayload(salvo);
     selectedViagens.clear();
 
     updatePipeline();
     mostrarStatusSalvo();
-    if (conciliacao.resumo.preservadasComProgramacao > 0) {
-      mostrarStatus('saved', `Viagens atualizadas · ${conciliacao.resumo.criadas} novas · ${conciliacao.resumo.preservadasComProgramacao} programadas preservadas`);
-    }
+    mostrarStatus('saved', `Viagens atualizadas · ${qtd('criar')} criada(s) · ${qtd('atualizar')} atualizada(s) · ${qtd('remover')} removida(s)` +
+      (plano.resumo.preservadasComProgramacao ? ` · ${plano.resumo.preservadasComProgramacao} programada(s) preservada(s)` : '') +
+      (ignoradas ? ` · ${ignoradas} não aplicada(s)` : ''));
     switchTab(1);
   } catch (e) {
     alert('Não foi possível atualizar as viagens: ' + e.message);
@@ -14650,7 +14885,10 @@ function predicadoPeriodo(inicioISO, fimISO) {
 // v2: zera o cache de todo mundo uma vez pra descartar viagens "fantasma" (entradas órfãs
 // de viagensIndice cujo registro já tinha sido apagado por salvarComViagensUnicas — ex.:
 // NXT-004255), que o cache v1 nunca conseguia perceber.
-const NEXTA_CACHE_VERSAO = 2;
+// v3: mesma limpeza de novo — 199 entradas órfãs removidas em 29/09/2026 por
+// limpar_viagens_indice_orfaos.py (196 delas na semana 2026-09-29_2026-10-05), criadas
+// antes da correção em salvarComViagensUnicas chegar a todos os clientes.
+const NEXTA_CACHE_VERSAO = 3;
 const CACHE_VERSAO_KEY = 'nextaCacheVersao';
 const CACHE_CURSOR_KEY = 'nextaCacheCursor';
 // Separado do cursor: o cursor avança a cada carga, então "cursor velho" nunca acontecia
