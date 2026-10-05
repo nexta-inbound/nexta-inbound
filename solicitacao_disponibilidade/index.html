@@ -122,7 +122,7 @@
   #view-chamados td { font-size: 14px; line-height: 1.35; }
   #view-chamados td .sub { font-size: 12px; }
   #view-chamados td:nth-child(1), #view-chamados td:nth-child(1) .sub, #view-chamados td:nth-child(2),
-  #view-chamados td:nth-child(6), #view-chamados td:nth-child(7), #view-chamados td:nth-child(8), #view-chamados td:nth-child(9) { white-space: nowrap; }
+  #view-chamados td:nth-child(6), #view-chamados td:nth-child(7), #view-chamados td:nth-child(8), #view-chamados td:nth-child(9), #view-chamados td:nth-child(10) { white-space: nowrap; }
   .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .num { text-align: right; }
   .sub { color: var(--ink-3); font-size: 13px; }
@@ -446,7 +446,7 @@
       <thead>
         <tr>
           <th data-ord="chamado">Chamado</th><th data-ord="faturamento">Faturamento</th><th data-ord="base">Base</th><th data-ord="produto">Produto</th><th data-ord="cliente">Cliente</th>
-          <th class="num" data-ord="volume">Volume</th><th data-ord="status">Status</th><th data-ord="atendente">Atendido por</th><th data-ord="prazo">Prazo de retorno</th>
+          <th class="num" data-ord="volume">Volume</th><th data-ord="status">Status</th><th data-ord="prioridade">Prioridade</th><th data-ord="atendente">Atendido por</th><th data-ord="prazo">Prazo de retorno</th>
         </tr>
       </thead>
       <tbody id="linhas"></tbody>
@@ -579,6 +579,13 @@
   };
   // Etapas em que quem abriu ainda pode cancelar (depois do ajuste no MIS o chamado já foi executado)
   const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado"];
+  // Prioridade que a Demanda dá ao aprovar (demanda.prioridade): ajuda a Logística a escolher entre vários chamados da mesma base/produto
+  const PRIORIDADES = {
+    alta:  { label: "Alta",  tone: "crit", ordem: 1 },
+    media: { label: "Média", tone: "warn", ordem: 2 },
+    baixa: { label: "Baixa", tone: "wait", ordem: 3 },
+  };
+  const prioridadeDe = c => PRIORIDADES[c.demanda?.prioridade] || null;
   const PAPEIS = { comercial: "Comercial", demanda: "Time Demanda", logistica: "Time Logística", consulta: "Somente consulta" };
   const PAPEIS_ATIVOS = ["comercial", "demanda", "logistica"];
   const SEGMENTOS = ["Petronas", "Bravo", "Total", "Bandeira Branca"]; // segmento (bandeira) de cada cliente do chamado
@@ -632,6 +639,12 @@
   const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const hojeStr = () => ymd(new Date());
   const amanhaStr = () => { const d = new Date(); d.setDate(d.getDate() + 1); return ymd(d); };
+  // Última data de faturamento aceita ao abrir chamado: amanhã (D+1); na sexta e no sábado, até a segunda-feira
+  const maxFaturamentoStr = () => { const d = new Date(), dow = d.getDay(); d.setDate(d.getDate() + (dow === 5 ? 3 : dow === 6 ? 2 : 1)); return ymd(d); };
+  const diaSemana = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("pt-BR", { weekday: "long" }); };
+  // Domingo não tem faturamento: o formulário de novo chamado recusa a data e já sugere amanhã, ou a segunda se amanhã for domingo
+  const ehDomingo = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).getDay() === 0; };
+  const faturamentoPadraoStr = () => { const d = new Date(); d.setDate(d.getDate() + (d.getDay() === 6 ? 2 : 1)); return ymd(d); };
   const fmtHora = ({ h, m }) => `${h}h${m ? pad(m) : ""}`;
   function fmtData(s) { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${d}/${m}/${y}`; }
   function fmtDataHora(iso) {
@@ -646,15 +659,11 @@
     return Math.round((alvo - hoje) / 86400000);
   }
   function passouDe(agora, { h, m }) { return agora.getHours() * 60 + agora.getMinutes() >= h * 60 + m; }
-  function proximo(base, { h, m }) {
-    const d = new Date(base); d.setHours(h, m, 0, 0);
-    if (d <= base) d.setDate(d.getDate() + 1);
-    return d;
-  }
-  function prazos(criado) {
-    const pd = proximo(criado, REGRAS.slaDemanda);
-    const pl = new Date(pd); pl.setHours(REGRAS.slaLogistica.h, REGRAS.slaLogistica.m, 0, 0);
-    return { prazoDemanda: pd.toISOString(), prazoLogistica: pl.toISOString() };
+  // Prazos de retorno sempre no próprio dia do faturamento (AAAA-MM-DD), não a partir da abertura
+  function prazos(dataEntrega) {
+    const [y, mes, d] = dataEntrega.split("-").map(Number);
+    const as = ({ h, m }) => new Date(y, mes - 1, d, h, m).toISOString();
+    return { prazoDemanda: as(REGRAS.slaDemanda), prazoLogistica: as(REGRAS.slaLogistica) };
   }
   function prazoAtual(c) {
     if (c.semSla) return null;
@@ -686,7 +695,7 @@
     return `${Math.floor(min / 1440)} d`;
   }
   // Lista de clientes do chamado ({ nome, segmento, modal, volume }). Chamados antigos tinham um cliente só, em campos soltos.
-  // Tipo do pedido na abertura: D0 = faturamento no mesmo dia, D+1 = no dia seguinte.
+  // Tipo do pedido na abertura: D0 = faturamento no mesmo dia, D+1 = no dia seguinte (D+2/D+3: sexta ou sábado pedindo para segunda).
   // Chamados antigos gravaram "D-0"/"D-1" (dias antes do faturamento); exibidos no formato novo.
   const tipoDe = c => ({ "D-0": "D0", "D-1": "D+1" })[c.tipo] || c.tipo || "—";
   function clientesDe(c) {
@@ -994,7 +1003,7 @@
   $("sp-sair").addEventListener("click", () => signOut(auth));
 
   // ---------- Render principal ----------
-  // Chamados que passam nos filtros de Base/Cidade/UF/Região (os KPIs contam só estes)
+  // Chamados que passam nos filtros de Base/Cidade/UF/Região/Produto/Aberto por/Atendido por
   function chamadosFiltrados() {
     const mapa = mapaBases();
     return S.chamados.filter(c => passaFiltros(FC, c, mapa));
@@ -1014,12 +1023,11 @@
     fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ajustar MIS",
     concluido: "Concluído", cancelado: "Cancelado",
   };
-  // Tudo menos os chips (base para as contagens dos chips)
-  function antesDosChips() {
-    const f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0];
+  // Tudo menos os chips, na visão do cartão f (padrão: o ativo) — base dos KPIs e das contagens dos chips
+  function antesDosChips(f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0], base = chamadosFiltrados()) {
     const q = S.busca.trim();
     const alvo = f.semData || q ? null : S.fData || null; // buscando um ID, procura em todas as datas
-    return chamadosFiltrados()
+    return base
       .filter(f.test)
       .filter(c => !alvo || c.dataEntrega === alvo)
       .filter(c => !q || casaId(c, q));
@@ -1040,6 +1048,7 @@
     cliente: c => resumoClientes(c),
     volume: c => Number(c.volume) || 0,
     status: c => statusDe(c).label,
+    prioridade: c => prioridadeDe(c)?.ordem ?? null, // crescente = Alta primeiro; sem prioridade no fim
     atendente: c => ultimoAtendente(c)?.porNome || "",
     // Pendentes pelo prazo; respondidos pelo maior atraso (no prazo = negativo); sem prazo por último
     prazo: c => { const p = prazoAtual(c); if (p) return new Date(p.iso).getTime();
@@ -1105,13 +1114,14 @@
     BUSCA.classList.toggle("ativo", !!S.busca.trim());
     atualizarOpcoesFiltros(FC, S.chamados);
     const base = chamadosFiltrados();
-    // KPIs
+    // KPIs: cada cartão conta o que a sua visão lista (data só vale em "Todos"; filas e atrasos são de todas as datas)
     const k = $("kpis"); k.replaceChildren();
     for (const f of FILTROS) {
-      const n = base.filter(f.test).length;
+      const n = antesDosChips(f, base).length;
       k.append(el("button", {
         class: "kpi" + (f.crit && n ? " crit" : ""), type: "button", "aria-pressed": String(S.filtro === f.id),
-        onclick: () => { S.filtro = f.id; S.fData = ""; render(); }, // toda visão abre com todas as datas
+        // Trocar de visão abre com todas as datas; clicar no cartão já ativo mantém a data (senão o número do cartão não bate com a lista)
+        onclick: () => { if (S.filtro !== f.id) { S.filtro = f.id; S.fData = ""; } render(); },
       }, el("span", { class: "n", text: S.modo === "carregando" ? "–" : n }), el("span", { class: "l", text: f.label })));
     }
     $("lista-titulo").textContent = (FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).label;
@@ -1137,6 +1147,9 @@
           : [el("div", { text: cs[0]?.nome || "—" }), el("div", { class: "sub", text: cs[0] ? `${cs[0].segmento} · ${cs[0].modal}` : "" })])(clientesDe(c))),
         el("td", { class: "num mono" }, fmtVol(c.volume), ehParcial(c) ? el("div", { class: "sub", text: `aprovado ${fmtVol(volumeAprovado(c))}` }) : null),
         el("td", {}, el("span", { class: "pill t-" + st.tone, text: st.label })),
+        el("td", {}, (pr => pr
+          ? el("span", { class: "pill t-" + pr.tone, title: "Prioridade dada pela Demanda", text: pr.label })
+          : el("span", { class: "sub", text: "—" }))(prioridadeDe(c))),
         el("td", {}, (u => u
           ? el("span", { title: `Última resposta: ${u.porNome} (${PAPEIS[u.papel] || u.papel}) em ${fmtDataHora(u.em)}`, text: nomeCurto(u.porNome) })
           : el("span", { class: "sub", text: "—" }))(ultimoAtendente(c))),
@@ -1165,8 +1178,8 @@
     const r = $("regras"); r.replaceChildren(
       el("span", {}, el("b", { text: "Com SLA: " }), `D+1 após o horário de corte · D0 até ${fmtHora(REGRAS.limiteD0)}`),
       el("span", {}, el("b", { text: "Sem SLA: " }), `D0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
-      el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)}`),
-      el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)}`),
+      el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)} do dia do faturamento`),
+      el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)} do dia do faturamento`),
     );
 
     // Só redesenha o detalhe aberto se o chamado mudou (não apaga o que a pessoa está digitando)
@@ -1200,7 +1213,8 @@
 
     body.append(el("div", {}, el("span", { class: "pill t-" + st.tone, text: st.label }),
       atrasado(c) ? el("span", { class: "pill t-crit", style: "margin-left:8px", text: "Fora do prazo" }) : null,
-      c.semSla ? el("span", { class: "pill t-warn", style: "margin-left:8px", text: "Sem SLA" }) : null));
+      c.semSla ? el("span", { class: "pill t-warn", style: "margin-left:8px", text: "Sem SLA" }) : null,
+      (pr => pr ? el("span", { class: "pill t-" + pr.tone, style: "margin-left:8px", title: "Prioridade dada pela Demanda", text: `Prioridade ${pr.label.toLowerCase()}` }) : null)(prioridadeDe(c))));
     if (c.semSla) body.append(el("div", { class: "hint t-warn", role: "note",
       text: `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.` }));
 
@@ -1317,7 +1331,8 @@
     if (c.status === "fila_demanda" && !antes && ps.includes("demanda") && c.criadoPor !== me)
       out.push({ titulo: `Novo chamado ${c.codigo}`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
     if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
-      out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}. Aguardando o Time Logística.` });
+      out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}`
+        + (prioridadeDe(c) ? ` · prioridade ${prioridadeDe(c).label.toLowerCase()}` : "") + ". Aguardando o Time Logística." });
     if (c.status === "cancelado" && c.cancelamento?.por !== me) {
       // avisa o time que estava com o chamado na hora do cancelamento
       const de = c.cancelamento?.deStatus || antes;
@@ -1450,7 +1465,11 @@
       const trade = el("textarea", { id: "a-trade", placeholder: "Ex.: reduzir 20 m³ do cliente X na mesma base" });
       const mot = el("textarea", { id: "a-mot", placeholder: "Motivo da recusa" });
       const err = el("div", { class: "err", role: "alert" });
+      // Prioridade (opcional ao aprovar): a Logística usa para escolher entre vários chamados da mesma base/produto
+      const prio = el("div", { class: "seg", role: "radiogroup", "aria-label": "Prioridade para a Logística", style: "max-width:420px" },
+        Object.entries(PRIORIDADES).map(([k, p]) => el("label", {}, el("input", { type: "radio", name: "a-prio", value: k }), el("span", { text: p.label }))));
       box.append(titulo("Decisão do Time Demanda"), ap.barra,
+        el("div", { class: "campo" }, el("span", { text: "Se aprovar: prioridade para a Logística (opcional)" }), prio),
         el("div", { class: "grid2" },
           el("label", { class: "f", for: "a-trade" }, "Se aprovar: trade-off que subsidia o aumento", trade),
           el("label", { class: "f", for: "a-mot" }, "Se recusar: motivo", mot)), err,
@@ -1460,10 +1479,14 @@
             const r = ap.ler();
             if (r.erro) { err.textContent = r.erro; return; }
             if (!trade.value.trim()) { err.textContent = "Descreva o trade-off antes de aprovar."; trade.focus(); return; }
+            const prioridade = prio.querySelector("input:checked")?.value;
             const n = structuredClone(c);
-            n.demanda = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, tradeoff: trade.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            // Sem prioridade escolhida o campo nem é gravado (o Firebase recusa valor undefined)
+            n.demanda = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, ...(prioridade ? { prioridade } : {}),
+              tradeoff: trade.value.trim(), em: new Date().toISOString(), por: S.meuId };
             n.status = "fila_logistica";
-            evento(n, r.parcial ? `Aprovado parcialmente pela Demanda (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : "Aprovado pela Demanda", trade.value.trim());
+            evento(n, (r.parcial ? `Aprovado parcialmente pela Demanda (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : "Aprovado pela Demanda")
+              + (prioridade ? ` · prioridade ${PRIORIDADES[prioridade].label.toLowerCase()}` : ""), trade.value.trim());
             gravar(n, r.parcial ? "Aprovado parcialmente e enviado para a Logística" : "Aprovado e enviado para a Logística");
           } }, "Aprovar e enviar à Logística"),
           el("button", { class: "btn danger", type: "button", onclick: () => {
@@ -1797,11 +1820,12 @@
 
     const aviso = el("div", { class: "hint", role: "status" });
     const err = el("div", { class: "err", role: "alert" });
-    const data = el("input", { type: "date", id: "n-data", required: true, min: hojeStr(), max: amanhaStr(), value: amanhaStr() });
+    const data = el("input", { type: "date", id: "n-data", required: true, min: hojeStr(), max: maxFaturamentoStr(), value: faturamentoPadraoStr() });
 
     function atualizarAviso() {
       const v = data.value; aviso.className = "hint"; aviso.textContent = "";
       if (!v) return;
+      if (ehDomingo(v)) { aviso.className = "hint t-crit"; aviso.textContent = "Não há faturamento no domingo. Escolha outra data."; return; }
       const dd = difDias(v);
       if (dd === 0 && passouDe(new Date(), REGRAS.limiteD0)) {
         aviso.className = "hint t-crit";
@@ -1809,12 +1833,12 @@
       } else if (dd === 0) {
         aviso.className = "hint t-warn";
         aviso.textContent = `Faturamento hoje (D0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)} e da Logística até ${fmtHora(REGRAS.slaLogistica)}.`;
-      } else if (dd === 1) {
-        const p = prazos(new Date());
-        const portalAberto = !passouDe(new Date(), REGRAS.portalD1);
+      } else if (dd > 0) {
+        const p = prazos(v);
+        const portalAberto = dd === 1 && !passouDe(new Date(), REGRAS.portalD1);
         aviso.className = "hint " + (portalAberto ? "t-warn" : "t-info");
         aviso.textContent = (portalAberto ? `Ingresso de pedido D+1 ainda liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. ` : "")
-          + `Faturamento amanhã (D+1). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
+          + `Faturamento ${dd === 1 ? "amanhã" : diaSemana(v)} (D+${dd}). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
       }
     }
     data.addEventListener("input", atualizarAviso);
@@ -1875,9 +1899,15 @@
       v.clientes = clientes.map(({ n, ...x }) => x);
       v.volume = Math.round(clientes.reduce((s, x) => s + x.volume, 0) * 10) / 10;
       const dd = difDias(v.dataEntrega);
-      if (dd !== 0 && dd !== 1) { err.textContent = "O faturamento precisa ser hoje (D0) ou amanhã (D+1)."; return; }
+      const maxFat = maxFaturamentoStr();
+      if (dd < 0 || v.dataEntrega > maxFat) {
+        err.textContent = maxFat === amanhaStr() ? "O faturamento precisa ser hoje (D0) ou amanhã (D+1)."
+          : `O faturamento precisa ser entre hoje (D0) e ${diaSemana(maxFat)}, ${fmtData(maxFat)} (D+${difDias(maxFat)}).`;
+        return;
+      }
+      if (ehDomingo(v.dataEntrega)) { err.textContent = "Não há faturamento no domingo. Escolha outra data."; data.focus(); return; }
 
-      const tipo = dd === 0 ? "D0" : "D+1";
+      const tipo = dd === 0 ? "D0" : `D+${dd}`;
       if (tipo === "D+1" && !passouDe(new Date(), REGRAS.portalD1)) {
         const seguir = await confirmar(`Ingresso de pedido D+1 liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. Deseja realmente prosseguir?`);
         if (!seguir) return;
@@ -1892,7 +1922,7 @@
         const semSla = tipo === "D0" && passouDe(agora, REGRAS.limiteD0);
         const c = {
           id, codigo: id, criadoEm: agora.toISOString(), criadoPor: S.meuId, criadoPorNome: S.me.nome, tipo, ...v,
-          status: "fila_demanda", ...(semSla ? { semSla: true } : prazos(agora)), historico: [],
+          status: "fila_demanda", ...(semSla ? { semSla: true } : prazos(v.dataEntrega)), historico: [],
         };
         evento(c, "Chamado aberto", v.motivo);
         if (semSla) evento(c, "Aberto sem SLA", `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
@@ -2278,11 +2308,11 @@
   }
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
+    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
     const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
-      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
+      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = el("a", { href: url, download: `chamados_adicionais_${hojeStr()}.csv` });
