@@ -614,6 +614,7 @@
     modo: "carregando",
     view: "chamados",
     cad: { bases: [], produtos: [] },
+    diretorio: [],     // [{ uid, nome, papeis }] de diretorio/: quem pode ser solicitante num chamado aberto em nome de outra pessoa
     cadTab: "bases",
     resumoData: "",    // idem para a aba Resumo
     cadBusca: "",
@@ -635,6 +636,15 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
     return n;
   }
+  // WhatsApp do usuário (perfis/<uid>/telefone): DDD + número, só dígitos, sem +55 — formato da fila do robô
+  // (nexta_bots/bots/whatsapp/bot_alerta_adicionais.py), que avisa quem abriu quando o chamado é concluído ou recusado
+  function normTelefone(s) {
+    let t = String(s || "").replace(/\D/g, "").replace(/^0+/, "");
+    if (t.length > 11 && t.startsWith("55")) t = t.slice(2);
+    return t;
+  }
+  const telefoneValido = t => /^[1-9][0-9]{9,10}$/.test(t);
+  const fmtTelefone = t => t ? `(${t.slice(0, 2)}) ${t.slice(2, -4)}-${t.slice(-4)}` : "";
   const pad = n => String(n).padStart(2, "0");
   const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const hojeStr = () => ymd(new Date());
@@ -829,7 +839,7 @@
     parar = [];
     S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
     NOTIF.chave = ""; NOTIF.lista = []; atualizarSino();
-    S.cad = { bases: [], produtos: [] };
+    S.cad = { bases: [], produtos: [] }; S.diretorio = [];
     if (!user) { mostrarTela("login"); return; }
 
     mostrarTela("carregando");
@@ -859,7 +869,7 @@
   });
 
   function iniciarApp(user, perfil) {
-    S.me = { uid: user.uid, nome: perfil.nome || user.email, email: user.email, admin: perfil.admin === true, papeis: papeisDe(perfil) };
+    S.me = { uid: user.uid, nome: perfil.nome || user.email, email: user.email, admin: perfil.admin === true, papeis: papeisDe(perfil), telefone: perfil.telefone || "" };
     configurarSessao();
     $("banner").hidden = true;
     mostrarTela("app");
@@ -888,6 +898,21 @@
       console.error(err);
       mostrarBanner("Não foi possível carregar os cadastros de bases e produtos. Confira se as regras do banco foram atualizadas.");
     }));
+
+    // Só quem pode abrir chamado em nome de outra pessoa precisa da lista de usuários
+    if (podeAbrirParaOutro()) parar.push(onValue(ref(db, "diretorio"), snap => {
+      S.diretorio = Object.entries(snap.val() || {}).map(([uid, x]) => ({ ...x, uid }))
+        .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"));
+    }, err => { console.error(err); S.diretorio = []; })); // sem as regras novas publicadas: a opção só aparece sem nomes
+  }
+  // Time Demanda (e admin) pode registrar o chamado em nome de outra pessoa (ex.: pedido que chegou por telefone)
+  const podeAbrirParaOutro = () => !!S.me && (S.me.admin || S.me.papeis.includes("demanda"));
+  // Diretório (diretorio/<uid>: { nome, papeis }): perfis só o admin lê, então o admin mantém esta cópia só com
+  // nome e papéis — ao salvar/remover usuário e ressincronizando sempre que abre a tela Usuários
+  function entradaDiretorio(p) {
+    if (!p) return null;
+    const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(k => p.papeis?.[k] === true).map(k => [k, true]));
+    return { nome: p.nome || p.email || "—", ...(Object.keys(papeis).length ? { papeis } : {}) }; // o banco descarta objeto vazio
   }
 
   // ---------- Senha ----------
@@ -964,11 +989,32 @@
       } catch (e2) { err.textContent = e2.message; }
       finally { btn.disabled = false; }
     });
+    // WhatsApp para o robô avisar quando um chamado aberto pela pessoa for concluído ou recusado (vazio = não recebe)
+    const tel = el("input", { type: "tel", id: "mc-tel", inputmode: "tel", autocomplete: "tel", placeholder: "Ex.: (31) 99999-9999", value: fmtTelefone(S.me.telefone) });
+    const errTel = el("div", { class: "err", role: "alert" });
+    const btnTel = el("button", { class: "btn primary", type: "submit" }, "Salvar WhatsApp");
+    const formTel = el("form", { novalidate: true },
+      el("p", { class: "section-t", style: "margin:0", text: "Aviso no WhatsApp" }),
+      el("p", { class: "sub", style: "margin:0", text: "Receba uma mensagem quando um chamado aberto por você for concluído ou recusado. Deixe em branco para não receber." }),
+      el("label", { class: "f", for: "mc-tel" }, "WhatsApp (com DDD)", tel),
+      errTel, el("div", { class: "row" }, btnTel));
+    formTel.addEventListener("submit", async e => {
+      e.preventDefault(); errTel.textContent = "";
+      const t = normTelefone(tel.value);
+      if (t && !telefoneValido(t)) { errTel.textContent = "Número inválido. Use DDD + número, ex.: (31) 99999-9999."; tel.focus(); return; }
+      btnTel.disabled = true;
+      try {
+        await set(ref(db, `perfis/${S.meuId}/telefone`), t || null); // null apaga o campo
+        S.me.telefone = t; tel.value = fmtTelefone(t);
+        toast(t ? "WhatsApp salvo" : "WhatsApp removido: você não vai mais receber os avisos");
+      } catch (e2) { console.error(e2); errTel.textContent = msgErro(e2); }
+      finally { btnTel.disabled = false; }
+    });
     const kv = (k, v) => el("div", {}, el("dt", { text: k }), el("dd", { text: v || "—" }));
     body.append(
       el("dl", { class: "kv" }, kv("Nome", S.me.nome), kv("E-mail", S.me.email),
         kv("Papéis", S.me.papeis.map(x => PAPEIS[x]).join(", ")), kv("Administrador", S.me.admin ? "Sim" : "Não")),
-      form);
+      formTel, form);
     setTimeout(() => atual.focus(), 50);
   }
   $("minha-conta").addEventListener("click", abrirMinhaConta);
@@ -1137,7 +1183,7 @@
       const late = atrasado(c);
       tb.append(el("tr", { tabindex: "0", onclick: () => abrir(c.id), onkeydown: e => { if (e.key === "Enter") abrir(c.id); } },
         el("td", {}, el("span", { class: "mono", text: c.codigo }),
-          c.criadoPorNome ? el("span", { class: "autor", title: "Aberto por " + c.criadoPorNome, text: nomeCurto(c.criadoPorNome) }) : null,
+          c.criadoPorNome ? el("span", { class: "autor", title: "Aberto por " + c.criadoPorNome + (c.abertoPorNome ? ` (registrado por ${c.abertoPorNome})` : ""), text: nomeCurto(c.criadoPorNome) }) : null,
           el("div", { class: "sub", text: "Aberto " + fmtDataHora(c.criadoEm) })),
         el("td", {}, fmtData(c.dataEntrega), el("span", { class: "tag" + (tipoDe(c) === "D0" ? " d0" : ""), text: tipoDe(c) })),
         el("td", { text: c.base }),
@@ -1208,7 +1254,7 @@
     if (!c) { fechar(); return; }
     S.abertoVer = c.atualizadoEm;
     const st = statusDe(c);
-    abrirDrawer(`${resumoClientes(c)} · ${fmtVol(c.volume)}`, `${c.codigo} · aberto por ${c.criadoPorNome || "—"} em ${fmtDataHora(c.criadoEm)}`, { largo: true });
+    abrirDrawer(`${resumoClientes(c)} · ${fmtVol(c.volume)}`, `${c.codigo} · aberto por ${c.criadoPorNome || "—"}${c.abertoPorNome ? ` (registrado por ${c.abertoPorNome})` : ""} em ${fmtDataHora(c.criadoEm)}`, { largo: true });
     const body = $("dr-body"); body.replaceChildren();
 
     body.append(el("div", {}, el("span", { class: "pill t-" + st.tone, text: st.label }),
@@ -1328,8 +1374,11 @@
   function avisosDe(c, antes) {
     if (antes === c.status) return [];
     const me = S.meuId, ps = S.me.papeis, out = [];
-    if (c.status === "fila_demanda" && !antes && ps.includes("demanda") && c.criadoPor !== me)
+    if (c.status === "fila_demanda" && !antes && ps.includes("demanda") && c.criadoPor !== me && c.abertoPor !== me)
       out.push({ titulo: `Novo chamado ${c.codigo}`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
+    // Chamado registrado por outra pessoa (Time Demanda) em nome deste usuário
+    if (c.status === "fila_demanda" && !antes && c.criadoPor === me && c.abertoPor && c.abertoPor !== me)
+      out.push({ titulo: `Chamado ${c.codigo} aberto em seu nome`, txt: `Registrado por ${c.abertoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
     if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
       out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}`
         + (prioridadeDe(c) ? ` · prioridade ${prioridadeDe(c).label.toLowerCase()}` : "") + ". Aguardando o Time Logística." });
@@ -1775,7 +1824,23 @@
     const cProd = combo({ id: "n-prod", name: "produto", placeholder: "Digite parte do nome…",
       itens: S.cad.produtos.map(p => ({ valor: p.nome, texto: p.nome, busca: semAcento(p.nome) })) });
     const campo = (id, rotulo, c) => el("div", { class: "campo" }, el("label", { for: id, text: rotulo }), c);
-    const faltamCad = Object.entries(CAD).filter(([t]) => !S.cad[t].length).map(([, c]) => c.label.toLowerCase());
+
+    // Em nome de outra pessoa: ela vira a solicitante (criadoPor: avisos, cancelamento, "Aberto por");
+    // quem registrou fica em abertoPor e no histórico
+    const paraOutro = podeAbrirParaOutro();
+    const outros = S.diretorio.filter(u => u.uid !== S.meuId);
+    const chkOutro = el("input", { type: "checkbox", id: "n-outro" });
+    const cSolic = combo({ id: "n-solic", name: "solicitante", placeholder: "Digite o nome…",
+      itens: outros.map(u => ({ valor: u.uid, texto: u.nome, sub: papeisDe(u).map(p => PAPEIS[p]).join(" · "), busca: semAcento(u.nome) })) });
+    const boxSolic = el("div", { hidden: true }, campo("n-solic", "Para quem é o chamado?", cSolic),
+      outros.length ? null : el("p", { class: "sub", style: "margin:6px 0 0",
+        text: "Lista de usuários vazia: o administrador precisa abrir a tela Usuários uma vez para montá-la." }));
+    chkOutro.addEventListener("change", () => {
+      boxSolic.hidden = !chkOutro.checked;
+      if (chkOutro.checked) setTimeout(() => $("n-solic").focus(), 0);
+    });
+
+    const faltamCad =Object.entries(CAD).filter(([t]) => !S.cad[t].length).map(([, c]) => c.label.toLowerCase());
 
     const seg = (name, opts, padrao = opts[0]) => el("div", { class: "seg", role: "radiogroup" },
       opts.map((o, i) => el("label", {}, el("input", { type: "radio", name, value: o, id: `n-${name}-${i}`, checked: o === padrao }), el("span", { text: o }))));
@@ -1844,6 +1909,7 @@
     data.addEventListener("input", atualizarAviso);
 
     const form = el("form", { novalidate: true },
+      paraOutro ? el("div", {}, el("label", { class: "check", for: "n-outro" }, chkOutro, "Abrindo chamado para outra pessoa?"), boxSolic) : null,
       el("div", { class: "novo-topo" },
         el("label", { class: "f", for: "n-data" }, "Data de faturamento", data),
         campo("n-prod", "Produto", cProd),
@@ -1883,7 +1949,9 @@
         produto: String(fd.get("produto") || "").trim(),
         motivo: String(fd.get("motivo") || "").trim(),
       };
+      const solic = paraOutro && chkOutro.checked ? outros.find(u => u.uid === String(fd.get("solicitante") || "")) : null;
       const faltando = [];
+      if (paraOutro && chkOutro.checked && !solic) faltando.push("para quem é o chamado");
       if (!v.dataEntrega) faltando.push("data de faturamento");
       if (!v.produto) faltando.push("produto");
       if (!v.base) faltando.push("base");
@@ -1921,13 +1989,16 @@
         // D0 depois do limite segue o fluxo normal, mas sem SLA: não recebe prazos e nunca fica "fora do prazo"
         const semSla = tipo === "D0" && passouDe(agora, REGRAS.limiteD0);
         const c = {
-          id, codigo: id, criadoEm: agora.toISOString(), criadoPor: S.meuId, criadoPorNome: S.me.nome, tipo, ...v,
+          id, codigo: id, criadoEm: agora.toISOString(),
+          criadoPor: solic ? solic.uid : S.meuId, criadoPorNome: solic ? solic.nome : S.me.nome,
+          ...(solic ? { abertoPor: S.meuId, abertoPorNome: S.me.nome } : {}), tipo, ...v,
           status: "fila_demanda", ...(semSla ? { semSla: true } : prazos(v.dataEntrega)), historico: [],
         };
-        evento(c, "Chamado aberto", v.motivo);
+        // "Chamado aberto…" no início: ultimoAtendente() não conta a abertura como resposta da Demanda
+        evento(c, solic ? `Chamado aberto em nome de ${solic.nome}` : "Chamado aberto", v.motivo);
         if (semSla) evento(c, "Aberto sem SLA", `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
         await store.salvar(c);
-        toast(semSla ? "Chamado aberto sem SLA (D0 após o limite) e enviado ao Time Demanda." : "Chamado aberto e enviado ao Time Demanda.");
+        toast((semSla ? "Chamado aberto sem SLA (D0 após o limite)" : "Chamado aberto") + (solic ? ` em nome de ${solic.nome}` : "") + " e enviado ao Time Demanda.");
         S.abertoId = id; S.abertoVer = null;
         if (S.chamados.some(x => x.id === id)) renderDetalhe();
       } catch (e2) {
@@ -1947,6 +2018,14 @@
   }
 
   // ---------- Usuários (admin) ----------
+  // Reconstrói diretorio/ a partir dos perfis quando difere (usuários antigos, edições feitas direto no console)
+  async function sincronizarDiretorio(perfis) {
+    const alvo = Object.fromEntries(Object.entries(perfis).map(([uid, p]) => [uid, entradaDiretorio(p)]).filter(([, e]) => e));
+    try {
+      const atual = (await get(ref(db, "diretorio"))).val() || {};
+      if (JSON.stringify(atual) !== JSON.stringify(alvo)) await set(ref(db, "diretorio"), alvo);
+    } catch (e) { console.error("Diretório de usuários não sincronizado (regras do banco atualizadas?)", e); }
+  }
   function abrirUsuarios() {
     S.abertoId = null;
     abrirDrawer("Usuários", "Quem acessa o portal e o que cada um pode fazer.");
@@ -1957,25 +2036,30 @@
     const fEmail = el("input", { id: "u-email", type: "email", autocomplete: "off" });
     const fSenha = el("input", { id: "u-senha", type: "text", autocomplete: "off", placeholder: "Mínimo 6 caracteres" });
     const chk = Object.fromEntries(PAPEIS_ATIVOS.map(p => [p, el("input", { type: "checkbox", id: "u-p-" + p })]));
+    const fTel = el("input", { id: "u-tel", type: "tel", inputmode: "tel", autocomplete: "off", placeholder: "Opcional · ex.: (31) 99999-9999" });
     const adm = el("input", { type: "checkbox", id: "u-adm" });
     const fTrocar = el("input", { type: "checkbox", id: "u-trocar" });
     const err = el("div", { class: "err", role: "alert" });
     const tituloForm = el("p", { class: "section-t", style: "margin:0" });
     const lista = el("div", { class: "ulist" });
     const btnSalvar = el("button", { class: "btn primary", type: "submit" }, "Salvar usuário");
+    let editando = {}; // perfil em edição: campos que o formulário não mostra são mantidos ao salvar
 
     function limpar() {
       tituloForm.textContent = "Novo usuário";
-      for (const i of [fUid, fNome, fEmail, fSenha]) i.value = "";
+      editando = {};
+      for (const i of [fUid, fNome, fEmail, fSenha, fTel]) i.value = "";
       fUid.readOnly = false; fSenha.disabled = false; fEmail.readOnly = false;
       for (const c of Object.values(chk)) c.checked = false;
       adm.checked = false; fTrocar.checked = true; err.textContent = ""; // usuário novo: troca a senha inicial no 1º login
     }
     function editar(uid, p) {
       tituloForm.textContent = `Editando ${p.nome || p.email || uid}`;
+      editando = p;
       fUid.value = uid; fUid.readOnly = true;
       fNome.value = p.nome || ""; fEmail.value = p.email || ""; fEmail.readOnly = true;
       fSenha.value = ""; fSenha.disabled = true;
+      fTel.value = fmtTelefone(p.telefone);
       for (const [k, c] of Object.entries(chk)) c.checked = p.papeis?.[k] === true;
       adm.checked = p.admin === true; fTrocar.checked = p.trocarSenha === true; err.textContent = "";
       fNome.focus();
@@ -1986,6 +2070,7 @@
       let perfis;
       try { perfis = (await get(ref(db, "perfis"))).val() || {}; }
       catch (e) { console.error(e); lista.replaceChildren(el("div", { class: "urow err", text: "Não foi possível carregar os usuários." })); return; }
+      sincronizarDiretorio(perfis);
       const itens = Object.entries(perfis).sort((a, b) => (a[1].nome || "").localeCompare(b[1].nome || "", "pt-BR"));
       if (!itens.length) { lista.replaceChildren(el("div", { class: "urow sub", text: "Nenhum usuário cadastrado." })); return; }
       lista.replaceChildren(...itens.map(([uid, p]) => el("div", { class: "urow" },
@@ -1993,6 +2078,7 @@
         el("div", { class: "pills" },
           papeisDe(p).map(x => el("span", { class: "pill " + (x === "consulta" ? "t-wait" : "t-info"), text: PAPEIS[x] })),
           p.admin ? el("span", { class: "pill t-warn", text: "Admin" }) : null,
+          p.telefone ? el("span", { class: "pill t-ok", title: "Recebe os avisos dos próprios chamados no WhatsApp", text: "WhatsApp " + fmtTelefone(p.telefone) }) : null,
           p.trocarSenha ? el("span", { class: "pill t-wait", text: "Troca de senha pendente" }) : null),
         el("div", { class: "row" },
           el("button", { class: "btn ghost sm", type: "button", onclick: () => editar(uid, p) }, "Editar"),
@@ -2006,7 +2092,7 @@
           el("button", { class: "btn ghost sm", type: "button", disabled: uid === S.meuId, title: uid === S.meuId ? "Você não pode remover o próprio acesso" : null,
             onclick: async () => {
               if (!confirm(`Remover o acesso de ${p.nome || p.email}? O login continua existindo, mas a pessoa não verá mais o portal.`)) return;
-              try { await remove(ref(db, "perfis/" + uid)); toast("Acesso removido"); if (fUid.value === uid) limpar(); carregar(); }
+              try { await update(ref(db), { ["perfis/" + uid]: null, ["diretorio/" + uid]: null }); toast("Acesso removido"); if (fUid.value === uid) limpar(); carregar(); }
               catch (e) { console.error(e); toast(msgErro(e)); }
             } }, "Remover")))));
     }
@@ -2019,6 +2105,7 @@
       el("div", { class: "grid2" },
         el("label", { class: "f", for: "u-senha" }, "Senha inicial", fSenha),
         el("label", { class: "f", for: "u-uid" }, "UID (se o login já existir)", fUid)),
+      el("label", { class: "f", for: "u-tel" }, "WhatsApp (recebe aviso quando os próprios chamados forem concluídos ou recusados)", fTel),
       el("div", {}, el("p", { class: "section-t", text: "Papéis" }),
         el("div", { class: "checks" },
           PAPEIS_ATIVOS.map(p => el("label", { class: "check", for: "u-p-" + p }, chk[p], PAPEIS[p])),
@@ -2035,6 +2122,8 @@
       let uid = fUid.value.trim();
       if (!nome || !email) { err.textContent = "Preencha nome e e-mail."; return; }
       if (!uid && fSenha.value.length < 6) { err.textContent = "A senha inicial precisa ter pelo menos 6 caracteres."; return; }
+      const telefone = normTelefone(fTel.value);
+      if (telefone && !telefoneValido(telefone)) { err.textContent = "WhatsApp inválido. Use DDD + número, ex.: (31) 99999-9999."; fTel.focus(); return; }
       btnSalvar.disabled = true;
       try {
         if (!uid) {
@@ -2052,10 +2141,14 @@
           }
         }
         const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(p => chk[p].checked).map(p => [p, true]));
-        const perfil = { nome, email, papeis, admin: adm.checked, ...(fTrocar.checked ? { trocarSenha: true } : {}), atualizadoEm: new Date().toISOString() };
-        await set(ref(db, "perfis/" + uid), perfil);
+        // Parte do que já estava gravado (editando): o set() substitui o perfil inteiro
+        const perfil = { ...editando, nome, email, papeis, admin: adm.checked, atualizadoEm: new Date().toISOString() };
+        for (const [campo, valor] of [["trocarSenha", fTrocar.checked], ["telefone", telefone]]) {
+          if (valor) perfil[campo] = valor; else delete perfil[campo];
+        }
+        await update(ref(db), { ["perfis/" + uid]: perfil, ["diretorio/" + uid]: entradaDiretorio(perfil) }); // perfil e diretório juntos
         toast(`Usuário ${nome} salvo`);
-        if (uid === S.meuId) { S.me = { ...S.me, nome, admin: perfil.admin, papeis: papeisDe(perfil) }; configurarSessao(); render(); }
+        if (uid === S.meuId) { S.me = { ...S.me, nome, admin: perfil.admin, papeis: papeisDe(perfil), telefone }; configurarSessao(); render(); }
         limpar(); carregar();
       } catch (e3) {
         console.error(e3); err.textContent = msgErro(e3);
@@ -2308,10 +2401,10 @@
   }
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    const cols = ["codigo", "criadoEm", "criadoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
+    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
-    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
+    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.abertoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
       x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
