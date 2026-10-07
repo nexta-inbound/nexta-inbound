@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<rect x="1" y="1" width="30" height="30" rx="9" fill="#152318"/>
+<circle cx="15" cy="18" r="9" fill="none" stroke="#3a5a2e" stroke-width="1.6"/>
+<clipPath id="fav-tank"><circle cx="15" cy="18" r="9"/></clipPath>
+<g clip-path="url(#fav-tank)">
+<path d="M4 19 Q10 16 15 19 T26 19 V29 H4 Z" fill="#8DC830"/>
+</g>
+<path d="M18 11 L23 7 L28 9" fill="none" stroke="#EEFE7A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

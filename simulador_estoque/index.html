@@ -1,0 +1,84 @@
+﻿<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nextoques | Simulador de estoques de combustíveis</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+
+
+<script type="module" src="online.js"></script></head><body class="auth-pending">
+<section id="login-screen" aria-labelledby="login-title">
+<form id="login-form" class="login-box">
+<div class="brand"><svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><rect x="2" y="2" width="40" height="40" rx="13" fill="#152318" stroke="#8DC830" stroke-width="1.4"/><clipPath id="nxtq-tank"><circle cx="21" cy="24" r="12"/></clipPath><circle cx="21" cy="24" r="12" fill="none" stroke="#3a5a2e" stroke-width="1.4"/><g clip-path="url(#nxtq-tank)"><path d="M9 26 Q15 23 21 26 T33 26 V38 H9 Z" fill="#8DC830"/></g><path d="M8 15 L19 9 L29 13 L36 7" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 4"/><path d="M32 7 L36 7 L36 11" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Nex<span>toques</span></div>
+<h1 id="login-title">Simulador de estoque de combustíveis</h1>
+<label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
+<label>Senha<input id="login-password" type="password" autocomplete="current-password" required minlength="6"></label>
+<label class="check"><input id="login-show" type="checkbox">Mostrar senha</label>
+<button id="login-submit" type="submit" class="primary" disabled>Entrar</button>
+<button id="login-reset" type="button" disabled>Esqueci minha senha</button>
+<p id="login-status" role="status" aria-live="polite">Conectando...</p>
+<button id="login-verify" type="button" hidden>Reenviar verificação de e-mail</button>
+<button id="login-recheck" type="button" hidden>Já verifiquei meu e-mail</button>
+<button id="login-switch" type="button" hidden>Usar outra conta</button>
+</form>
+</section>
+<div id="account-bar" hidden><button id="ver-dia" type="button" hidden>Visão do dia</button><span id="sync-status" class="badge" title="Quando os dados das fontes foram lidos pela última vez"></span><span id="account-email"></span><button id="logout" type="button">Sair</button></div>
+<section id="dia-view" class="panel" hidden>
+<div class="section-title"><div><h2>Visão do dia</h2><p>Cenários salvos pela equipe, um registro por versão. Cada versão é definitiva; uma nova só se soma ao histórico.</p></div><button id="dia-fechar" type="button">Voltar à simulação</button></div>
+<div class="dia-tabs" role="tablist"><button type="button" data-dia-tab="semana" aria-selected="true">Riscos da semana</button><button type="button" data-dia-tab="hoje" aria-selected="false">Simulações de hoje</button><button type="button" data-dia-tab="data" aria-selected="false">Por data</button></div>
+
+<div id="semana-view">
+<div class="semana-nav"><button id="semana-anterior" type="button" aria-label="Semana anterior">‹</button><div class="semana-pills" id="semana-pills"></div><button id="semana-proxima" type="button" aria-label="Próxima semana">›</button></div>
+<div class="dia-filtros" style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:16px">
+<label>Região<select id="semana-regiao"><option value="">Todas</option><option value="SP">SP</option><option value="MG_RJ">MG/RJ</option><option value="CO">Centro-Oeste</option></select></label>
+<label>Base<input id="semana-base" type="search" placeholder="Filtrar por nome da base"></label>
+<label>Situação<select id="semana-situacao"><option value="">Todas</option><option value="critico">Crítico</option><option value="atencao">Atenção</option><option value="ok">OK</option></select></label>
+</div>
+<p id="semana-status" class="muted" role="status"></p>
+<div id="semana-barra" class="semana-barra"></div>
+<div id="semana-resumo" class="semana-resumo"></div>
+<div id="semana-lista" class="semana-lista"></div>
+</div>
+
+<div id="hoje-view" hidden>
+<div class="dia-filtros" style="display:grid;grid-template-columns:1fr 2fr;gap:16px">
+<label>Região<select id="hoje-regiao"><option value="">Todas</option><option value="SP">SP</option><option value="MG_RJ">MG/RJ</option><option value="CO">Centro-Oeste</option></select></label>
+<label>Cidade/base<input id="hoje-base" type="search" placeholder="Filtrar por cidade ou base"></label>
+</div>
+<p id="hoje-status" class="muted" role="status"></p>
+<div id="hoje-lista" class="hoje-lista"></div>
+</div>
+
+<div id="data-view" hidden>
+<div class="dia-filtros" style="display:grid;grid-template-columns:1fr 1fr 2fr 1fr;gap:16px">
+<label>Dia<input id="dia-data" type="date"></label>
+<label>Região<select id="dia-regiao"><option value="">Todas</option><option value="SP">SP</option><option value="MG_RJ">MG/RJ</option><option value="CO">Centro-Oeste</option></select></label>
+<label>Base<input id="dia-base" type="search" placeholder="Filtrar por nome da base"></label>
+<label>Situação<select id="dia-situacao"><option value="">Todas</option><option value="critico">Crítico</option><option value="atencao">Atenção</option><option value="ok">OK</option></select></label>
+</div>
+<p id="dia-status" class="muted" role="status"></p>
+<div id="dia-lista" class="hoje-lista"></div>
+</div>
+</section>
+<header><div class="brand"><svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><rect x="2" y="2" width="40" height="40" rx="13" fill="#152318" stroke="#8DC830" stroke-width="1.4"/><clipPath id="nxtq-tank-h"><circle cx="21" cy="24" r="12"/></clipPath><circle cx="21" cy="24" r="12" fill="none" stroke="#3a5a2e" stroke-width="1.4"/><g clip-path="url(#nxtq-tank-h)"><path d="M9 26 Q15 23 21 26 T33 26 V38 H9 Z" fill="#8DC830"/></g><path d="M8 15 L19 9 L29 13 L36 7" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 4"/><path d="M32 7 L36 7 L36 11" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Nex<span>toques</span></div><div class="divider"></div><div><strong>LOGÍSTICA</strong><small>Gestão de abastecimento das bases</small></div><span class="badge">SIMULAÇÃO DE ESTOQUES</span></header>
+<main>
+<div class="title"><div><h1>Simulação de estoques</h1><p>Escolha a base e o produto. Edite os volumes para testar as próximas duas semanas.</p><p class="muted" id="dia-atual-aviso" role="note"></p></div></div>
+<section class="filters panel"><label id="regiao-filtro-label" hidden>Região<select id="regiao-filtro"><option value="">Todas</option><option value="SP">SP</option><option value="MG_RJ">MG + RJ</option><option value="CO">Centro-Oeste</option></select></label><label>Cidade<select id="cidade"><option value="">Selecione a cidade</option></select></label><label>Depósito<select id="deposito"><option value="">Selecione o depósito</option></select></label><label>Empresa<select id="empresa"><option value="">Selecione a empresa</option></select></label><label>Produto<select id="product"></select></label><label>Data da abertura<input id="date" type="date" readonly></label><label>Período<input value="−7 dias / +14 dias" readonly></label><label>Fonte do trânsito<select id="scenario"><option>LE</option><option>Real</option><option>Disp MIS</option></select></label><label>Origem da entrada<select id="entrada"><option value="auto">Fontes automáticas</option><option value="cadencia">Cadência MIS</option></select></label><label>Nome do cenário<input id="name" maxlength="80" value="Minha simulação"></label><div class="product-options"><span class="eyebrow">PRODUTO</span><div class="chips" id="product-chips"></div></div><details class="base-options"><summary>Selecionar cidade/depósito/empresa pelos botões <span class="info-tip" tabindex="0" role="note" aria-label="Regras da seleção múltipla" title="Dá pra marcar mais de 1 depósito e mais de 1 empresa nos botões abaixo. A simulação soma tudo: abertura, entradas, saídas e limites de estoque (mínimo/médio/máximo/lastro/capacidade). Nesse modo combinado não dá pra salvar o cenário na equipe — só restaurar e simular localmente. Com 1 só de cada, funciona igual sempre funcionou.">ⓘ</span></summary><div class="chips" id="cidade-chips"></div><div class="chips" id="deposito-chips"></div><div class="chips" id="empresa-chips"></div></details></section><div class="import-banner" id="bi-loaded"></div><div class="notice" id="auto-status" role="status">Verificando atualização automática…</div><p class="muted" id="scenario-note"></p>
+<section class="panel editor-panel"><div class="section-title"><div><h2>Editar volumes do dia</h2><p>Os volumes já vêm das fontes, em m³. Clique em um valor para simular uma alteração, por exemplo, <strong>125,5</strong>.</p></div><span class="badge" id="saved" role="status">CENÁRIO LOCAL</span></div><div class="day-tabs" id="edit-days"></div><div id="daily-editor"></div><div class="edit-footer"><strong id="day-summary" aria-live="polite"></strong><button id="repeat-day">Repetir movimentos nos próximos dias</button></div><div id="stock-gauge"></div><p class="muted">Vendas futuras = LE vigente do dia. FOB/CIF e programação vêm do portal e das cadências MIS, na data de descarga. Os campos adicionais são ajustes opcionais.</p></section>
+<section class="panel assumptions"><div><h2>Política de estoque · carregada da planilha</h2><p id="policy-source">Premissas Politica Estoques.xlsx → Politica Vigente. Alterações abaixo valem somente para esta simulação.</p></div><div class="premises" id="premises"></div><input id="clamp" type="checkbox" hidden><p>Abertura seguinte = abertura anterior + entradas − saídas. O saldo negativo também é transportado.</p></section>
+<section class="panel"><div class="section-title"><div><h2>Duas semanas de simulação · edição direta</h2><p>Tabela preenchida com os volumes das fontes, em m³. Edite para simular; as aberturas seguintes e os totais são recalculados.</p></div><button id="reset-tabela" type="button" title="Restaurar dados da fonte (desfaz suas edições deste recorte)">↺ Restaurar</button></div><div class="table-scroll"><table id="grid"></table></div><div id="semana-progresso"></div></section>
+<section class="cards" id="cards"></section><details class="panel"><summary>Conferir os valores originais das fontes para o dia selecionado</summary><p>Valores lidos das fontes, sem edição. O trânsito da simulação usa o CSV do portal mais recente. A abertura física da simulação vem da última planilha preenchida e continua pelo fechamento anterior.</p><div class="table-scroll"><table id="bi-measures"></table></div></details>
+<section class="panel"><div class="section-title"><div><h2>Histórico e projeção</h2><p>7 dias anteriores + abertura de referência + 14 dias futuros.</p></div><div class="legend"><span style="--c:#14b8a6">Abertura</span><span style="--c:#EEFE7A">Fechamento</span><span style="--c:#7FA069">Cenário original</span><span style="--c:#FF6B5F">Mínimo</span><span style="--c:#9CA3AF">Médio</span><span style="--c:#8DC830">Máximo</span><span style="--c:#F97316">Lastro</span><span style="--c:#38BDF8">Capacidade</span><span style="--c:#7DD3C0">Recebimentos</span><span style="--c:#2DD4BF">Prog. Bombeio</span><span style="--c:#5EEAD4">Prog. Rodoviário</span><span style="--c:#64748B">Trânsito FOB</span><span style="--c:#FDE68A">Trânsito CIF</span><span style="--c:#E5E7EB">Média vendas</span><span style="--c:#D9F99D">Vendas planejadas</span><span style="--c:#4ADE80">Vendas real</span><span style="--c:#A3E635">Disp. MIS</span></div></div><div id="chart" class="chart"></div></section>
+<section class="panel"><h2>Semana anterior · histórico da fonte</h2><p>Aberturas reais, somente leitura. “—” significa informação ainda não integrada.</p><div class="table-scroll"><table id="history-grid"></table></div></section>
+<section class="panel"><h2>Pontos de atenção</h2><div id="alerts" aria-live="polite"></div></section>
+<details class="panel"><summary>Fontes dos dados</summary><div id="source" class="notice"></div><p id="provenance"></p><p id="policy-provenance"></p><p>Os dados vêm das pastas de Gestão de Abastecimento: abertura das bases, política de estoque, LE vigente (Previsão de Vendas), pedidos do SAP VA05 (hoje em diante), cadências MIS, portal inbound e disponibilidade MIS. As vendas futuras usam o LE vigente do dia, aberto por mix e aditivado, em m³, ajustado pelo ritmo real de vendas da semana quando o banco de faturamento está disponível (Gasolina, Diesel S10, Diesel S500 e Hidratado apenas — mesmo recorte do modelo original).</p><p>Os cenários Real, LE, Disp MIS e Inbound + MIS mudam a fonte de vendas e de trânsito. Transferências são separadas entre entrada e saída; não há fonte de transferências de entrada.</p><p>Fechamento = abertura + entradas − vendas projetadas − demais saídas. Lastro é descontado apenas na visualização de estoque disponível. Os alertas avaliam abertura e fechamento, sem sequência intradiária.</p><p>A abertura vem da planilha diária, convertida de litros para m³. Para as entradas futuras, são usados o bombeio e o rodoviário (cadências MIS e portal) e o trânsito FOB/CIF (portal). Os recebimentos da planilha diária não são somados novamente a essas medidas. Um valor em branco na fonte é considerado zero na simulação e identificada na dica do campo; não é uma confirmação operacional de ausência de movimento.</p><p>Os dados são lidos das pastas e publicados periodicamente; recarregue a página para ver a carga mais recente. Cada versão das fontes tem seu próprio cenário local; os cenários anteriores não são apagados. As cores seguem a política de estoque: ≤ mínimo vermelho escuro; ≤ médio laranja; ≤ máximo verde claro; acima do máximo verde. Excesso de capacidade gera um alerta separado.</p></details>
+<p id="message" role="status"></p>
+</main>
+<aside id="sales-popover" role="tooltip" hidden></aside>
+<aside id="chart-popover" role="tooltip" hidden></aside>
+
+</body></html>
+
+
+

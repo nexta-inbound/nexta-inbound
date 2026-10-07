@@ -1,0 +1,159 @@
+:root{--bg:#111B15;--surface:#1A2A20;--panel:#223528;--border:#314A32;--accent:#8DC830;--text:#F4F8EE;--dim:#BFD4A8;--muted:#7FA069;--danger:#FF6B5F;--orange:#F97316;--font:'Barlow',Arial,sans-serif}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 60% 0%,#8dc83019,transparent 58%),var(--bg);color:var(--text);font:14px var(--font)}header{min-height:64px;border-bottom:3px solid #EEFE7A;padding:0 32px;display:flex;align-items:center;gap:24px;background:linear-gradient(135deg,#111A0A,#1C2E10 55%,#243A16)}header small{display:block;color:var(--dim);font-size:11px;margin-top:3px}.brand{color:#EEFE7A;font:bold 32px 'Barlow Condensed',sans-serif;display:flex;align-items:center;gap:10px}.brand span{font-size:23px;color:#8DC830}.brand-mark{width:38px;height:38px;flex-shrink:0}.divider{height:28px;border-left:1px solid var(--border)}header>.badge{margin-left:auto}.badge{font-size:11px;font-weight:700;letter-spacing:1px;color:#EEFE7A;border:1px solid #8dc83066;background:#8dc83014;border-radius:999px;padding:8px 14px}main{padding:26px 32px 40px;max-width:1900px;margin:auto}h1{font:600 30px 'Barlow Condensed',sans-serif;margin:6px 0}h2{font:600 20px 'Barlow Condensed',sans-serif;margin:0 0 6px}p{color:var(--dim);margin:6px 0 12px;line-height:1.5}.eyebrow{font-size:11px;letter-spacing:1.8px;color:var(--accent)}.title,.section-title{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:18px}.actions{display:flex;gap:8px;flex-wrap:wrap}button,.button{cursor:pointer;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--dim);padding:9px 14px;font:600 12px var(--font);display:inline-block}button:hover,.button:hover{border-color:var(--accent);color:var(--text)}button.primary{background:var(--accent);color:#111A0A;border-color:var(--accent)}.panel{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 2px 12px #0002}.filters{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr 1fr;gap:16px}label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:600;color:var(--dim)}input,select{font:14px var(--font);background:#17251B;border:1px solid var(--border);border-radius:9px;padding:9px 10px;color:var(--text);width:100%;color-scheme:dark}input:focus,select:focus,button:focus-visible,.button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}input:invalid{outline:2px solid var(--danger)}input[readonly]{color:var(--muted)}.notice{border-left:3px solid var(--accent);background:#8dc8300c;padding:12px 16px;margin:16px 0;color:var(--dim);line-height:1.6;border-radius:0 12px 12px 0}.premises{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:15px 0}.check{flex-direction:row;align-items:center}.check input{width:auto}.muted{font-size:12px;color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:16px 0}.card{border:1px solid var(--border);border-radius:14px;padding:17px 20px;background:var(--surface)}.card small{color:var(--dim)}.card strong{display:block;font:600 30px 'Barlow Condensed',sans-serif;margin:8px 0}.card em{font-style:normal;font-size:11px;color:var(--muted)}.danger{color:var(--danger)!important}.warn{color:var(--orange)!important}.good{color:var(--accent)!important}.legend{display:flex;gap:16px;font-size:11px;color:var(--dim);flex-wrap:wrap}.legend span:before{content:'';display:inline-block;background:var(--c);width:8px;height:8px;margin-right:6px;border-radius:50%}.chart{overflow:auto}.chart svg{width:100%;min-width:740px;height:270px;display:block}.table-scroll{overflow:auto;max-height:620px;border-radius:14px;border:1px solid var(--border)}table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}th,td{min-width:98px;height:39px;text-align:right;border-bottom:1px solid var(--border);border-right:1px solid #314a3255;padding:7px 10px;white-space:nowrap}th{background:#223528;color:var(--dim);font-weight:600}thead th{position:sticky;top:0;z-index:2}th:first-child{position:sticky;left:0;z-index:1;text-align:left;min-width:230px}thead th:first-child{z-index:3}tr.entry th{color:#48d4bf;border-left:3px solid #14b8a6}tr.exit th{color:#ff9e93;border-left:3px solid var(--danger)}td input{padding:5px 6px;text-align:right;min-width:76px;border-color:transparent;background:transparent;font-size:12px}td input:hover{border-color:var(--border)}td.edited{background:#8dc8301a}td.edited input{color:#EEFE7A}.total td{font-weight:700;background:#8dc8300a}.alert{border-bottom:1px solid var(--border);padding:10px 0;line-height:1.5}summary{cursor:pointer;color:var(--dim);font-weight:600}details p{font-size:12px;margin-top:12px}#message{position:fixed;bottom:16px;right:24px;background:var(--panel);box-shadow:0 3px 16px #0006;padding:12px 16px;border-radius:14px;max-width:480px}#message:empty{display:none}@media(max-width:1000px){.title{align-items:flex-start;flex-direction:column}.filters{grid-template-columns:repeat(2,1fr)}.premises{grid-template-columns:repeat(3,1fr)}main{padding:20px 16px}.section-title{align-items:flex-start;flex-direction:column}}@media(max-width:600px){header{padding:12px 16px;gap:12px}header>.badge{display:none}.cards{grid-template-columns:repeat(2,1fr)}.premises{grid-template-columns:repeat(2,1fr)}h1{font-size:26px}.panel{padding:14px}}
+.auth-pending>header,.auth-pending>main,.auth-pending>#sales-popover{display:none!important}
+#login-screen{min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 0%,#8dc8302a,transparent 60%),#111b15}
+.login-box{width:100%;max-width:380px;display:grid;gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:32px;box-shadow:0 8px 32px #0005}
+.login-box h1{font-size:28px;margin:0 0 12px}
+.login-box .brand{font-size:42px}.login-box .brand-mark{width:50px;height:50px}
+.login-box button{min-height:42px}
+#login-status{margin:0;min-height:24px;color:#f3c787;overflow-wrap:anywhere}
+#account-bar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:8px 24px;background:#223528}
+#account-email{overflow-wrap:anywhere;min-width:0}
+/* Cores dos movimentos, independentes das faixas de saldo. */
+#grid tr.entry td{background:#183c2c}
+#grid tr.entry th{background:#204b36;color:#b7efcb}
+#grid tr.entry input{background:#24543b;border-color:#467e58;color:#ecfff1}
+#grid tr.exit:has([data-row="sale"]) td{background:#482728}
+#grid tr.exit:has([data-row="sale"]) th{background:#592f31;color:#ffd0d0}
+#grid input[data-row="sale"]{background:#67383b;border-color:#a86469;color:#fff0f0}
+#grid tr.entry td.edited{box-shadow:inset 0 -2px #eefe7a}
+#grid tr.exit:has([data-row="sale"]) td.edited{box-shadow:inset 0 -2px #eefe7a}
+/* Matriz principal compacta; rolagem horizontal apenas em telas pequenas. */
+main{max-width:none;padding-inline:16px}
+[hidden]{display:none!important}
+.simulation-table .table-scroll{max-height:none}
+#grid{table-layout:fixed;font-size:11px}
+#grid th,#grid td{min-width:0;padding:5px 3px;height:34px}
+.simulation-table #grid th.row-label{width:190px;min-width:190px;white-space:normal}
+/* Coluna nova (rowspan) dos botoes "Puxar entrada/vendas de", a esquerda da coluna de rotulo — pedido
+   da usuaria, 2026-10-02: "chegue um ponto a tabela pra direita e deixe esse botoes aqui na parte de
+   entrada e as saidas mesmo". Linhas cobertas pelo rowspan (cif/pump/transferIn/transferOut) nao tem
+   celula nenhuma nessa posicao — por isso as classes .row-controls/.row-label sao explicitas no app.js
+   em vez de :first-child/:nth-child (que dependeriam da posicao do filho dentro de CADA <tr>, que muda
+   conforme a linha tem ou nao a celula de controle). */
+#grid th.row-controls{position:sticky;left:0;z-index:2;background:#223528;width:112px;min-width:112px;max-width:112px;padding:4px;vertical-align:top;text-align:left;white-space:normal;border-right:1px solid #314a3255}
+#grid thead th.row-controls{z-index:3}
+#grid th.row-label{position:sticky;left:112px;z-index:1;text-align:left}
+#grid thead th.row-label{z-index:3}
+#grid input{width:100%;min-width:0;padding:5px 2px;font-size:11px}
+/* Grupos de botao encaixados dentro da celula .row-controls (coluna estreita, rowspan) — versao
+   compacta/vertical dos mesmos botoes, que antes ficavam numa barra horizontal acima da tabela. */
+.row-controls .scenario-controls{display:flex;flex-direction:column;align-items:stretch;gap:4px;margin:0}
+.row-controls .scenario-controls>span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.row-controls .scenario-buttons{display:flex;flex-direction:column;gap:3px}
+.row-controls .scenario-buttons button{min-height:0;min-width:0;padding:4px 5px;font-size:9.5px;line-height:1.2;white-space:normal;text-align:center}
+.simulation-table .section-title p{display:none}
+.filters{gap:10px}
+.scenario-controls{margin:0}
+@media(max-width:1100px){#grid{min-width:1150px}}
+/* Selecao inicial e detalhes das vendas. */
+.filters label[hidden]{display:none}
+.info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#8dc8302b;color:var(--accent);font-size:11px;font-weight:700;cursor:help;vertical-align:middle;margin-left:4px}
+.info-tip:hover,.info-tip:focus-visible{background:var(--accent);color:#111A0A;outline:none}
+.scenario-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px;letter-spacing:0;margin:0 0 12px}
+.scenario-controls>span{font-size:12px;font-weight:600;color:var(--dim)}
+.scenario-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.scenario-buttons button{min-height:34px;min-width:0;padding:7px 12px}
+.scenario-buttons button[aria-pressed="true"]{background:#8dc8302b;border-color:#EEFE7A;color:#EEFE7A}
+/* Barra "Cenarios da equipe" (abrir/salvar cenario salvo) — separada dos botoes de cenario de venda. */
+.cloud-bar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;margin:0 0 12px}
+.cloud-bar>label{flex:1 1 260px;min-width:200px;margin:0}
+.cloud-bar-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.cloud-bar-ghost{background:transparent;border-color:transparent;color:var(--muted);padding:9px 6px}
+.cloud-bar-ghost:hover{border-color:transparent;color:var(--dim);text-decoration:underline}
+.cloud-bar small{flex:1 1 100%;color:var(--dim)}
+#sales-popover,#chart-popover{position:fixed;z-index:100;width:min(300px,calc(100vw - 16px));max-height:calc(100dvh - 16px);overflow:auto;padding:16px;background:#272a2d;color:#fff;border:1px solid #92999f;border-radius:12px;box-shadow:0 6px 24px #0006;pointer-events:none;font-size:13px;letter-spacing:0}
+#sales-popover dl,#chart-popover dl{margin:12px 0;border-block:1px solid #52575b;padding:8px 0}
+#sales-popover dl div,#chart-popover dl div{display:flex;justify-content:space-between;gap:16px;padding:4px 0}
+#sales-popover dd,#chart-popover dd{margin:0;font-variant-numeric:tabular-nums}
+#sales-popover p,#chart-popover p{margin:4px 0;color:#e0e5e8;font-size:12px}
+.chart{position:relative}
+/* Editor e cores de risco */
+main{padding-top:18px}.title{margin-bottom:12px}.title h1{font-size:27px}.product-options,.base-options{grid-column:1/-1}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.chips button.active,.day-tabs button.active{border-color:#EEFE7A;background:#8dc8302b;color:#EEFE7A;box-shadow:inset 0 0 0 1px #EEFE7A}.day-tabs{display:flex;gap:6px;overflow:auto;padding:3px 2px 12px}.day-tabs button{min-width:68px;padding:8px 10px;flex:1;border-bottom-width:3px}.day-tabs small{display:block;font-weight:400;margin-top:3px}.risk-danger{border-bottom-color:#FF6B5F!important}.risk-warn{border-bottom-color:#F97316!important}.risk-good{border-bottom-color:#8DC830!important}.editor-panel{border-color:#63833e}.edit-group h3{margin:0 0 10px;font-size:14px}.edit-group{padding:12px;background:#111b1566;border:1px solid #314A32;border-radius:12px}.edit-group.in h3{color:#48d4bf}.edit-group.out h3{color:#ff9e93}#daily-editor{display:grid;grid-template-columns:.8fr 2.2fr 1fr;gap:12px}.edit-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.edit-group.out .edit-fields{grid-template-columns:1fr}.volume-field{position:relative}.volume-field input{background:#20371f;border-color:#769845;padding:9px 38px 9px 10px;font-size:16px;font-weight:600;color:#EEFE7A}.volume-field span{position:absolute;right:10px;top:11px;color:#BFD4A8;font-size:11px}.edit-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 0;color:#EEFE7A}.edit-footer strong{font-size:14px}.tank{height:20px;border-radius:999px;border:1px solid #5E7F3D;background:#111B15;position:relative;overflow:hidden;margin:8px 0 12px}.tank-fill{height:100%;transition:width .2s;background:#8DC830}.tank-fill.danger{background:#FF6B5F}.tank-fill.warn{background:#F97316}.min-marker{position:absolute;height:100%;width:3px;background:#FF6B5F;top:0}.gauge-title{display:flex;justify-content:space-between;gap:12px}.gauge-title span{color:#BFD4A8}td input{border:1px solid #5e7f3d;background:#20371f;color:#EEFE7A}td.danger{background:#ff6b5f29!important;color:#ff9e93!important;box-shadow:inset 0 -2px #FF6B5F}td.warn{background:#f9731626!important}td.good{background:#8dc8300f!important}.premises small{font-weight:400;color:var(--muted)}.table-scroll{max-height:650px}#history-grid td{color:#BFD4A8}.today{color:#EEFE7A}
+/* Destaque da coluna "hoje" na tabela grande. Classe .today explicita (em vez de nth-child) porque a
+   posicao do filho dentro de cada <tr> agora varia: linhas cobertas pelo rowspan da coluna de controle
+   (cif/pump/transferIn/transferOut) tem 1 celula a menos que as demais (ver .row-controls acima). */
+#grid th.today,#grid td.today{background:#8dc8302b}
+/* Abertura com leitura atrasada (pedido da usuaria, 2026-10-05): contorno tracejado laranja por cima
+   da cor normal de nivel de estoque, pra nao brigar com o status (vermelho/laranja/verde) — so' avisa
+   que o NUMERO em si pode ser de um dia anterior, nao que o nivel de estoque esteja ruim. */
+#grid td.atrasada{box-shadow:inset 0 0 0 2px var(--orange);font-weight:700}
+/* 3+ dias atrasada (DIAS_ABERTURA_GRAVE em app.js): aviso mais forte, vermelho em vez de laranja. */
+#grid td.atrasada-grave{box-shadow:inset 0 0 0 2px var(--danger);font-weight:700;color:var(--danger)!important}
+#grid th.today{box-shadow:inset 0 3px 0 #EEFE7A}
+/* Linhas informativas (VMD/LE vigente/Vendas reais) acima da linha que realmente debita: mesmo
+   estilo das colunas de historico (so-leitura), th em italico pra nao parecer editavel. */
+#grid tr.info-row th{font-weight:400;font-style:italic;color:var(--muted);background:#1c2a1f}
+#grid tr.info-row td{color:var(--muted);background:#1c2a1f}#stock-gauge{padding:12px;border-radius:12px;background:#111b1566}#grid th:nth-child(2){min-width:250px}@media(max-width:1000px){#daily-editor{grid-template-columns:1fr 2fr}.edit-group.out{grid-column:1/-1}.edit-group.out .edit-fields{grid-template-columns:repeat(3,1fr)}}@media(max-width:600px){#daily-editor{display:block}.edit-group{margin-bottom:10px}.edit-group.out .edit-fields{grid-template-columns:1fr}.edit-footer{align-items:stretch;flex-direction:column}}
+/* Mesmas faixas do SimulacaoEstoque.py: mínimo, médio, máximo e acima do máximo. */
+td.danger{background:#8B0000!important;color:white!important;box-shadow:inset 0 -2px #ff6b5f}td.warn{background:#FFA500!important;color:black!important}td.good{background:#90EE90!important;color:black!important}td.high{background:#008000!important;color:white!important}.tank-fill.danger{background:#8B0000}.tank-fill.warn{background:#FFA500}.tank-fill.good{background:#90EE90}.tank-fill.high{background:#008000}.tank-fill.neutral{background:#7FA069}.risk-danger{border-bottom-color:#8B0000!important}.risk-warn{border-bottom-color:#FFA500!important}.risk-good{border-bottom-color:#90EE90!important}.risk-high{border-bottom-color:#008000!important}.risk-neutral{border-bottom-color:#7FA069!important}.high{color:#42c875}.gauge-title.good{color:#90EE90!important}.capacity-warning{color:#ff9e93;margin-top:12px}.volume-field+small{font-weight:400;font-size:10px;color:#7FA069}.import-banner{margin:0 0 16px;padding:12px 16px;border:1px solid #5E7F3D;border-radius:12px;background:#8dc83012;color:#BFD4A8}.import-banner strong{color:#EEFE7A}.import-banner small{display:block;margin-top:4px}
+/* Visao do dia: fica fora de <main>, precisa de margem propria; cores por situacao nas linhas. */
+#dia-view{margin:16px 32px 32px;max-width:1900px}#dia-view .section-title{margin-bottom:14px}#dia-view .dia-filtros{margin-bottom:14px}
+@media(max-width:1000px){#dia-view .dia-filtros{grid-template-columns:repeat(2,1fr)!important}}
+#account-bar{gap:16px}#ver-dia{margin-right:auto}
+@media(max-width:1000px){#dia-view{margin:16px}}
+/* Abas do painel (Riscos da semana / Simulações de hoje / Por data) e a visao semanal em cards. */
+#dia-view .dia-tabs{display:flex;gap:8px;margin-bottom:16px}
+#dia-view .dia-tabs button[aria-selected="true"]{border-color:#EEFE7A;background:#8dc8302b;color:#EEFE7A}
+.semana-nav{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.semana-pills{display:flex;gap:6px;flex-wrap:wrap}
+.semana-pills button{min-width:52px;padding:8px 10px}
+.semana-pills button.active{border-color:#EEFE7A;background:#8dc8302b;color:#EEFE7A}
+.semana-pills button.hoje{box-shadow:inset 0 0 0 1px var(--accent)}
+.semana-barra{display:flex;height:26px;border-radius:999px;overflow:hidden;margin-bottom:16px;border:1px solid var(--border)}
+.semana-barra span{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#111A0A;min-width:26px}
+.semana-barra .critico{background:var(--danger)}.semana-barra .atencao{background:var(--orange)}.semana-barra .ok{background:var(--accent)}
+.semana-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.semana-lista .card{border-left-width:4px;padding:14px 16px;margin:0}
+.semana-lista .card.dia-critico{border-left-color:var(--danger)}
+.semana-lista .card.dia-atencao{border-left-color:var(--orange)}
+.semana-lista .card.dia-ok{border-left-color:var(--accent)}
+.semana-lista .card h3{margin:0 0 2px;font-size:14px}
+.semana-lista .card p{margin:8px 0;color:var(--text)}
+.semana-lista .card small{display:block;color:var(--muted)}
+.semana-lista .card p{margin:8px 0 2px}
+/* Causas por produto, em bullet de verdade (nao middot numa frase corrida) — usado no resumo executivo
+   e dentro dos cards da semana (pedido da usuaria, 2026-10-06: "isso ta bem feio" na versao em texto). */
+.causas-lista{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.causas-lista li{position:relative;padding-left:12px;font-size:12px;color:var(--muted);line-height:1.45}
+.causas-lista li::before{content:'';position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:var(--border)}
+.causas-lista li strong{color:var(--text);font-weight:600}
+.causas-lista .tag{color:var(--dim);font-size:11px}
+.resumo-exec-titulo{margin:0 0 10px;font-size:14px;color:var(--text)}
+.resumo-exec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-bottom:18px}
+.resumo-exec-item{border-left:4px solid var(--border);background:#17251B;border-radius:10px;padding:10px 14px}
+.resumo-exec-item.dia-critico{border-left-color:var(--danger)}
+.resumo-exec-item.dia-atencao{border-left-color:var(--orange)}
+.resumo-exec-cidade{font-weight:700;font-size:13px;color:#EEFE7A}
+/* Aba "Simulações de hoje" e "Por data": 1 card por cidade, expande (<details>) pra lista de
+   produtos/bases salvos (pedido da usuaria, 2026-10-05: "data da simulação > base/cidade > produto"). */
+.hoje-lista{display:flex;flex-direction:column;gap:10px}
+.hoje-lista .card{padding:0;overflow:hidden;border-left-width:4px}
+.hoje-lista .card.dia-critico{border-left-color:var(--danger)}
+.hoje-lista .card.dia-atencao{border-left-color:var(--orange)}
+.hoje-lista .card.dia-ok{border-left-color:var(--accent)}
+.hoje-lista summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+.hoje-lista summary::-webkit-details-marker{display:none}
+.hoje-lista summary::before{content:'▸';color:var(--muted);transition:transform .15s}
+.hoje-lista details[open] summary::before{transform:rotate(90deg)}
+.hoje-lista summary strong{font-size:14px}
+.hoje-lista summary small{color:var(--muted)}
+.hoje-tabela{width:100%;border-collapse:collapse;font-size:13px}
+.hoje-tabela th,.hoje-tabela td{padding:6px 16px;text-align:left;border-top:1px solid var(--border)}
+.hoje-tabela th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase}
+.hoje-tabela small{color:var(--muted)}
+.hoje-tabela tr.dia-critico td{background:#8B000022}
+.hoje-tabela tr.dia-atencao td{background:#FFA50022}
+.hoje-tabela tr.dia-critico td:nth-child(5){color:var(--danger);font-weight:700}
+.hoje-tabela tr.dia-atencao td:nth-child(5){color:var(--orange);font-weight:700}
+.hoje-tabela tr.dia-ok td:nth-child(5){color:var(--accent);font-weight:700}
+/* Barra de progresso "ritmo da semana" (LE x ja vendido), no painel de historico/projecao. */
+#semana-progresso:not(:empty){margin-top:14px}
+.semana-progresso-rotulo{font-size:12px;color:var(--dim);margin-bottom:6px}
+.semana-progresso-barra{height:10px;border-radius:999px;background:#17251B;border:1px solid var(--border);overflow:hidden}
+.semana-progresso-barra>div{height:100%;transition:width .2s}
+.semana-progresso-tabela{width:100%;margin-top:10px;font-size:11px;border-collapse:collapse}
+.semana-progresso-tabela th,.semana-progresso-tabela td{padding:5px 6px;text-align:center;border-bottom:1px solid var(--border)}
+.semana-progresso-tabela thead th{color:var(--dim);font-weight:600}
+.semana-progresso-tabela tbody th{text-align:left;color:var(--dim)}
+.semana-progresso-tabela td,.semana-progresso-tabela tbody th{color:var(--text)}
+.semana-progresso-tabela .today{background:#8dc8302b;color:#EEFE7A;font-weight:700}
