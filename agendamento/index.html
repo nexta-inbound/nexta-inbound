@@ -164,11 +164,12 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .tabela-itens tbody tr:hover td { background: transparent; }
 
 /* ── TABELA ── */
-.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; } /* sem overflow:hidden: o painel dos filtros passa da borda quando a lista é curta */
+.table-wrap > .table-scroll:last-child, .table-wrap > :last-child { border-radius: 0 0 10px 10px; }
 .table-toolbar { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .table-title { font-size: 16px; font-weight: 600; }
 .table-filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.table-filters select, .table-filters input { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; color: var(--text); font-size: 14px; padding: 8px 10px; outline: none; }
+.table-filters > select, .table-filters > input { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; color: var(--text); font-size: 14px; padding: 8px 10px; outline: none; }
 .table-scroll { overflow-x: auto; max-height: 62vh; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; }
 th { background: var(--surface); text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
@@ -279,6 +280,22 @@ tbody tr:hover td { background: var(--panel-soft); }
 .login-admin-check input { accent-color: var(--accent); }
 .login-admin-info { min-height: 18px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
 .login-admin-separator { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+/* Seleção de vários clientes (filiais) para um usuário */
+.cli-multi { margin-bottom: 10px; }
+.cli-multi-topo { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
+.cli-multi-topo #admin-cli-contagem { font-weight: 400; color: var(--text-muted); }
+.cli-multi input#admin-cli-busca { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; outline: none; }
+.cli-multi input#admin-cli-busca:focus { border-color: var(--accent); }
+.cli-multi-sel { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cli-multi-sel .chip { cursor: default; }
+.cli-multi-sel .chip button { background: none; border: none; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 13px; }
+.cli-multi-lista { max-height: 210px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; background: var(--surface); }
+.cli-multi-opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; cursor: pointer; font-size: 13px; color: var(--text); }
+.cli-multi-opt + .cli-multi-opt { border-top: 1px solid var(--border); }
+.cli-multi-opt:hover { background: var(--panel-soft); }
+.cli-multi-opt input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
+.cli-multi-opt small { display: block; color: var(--text-muted); font-size: 12px; }
+.cli-multi-vazio { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
 .login-admin-box { background: var(--panel-soft); border-radius: 10px; padding: 16px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
 
 /* ── AVISOS ── */
@@ -297,6 +314,32 @@ tbody tr:hover td { background: var(--panel-soft); }
 .pedido-card-item .vol { font-family: var(--mono); text-align: right; white-space: nowrap; }
 .pedido-card-item .vol small { display: block; font-size: 12px; color: var(--text-muted); }
 .tabela-scroll { overflow-x: auto; }
+/* Aba Pedidos */
+.pedido-card.clicavel { cursor: pointer; }
+/* Filtro com busca e seleção múltipla (mesmo padrão do portal de solicitações): nenhum marcado = todos */
+.ms { position: relative; }
+.ms-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 170px; max-width: 260px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 14px; color: var(--text-dim); text-align: left; }
+.ms-trigger.ativo { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ms-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-seta { font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
+.ms-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 25; width: 360px; max-width: calc(100vw - 32px); max-height: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.ms-topo { position: sticky; top: 0; z-index: 1; display: flex; gap: 6px; align-items: center; padding: 6px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.ms-topo.sem-busca .ms-busca { display: none; }
+.ms-topo.sem-busca { justify-content: flex-end; }
+.ms-busca { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
+.ms-busca:focus { border-color: var(--accent); }
+.ms-limpar { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; padding: 4px 6px; white-space: nowrap; }
+.ms-opt { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 13px; color: var(--text); cursor: pointer; }
+.ms-opt:hover { background: var(--panel-soft); }
+.ms-opt input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; flex-shrink: 0; }
+.ms-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-opt small { margin-left: 6px; color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+.ms-vazio { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
+.link-ag { background: none; border: none; padding: 0; color: var(--accent); font-family: var(--mono); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.cards-pedidos { padding: 12px; }
+.filtros-pedidos #fpBusca { width: 240px; }
+
+.so-celular { display: none; }
 
 /* ── CELULAR (até 640 px) ── */
 @media (max-width: 640px) {
@@ -372,7 +415,22 @@ tbody tr:hover td { background: var(--panel-soft); }
   .tabela-itens td.quebra { min-width: 0; }
   /* Filtros da lista em duas colunas */
   .table-filters { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
-  .table-filters select, .table-filters input { width: 100%; min-width: 0; }
+  .table-filters > select, .table-filters > input { width: 100%; min-width: 0; }
+  /* Filtro de seleção múltipla: painel ocupa a largura dos filtros, logo abaixo do botão */
+  .table-filters { position: relative; }
+  .ms { position: static; }
+  .ms-trigger { max-width: none; min-width: 0; }
+  .ms-panel { left: 0; right: 0; top: auto; width: auto; margin-top: 4px; }
+  .filtros-pedidos #fpBusca { grid-column: 1 / -1; width: 100%; }
+
+  /* Números dos indicadores sem quebrar linha (ex.: 42.000 L) */
+  .stat-val { font-size: 18px; white-space: nowrap; }
+  /* Abas numa linha só, rolando de lado se não couberem */
+  .tabs-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tab { padding: 10px 12px; white-space: nowrap; flex-shrink: 0; }
+  /* Aba Pedidos: tabela vira cartões */
+  .so-desktop { display: none !important; }
+  .so-celular { display: block; }
 }
 
 .hidden { display: none !important; }
@@ -406,13 +464,18 @@ tbody tr:hover td { background: var(--panel-soft); }
         <select id="admin-new-tipo" onchange="onAdminTipoChange()">
           <option value="interno">Equipe interna</option>
           <option value="cliente">Cliente</option>
+          <option value="transportadora">Transportadora</option>
         </select>
-        <div id="admin-new-cliente-wrap" style="display:none">
-          <select id="admin-new-cliente-codigo"></select>
-        </div>
         <label class="login-admin-check" id="admin-new-admin-wrap">
           <input id="admin-new-admin" type="checkbox"> Administrador
         </label>
+      </div>
+      <!-- Usuário cliente pode ter vários códigos (filiais): enxerga pedidos e agendamentos de todos -->
+      <div class="cli-multi" id="admin-new-cliente-wrap" style="display:none">
+        <div class="cli-multi-topo"><span id="admin-cli-titulo">Clientes (filiais) deste usuário</span><span id="admin-cli-contagem"></span></div>
+        <input id="admin-cli-busca" placeholder="Buscar por nome, código ou cidade" autocomplete="off" oninput="renderListaClientesAdmin()">
+        <div class="cli-multi-sel" id="admin-cli-sel"></div>
+        <div class="cli-multi-lista" id="admin-cli-lista"></div>
       </div>
       <label class="login-admin-check">
         <input id="admin-new-trocar" type="checkbox" checked> Exigir troca de senha no próximo login
@@ -579,6 +642,11 @@ tbody tr:hover td { background: var(--panel-soft); }
   </div>
 </div>
 
+<!-- MODAL: Detalhe do Pedido (aba Pedidos) -->
+<div class="modal-overlay" id="modalPedido">
+  <div class="modal" style="width:900px" id="modalPedidoConteudo"></div>
+</div>
+
 <!-- MODAL: Detalhe do Agendamento -->
 <div class="modal-overlay" id="modalDetalhe">
   <div class="modal" style="width:1200px" id="modalDetalheConteudo"></div><!-- mesma largura do Novo Agendamento -->
@@ -627,6 +695,7 @@ tbody tr:hover td { background: var(--panel-soft); }
 
 
 <div class="tabs-bar">
+  <div class="tab" id="tabCarteira" data-tab="pedidos" onclick="switchTab('pedidos')">Carteira Pedidos</div>
   <div class="tab active" data-tab="lista" onclick="switchTab('lista')">Agendamentos</div>
   <div class="tab admin-only hidden" data-tab="slots" onclick="switchTab('slots')">Slots</div>
   <div class="tab admin-only hidden" data-tab="cadastros" onclick="switchTab('cadastros')">Cadastros</div>
@@ -651,12 +720,9 @@ tbody tr:hover td { background: var(--panel-soft); }
       <div class="table-toolbar">
         <div class="table-title">Carregamentos</div>
         <div class="table-filters">
-          <select id="filtroBase" onchange="renderListaAgendamentos()"><option value="">Todas as bases</option></select>
-          <select id="filtroStatus" onchange="renderListaAgendamentos()">
-            <option value="">Todos os status</option>
-            <option value="agendado">Agendado</option>
-            <option value="cancelado">Cancelado</option>
-          </select>
+          <div class="ms" id="ms-agCliente"></div>
+          <div class="ms" id="ms-agBase"></div>
+          <div class="ms" id="ms-agStatus"></div>
           <input type="date" id="filtroDataDe" onchange="renderListaAgendamentos()" title="De">
           <input type="date" id="filtroDataAte" onchange="renderListaAgendamentos()" title="Até">
         </div>
@@ -672,6 +738,46 @@ tbody tr:hover td { background: var(--panel-soft); }
           <tbody id="tbodyAgendamentos"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- TAB: PEDIDOS (carteira em aberto: o que já está agendado e o que falta agendar) -->
+  <div class="tab-content" id="tab-pedidos">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Carteira Pedidos</div>
+        <div class="section-sub">Pedidos em aberto (aprovados e ainda não faturados), com o volume já agendado e o disponível para agendar.</div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-label">Pedidos</div><div class="stat-val" id="statPedQtd">0</div></div>
+      <div class="stat-card"><div class="stat-label">Disponível para agendar</div><div class="stat-val" id="statPedDisp">0 L</div></div>
+      <div class="stat-card"><div class="stat-label">Já agendado</div><div class="stat-val" id="statPedAgend">0 L</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div class="table-title">Carteira de pedidos</div>
+        <div class="table-filters filtros-pedidos">
+          <input type="search" id="fpBusca" placeholder="Pedido, produto ou cliente" oninput="renderPedidosCarteira()">
+          <div class="ms" id="ms-pcCliente"></div>
+          <div class="ms" id="ms-pcBase"></div>
+          <div class="ms" id="ms-pcStatus"></div>
+          <input type="date" id="fpDe" onchange="renderPedidosCarteira()" title="Entrega de">
+          <input type="date" id="fpAte" onchange="renderPedidosCarteira()" title="Entrega até">
+        </div>
+      </div>
+      <div class="table-scroll so-desktop">
+        <table id="tabelaPedidos">
+          <thead>
+            <tr>
+              <th>Pedido</th><th>Cliente</th><th>Base</th><th>Entrega</th><th>Frete</th>
+              <th class="num">Volume</th><th class="num">Agendado</th><th class="num">Disponível</th><th>Status</th><th>Agendamentos</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tbodyPedidos"></tbody>
+        </table>
+      </div>
+      <div class="so-celular cards-pedidos" id="cardsPedidos"></div>
     </div>
   </div>
 
@@ -784,6 +890,7 @@ const STATE = {
   usuario: null,
   bases: {}, clientes: {}, perfis: {},
   agendamentos: {},
+  pedidosCarteira: null, // aba Pedidos: pedidosSap/<nr> do usuário (null até o 1º retorno do Firebase)
   // pedidos = pedidosSap/<nr> já adicionados à carreta; baseId/baseChave = base ligada a eles (centro + depósito).
   // compartimentos: { numero, ref: '<nr>|<produto>', volume }.
   // baseSlots/slotsOcupados ficam null até o 1º retorno do Firebase (grade mostra "carregando")
@@ -792,9 +899,10 @@ const STATE = {
   depositosSemBase: null,  // centro + depósito lidos dos pedidos (aba Cadastros → Bases)
   slotsAdmin: { baseId: '', baseSlots: {}, ocupados: {} },
   // unsubscribe dos listeners que dependem da base/data escolhida — trocar a seleção desliga o anterior
-  unsub: { novoBaseSlots: null, novoOcupados: null, adminBaseSlots: null, adminOcupados: null, agendamentos: null },
+  unsub: { novoBaseSlots: null, novoOcupados: null, adminBaseSlots: null, adminOcupados: null, agendamentos: null, pedidosCarteira: null },
   trocaSenhaPendente: null, // sessão aguardando a troca obrigatória da senha inicial
   ultimoAgendamento: null,  // dados do agendamento que acabou de ser criado (comprovante em PDF)
+  adminClientesSel: new Set(), // códigos marcados no formulário de usuário (admin)
   msgLogin: '',
 };
 
@@ -922,8 +1030,9 @@ async function onSessaoFirebase(user) {
   }
   const sessao = {
     uid: user.uid, email: user.email, nome: perfil.nome || user.email, admin: perfil.admin === true,
-    tipo: perfil.tipo === 'cliente' ? 'cliente' : 'interno',
+    tipo: TIPOS_EXTERNOS.includes(perfil.tipo) ? perfil.tipo : 'interno',
     clienteCodigo: perfil.clienteCodigo || '',
+    clientes: TIPOS_EXTERNOS.includes(perfil.tipo) ? codigosClientePerfil(perfil) : [], // clientes (filiais) vinculados ao cadastro
   };
   // Senha inicial definida pelo admin: só entra depois de trocar
   if (perfil.trocarSenha === true) { abrirTrocaSenhaObrigatoria(sessao); return; }
@@ -941,7 +1050,13 @@ function aplicarSessaoUsuario(usuario) {
   document.getElementById('headerUser').style.display = 'flex';
   document.body.classList.add('logado'); // mostra abas e conteúdo (sem login só aparece o cartão de entrar)
   document.getElementById('headerUserName').textContent = usuario.nome || usuario.email;
-  document.getElementById('headerUserTipo').textContent = usuario.tipo === 'cliente' ? 'Cliente' : (usuario.admin ? 'Equipe interna · admin' : 'Equipe interna');
+  const qtd = (usuario.clientes || []).length;
+  document.getElementById('headerUserTipo').textContent =
+    usuario.tipo === 'cliente' ? 'Cliente' + (qtd > 1 ? ` · ${qtd} filiais` : '')
+    : usuario.tipo === 'transportadora' ? `Transportadora · ${qtd} cliente${qtd === 1 ? '' : 's'}`
+    : (usuario.admin ? 'Equipe interna · admin' : 'Equipe interna');
+  // Transportadora não vê a carteira de pedidos
+  document.getElementById('tabCarteira').classList.toggle('hidden', usuario.tipo === 'transportadora');
   document.getElementById('btnAdmin').style.display = usuario.admin ? '' : 'none';
   document.querySelectorAll('.admin-only').forEach((el) => el.classList.toggle('hidden', !usuario.admin));
 }
@@ -960,6 +1075,7 @@ function switchTab(nome) {
   document.querySelectorAll('.tab-content').forEach((el) => el.classList.toggle('active', el.id === 'tab-' + nome));
   document.querySelector('.main').classList.toggle('main-larga', nome === 'lista');
   if (nome === 'lista') renderListaAgendamentos();
+  if (nome === 'pedidos') abrirAbaPedidos();
 }
 function switchSubtab(nome) {
   document.querySelectorAll('.subtab').forEach((el) => el.classList.toggle('active', el.dataset.sub === nome));
@@ -972,6 +1088,7 @@ function iniciarApp() {
   if (_bootDone) return;
   _bootDone = true;
   const usuario = STATE.usuario;
+  iniciarFiltros();
 
   window._fb.ouvirBases((bases) => {
     STATE.bases = bases;
@@ -980,6 +1097,7 @@ function iniciarApp() {
     renderSelectSlotsBase();
     if (STATE.depositosSemBase) renderDepositosSemBase();
     atualizarBaseDosPedidos(); // pedidos já adicionados podem ganhar (ou perder) a base
+    if (STATE.pedidosCarteira) renderPedidosCarteira();
   }, erroListener('as bases'));
   // Clientes: só o admin usa (cadastro e vínculo de usuário cliente); no agendamento o cliente vem do pedido
   if (usuario.admin) {
@@ -1004,11 +1122,15 @@ function reiniciarListenerAgendamentos() {
     STATE.agendamentos = agendamentos;
     renderListaAgendamentos();
     renderPedidosAgendamento(); // saldo dos pedidos em montagem depende dos agendamentos ativos
+    if (STATE.pedidosCarteira) renderPedidosCarteira(); // aba Pedidos: agendado / disponível
   };
-  // Cliente vê os agendamentos que têm pedido dele (índice agendamentosPorCliente), dos últimos 60 dias em diante
-  STATE.unsub.agendamentos = STATE.usuario.tipo === 'cliente'
-    ? window._fb.ouvirAgendamentosCliente(STATE.usuario.clienteCodigo, somarDias(hoje(), -60), cb, erroListener('os agendamentos'))
-    : window._fb.ouvirAgendamentosTodos(cb, erroListener('os agendamentos'));
+  // Cliente vê os agendamentos que têm pedido dele (índice agendamentosPorCliente), dos últimos 60 dias em diante;
+  // transportadora vê só os agendamentos que ela mesma criou; equipe interna vê todos
+  const erro = erroListener('os agendamentos');
+  STATE.unsub.agendamentos =
+    STATE.usuario.tipo === 'cliente' ? window._fb.ouvirAgendamentosCliente(STATE.usuario.clientes || [STATE.usuario.clienteCodigo], somarDias(hoje(), -60), cb, erro)
+    : STATE.usuario.tipo === 'transportadora' ? window._fb.ouvirAgendamentosCriadosPor(STATE.usuario.uid, cb, erro)
+    : window._fb.ouvirAgendamentosTodos(cb, erro);
 }
 
 /* ── NOVO AGENDAMENTO: pedidos → base/clientes/produtos ── */
@@ -1016,8 +1138,11 @@ function reiniciarListenerAgendamentos() {
 // Um agendamento (uma carreta) junta um ou mais pedidos da MESMA base (centro + depósito), de um ou
 // mais clientes, e cada compartimento leva pedido + produto + volume — pedido pode ir parcial.
 const MSG_PEDIDO_NAO_ENCONTRADO = 'Pedido não encontrado ou indisponível para agendamento (faturado, bloqueado ou cancelado). Pedidos novos aparecem aqui em até 30 minutos.';
+const MSG_PEDIDO_NAO_VINCULADO_TRANSP = 'Pedido não encontrado ou não vinculado aos clientes do seu cadastro de transportadora. Confira o número; se o pedido for de outro cliente, peça à Nexta para vincular o cliente ao seu cadastro.';
+const TIPOS_EXTERNOS = ['cliente', 'transportadora']; // perfis ligados a códigos de cliente (não são equipe interna)
 const TURNO_DO_PEDIDO = { MADRUGADA: 'madrugada', MANHA: 'manha', TARDE: 'tarde', NOITE: 'noite' };
 const TURNO_LABEL = { madrugada: 'Madrugada', manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
+const MAX_CLIENTES_CARRETA = 10; // igual ao número de posições de clientesLista que a regra de leitura confere
 
 function compartimentosIniciais() { return [{ numero: 1, ref: '', volume: '' }, { numero: 2, ref: '', volume: '' }]; }
 function formatVolume(v) { return v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR') + ' L'; }
@@ -1069,11 +1194,254 @@ function protocolosDoPedido(nr) {
   return objList(STATE.agendamentos).filter((a) => a.status !== 'cancelado' && a.pedidos && a.pedidos[nr]).map((a) => a.protocolo);
 }
 
+/* ── ABA PEDIDOS: carteira em aberto, com o agendado e o disponível ── */
+const STATUS_PEDIDO = {
+  disponivel: { rotulo: 'Disponível', badge: 'badge-accent' },
+  parcial: { rotulo: 'Parcialmente agendado', badge: 'badge-warn' },
+  agendado: { rotulo: 'Agendado', badge: 'badge-success' },
+  vencido: { rotulo: 'Entrega vencida', badge: 'badge-danger' },
+  sembase: { rotulo: 'Base não cadastrada', badge: 'badge-muted' },
+};
+// Liga o listener na 1ª vez que a aba abre (a equipe interna recebe a carteira inteira, ~500 pedidos)
+function abrirAbaPedidos() {
+  if (STATE.usuario.tipo === 'transportadora') return; // aba escondida para transportadora (e a regra não libera a consulta)
+  if (!STATE.unsub.pedidosCarteira) {
+    const cb = (pedidos) => { STATE.pedidosCarteira = pedidos; renderPedidosCarteira(); };
+    STATE.unsub.pedidosCarteira = STATE.usuario.tipo === 'cliente'
+      ? window._fb.ouvirPedidosCliente(STATE.usuario.clientes || [STATE.usuario.clienteCodigo], cb, erroListener('os pedidos'))
+      : window._fb.ouvirPedidosTodos(cb, erroListener('os pedidos'));
+  }
+  renderPedidosCarteira();
+}
+function agendamentosDoPedido(nr) {
+  return objList(STATE.agendamentos)
+    .filter((a) => a.status !== 'cancelado' && a.pedidos && a.pedidos[nr])
+    .sort((a, b) => String(a.dataCarregamento).localeCompare(String(b.dataCarregamento)));
+}
+// Situação de cada pedido: volumes por produto (pedido / agendado / disponível) e status
+function situacaoPedidos() {
+  const agendados = volumesAgendados();
+  return objList(STATE.pedidosCarteira).map((p) => {
+    const itens = itensDe(p).map((i) => {
+      const volume = Number(i.volume) || 0;
+      const agendado = agendados[refItem(p.nrPedido, i.codigo)] || 0;
+      return { descricao: i.descricao, volume, agendado, disponivel: Math.max(volume - agendado, 0) };
+    });
+    const soma = (campo) => itens.reduce((s, i) => s + i[campo], 0);
+    const volume = soma('volume'), agendado = soma('agendado'), disponivel = soma('disponivel');
+    const base = baseDoPedido(p);
+    const status = disponivel <= 0 ? 'agendado'
+      : (!base || base.ativo === false) ? 'sembase'
+      : (!p.dataEntrega || p.dataEntrega < hoje()) ? 'vencido'
+      : agendado > 0 ? 'parcial' : 'disponivel';
+    return { p, itens, volume, agendado, disponivel, base, status, ags: agendamentosDoPedido(p.nrPedido) };
+  }).sort((a, b) => String(a.p.dataEntrega).localeCompare(String(b.p.dataEntrega)) || String(a.p.nrPedido).localeCompare(String(b.p.nrPedido)));
+}
+/* ── FILTRO COM BUSCA E SELEÇÃO MÚLTIPLA (padrão de todos os filtros de lista) ── */
+// Nenhum marcado = todos. Opções: [valor, texto, detalhe?]. Ao abrir, os marcados vão para o topo.
+const FILTROS = {};
+function criarFiltro(id, { todos, plural, aoMudar }) {
+  FILTROS[id] = { todos, plural, aoMudar, opcoes: [], chave: '', sel: new Set(), selAoAbrir: new Set() };
+  document.getElementById('ms-' + id).innerHTML = `
+    <button type="button" class="ms-trigger" onclick="alternarFiltro('${id}')"><span class="ms-lbl"></span><span class="ms-seta">▼</span></button>
+    <div class="ms-panel hidden">
+      <div class="ms-topo"><input class="ms-busca" placeholder="Buscar…" autocomplete="off" oninput="renderOpcoesFiltro('${id}')"><button type="button" class="ms-limpar" onclick="limparFiltro('${id}')">Limpar</button></div>
+      <div class="ms-opcoes"></div>
+    </div>`;
+  atualizarRotuloFiltro(id);
+}
+// Troca as opções (ex.: clientes presentes na lista); seleções que sumiram são descartadas
+function definirOpcoesFiltro(id, opcoes) {
+  const f = FILTROS[id];
+  if (!f) return;
+  const chave = JSON.stringify(opcoes);
+  if (chave === f.chave) return;
+  f.chave = chave;
+  f.opcoes = opcoes;
+  const validos = new Set(opcoes.map(([v]) => v));
+  for (const v of [...f.sel]) if (!validos.has(v)) f.sel.delete(v);
+  atualizarRotuloFiltro(id);
+  if (filtroAberto(id)) renderOpcoesFiltro(id);
+}
+function passaFiltro(id, valor) { const sel = FILTROS[id]?.sel; return !sel || !sel.size || sel.has(valor); }
+function filtroAberto(id) { return !document.querySelector(`#ms-${id} .ms-panel`).classList.contains('hidden'); }
+function atualizarRotuloFiltro(id) {
+  const f = FILTROS[id];
+  const el = document.getElementById('ms-' + id);
+  const marcados = f.opcoes.filter(([v]) => f.sel.has(v));
+  el.querySelector('.ms-lbl').textContent = !f.sel.size ? f.todos : f.sel.size === 1 ? (marcados[0]?.[1] ?? f.todos) : `${f.sel.size} ${f.plural}`;
+  el.querySelector('.ms-trigger').classList.toggle('ativo', f.sel.size > 0);
+  el.querySelector('.ms-trigger').title = marcados.map(([, texto]) => texto).join('\n');
+}
+function alternarFiltro(id) {
+  const estavaAberto = filtroAberto(id);
+  fecharFiltros();
+  if (estavaAberto) return;
+  const f = FILTROS[id];
+  const el = document.getElementById('ms-' + id);
+  f.selAoAbrir = new Set(f.sel); // ordem fixa enquanto o painel está aberto (o item não "pula" ao marcar)
+  const comBusca = f.opcoes.length > 8;
+  el.querySelector('.ms-topo').classList.toggle('sem-busca', !comBusca);
+  el.querySelector('.ms-busca').value = '';
+  el.querySelector('.ms-panel').classList.remove('hidden');
+  renderOpcoesFiltro(id);
+  if (comBusca) el.querySelector('.ms-busca').focus();
+}
+function fecharFiltros() { document.querySelectorAll('.ms .ms-panel').forEach((painel) => painel.classList.add('hidden')); }
+function renderOpcoesFiltro(id) {
+  const f = FILTROS[id];
+  const el = document.getElementById('ms-' + id);
+  const termos = normalizarBusca(el.querySelector('.ms-busca').value).split(/\s+/).filter(Boolean);
+  const lista = [...f.opcoes]
+    .sort((a, b) => f.selAoAbrir.has(b[0]) - f.selAoAbrir.has(a[0]))
+    .filter(([v, texto, detalhe]) => termos.every((x) => normalizarBusca(`${texto} ${detalhe || ''} ${v}`).includes(x)));
+  const LIMITE = 200;
+  el.querySelector('.ms-opcoes').innerHTML = lista.slice(0, LIMITE).map(([v, texto, detalhe]) => `
+    <label class="ms-opt"><input type="checkbox" ${f.sel.has(v) ? 'checked' : ''} onchange="marcarFiltro('${id}', ${jsArg(v)}, this.checked)"><span>${esc(texto)}${detalhe ? `<small>${esc(detalhe)}</small>` : ''}</span></label>`).join('') +
+    (lista.length > LIMITE ? `<div class="ms-vazio">Mais ${lista.length - LIMITE}: refine a busca.</div>` : '') +
+    (lista.length ? '' : '<div class="ms-vazio">Nada encontrado.</div>');
+}
+function marcarFiltro(id, valor, marcado) {
+  const f = FILTROS[id];
+  if (marcado) f.sel.add(valor); else f.sel.delete(valor);
+  atualizarRotuloFiltro(id);
+  f.aoMudar();
+}
+function limparFiltro(id) {
+  const f = FILTROS[id];
+  f.sel.clear();
+  atualizarRotuloFiltro(id);
+  renderOpcoesFiltro(id);
+  f.aoMudar();
+}
+// Clique fora ou Esc fecha o painel aberto
+document.addEventListener('click', (ev) => { if (!ev.target.closest('.ms')) fecharFiltros(); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') fecharFiltros(); });
+function iniciarFiltros() {
+  const ehCliente = STATE.usuario.tipo === 'cliente';
+  criarFiltro('agCliente', { todos: ehCliente ? 'Todas as filiais' : 'Todos os clientes', plural: ehCliente ? 'filiais' : 'clientes', aoMudar: renderListaAgendamentos });
+  criarFiltro('agBase', { todos: 'Todas as bases', plural: 'bases', aoMudar: renderListaAgendamentos });
+  criarFiltro('agStatus', { todos: 'Todos os status', plural: 'status', aoMudar: renderListaAgendamentos });
+  definirOpcoesFiltro('agStatus', [['agendado', 'Agendado'], ['cancelado', 'Cancelado']]);
+  criarFiltro('pcCliente', { todos: ehCliente ? 'Todas as filiais' : 'Todos os clientes', plural: ehCliente ? 'filiais' : 'clientes', aoMudar: renderPedidosCarteira });
+  criarFiltro('pcBase', { todos: 'Todas as bases', plural: 'bases', aoMudar: renderPedidosCarteira });
+  criarFiltro('pcStatus', { todos: 'Todos os status', plural: 'status', aoMudar: renderPedidosCarteira });
+  definirOpcoesFiltro('pcStatus', Object.entries(STATUS_PEDIDO).map(([v, s]) => [v, s.rotulo]));
+}
+function renderPedidosCarteira() {
+  const tbody = document.getElementById('tbodyPedidos');
+  const cards = document.getElementById('cardsPedidos');
+  if (!STATE.pedidosCarteira) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Carregando pedidos…</td></tr>';
+    cards.innerHTML = '<div class="chip-empty" style="padding:16px">Carregando pedidos…</div>';
+    return;
+  }
+  const todos = situacaoPedidos();
+  const chaveBase = (s) => s.base?.id || '-' + s.p.centro + s.p.depositoCodigo;
+  definirOpcoesFiltro('pcBase', [...new Map(todos.map((s) => [chaveBase(s), nomeBase(s)]))].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')));
+  const clientes = [...new Map(todos.map((s) => [s.p.clienteCodigo, s.p.clienteNome]))].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR'));
+  definirOpcoesFiltro('pcCliente', clientes.map(([cd, nome]) => [cd, nome, cd]));
+  document.getElementById('ms-pcCliente').classList.toggle('hidden', clientes.length < 2);
+
+  const termos = normalizarBusca(document.getElementById('fpBusca').value).split(/\s+/).filter(Boolean); // todas as palavras precisam aparecer
+  const de = document.getElementById('fpDe').value;
+  const ate = document.getElementById('fpAte').value;
+  const lista = todos.filter((s) =>
+    passaFiltro('pcCliente', s.p.clienteCodigo) &&
+    passaFiltro('pcBase', chaveBase(s)) &&
+    passaFiltro('pcStatus', s.status) &&
+    (!de || (s.p.dataEntrega || '') >= de) &&
+    (!ate || (s.p.dataEntrega || '') <= ate) &&
+    (!termos.length || termos.every((t) => normalizarBusca(`${s.p.nrPedido} ${s.p.clienteNome} ${s.p.clienteCodigo} ${s.itens.map((i) => i.descricao).join(' ')}`).includes(t))));
+
+  document.getElementById('statPedQtd').textContent = lista.length;
+  document.getElementById('statPedDisp').textContent = formatVolume(lista.reduce((t, s) => t + s.disponivel, 0));
+  document.getElementById('statPedAgend').textContent = formatVolume(lista.reduce((t, s) => t + s.agendado, 0));
+
+  const vazio = 'Nenhum pedido encontrado com esses filtros.';
+  // Resumo: uma linha por pedido com os totais; os produtos ficam no detalhe (clique na linha)
+  tbody.innerHTML = lista.length ? lista.map((s) => `
+    <tr onclick="abrirDetalhePedido(${jsArg(s.p.nrPedido)})" title="Ver os produtos do pedido">
+      <td><strong>${esc(s.p.nrPedido)}</strong></td>
+      <td class="quebra">${esc(s.p.clienteNome)}<div class="form-hint" style="margin:0">${[esc(s.p.clienteCodigo), esc(s.p.clienteCidade)].filter(Boolean).join(' · ')}</div></td>
+      <td class="quebra">${esc(nomeBase(s))}</td>
+      <td>${formatDataBR(s.p.dataEntrega)}</td>
+      <td>${esc(s.p.tipoFrete) || '—'}</td>
+      <td class="num">${formatVolume(s.volume)}</td>
+      <td class="num">${formatVolume(s.agendado)}</td>
+      <td class="num"><strong>${formatVolume(s.disponivel)}</strong></td>
+      <td>${seloPedido(s)}</td>
+      <td class="quebra">${linksAgendamentos(s)}</td>
+      <td>${botaoAgendar(s)}</td>
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="11">${vazio}</td></tr>`;
+
+  cards.innerHTML = lista.length ? lista.map((s) => `
+    <div class="pedido-card clicavel" onclick="abrirDetalhePedido(${jsArg(s.p.nrPedido)})">
+      <div class="pedido-card-topo"><strong>Pedido ${esc(s.p.nrPedido)}</strong>${seloPedido(s)}</div>
+      <div class="pedido-card-cli">${[s.p.clienteNome, s.p.clienteCidade, s.p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="pedido-card-cli">${esc(nomeBase(s))} · entrega ${formatDataBR(s.p.dataEntrega)}</div>
+      <div class="pedido-card-item"><span>Disponível para agendar</span><span class="vol"><strong>${formatVolume(s.disponivel)}</strong><small>${s.agendado ? `agendado ${formatVolume(s.agendado)} de ${formatVolume(s.volume)}` : `de ${formatVolume(s.volume)}`}</small></span></div>
+      ${s.ags.length ? `<div class="pedido-card-cli" style="margin-top:6px">Agendamentos: ${linksAgendamentos(s)}</div>` : ''}
+      ${botaoAgendar(s, 'style="width:100%;margin-top:8px"')}
+    </div>`).join('') : `<div class="chip-empty" style="padding:16px">${vazio}</div>`;
+}
+function nomeBase(s) { return s.base?.nome || s.p.depositoNome || `centro ${s.p.centro} · depósito ${s.p.depositoCodigo}`; }
+function seloPedido(s) { return `<span class="badge ${STATUS_PEDIDO[s.status].badge}">${STATUS_PEDIDO[s.status].rotulo}</span>`; }
+// Links e botão ficam dentro da linha clicável: event.stopPropagation() evita abrir o detalhe do pedido junto
+function linksAgendamentos(s) {
+  return s.ags.map((a) => `<button type="button" class="link-ag" onclick="event.stopPropagation(); abrirDetalheAgendamento(${jsArg(a.id)})" title="Carregamento em ${formatDataBR(a.dataCarregamento)}">${esc(a.protocolo)}</button>`).join(' ') || '<span class="text-muted">—</span>';
+}
+function podeAgendarPedido(s) { return s.status === 'disponivel' || s.status === 'parcial'; }
+function botaoAgendar(s, extra = '') {
+  return podeAgendarPedido(s) ? `<button class="btn btn-primary btn-sm" ${extra} onclick="event.stopPropagation(); agendarPedido(${jsArg(s.p.nrPedido)})">Agendar</button>` : '';
+}
+// Detalhe do pedido: produtos (volume / agendado / disponível) e os agendamentos em que ele entrou
+function abrirDetalhePedido(nr) {
+  const s = situacaoPedidos().find((x) => x.p.nrPedido === nr);
+  if (!s) return;
+  const p = s.p;
+  const turno = p.turnoEntrega && p.turnoEntrega !== 'INDEFINIDO' ? labelTurno(TURNO_DO_PEDIDO[p.turnoEntrega] || p.turnoEntrega.toLowerCase()) : '';
+  const volumeNoAgendamento = (a) => Object.values(a.compartimentos || {}).filter((c) => c.pedido === nr).reduce((t, c) => t + (Number(c.volume) || 0), 0);
+  document.getElementById('modalPedidoConteudo').innerHTML = `
+    <div class="modal-title">Pedido ${esc(nr)}</div>
+    <div class="modal-sub">${seloPedido(s)}</div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Cliente</div><div class="info-val">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${esc(p.clienteCodigo)}</div></div></div>
+      <div class="info-item"><div class="info-lbl">Cidade</div><div class="info-val">${esc(p.clienteCidade) || '—'}</div></div>
+      <div class="info-item"><div class="info-lbl">Frete</div><div class="info-val">${esc(p.tipoFrete) || '—'}</div></div>
+    </div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Base</div><div class="info-val">${esc(nomeBase(s))}</div></div>
+      <div class="info-item"><div class="info-lbl">Entrega</div><div class="info-val">${formatDataBR(p.dataEntrega)}${turno ? ' · ' + esc(turno) : ''}</div></div>
+      <div class="info-item"><div class="info-lbl">Disponível para agendar</div><div class="info-val">${formatVolume(s.disponivel)} <span class="text-muted">de ${formatVolume(s.volume)}</span></div></div>
+    </div>
+    <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Produtos</div>
+      <div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
+        <thead><tr><th class="col-opc">Código</th><th>Produto</th><th class="num">Volume</th><th class="num">Agendado</th><th class="num">Disponível</th></tr></thead>
+        <tbody>${itensDe(p).map((i, idx) => `<tr><td class="col-opc">${esc(i.codigo)}</td><td class="quebra">${esc(s.itens[idx].descricao)}</td><td class="num">${formatVolume(s.itens[idx].volume)}</td><td class="num">${formatVolume(s.itens[idx].agendado)}</td><td class="num"><strong>${formatVolume(s.itens[idx].disponivel)}</strong></td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Agendamentos</div>
+      ${s.ags.length ? `<div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
+        <thead><tr><th>Protocolo</th><th>Data</th><th>Horário/Turno</th><th class="num">Volume do pedido</th></tr></thead>
+        <tbody>${s.ags.map((a) => `<tr><td><button type="button" class="link-ag" onclick="fecharModal('modalPedido'); abrirDetalheAgendamento(${jsArg(a.id)})">${esc(a.protocolo)}</button></td><td>${formatDataBR(a.dataCarregamento)}</td><td>${a.baseTipo === 'agendamento' ? esc(a.slotHorario) : esc(labelTurno(a.turno))}</td><td class="num">${formatVolume(volumeNoAgendamento(a))}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<div class="info-val text-muted">Nenhum agendamento ainda.</div>'}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModal('modalPedido')">Fechar</button>
+      ${podeAgendarPedido(s) ? `<button class="btn btn-primary" onclick="fecharModal('modalPedido'); agendarPedido(${jsArg(nr)})">Agendar</button>` : ''}
+    </div>`;
+  abrirModal('modalPedido');
+}
+// "Agendar" na carteira: abre o assistente com o pedido já adicionado
+async function agendarPedido(nr) {
+  abrirNovoAgendamento();
+  document.getElementById('f-pedido-sap').value = nr;
+  await adicionarPedido();
+}
+
 function renderFiltroBases() {
-  const filtro = document.getElementById('filtroBase');
-  const atual = filtro.value;
-  filtro.innerHTML = '<option value="">Todas as bases</option>' + objList(STATE.bases).map((b) => `<option value="${b.id}">${esc(b.nome)}</option>`).join('');
-  filtro.value = atual;
+  definirOpcoesFiltro('agBase', objList(STATE.bases).map((b) => [b.id, b.nome]).sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR')));
 }
 
 function mostrarStatusPedido(msg, tipo = '') {
@@ -1107,7 +1475,12 @@ async function adicionarPedido() {
     btn.disabled = false;
   }
   if (campo.value.trim() !== nr) return; // digitou outro número enquanto buscava
-  if (!pedido) { mostrarStatusPedido(MSG_PEDIDO_NAO_ENCONTRADO, 'erro'); return; }
+  if (!pedido) { mostrarStatusPedido(STATE.usuario.tipo === 'transportadora' ? MSG_PEDIDO_NAO_VINCULADO_TRANSP : MSG_PEDIDO_NAO_ENCONTRADO, 'erro'); return; }
+  // Cliente e transportadora só agendam pedidos dos clientes vinculados ao cadastro (a regra do banco também barra)
+  if (STATE.usuario.tipo !== 'interno' && !(STATE.usuario.clientes || []).includes(pedido.clienteCodigo)) {
+    mostrarStatusPedido(STATE.usuario.tipo === 'transportadora' ? MSG_PEDIDO_NAO_VINCULADO_TRANSP : `O pedido ${nr} não é de um cliente vinculado ao seu cadastro.`, 'erro');
+    return;
+  }
 
   const primeiro = STATE.novo.pedidos[0];
   if (primeiro && (pedido.centro !== primeiro.centro || pedido.depositoCodigo !== primeiro.depositoCodigo)) {
@@ -1126,6 +1499,11 @@ async function adicionarPedido() {
   }
   if (primeiro && pedido.dataEntrega !== primeiro.dataEntrega) {
     mostrarStatusPedido(`O pedido ${nr} é para ${formatDataBR(pedido.dataEntrega)} e esta carreta é para ${formatDataBR(primeiro.dataEntrega)}. Um agendamento só junta pedidos com a mesma data de entrega.`, 'erro');
+    return;
+  }
+  const clientesNaCarreta = new Set([...STATE.novo.pedidos.map((p) => p.clienteCodigo), pedido.clienteCodigo]);
+  if (clientesNaCarreta.size > MAX_CLIENTES_CARRETA) {
+    mostrarStatusPedido(`Um agendamento junta pedidos de no máximo ${MAX_CLIENTES_CARRETA} clientes.`, 'erro');
     return;
   }
   const agendados = volumesAgendados();
@@ -1546,6 +1924,8 @@ async function confirmarAgendamento() {
       placaCavalo, placaCarreta: placaCarreta || null, placaCarreta2: placaCarreta2 || null,
       motorista, motoristaCpf,
       clientes,
+      // Mesmos códigos em lista: a regra de leitura confere cada posição contra as filiais do usuário cliente
+      clientesLista: Object.keys(clientes),
       pedidos: pedidosAgendamento,
       compartimentos: compartimentos.map((c) => {
         const [nr, codigo] = c.ref.split('|');
@@ -1603,14 +1983,19 @@ function resetarFormularioAgendamento() {
 /* ── LISTA DE AGENDAMENTOS ── */
 function renderListaAgendamentos() {
   const lista = objList(STATE.agendamentos).sort((a, b) => (b.dataCarregamento || '').localeCompare(a.dataCarregamento || '') || (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-  const filtroBase = document.getElementById('filtroBase')?.value || '';
-  const filtroStatus = document.getElementById('filtroStatus')?.value || '';
+  // Clientes presentes nos agendamentos (para o filtro)
+  const clientesAg = new Map();
+  for (const a of lista) for (const [cd, c] of Object.entries(a.clientes || {})) clientesAg.set(cd, c.nome || cd);
+  const opcoesClientes = [...clientesAg].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR')).map(([cd, nome]) => [cd, nome, cd]);
+  definirOpcoesFiltro('agCliente', opcoesClientes);
+  document.getElementById('ms-agCliente')?.classList.toggle('hidden', opcoesClientes.length < 2);
   const filtroDe = document.getElementById('filtroDataDe')?.value || '';
   const filtroAte = document.getElementById('filtroDataAte')?.value || '';
 
   const filtrada = lista.filter((a) =>
-    (!filtroBase || a.baseId === filtroBase) &&
-    (!filtroStatus || a.status === filtroStatus) &&
+    (!FILTROS.agCliente?.sel.size || Object.keys(a.clientes || {}).some((cd) => FILTROS.agCliente.sel.has(cd))) &&
+    passaFiltro('agBase', a.baseId) &&
+    passaFiltro('agStatus', a.status) &&
     (!filtroDe || a.dataCarregamento >= filtroDe) &&
     (!filtroAte || a.dataCarregamento <= filtroAte));
 
@@ -2080,7 +2465,7 @@ function renderAdminUsuarios() {
     <div class="login-admin-user">
       <div>
         <strong>${esc(u.nome)} ${u.admin ? '<span class="badge badge-accent">admin</span>' : ''} ${u.robo ? '<span class="badge badge-muted" title="Usuário do script que publica os pedidos do datalake">robô datalake</span>' : ''} ${u.trocarSenha ? '<span class="badge badge-warn">troca de senha pendente</span>' : ''}</strong>
-        <span>${esc(u.email)} · ${u.tipo === 'cliente' ? 'Cliente ' + esc(u.clienteCodigo || '') : 'Equipe interna'}</span>
+        <span>${esc(u.email)} · ${TIPOS_EXTERNOS.includes(u.tipo) ? textoClientesPerfil(u) : 'Equipe interna'}</span>
       </div>
       <div class="list-item-actions">
         <button class="btn btn-secondary btn-sm" onclick="editarUsuario(${jsArg(u.id)})">Editar</button>
@@ -2089,23 +2474,56 @@ function renderAdminUsuarios() {
       </div>
     </div>`).join('') : '<div class="chip-empty">Nenhum usuário cadastrado ainda.</div>';
 }
-function renderSelectClienteAdmin() {
-  const sel = document.getElementById('admin-new-cliente-codigo');
-  const atual = sel.value;
-  const ativos = objList(STATE.clientes).filter((c) => c.ativo !== false).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
-  sel.innerHTML = '<option value="">Selecione o cliente…</option>' +
-    ativos.map((c) => `<option value="${esc(c.codigo)}">${esc(c.codigo)} — ${esc(c.nome)}${c.cidade ? ' · ' + esc(c.cidade) : ''}</option>`).join('');
-  sel.value = atual;
+// Códigos de cliente de um perfil: clientes/<código> = true (vários) + clienteCodigo (perfis antigos, só um)
+function codigosClientePerfil(perfil) {
+  return [...new Set([perfil?.clienteCodigo, ...Object.keys(perfil?.clientes || {})].filter(Boolean))];
+}
+function textoClientesPerfil(perfil) {
+  const cods = codigosClientePerfil(perfil);
+  const nomes = cods.map((cd) => `${cd} — ${STATE.clientes[cd]?.nome || '?'}`).join('\n');
+  const resumo = cods.length > 3 ? cods.slice(0, 3).join(', ') + ` +${cods.length - 3}` : cods.join(', ');
+  if (perfil.tipo === 'transportadora') {
+    return `<span title="${esc(nomes)}">Transportadora · clientes ${esc(resumo)}${cods.length > 1 ? ` (${cods.length})` : ''}</span>`;
+  }
+  return `<span title="${esc(nomes)}">Cliente ${esc(resumo)}${cods.length > 1 ? ` (${cods.length} filiais)` : ''}</span>`;
+}
+// Seleção de clientes do formulário de usuário (busca + caixas de marcação; marcados ficam no topo)
+function renderSelectClienteAdmin() { renderListaClientesAdmin(); }
+function normalizarBusca(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function renderListaClientesAdmin() {
+  const sel = STATE.adminClientesSel;
+  const termo = normalizarBusca(document.getElementById('admin-cli-busca').value.trim());
+  const todos = objList(STATE.clientes)
+    .filter((c) => c.ativo !== false || sel.has(c.id))
+    .sort((a, b) => (sel.has(b.id) - sel.has(a.id)) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  const achados = termo ? todos.filter((c) => normalizarBusca(`${c.id} ${c.nome} ${c.cidade || ''}`).includes(termo)) : todos;
+  const LIMITE = 80; // a lista completa tem ~200 clientes; a busca encontra o resto
+  document.getElementById('admin-cli-lista').innerHTML = achados.slice(0, LIMITE).map((c) => `
+    <label class="cli-multi-opt"><input type="checkbox" ${sel.has(c.id) ? 'checked' : ''} onchange="marcarClienteAdmin(${jsArg(c.id)}, this.checked)">
+      <span>${esc(c.nome)}<small>${[esc(c.id), esc(c.cidade)].filter(Boolean).join(' · ')}</small></span></label>`).join('') +
+    (achados.length > LIMITE ? `<div class="cli-multi-vazio">Mais ${achados.length - LIMITE} clientes: refine a busca.</div>` : '') +
+    (!achados.length ? '<div class="cli-multi-vazio">Nenhum cliente encontrado. Cadastre em Cadastros → Clientes.</div>' : '');
+  document.getElementById('admin-cli-sel').innerHTML = [...sel].map((cd) =>
+    `<span class="chip active" title="${esc(STATE.clientes[cd]?.nome || '')}">${esc(cd)} · ${esc(STATE.clientes[cd]?.nome || '?')}<button type="button" onclick="marcarClienteAdmin(${jsArg(cd)}, false)" title="Tirar">✕</button></span>`).join('');
+  document.getElementById('admin-cli-contagem').textContent = sel.size ? `${sel.size} selecionado${sel.size > 1 ? 's' : ''}` : 'nenhum selecionado';
+}
+function marcarClienteAdmin(codigo, marcado) {
+  if (marcado) STATE.adminClientesSel.add(codigo); else STATE.adminClientesSel.delete(codigo);
+  renderListaClientesAdmin();
 }
 function onAdminTipoChange() {
-  const cliente = document.getElementById('admin-new-tipo').value === 'cliente';
-  document.getElementById('admin-new-cliente-wrap').style.display = cliente ? '' : 'none';
-  document.getElementById('admin-new-admin-wrap').style.display = cliente ? 'none' : '';
-  if (cliente) document.getElementById('admin-new-admin').checked = false; // cliente não pode ser admin (regra do banco)
+  const tipo = document.getElementById('admin-new-tipo').value;
+  const externo = TIPOS_EXTERNOS.includes(tipo);
+  document.getElementById('admin-new-cliente-wrap').style.display = externo ? '' : 'none';
+  document.getElementById('admin-new-admin-wrap').style.display = externo ? 'none' : '';
+  document.getElementById('admin-cli-titulo').textContent = tipo === 'transportadora' ? 'Clientes atendidos por esta transportadora' : 'Clientes (filiais) deste usuário';
+  if (externo) document.getElementById('admin-new-admin').checked = false; // cliente/transportadora não pode ser admin (regra do banco)
 }
 function limparFormUsuario() {
   document.getElementById('adminFormTitulo').textContent = 'Adicionar novo usuário';
-  for (const id of ['admin-new-nome', 'admin-new-email', 'admin-new-senha', 'admin-new-uid', 'admin-new-cliente-codigo']) document.getElementById(id).value = '';
+  for (const id of ['admin-new-nome', 'admin-new-email', 'admin-new-senha', 'admin-new-uid', 'admin-cli-busca']) document.getElementById(id).value = '';
+  STATE.adminClientesSel = new Set();
+  renderListaClientesAdmin();
   document.getElementById('admin-new-uid').readOnly = false;
   document.getElementById('admin-new-email').readOnly = false;
   document.getElementById('admin-new-senha').disabled = false;
@@ -2126,9 +2544,10 @@ function editarUsuario(uid) {
   document.getElementById('admin-new-email').value = p.email || '';
   document.getElementById('admin-new-email').readOnly = true; // e-mail de login não muda por aqui
   document.getElementById('admin-new-senha').disabled = true;
-  document.getElementById('admin-new-tipo').value = p.tipo === 'cliente' ? 'cliente' : 'interno';
+  document.getElementById('admin-new-tipo').value = TIPOS_EXTERNOS.includes(p.tipo) ? p.tipo : 'interno';
   onAdminTipoChange();
-  document.getElementById('admin-new-cliente-codigo').value = p.clienteCodigo || '';
+  STATE.adminClientesSel = new Set(codigosClientePerfil(p));
+  renderListaClientesAdmin();
   document.getElementById('admin-new-admin').checked = p.admin === true;
   document.getElementById('admin-new-trocar').checked = p.trocarSenha === true;
   document.getElementById('admin-new-nome').focus();
@@ -2140,7 +2559,7 @@ async function adminSalvarUsuario() {
   const email = document.getElementById('admin-new-email').value.trim().toLowerCase();
   const senha = document.getElementById('admin-new-senha').value;
   const tipo = document.getElementById('admin-new-tipo').value;
-  const clienteCodigo = document.getElementById('admin-new-cliente-codigo').value;
+  const codigosCliente = [...STATE.adminClientesSel];
   const admin = tipo === 'interno' && document.getElementById('admin-new-admin').checked;
   const trocarSenha = document.getElementById('admin-new-trocar').checked;
   const info = document.getElementById('adminInfo');
@@ -2148,7 +2567,7 @@ async function adminSalvarUsuario() {
   info.textContent = '';
   if (!nome || !email) { info.textContent = 'Preencha nome e e-mail.'; return; }
   if (!uid && senha.length < 6) { info.textContent = 'A senha inicial precisa ter pelo menos 6 caracteres.'; return; }
-  if (tipo === 'cliente' && !clienteCodigo) { info.textContent = 'Escolha o cliente deste usuário (cadastre antes em Cadastros → Clientes).'; return; }
+  if (TIPOS_EXTERNOS.includes(tipo) && !codigosCliente.length) { info.textContent = 'Marque ao menos um cliente deste usuário (cadastre antes em Cadastros → Clientes).'; return; }
   if (uid === STATE.usuario.uid && !admin) { info.textContent = 'Você não pode tirar o próprio acesso de admin.'; return; }
 
   btn.disabled = true;
@@ -2169,7 +2588,14 @@ async function adminSalvarUsuario() {
     }
     // Parte do perfil já gravado: o set() substitui tudo, e campos fora do formulário (ex.: robo) precisam ficar
     const perfil = { ...(STATE.perfis[uid] || {}), nome, email, tipo, admin, atualizadoEm: new Date().toISOString() };
-    if (tipo === 'cliente') perfil.clienteCodigo = clienteCodigo; else delete perfil.clienteCodigo;
+    if (TIPOS_EXTERNOS.includes(tipo)) {
+      perfil.clientes = Object.fromEntries(codigosCliente.map((cd) => [cd, true]));
+      // clienteCodigo = principal (mantém o anterior se continuar marcado); as regras antigas e o índice por cliente usam ele
+      perfil.clienteCodigo = codigosCliente.includes(perfil.clienteCodigo) ? perfil.clienteCodigo : codigosCliente[0];
+    } else {
+      delete perfil.clienteCodigo;
+      delete perfil.clientes;
+    }
     if (trocarSenha) perfil.trocarSenha = true; else delete perfil.trocarSenha;
     await window._fb.salvarPerfil(uid, perfil);
     toast(`Usuário ${nome} salvo.`, 'success');
@@ -2281,7 +2707,7 @@ async function trocarSenha() {
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction, query, orderByValue, startAt }
+  import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction, query, orderByValue, startAt, orderByChild, equalTo }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
     sendPasswordResetEmail, createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
@@ -2345,6 +2771,17 @@ async function trocarSenha() {
     // Cliente só lê pedido do próprio código — o de outro cliente (ou inexistente) volta como permissão negada
     carregarPedido: async (nr) => (await get(ref(db, 'pedidosSap/' + nr))).val(),
     listarPedidos: async () => (await get(ref(db, 'pedidosSap'))).val() || {},
+    // Aba Pedidos: interno ouve a carteira inteira; cliente faz uma consulta por filial
+    // (a regra de pedidosSap só libera consulta por clienteCodigo de uma filial do próprio usuário)
+    ouvirPedidosTodos: (cb, onErro) => ouvir('pedidosSap', cb, onErro),
+    ouvirPedidosCliente: (codigos, cb, onErro) => {
+      const porCodigo = {};
+      const paradas = codigos.map((codigo) => onValue(query(ref(db, 'pedidosSap'), orderByChild('clienteCodigo'), equalTo(codigo)), (snap) => {
+        porCodigo[codigo] = snap.val() || {};
+        cb(Object.assign({}, ...Object.values(porCodigo)));
+      }, onErro));
+      return () => paradas.forEach((parar) => parar());
+    },
 
     /* Slots: baseSlots/<base>/<id> = horários cadastrados; slotsOcupados/<base>/<data>/<HH:MM> = reservas */
     ouvirBaseSlots: (baseId, cb, onErro) => ouvir('baseSlots/' + baseId, cb, onErro),
@@ -2390,27 +2827,35 @@ async function trocarSenha() {
       return update(ref(db), updates);
     },
     ouvirAgendamentosTodos: (cb, onErro) => ouvir('agendamentos', cb, onErro),
-    // Cliente não lê agendamentos/ inteiro: segue o índice agendamentosPorCliente/<código> (a partir de `desde`)
-    // e abre um listener por agendamento — a regra libera cada agendamentos/<id> que está no índice dele.
-    ouvirAgendamentosCliente: (codigo, desde, cb, onErro) => {
+    // Transportadora: só os agendamentos que ela criou (a regra libera apenas esta consulta por criadoPorUid = o próprio uid)
+    ouvirAgendamentosCriadosPor: (uid, cb, onErro) =>
+      onValue(query(ref(db, 'agendamentos'), orderByChild('criadoPorUid'), equalTo(uid)), (snap) => cb(snap.val() || {}), onErro),
+    // Cliente não lê agendamentos/ inteiro: segue o índice agendamentosPorCliente/<código> de cada filial dele
+    // (a partir de `desde`) e abre um listener por agendamento — a regra libera os agendamentos das filiais dele.
+    ouvirAgendamentosCliente: (codigos, desde, cb, onErro) => {
       const dados = {};
       const porId = {};
+      const idsPorCodigo = {};
       const emitir = () => cb({ ...dados });
-      const pararIndice = onValue(query(ref(db, 'agendamentosPorCliente/' + codigo), orderByValue(), startAt(desde)), (snap) => {
-        const ids = snap.val() || {};
+      const sincronizar = () => {
+        const ids = new Set(Object.values(idsPorCodigo).flatMap((m) => Object.keys(m)));
         for (const id of Object.keys(porId)) {
-          if (!(id in ids)) { porId[id](); delete porId[id]; delete dados[id]; }
+          if (!ids.has(id)) { porId[id](); delete porId[id]; delete dados[id]; }
         }
-        for (const id of Object.keys(ids)) {
+        for (const id of ids) {
           if (porId[id]) continue;
           porId[id] = onValue(ref(db, 'agendamentos/' + id), (s) => {
             if (s.exists()) dados[id] = s.val(); else delete dados[id];
             emitir();
-          }, onErro);
+          }, (e) => { console.warn('agendamento sem acesso', id, e); delete dados[id]; emitir(); }); // um sem acesso não derruba a lista
         }
         emitir();
-      }, onErro);
-      return () => { pararIndice(); Object.values(porId).forEach((parar) => parar()); };
+      };
+      const paradas = codigos.map((codigo) => onValue(query(ref(db, 'agendamentosPorCliente/' + codigo), orderByValue(), startAt(desde)), (snap) => {
+        idsPorCodigo[codigo] = snap.val() || {};
+        sincronizar();
+      }, onErro));
+      return () => { paradas.forEach((parar) => parar()); Object.values(porId).forEach((parar) => parar()); };
     },
   };
 
