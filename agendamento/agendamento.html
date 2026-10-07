@@ -1,0 +1,2157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexta Logística — Agendamento</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Visual igual ao portal de Solicitações de Disponibilidade (testes/portal_solicitacao_adicional_disponibilidade):
+   mesma paleta clara/escura, IBM Plex, barra azul-marinho no topo, abas sublinhadas e tabelas com linhas finas */
+:root {
+  color-scheme: light;
+  --bg: #F2F4F3;
+  --surface: #FCFDFC;
+  --panel: #FCFDFC;        /* fundo dos campos */
+  --panel-soft: #E9EEEF;   /* fundo secundário */
+  --border: #D5DCDF;
+  --border-dk: #B4C0C6;
+  --text: #10283A;
+  --text-dim: #46586A;
+  --text-muted: #6E7F8C;
+  --accent: #1F6F95;
+  --accent-ink: #F5F8F9;
+  --accent-dim: #DDEBF2;
+  --accent2: #9A6212; --accent2-dim: #F7EBD6;
+  --success: #2B7352; --success-dim: #DDEFE5;
+  --danger: #B8412F;  --danger-dim: #F7E4E0;
+  --navy: #10283A; --navy-ink: #F2F5F6;
+  --scrim: rgba(8, 20, 30, .45);
+  --shadow-lg: 0 12px 40px rgba(16, 40, 58, .18);
+  --font: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0D1820; --surface: #13222D; --panel: #13222D; --panel-soft: #1A2D3A; --border: #2A3F4D; --border-dk: #3B5566;
+    --text: #E6EDF1; --text-dim: #B3C2CC; --text-muted: #8599A6;
+    --accent: #5BA8CF; --accent-ink: #0D1820; --accent-dim: #16303F;
+    --accent2: #E3B266; --accent2-dim: #362A17; --success: #7CCBA2; --success-dim: #173228; --danger: #EE8A78; --danger-dim: #3A1F1B;
+    --navy: #1D3A50; --navy-ink: #E6EDF1; --scrim: rgba(0, 0, 0, .55); --shadow-lg: 0 12px 40px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0D1820; --surface: #13222D; --panel: #13222D; --panel-soft: #1A2D3A; --border: #2A3F4D; --border-dk: #3B5566;
+  --text: #E6EDF1; --text-dim: #B3C2CC; --text-muted: #8599A6;
+  --accent: #5BA8CF; --accent-ink: #0D1820; --accent-dim: #16303F;
+  --accent2: #E3B266; --accent2-dim: #362A17; --success: #7CCBA2; --success-dim: #173228; --danger: #EE8A78; --danger-dim: #3A1F1B;
+  --navy: #1D3A50; --navy-ink: #E6EDF1; --scrim: rgba(0, 0, 0, .55); --shadow-lg: 0 12px 40px rgba(0, 0, 0, .5);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.45; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── TOPO ── */
+.topbar { background: var(--navy); color: var(--navy-ink); }
+.topbar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 24px; }
+.brand { display: flex; align-items: center; gap: 18px; margin-right: auto; min-width: 0; }
+.brand-txt { padding-left: 18px; border-left: 1px solid rgba(255,255,255,.2); font-size: 20px; font-weight: 600; letter-spacing: .2px; }
+.nexta-logo-svg { height: 26px; width: auto; display: block; flex-shrink: 0; color: #EEFE7A; }
+.sessao { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; }
+.quem { display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; text-align: right; background: none; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; color: var(--navy-ink); }
+.quem:hover { background: rgba(255,255,255,.08); }
+.quem small { opacity: .75; font-size: 12px; }
+.quem .nome::after { content: " ▾"; font-size: 11px; opacity: .7; }
+.topbar .btn-primary { background: #5BA8CF; color: #0D1820; }
+.topbar .btn-secondary { background: transparent; border-color: rgba(255,255,255,.3); color: var(--navy-ink); }
+.topbar .btn-secondary:hover { background: rgba(255,255,255,.08); }
+@media (max-width: 640px) {
+  .topbar-in { padding: 12px 16px; }
+  .brand { flex-wrap: wrap; gap: 8px; }
+  .brand-txt { padding-left: 0; border-left: none; font-size: 17px; }
+}
+
+/* ── ABAS ── */
+.tabs-bar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); width: calc(100% - 48px); max-width: 1632px; margin: 20px auto 0; }
+.tab { border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 14px; font-weight: 600; font-size: 15px; color: var(--text-muted); cursor: pointer; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── CONTEÚDO ── */
+.main { width: 100%; max-width: 1680px; margin: 0 auto; padding: 0 24px 48px; }
+#tab-slots, #tab-cadastros { max-width: 1180px; } /* formulários não esticam na tela larga */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
+@media (max-width: 640px) { .main { padding-inline: 16px; } .tabs-bar { width: calc(100% - 32px); } }
+
+.section-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin: 24px 0 16px; }
+.section-title { font-size: 18px; font-weight: 600; }
+.section-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── CARTÕES / FORMULÁRIOS ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.card-title { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; margin-bottom: 12px; }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.form-row.tres-colunas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .form-row.tres-colunas { grid-template-columns: 1fr; } }
+.form-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
+.form-field label .lbl-opc { color: var(--text-muted); font-weight: 400; }
+.form-field input, .form-field select, .form-field textarea {
+  width: 100%; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+  font-size: 15px; padding: 9px 11px; outline: none;
+}
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--accent); }
+.form-field input:disabled, .form-field select:disabled { background: var(--panel-soft); color: var(--text-muted); cursor: not-allowed; }
+/* Valor só para leitura com a mesma altura de um campo */
+.campo-fixo { background: var(--panel-soft); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-size: 15px; color: var(--text); min-height: 42px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.form-hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.form-hint.erro { color: var(--danger); }
+.form-hint.aviso { color: var(--accent2); }
+.form-hint.ok { color: var(--success); }
+.texto-perigo { color: var(--danger); }
+
+/* ── BOTÕES ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--panel-soft); color: var(--text); white-space: nowrap; }
+.btn:hover { filter: brightness(.97); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-secondary { background: transparent; border-color: var(--border); color: var(--text); }
+.btn-secondary:hover { background: var(--panel-soft); filter: none; }
+.btn-danger { background: var(--danger); color: #FFF7F5; }
+.btn-sm { padding: 5px 10px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── CHIPS / SELOS ── */
+.chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 600; cursor: pointer; user-select: none; }
+.chip:hover { background: var(--panel-soft); }
+.chip.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.chip-empty { font-size: 13px; color: var(--text-muted); font-style: italic; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.badge-accent { background: var(--accent-dim); color: var(--accent); }
+.badge-warn { background: var(--accent2-dim); color: var(--accent2); }
+.badge-success { background: var(--success-dim); color: var(--success); }
+.badge-danger { background: var(--danger-dim); color: var(--danger); }
+.badge-muted { background: var(--panel-soft); color: var(--text-dim); }
+
+/* ── HORÁRIOS (SLOTS) ── */
+.slot-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.slot-btn { padding: 8px 14px; border-radius: 8px; font-family: var(--mono); font-size: 14px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.slot-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.slot-btn.selecionado { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.slot-btn:disabled, .slot-btn.ocupado { background: var(--panel-soft); color: var(--text-muted); text-decoration: line-through; cursor: not-allowed; opacity: .7; }
+.slot-btn.ocupado { cursor: help; }
+
+/* ── COMPARTIMENTOS ── */
+.compart-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.compart-num { font-weight: 600; font-size: 13px; color: var(--text-dim); width: 88px; flex-shrink: 0; }
+.compart-row select, .compart-row input { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; padding: 8px 10px; outline: none; }
+.compart-row select { flex: 1; min-width: 0; }
+.compart-row select:focus, .compart-row input:focus { border-color: var(--accent); }
+.compart-volume { width: 130px; flex: 0 0 130px; font-family: var(--mono); }
+.compart-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 4px 8px; flex-shrink: 0; }
+.compart-remove:hover { color: var(--danger); }
+
+/* ── PEDIDOS (etapa 1) ── */
+.pedido-busca { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
+.pedido-resumo { margin-top: 18px; }
+.resumo-base { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; }
+.tabela-itens { border: 1px solid var(--border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.tabela-itens th { position: static; padding: 8px 12px; }
+.tabela-itens td { padding: 8px 12px; }
+.tabela-itens tbody tr { cursor: default; }
+.tabela-itens tbody tr:hover td { background: transparent; }
+
+/* ── TABELA ── */
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.table-toolbar { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.table-title { font-size: 16px; font-weight: 600; }
+.table-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.table-filters select, .table-filters input { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; color: var(--text); font-size: 14px; padding: 8px 10px; outline: none; }
+.table-scroll { overflow-x: auto; max-height: 62vh; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { background: var(--surface); text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+td { padding: 8px 12px; font-size: 14px; line-height: 1.35; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+td.quebra { white-space: normal; min-width: 110px; } /* texto longo (pedidos, cliente, base) quebra linha em vez de esticar a tabela */
+th.num, td.num { text-align: right; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--panel-soft); }
+.empty-row td { text-align: center; color: var(--text-muted); padding: 40px 16px; cursor: default; }
+.empty-row:hover td { background: transparent; }
+
+/* ── INDICADORES ── */
+.stats-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; }
+.stat-label { font-size: 13px; color: var(--text-dim); }
+.stat-val { font-family: var(--mono); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ── SUBABAS (Cadastros) ── */
+.subtabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.subtab { border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 12px; font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer; }
+.subtab:hover { color: var(--text); }
+.subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.subtab-content { display: none; }
+.subtab-content.active { display: block; }
+
+.list-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 8px; flex-wrap: wrap; }
+.list-item strong { font-size: 14px; font-weight: 600; }
+.list-item .meta { font-size: 13px; color: var(--text-muted); }
+.list-item-actions { display: flex; gap: 6px; align-items: center; }
+
+/* ── JANELAS ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: var(--scrim); z-index: 400; align-items: center; justify-content: center; padding: 16px; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 480px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+.info-row { display: flex; gap: 20px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.info-item { flex: 1; min-width: 110px; }
+.info-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); margin-bottom: 2px; }
+.info-val { font-size: 15px; }
+.protocolo-box { text-align: center; padding: 18px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 10px; margin-bottom: 18px; }
+.protocolo-box .num { font-family: var(--mono); font-size: 28px; font-weight: 500; color: var(--accent); }
+.protocolo-box .lbl { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .6px; margin-top: 4px; }
+
+/* ── NOVO AGENDAMENTO (assistente em etapas) ── */
+.modal.wizard { width: 1200px; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.wizard-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
+.wizard-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wizard-topo .modal-title { margin-bottom: 0; }
+/* Etapas no formato da linha do tempo do portal de solicitações: barra no topo (verde = feita, azul = atual) */
+.wizard-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.wizard-step { display: flex; align-items: baseline; gap: 6px; min-width: 0; background: none; border: none; border-top: 4px solid var(--border); padding: 8px 0 0; text-align: left; font-size: 13.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
+.wizard-step:hover { color: var(--text-dim); }
+.wizard-step .n { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.wizard-step .rot { overflow: hidden; text-overflow: ellipsis; }
+.wizard-step.atual { border-top-color: var(--accent); color: var(--accent); }
+.wizard-step.feito { border-top-color: var(--success); color: var(--text-dim); }
+.wizard-step.feito .n { color: var(--success); }
+.wizard-body { padding: 20px 24px; overflow-y: auto; flex: 1; min-height: 280px; }
+.wizard-foot { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wizard-erro { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--danger-dim); color: var(--danger); font-size: 14px; }
+.wizard-total { margin-top: 12px; font-size: 14px; color: var(--text-dim); }
+.wizard-total strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
+.link-alterar { background: none; border: none; padding: 0; margin-left: 6px; color: var(--accent); font-size: 12px; text-transform: none; letter-spacing: 0; text-decoration: underline; cursor: pointer; }
+@media (max-width: 640px) {
+  .wizard-step:not(.atual) .rot { display: none; }
+  .wizard-head, .wizard-body, .wizard-foot { padding-left: 16px; padding-right: 16px; }
+}
+
+/* ── LOGIN (cartão no meio da tela, abaixo do topo) ── */
+#login-overlay { min-height: calc(100vh - 90px); display: grid; place-items: center; padding: 24px 16px; }
+.login-card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg); }
+.login-title { font-size: 20px; font-weight: 600; }
+.login-desc { font-size: 14px; color: var(--text-dim); }
+#login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
+.login-field input { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-size: 15px; color: var(--text); outline: none; }
+.login-field input:focus { border-color: var(--accent); }
+.login-btn { width: 100%; border: 1px solid transparent; border-radius: 8px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.login-btn:hover { filter: brightness(.97); }
+.login-btn:disabled { opacity: .5; cursor: not-allowed; }
+.login-error { color: var(--danger); font-size: 13px; display: none; margin-top: 10px; }
+.login-error.visible { display: block; }
+.login-link { background: none; border: none; padding: 0; color: var(--accent); font-size: 14px; text-align: left; cursor: pointer; }
+#modalTrocarSenha { z-index: 10000; } /* troca obrigatória da senha inicial abre por cima de tudo */
+
+/* ── USUÁRIOS (admin) ── */
+.login-admin-modal { display: none; position: fixed; inset: 0; z-index: 9998; background: var(--scrim); align-items: center; justify-content: center; padding: 20px; }
+.login-admin-modal.open { display: flex; }
+.login-admin-panel { width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 24px; }
+.login-admin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.login-admin-title { font-size: 18px; font-weight: 600; }
+.login-admin-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 20px; line-height: 1; padding: 4px 8px; }
+.login-admin-subtitle { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; margin-bottom: 10px; }
+.login-admin-users { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
+.login-admin-user { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; }
+.login-admin-user + .login-admin-user { border-top: 1px solid var(--border); }
+.login-admin-user strong { display: block; font-size: 14px; font-weight: 600; }
+.login-admin-user span { font-size: 13px; color: var(--text-muted); }
+.login-admin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.login-admin-row input:not([type=checkbox]), .login-admin-row select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; outline: none; }
+.login-admin-row input:focus, .login-admin-row select:focus { border-color: var(--accent); }
+.login-admin-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.login-admin-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); white-space: nowrap; cursor: pointer; }
+.login-admin-check input { accent-color: var(--accent); }
+.login-admin-info { min-height: 18px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+.login-admin-separator { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+.login-admin-box { background: var(--panel-soft); border-radius: 10px; padding: 16px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+/* ── AVISOS ── */
+#toastContainer { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100% - 32px); }
+.toast { background: var(--navy); color: var(--navy-ink); padding: 12px 18px; border-radius: 10px; box-shadow: var(--shadow-lg); font-size: 14px; animation: toast-in .2s ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.toast-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+.hidden { display: none !important; }
+.text-muted { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- MODAL ADMIN: Usuários -->
+<div class="login-admin-modal" id="adminModal">
+  <div class="login-admin-panel">
+    <div class="login-admin-head">
+      <div class="login-admin-title">Gerenciar Usuários</div>
+      <button class="login-admin-close" onclick="fecharModal('adminModal')" title="Fechar">✕</button>
+    </div>
+    <div class="login-admin-subtitle">Usuários cadastrados</div>
+    <div class="login-admin-users" id="adminUsersList"></div>
+
+    <hr class="login-admin-separator">
+    <div class="login-admin-subtitle" id="adminFormTitulo">Adicionar novo usuário</div>
+    <div class="login-admin-box" style="margin-bottom:0">
+      <div class="login-admin-row">
+        <input id="admin-new-nome" placeholder="Nome completo" autocomplete="off">
+        <input id="admin-new-email" type="email" placeholder="E-mail de login" autocomplete="off">
+      </div>
+      <div class="login-admin-row">
+        <input id="admin-new-senha" type="text" placeholder="Senha inicial (mín. 6 caracteres)" autocomplete="off">
+        <input id="admin-new-uid" placeholder="UID (só se o login já existir)" autocomplete="off" style="font-family:monospace;font-size:11px">
+      </div>
+      <div class="login-admin-row">
+        <select id="admin-new-tipo" onchange="onAdminTipoChange()">
+          <option value="interno">Equipe interna</option>
+          <option value="cliente">Cliente</option>
+        </select>
+        <div id="admin-new-cliente-wrap" style="display:none">
+          <select id="admin-new-cliente-codigo"></select>
+        </div>
+        <label class="login-admin-check" id="admin-new-admin-wrap">
+          <input id="admin-new-admin" type="checkbox"> Administrador
+        </label>
+      </div>
+      <label class="login-admin-check">
+        <input id="admin-new-trocar" type="checkbox" checked> Exigir troca de senha no próximo login
+      </label>
+      <div class="form-hint" style="margin-top:8px">Sem UID, o portal cria o login no Firebase com a senha inicial. Passe a senha para a pessoa: no primeiro acesso ela define a própria.</div>
+    </div>
+    <div class="login-admin-actions">
+      <button class="btn btn-primary" id="btnSalvarUsuario" onclick="adminSalvarUsuario()">Salvar usuário</button>
+      <button class="btn btn-secondary" onclick="limparFormUsuario()">Limpar</button>
+    </div>
+    <div class="login-admin-info" id="adminInfo"></div>
+  </div>
+</div>
+
+<!-- MODAL: Trocar Senha -->
+<div class="modal-overlay" id="modalTrocarSenha">
+  <div class="modal" style="width:420px">
+    <div class="modal-title" id="trocaSenhaTitulo">Trocar Senha</div>
+    <div class="modal-sub" id="trocaSenhaSub">Informe sua senha atual e a nova senha.</div>
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Senha atual</label>
+      <input id="senha-atual" type="password" autocomplete="current-password">
+    </div>
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Nova senha</label>
+      <input id="senha-nova" type="password" autocomplete="new-password">
+    </div>
+    <div class="form-field">
+      <label>Confirmar nova senha</label>
+      <input id="senha-nova-confirma" type="password" autocomplete="new-password">
+    </div>
+    <div class="login-error" id="senha-erro"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelarTrocaSenha" onclick="cancelarTrocaSenha()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarSenha" onclick="trocarSenha()">Salvar nova senha</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Confirmação de Agendamento -->
+<div class="modal-overlay" id="modalConfirmacao">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">Agendamento confirmado</div>
+    <div class="modal-sub">Guarde o protocolo para referência no portão da base.</div>
+    <div class="protocolo-box">
+      <div class="num" id="confirmacaoProtocolo">AG-000000</div>
+      <div class="lbl">Protocolo de Agendamento</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" style="width:100%" onclick="fecharModal('modalConfirmacao')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Novo Agendamento (assistente em 5 etapas) -->
+<div class="modal-overlay" id="modalNovo">
+  <div class="modal wizard" onkeydown="onTeclaWizard(event)">
+    <div class="wizard-head">
+      <div class="wizard-topo">
+        <div class="modal-title">Novo Agendamento</div>
+        <button class="login-admin-close" onclick="fecharNovoAgendamento()" title="Fechar">✕</button>
+      </div>
+      <div class="wizard-steps" id="wizardSteps"></div>
+    </div>
+
+    <div class="wizard-body">
+      <div class="wizard-etapa" data-etapa="1">
+        <div class="card-title">Pedidos do carregamento</div>
+        <div class="form-hint" style="margin:-8px 0 14px">Digite o número de cada pedido que vai neste carregamento e clique em Adicionar.</div>
+        <div class="pedido-busca">
+          <div class="form-field" style="flex:1;max-width:280px">
+            <label>Nº do Pedido</label>
+            <input type="text" id="f-pedido-sap" placeholder="ex: 877008" autocomplete="off" inputmode="numeric"
+              onkeydown="if(event.key==='Enter')adicionarPedido()">
+          </div>
+          <button class="btn btn-primary" id="btnBuscarPedido" onclick="adicionarPedido()">Adicionar pedido</button>
+        </div>
+        <div class="form-hint" id="pedidoStatus"></div>
+        <div class="pedido-resumo hidden" id="pedidoResumo"></div>
+      </div>
+
+      <div class="wizard-etapa hidden" data-etapa="2">
+        <div class="card-title">Data e horário</div>
+        <div class="form-row tres-colunas">
+          <div class="form-field">
+            <label>Base de Carregamento</label>
+            <div class="campo-fixo" id="f-base-txt">—</div>
+          </div>
+          <div class="form-field">
+            <label>Data de Carregamento</label>
+            <!-- Vem da data de entrega do pedido (portal do revendedor); não é editável aqui -->
+            <input type="hidden" id="f-data">
+            <div class="campo-fixo" id="f-data-txt" title="Data de entrega definida no pedido pelo revendedor">—</div>
+          </div>
+          <div class="form-field hidden" id="campo-turno">
+            <label>Turno de Carregamento</label>
+            <select id="f-turno">
+              <option value="">Selecione o turno…</option>
+              <option value="madrugada">Madrugada</option>
+              <option value="manha">Manhã</option>
+              <option value="tarde">Tarde</option>
+              <option value="noite">Noite</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-field hidden" id="campo-slot">
+          <label>Horário Disponível</label>
+          <div class="slot-grid" id="slotGrid"><span class="chip-empty">Selecione a data de carregamento.</span></div>
+        </div>
+      </div>
+
+      <div class="wizard-etapa hidden" data-etapa="3">
+        <div class="card-title">Placas do veículo</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Placa do Cavalo</label>
+            <input type="text" id="f-placa-cavalo" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+          </div>
+          <div class="form-field">
+            <label>Placa da Carreta 1 <span class="lbl-opc">(opcional)</span></label>
+            <input type="text" id="f-placa-carreta" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+          </div>
+          <div class="form-field">
+            <label>Placa da Carreta 2 <span class="lbl-opc">(opcional)</span></label>
+            <input type="text" id="f-placa-carreta2" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+          </div>
+        </div>
+      </div>
+
+      <div class="wizard-etapa hidden" data-etapa="4">
+        <div class="card-title">Motorista</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Nome do Motorista</label>
+            <input type="text" id="f-motorista" placeholder="Nome completo">
+          </div>
+          <div class="form-field">
+            <label>CPF do Motorista</label>
+            <input type="text" id="f-motorista-cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" oninput="mascararCpf(this)">
+          </div>
+        </div>
+      </div>
+
+      <div class="wizard-etapa hidden" data-etapa="5">
+        <div class="card-title">Compartimentos</div>
+        <div id="wizardRevisao"></div>
+        <div id="compartimentosList"></div>
+        <button class="btn btn-secondary btn-sm" onclick="adicionarCompartimento()">+ Adicionar Compartimento</button>
+        <div class="wizard-total">Volume neste carregamento: <strong id="wizardVolumeTotal">0 L</strong></div>
+      </div>
+
+      <div class="wizard-erro hidden" id="wizardErro"></div>
+    </div>
+
+    <div class="wizard-foot">
+      <button class="btn btn-secondary" onclick="fecharNovoAgendamento()">Cancelar</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary hidden" id="btnWizardVoltar" onclick="voltarEtapa()">← Voltar</button>
+        <button class="btn btn-primary" id="btnWizardProximo" onclick="avancarEtapa()">Próximo →</button>
+        <button class="btn btn-primary hidden" id="btnConfirmarAgendamento" onclick="confirmarAgendamento()">Confirmar Agendamento</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Detalhe do Agendamento -->
+<div class="modal-overlay" id="modalDetalhe">
+  <div class="modal" style="width:680px" id="modalDetalheConteudo"></div>
+</div>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <svg class="nexta-logo-svg" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+      <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+    </svg>
+      <div class="brand-txt">Agendamento de Carregamento</div>
+    </div>
+    <div class="sessao" id="headerUser" style="display:none">
+      <button class="quem" id="btnTrocarSenha" type="button" onclick="abrirTrocaSenha()" title="Minha conta: trocar senha"><span class="nome" id="headerUserName">Usuário</span><small id="headerUserTipo"></small></button>
+      <button class="btn btn-secondary" id="btnAdmin" type="button" onclick="abrirAdminModal()" style="display:none">Usuários</button>
+      <button class="btn btn-primary" type="button" onclick="abrirNovoAgendamento()">+ Novo Agendamento</button>
+      <button class="btn btn-secondary" id="btnLogout" type="button" onclick="fazerLogout()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOGIN -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-title">Entrar</div>
+    <div class="login-desc" id="login-carregando">Verificando sessão…</div>
+    <div id="login-form" class="hidden">
+      <div class="login-field">
+        <label>E-mail</label>
+        <input id="login-usuario" type="email" placeholder="seu@email.com" autocomplete="username"
+          onkeydown="if(event.key==='Enter')document.getElementById('login-senha').focus()">
+      </div>
+      <div class="login-field">
+        <label>Senha</label>
+        <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')fazerLogin()">
+      </div>
+      <button class="login-btn" id="btnLogin" onclick="fazerLogin()">Entrar</button>
+      <button class="login-link" type="button" onclick="esqueciSenha()">Esqueci minha senha</button>
+    </div>
+    <div class="login-error" id="login-erro"></div>
+  </div>
+</div>
+
+
+<div class="tabs-bar">
+  <div class="tab active" data-tab="lista" onclick="switchTab('lista')">Agendamentos</div>
+  <div class="tab admin-only hidden" data-tab="slots" onclick="switchTab('slots')">Slots</div>
+  <div class="tab admin-only hidden" data-tab="cadastros" onclick="switchTab('cadastros')">Cadastros</div>
+</div>
+
+<div class="main main-larga">
+
+  <!-- TAB: LISTA DE AGENDAMENTOS -->
+  <div class="tab-content active" id="tab-lista">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Agendamentos</div>
+        <div class="section-sub" id="listaSub">Carregamentos agendados nas bases.</div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-val" id="statTotal">0</div></div>
+      <div class="stat-card"><div class="stat-label">Hoje</div><div class="stat-val" id="statHoje">0</div></div>
+      <div class="stat-card"><div class="stat-label">Próximos 7 dias</div><div class="stat-val" id="statSemana">0</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div class="table-title">Carregamentos</div>
+        <div class="table-filters">
+          <select id="filtroBase" onchange="renderListaAgendamentos()"><option value="">Todas as bases</option></select>
+          <select id="filtroStatus" onchange="renderListaAgendamentos()">
+            <option value="">Todos os status</option>
+            <option value="agendado">Agendado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+          <input type="date" id="filtroDataDe" onchange="renderListaAgendamentos()" title="De">
+          <input type="date" id="filtroDataAte" onchange="renderListaAgendamentos()" title="Até">
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Protocolo</th><th>Pedido</th><th>Data</th><th>Cliente</th><th>Base</th><th>Turno/Slot</th>
+              <th>Placa Cavalo</th><th>Motorista</th><th class="num">Volume</th><th>Status</th><th>Criado por</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyAgendamentos"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: SLOTS (admin) -->
+  <div class="tab-content" id="tab-slots">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Cadastro de Slots</div>
+        <div class="section-sub">Defina os horários disponíveis para cada base do tipo "Agendamento". A cada carregamento marcado, o horário fica indisponível naquele dia para os demais usuários.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="form-row" style="margin-bottom:0">
+        <div class="form-field">
+          <label>Base (tipo Agendamento)</label>
+          <select id="slots-base-select" onchange="onSlotsBaseChange()">
+            <option value="">Selecione…</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="slotsCadastroCard" style="display:none">
+      <div class="card-title">Horários cadastrados</div>
+      <div class="chip-group" id="slotsChips"></div>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-top:16px">
+        <div class="form-field" style="max-width:160px">
+          <label>Novo horário</label>
+          <input type="time" id="novoSlotHorario">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="adicionarSlotBase()">Adicionar Slot</button>
+      </div>
+    </div>
+    <div class="card" id="slotsOcupacaoCard" style="display:none">
+      <div class="card-title">Ver ocupação por data</div>
+      <div class="form-field" style="max-width:220px">
+        <label>Data</label>
+        <input type="date" id="slotsOcupacaoData" onchange="ouvirOcupacaoAdmin()">
+      </div>
+      <div class="slot-grid" id="slotsOcupacaoGrid" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- TAB: CADASTROS (admin) -->
+  <div class="tab-content" id="tab-cadastros">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Cadastros</div>
+        <div class="section-sub">Bases (ligadas aos pedidos do datalake por centro + depósito) e clientes.</div>
+      </div>
+    </div>
+    <div class="subtabs">
+      <div class="subtab active" data-sub="bases" onclick="switchSubtab('bases')">Bases</div>
+      <div class="subtab" data-sub="clientes" onclick="switchSubtab('clientes')">Clientes</div>
+    </div>
+
+    <div class="subtab-content active" id="sub-bases">
+      <div class="card">
+        <div class="card-title" id="baseFormTitulo">Nova Base</div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-field"><label>Nome Fantasia</label><input type="text" id="nb-nome" placeholder="ex: Nexta RBZ"></div>
+          <div class="form-field"><label>Centro</label><input type="text" id="nb-centro" placeholder="ex: 6016" autocomplete="off"></div>
+          <div class="form-field"><label>Depósito</label><input type="text" id="nb-deposito" placeholder="ex: 0003" autocomplete="off"></div>
+          <div class="form-field"><label>Tipo</label>
+            <select id="nb-tipo"><option value="fila">Fila (informa turno)</option><option value="agendamento">Agendamento (por slot)</option></select>
+          </div>
+        </div>
+        <div class="form-hint" style="margin-bottom:12px">Centro e depósito exatamente como vêm no pedido (com os zeros à esquerda, ex.: 0003). É por eles que o pedido digitado encontra a base.</div>
+        <button class="btn btn-primary btn-sm" id="btnSalvarBase" onclick="salvarBaseForm()">Adicionar Base</button>
+        <button class="btn btn-secondary btn-sm hidden" id="btnCancelarEdicaoBase" onclick="limparFormBase()">Cancelar edição</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Depósitos dos pedidos sem base</div>
+        <div class="form-hint">Combinações de centro + depósito que aparecem nos pedidos do datalake e ainda não têm base no portal. Pedidos delas não podem ser agendados.</div>
+        <div id="depositosSemBase" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="carregarDepositosSemBase()">Verificar pedidos</button></div>
+      </div>
+      <div id="listaBases"></div>
+    </div>
+
+    <div class="subtab-content" id="sub-clientes">
+      <div class="card">
+        <div class="card-title">Novo Cliente</div>
+        <div class="form-hint" style="margin-bottom:12px">Os clientes com pedido aberto entram sozinhos, vindos do datalake. Cadastre aqui só quem precisa de login antes de ter pedido.</div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-field"><label>Código do Cliente</label><input type="text" id="nc-codigo" placeholder="ex: 1015932"></div>
+          <div class="form-field"><label>Nome do Cliente</label><input type="text" id="nc-nome" placeholder="Razão social"></div>
+          <div class="form-field"><label>Cidade</label><input type="text" id="nc-cidade" placeholder="ex: BETIM"></div>
+          <div class="form-field"><label>Canal de Distribuição</label><input type="text" id="nc-canal" placeholder="ex: PT"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="criarCliente()">Adicionar Cliente</button>
+      </div>
+      <div id="listaClientes"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   App do portal de agendamento. Todo acesso ao Firebase (Auth + Realtime
+   Database, projeto nexta-agendamento) passa por window._fb, definido no
+   script type="module" no fim da página — módulo roda depois deste
+   script e chama onSessaoFirebase() a cada login/logout.
+   Regras do banco: firebase_database.rules.json nesta pasta (publicar no
+   console do Firebase a cada mudança).
+   ════════════════════════════════════════════════════════════════════ */
+
+const STATE = {
+  usuario: null,
+  bases: {}, clientes: {}, perfis: {},
+  agendamentos: {},
+  // pedidos = pedidosSap/<nr> já adicionados à carreta; baseId/baseChave = base ligada a eles (centro + depósito).
+  // compartimentos: { numero, ref: '<nr>|<produto>', volume }.
+  // baseSlots/slotsOcupados ficam null até o 1º retorno do Firebase (grade mostra "carregando")
+  novo: { pedidos: [], baseId: '', baseChave: '', compartimentos: compartimentosIniciais(), slotHorario: null, baseSlots: null, slotsOcupados: null },
+  baseEditando: null,      // id da base aberta no formulário de Cadastros
+  depositosSemBase: null,  // centro + depósito lidos dos pedidos (aba Cadastros → Bases)
+  slotsAdmin: { baseId: '', baseSlots: {}, ocupados: {} },
+  // unsubscribe dos listeners que dependem da base/data escolhida — trocar a seleção desliga o anterior
+  unsub: { novoBaseSlots: null, novoOcupados: null, adminBaseSlots: null, adminOcupados: null, agendamentos: null },
+  trocaSenhaPendente: null, // sessão aguardando a troca obrigatória da senha inicial
+  msgLogin: '',
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+// Argumento de string para onclick="f(...)" — JSON + escape de atributo (esc() sozinho vira ' de novo antes do JS ler)
+function jsArg(v) { return esc(JSON.stringify(String(v ?? ''))); }
+function objList(obj) { return Object.entries(obj || {}).map(([id, v]) => ({ id, ...v })); }
+function pad2(n) { return String(n).padStart(2, '0'); }
+// Data local do navegador — toISOString() é UTC e, depois das 21h em Brasília, já devolve o dia seguinte
+function dataLocalISO(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function hoje() { return dataLocalISO(new Date()); }
+function horaAgora() { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function somarDias(iso, n) { const [y, m, d] = iso.split('-').map(Number); return dataLocalISO(new Date(y, m - 1, d + n)); }
+function formatDataBR(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function toast(msg, tipo = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + tipo;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+function cancelarListener(chave) { if (STATE.unsub[chave]) { STATE.unsub[chave](); STATE.unsub[chave] = null; } }
+function ehErroPermissao(e) { return e?.code === 'PERMISSION_DENIED' || /permission/i.test(e?.message || ''); }
+function msgErro(e, padrao = 'Não foi possível salvar. Verifique a conexão e tente de novo.') {
+  if (ehErroPermissao(e)) {
+    // Admin passa em qualquer regra de escrita de cadastro; se ainda assim foi negado, as regras publicadas estão desatualizadas
+    return STATE.usuario?.admin
+      ? 'O banco recusou a operação. Confira se as regras publicadas no Firebase estão iguais ao firebase_database.rules.json.'
+      : 'Sem permissão para esta ação.';
+  }
+  return e?.message || padrao;
+}
+function erroListener(oque) {
+  return (e) => { console.error(e); toast(`Não foi possível carregar ${oque}: ${msgErro(e, 'sem conexão')}`, 'error'); };
+}
+
+/* ── LOGIN / SESSÃO ── */
+const MSGS_AUTH = {
+  'auth/user-not-found': 'E-mail ou senha incorretos.',
+  'auth/wrong-password': 'E-mail ou senha incorretos.',
+  'auth/invalid-credential': 'E-mail ou senha incorretos.',
+  'auth/invalid-email': 'E-mail inválido.',
+  'auth/user-disabled': 'Este usuário foi desativado.',
+  'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
+  'auth/network-request-failed': 'Sem conexão com o servidor.',
+};
+
+function mostrarErroLogin(msg) {
+  const el = document.getElementById('login-erro');
+  el.textContent = msg || '';
+  el.classList.toggle('visible', !!msg);
+}
+function mostrarTelaLogin() {
+  document.getElementById('login-overlay').style.display = '';
+  document.getElementById('login-carregando').classList.add('hidden');
+  document.getElementById('login-form').classList.remove('hidden');
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = false; btn.textContent = 'Entrar';
+  mostrarErroLogin(STATE.msgLogin);
+}
+function mostrarCarregandoLogin(texto) {
+  document.getElementById('login-overlay').style.display = '';
+  const el = document.getElementById('login-carregando');
+  el.textContent = texto;
+  el.classList.remove('hidden');
+  document.getElementById('login-form').classList.add('hidden');
+  mostrarErroLogin('');
+}
+
+async function fazerLogin() {
+  const email = document.getElementById('login-usuario').value.trim().toLowerCase();
+  const senha = document.getElementById('login-senha').value;
+  const btn = document.getElementById('btnLogin');
+  STATE.msgLogin = '';
+  mostrarErroLogin('');
+  if (!email || !senha) { mostrarErroLogin('Preencha o e-mail e a senha.'); return; }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  try {
+    await window._fb.login(email, senha); // o resto segue em onSessaoFirebase()
+  } catch (e) {
+    mostrarErroLogin(MSGS_AUTH[e.code] || ('Erro ao autenticar: ' + e.message));
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+
+async function esqueciSenha() {
+  const email = document.getElementById('login-usuario').value.trim().toLowerCase();
+  if (!email) { mostrarErroLogin('Digite seu e-mail no campo acima e clique de novo em "Esqueci minha senha".'); return; }
+  try {
+    await window._fb.resetarSenha(email);
+  } catch (e) {
+    if (e.code === 'auth/invalid-email') { mostrarErroLogin('E-mail inválido.'); return; }
+    console.error(e);
+  }
+  // Mesma mensagem com ou sem conta — não revela quais e-mails estão cadastrados
+  toast('Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha.', 'info');
+}
+
+function fazerLogout() {
+  // Recarregar zera estado e listeners de uma vez
+  window._fb.logout().catch(() => {}).finally(() => location.reload());
+}
+
+async function onSessaoFirebase(user) {
+  if (!user) { mostrarTelaLogin(); return; }
+  if (STATE.usuario || STATE.trocaSenhaPendente) return;
+  mostrarCarregandoLogin('Carregando seu perfil…');
+  let perfil = null, erro = null;
+  try { perfil = await window._fb.carregarPerfil(user.uid); } catch (e) { erro = e; console.error(e); }
+  if (!perfil) {
+    STATE.msgLogin = erro
+      ? `O banco recusou a leitura do seu perfil (${erro.code || erro.message}). Confira se as regras do Realtime Database foram publicadas.`
+      : `O login ${user.email} ainda não tem acesso a este portal. Peça a um administrador para liberar (UID: ${user.uid}).`;
+    await window._fb.logout().catch(() => {});
+    mostrarTelaLogin();
+    return;
+  }
+  const sessao = {
+    uid: user.uid, email: user.email, nome: perfil.nome || user.email, admin: perfil.admin === true,
+    tipo: perfil.tipo === 'cliente' ? 'cliente' : 'interno',
+    clienteCodigo: perfil.clienteCodigo || '',
+  };
+  // Senha inicial definida pelo admin: só entra depois de trocar
+  if (perfil.trocarSenha === true) { abrirTrocaSenhaObrigatoria(sessao); return; }
+  entrarNoApp(sessao);
+}
+
+function entrarNoApp(sessao) {
+  aplicarSessaoUsuario(sessao);
+  iniciarApp();
+}
+
+function aplicarSessaoUsuario(usuario) {
+  STATE.usuario = usuario;
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('headerUser').style.display = 'flex';
+  document.body.classList.add('logado'); // mostra abas e conteúdo (sem login só aparece o cartão de entrar)
+  document.getElementById('headerUserName').textContent = usuario.nome || usuario.email;
+  document.getElementById('headerUserTipo').textContent = usuario.tipo === 'cliente' ? 'Cliente' : (usuario.admin ? 'Equipe interna · admin' : 'Equipe interna');
+  document.getElementById('btnAdmin').style.display = usuario.admin ? '' : 'none';
+  document.querySelectorAll('.admin-only').forEach((el) => el.classList.toggle('hidden', !usuario.admin));
+}
+
+// Se o módulo do Firebase não carregar (sem internet, CDN bloqueado), não deixa a tela presa em "Verificando sessão…"
+setTimeout(() => {
+  if (!window._fb) {
+    STATE.msgLogin = 'Não foi possível carregar o Firebase. Verifique a conexão e recarregue a página.';
+    mostrarTelaLogin();
+  }
+}, 15000);
+
+/* ── ABAS ── */
+function switchTab(nome) {
+  document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === nome));
+  document.querySelectorAll('.tab-content').forEach((el) => el.classList.toggle('active', el.id === 'tab-' + nome));
+  document.querySelector('.main').classList.toggle('main-larga', nome === 'lista');
+  if (nome === 'lista') renderListaAgendamentos();
+}
+function switchSubtab(nome) {
+  document.querySelectorAll('.subtab').forEach((el) => el.classList.toggle('active', el.dataset.sub === nome));
+  document.querySelectorAll('.subtab-content').forEach((el) => el.classList.toggle('active', el.id === 'sub-' + nome));
+}
+
+/* ── BOOT: dados mestres ── */
+let _bootDone = false;
+function iniciarApp() {
+  if (_bootDone) return;
+  _bootDone = true;
+  const usuario = STATE.usuario;
+
+  window._fb.ouvirBases((bases) => {
+    STATE.bases = bases;
+    renderFiltroBases();
+    renderCadastroBases();
+    renderSelectSlotsBase();
+    if (STATE.depositosSemBase) renderDepositosSemBase();
+    atualizarBaseDosPedidos(); // pedidos já adicionados podem ganhar (ou perder) a base
+  }, erroListener('as bases'));
+  // Clientes: só o admin usa (cadastro e vínculo de usuário cliente); no agendamento o cliente vem do pedido
+  if (usuario.admin) {
+    window._fb.ouvirClientes((clientes) => {
+      STATE.clientes = clientes;
+      renderCadastroClientes();
+      renderSelectClienteAdmin();
+    }, erroListener('os clientes'));
+    window._fb.ouvirPerfis((perfis) => {
+      STATE.perfis = perfis;
+      renderAdminUsuarios();
+    }, erroListener('os usuários'));
+  }
+
+  renderCompartimentos();
+  reiniciarListenerAgendamentos();
+}
+
+function reiniciarListenerAgendamentos() {
+  cancelarListener('agendamentos');
+  const cb = (agendamentos) => {
+    STATE.agendamentos = agendamentos;
+    renderListaAgendamentos();
+    renderPedidosAgendamento(); // saldo dos pedidos em montagem depende dos agendamentos ativos
+  };
+  // Cliente vê os agendamentos que têm pedido dele (índice agendamentosPorCliente), dos últimos 60 dias em diante
+  STATE.unsub.agendamentos = STATE.usuario.tipo === 'cliente'
+    ? window._fb.ouvirAgendamentosCliente(STATE.usuario.clienteCodigo, somarDias(hoje(), -60), cb, erroListener('os agendamentos'))
+    : window._fb.ouvirAgendamentosTodos(cb, erroListener('os agendamentos'));
+}
+
+/* ── NOVO AGENDAMENTO: pedidos → base/clientes/produtos ── */
+// Pedidos vêm do datalake (pedidosSap/<nr>, publicados por extracao_portal_pedidos.py a cada 30 min).
+// Um agendamento (uma carreta) junta um ou mais pedidos da MESMA base (centro + depósito), de um ou
+// mais clientes, e cada compartimento leva pedido + produto + volume — pedido pode ir parcial.
+const MSG_PEDIDO_NAO_ENCONTRADO = 'Pedido não encontrado ou indisponível para agendamento (faturado, bloqueado ou cancelado). Pedidos novos aparecem aqui em até 30 minutos.';
+const TURNO_DO_PEDIDO = { MADRUGADA: 'madrugada', MANHA: 'manha', TARDE: 'tarde', NOITE: 'noite' };
+const TURNO_LABEL = { madrugada: 'Madrugada', manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
+
+function compartimentosIniciais() { return [{ numero: 1, ref: '', volume: '' }, { numero: 2, ref: '', volume: '' }]; }
+function formatVolume(v) { return v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR') + ' L'; }
+function labelTurno(t) { return TURNO_LABEL[t] || capitalizar(t); }
+// Placa brasileira, antiga (ABC1234) ou Mercosul (ABC1D23); hífen e espaço digitados são ignorados
+function normalizarPlaca(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
+function soDigitos(v) { return String(v || '').replace(/\D/g, ''); }
+function cpfValido(cpf) {
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
+  const dv = (n) => { let s = 0; for (let i = 0; i < n; i++) s += Number(cpf[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  return dv(9) === Number(cpf[9]) && dv(10) === Number(cpf[10]);
+}
+function formatCpf(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : (cpf || ''); }
+function mascararCpf(el) {
+  const d = soDigitos(el.value).slice(0, 11);
+  el.value = [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9)].filter(Boolean).join('.') + (d.length > 9 ? '-' + d.slice(9) : '');
+}
+function itensDe(pedido) { return Object.values(pedido?.itens || {}); }
+// Chave de um item de pedido nos compartimentos: "<nr do pedido>|<código do produto>"
+function refItem(nr, codigo) { return nr + '|' + codigo; }
+function baseAtual() { return STATE.bases[STATE.novo.baseId] || null; }
+// Base do pedido = cadastro com o mesmo centro + depósito (prefere a ativa se houver duas)
+function baseDoPedido(pedido) {
+  const candidatas = objList(STATE.bases).filter((b) => b.centro === pedido.centro && b.deposito === pedido.depositoCodigo);
+  return candidatas.find((b) => b.ativo !== false) || candidatas[0] || null;
+}
+// Volume já comprometido em agendamentos ativos, por pedido + produto
+function volumesAgendados() {
+  const total = {};
+  for (const a of Object.values(STATE.agendamentos)) {
+    if (a.status === 'cancelado') continue;
+    for (const c of Object.values(a.compartimentos || {})) {
+      const chave = refItem(c.pedido, c.produtoId);
+      total[chave] = (total[chave] || 0) + (Number(c.volume) || 0);
+    }
+  }
+  return total;
+}
+function volumesNesteAgendamento() {
+  const total = {};
+  for (const c of STATE.novo.compartimentos) if (c.ref) total[c.ref] = (total[c.ref] || 0) + (Number(c.volume) || 0);
+  return total;
+}
+function saldoItem(pedido, item, agendados) {
+  return (Number(item.volume) || 0) - (agendados[refItem(pedido.nrPedido, item.codigo)] || 0);
+}
+function protocolosDoPedido(nr) {
+  return objList(STATE.agendamentos).filter((a) => a.status !== 'cancelado' && a.pedidos && a.pedidos[nr]).map((a) => a.protocolo);
+}
+
+function renderFiltroBases() {
+  const filtro = document.getElementById('filtroBase');
+  const atual = filtro.value;
+  filtro.innerHTML = '<option value="">Todas as bases</option>' + objList(STATE.bases).map((b) => `<option value="${b.id}">${esc(b.nome)}</option>`).join('');
+  filtro.value = atual;
+}
+
+function mostrarStatusPedido(msg, tipo = '') {
+  const el = document.getElementById('pedidoStatus');
+  el.textContent = msg;
+  el.className = 'form-hint' + (tipo ? ' ' + tipo : '');
+}
+
+async function adicionarPedido() {
+  const campo = document.getElementById('f-pedido-sap');
+  const nr = campo.value.trim();
+  if (!nr) { mostrarStatusPedido('Digite o número do pedido.', 'erro'); return; }
+  if (!/^[A-Za-z0-9_-]+$/.test(nr)) { mostrarStatusPedido('Número de pedido inválido.', 'erro'); return; }
+  if (STATE.novo.pedidos.some((p) => p.nrPedido === nr)) { mostrarStatusPedido(`O pedido ${nr} já está neste agendamento.`, 'aviso'); return; }
+
+  const btn = document.getElementById('btnBuscarPedido');
+  btn.disabled = true;
+  mostrarStatusPedido('Buscando pedido…');
+  let pedido = null;
+  try {
+    pedido = await window._fb.carregarPedido(nr);
+  } catch (e) {
+    // Pedido de outro cliente (ou inexistente, para quem é cliente) chega como permissão negada:
+    // mesma mensagem de "não encontrado", sem revelar que o número existe
+    if (!ehErroPermissao(e)) {
+      console.error(e);
+      mostrarStatusPedido('Não foi possível buscar o pedido: ' + msgErro(e, 'sem conexão'), 'erro');
+      return;
+    }
+  } finally {
+    btn.disabled = false;
+  }
+  if (campo.value.trim() !== nr) return; // digitou outro número enquanto buscava
+  if (!pedido) { mostrarStatusPedido(MSG_PEDIDO_NAO_ENCONTRADO, 'erro'); return; }
+
+  const primeiro = STATE.novo.pedidos[0];
+  if (primeiro && (pedido.centro !== primeiro.centro || pedido.depositoCodigo !== primeiro.depositoCodigo)) {
+    const outraBase = baseDoPedido(pedido)?.nome || pedido.depositoNome || `centro ${pedido.centro} · depósito ${pedido.depositoCodigo}`;
+    mostrarStatusPedido(`O pedido ${nr} é de outra base (${outraBase}). Um agendamento só junta pedidos da mesma base.`, 'erro');
+    return;
+  }
+  // A data de carregamento é a data de entrega do pedido (definida pelo revendedor) e não se edita aqui
+  if (!pedido.dataEntrega) {
+    mostrarStatusPedido(`O pedido ${nr} está sem data de entrega. Ajuste no portal do revendedor; a mudança aparece aqui em até 30 minutos.`, 'erro');
+    return;
+  }
+  if (pedido.dataEntrega < hoje()) {
+    mostrarStatusPedido(`A data de entrega do pedido ${nr} (${formatDataBR(pedido.dataEntrega)}) já passou. Ajuste no portal do revendedor; a mudança aparece aqui em até 30 minutos.`, 'erro');
+    return;
+  }
+  if (primeiro && pedido.dataEntrega !== primeiro.dataEntrega) {
+    mostrarStatusPedido(`O pedido ${nr} é para ${formatDataBR(pedido.dataEntrega)} e esta carreta é para ${formatDataBR(primeiro.dataEntrega)}. Um agendamento só junta pedidos com a mesma data de entrega.`, 'erro');
+    return;
+  }
+  const agendados = volumesAgendados();
+  if (!itensDe(pedido).some((i) => saldoItem(pedido, i, agendados) > 0)) {
+    const protocolos = protocolosDoPedido(nr);
+    mostrarStatusPedido(`O pedido ${nr} não tem saldo para agendar${protocolos.length ? ` (já agendado em ${protocolos.join(', ')})` : ''}.`, 'erro');
+    return;
+  }
+
+  STATE.novo.pedidos.push(pedido);
+  campo.value = '';
+  if (STATE.novo.pedidos.length === 1) {
+    // Data = entrega do pedido (todos os pedidos da carreta têm a mesma); turno sugerido quando o pedido traz
+    document.getElementById('f-data').value = pedido.dataEntrega;
+    document.getElementById('f-turno').value = TURNO_DO_PEDIDO[pedido.turnoEntrega] || '';
+  }
+  mostrarStatusPedido(`Pedido ${nr} adicionado.`, 'ok');
+  campo.focus(); // pronto para digitar o próximo pedido
+  atualizarBaseDosPedidos(); // sobrescreve a mensagem se a base não estiver cadastrada
+}
+
+function removerPedido(nr) {
+  STATE.novo.pedidos = STATE.novo.pedidos.filter((p) => p.nrPedido !== nr);
+  // Compartimentos que apontavam para o pedido ficam vazios
+  STATE.novo.compartimentos.forEach((c) => { if (c.ref.startsWith(nr + '|')) { c.ref = ''; c.volume = ''; } });
+  if (!STATE.novo.pedidos.length) {
+    STATE.novo.compartimentos = compartimentosIniciais();
+    mostrarStatusPedido('');
+  }
+  atualizarBaseDosPedidos();
+}
+
+// Liga os pedidos à base (centro + depósito do 1º; todos são iguais). Roda de novo quando o cadastro de bases muda.
+function atualizarBaseDosPedidos() {
+  const primeiro = STATE.novo.pedidos[0];
+  const base = primeiro ? baseDoPedido(primeiro) : null;
+  const baseOk = !!base && base.ativo !== false;
+  const chave = baseOk ? `${base.id}|${base.tipo}` : '';
+  const mudouBase = chave !== STATE.novo.baseChave;
+  STATE.novo.baseId = baseOk ? base.id : '';
+  STATE.novo.baseChave = chave;
+
+  renderPedidosAgendamento();
+  if (primeiro && !baseOk) mostrarStatusPedido(msgBaseIndisponivel(primeiro, base), 'erro');
+  if (mudouBase) atualizarCamposBase();
+  renderCompartimentos();
+}
+function msgBaseIndisponivel(pedido, base) {
+  return base
+    ? `A base ${base.nome} destes pedidos está desativada no portal. Avise a equipe Nexta.`
+    : `A base deste pedido (centro ${pedido.centro || '?'} · depósito ${pedido.depositoCodigo || '?'} – ${pedido.depositoNome || 'sem nome'}) ainda não está cadastrada no portal. Avise a equipe Nexta.`;
+}
+
+function renderPedidosAgendamento() {
+  const el = document.getElementById('pedidoResumo');
+  const pedidos = STATE.novo.pedidos;
+  if (!pedidos.length) { el.classList.add('hidden'); el.innerHTML = ''; atualizarSaldosCompartimentos(); return; }
+  const base = baseDoPedido(pedidos[0]);
+  const agendados = volumesAgendados();
+  const baseTxt = base
+    ? `<strong>${esc(base.nome)}</strong>` + (base.ativo === false ? ' <span class="badge badge-muted">inativa</span>' : '')
+    : '<span class="texto-perigo">não cadastrada no portal</span>';
+  // Tabela única, no mesmo formato do detalhe do agendamento: uma linha por produto, dados do pedido mesclados.
+  // Só o que ajuda a escolher os pedidos; o volume de cada compartimento fica na última etapa.
+  const linhas = pedidos.map((p) => {
+    const itens = itensDe(p);
+    const span = itens.length > 1 ? ` rowspan="${itens.length}"` : '';
+    return itens.map((i, idx) => {
+      const saldo = saldoItem(p, i, agendados);
+      const total = Number(i.volume) || 0;
+      const disponivel = `<strong>${formatVolume(saldo)}</strong>${saldo !== total ? `<div class="form-hint" style="margin:0">de ${formatVolume(total)}</div>` : ''}`;
+      const doPedido = idx > 0 ? '' : `<td${span}><strong>${esc(p.nrPedido)}</strong></td><td${span} class="quebra">${esc(p.clienteNome)}</td><td${span} class="quebra">${esc(p.clienteCidade) || '—'}</td><td${span}>${esc(p.tipoFrete) || '—'}</td>`;
+      const remover = idx > 0 ? '' : `<td${span}><button type="button" class="compart-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></td>`;
+      return `<tr>${doPedido}<td class="quebra">${esc(i.descricao)}</td><td class="num">${disponivel}</td>${remover}</tr>`;
+    }).join('');
+  }).join('');
+  const parciais = pedidos.map((p) => [p.nrPedido, protocolosDoPedido(p.nrPedido)]).filter(([, prot]) => prot.length);
+  el.innerHTML = `
+    <div class="resumo-base">Base: ${baseTxt}</div>
+    <table class="tabela-itens">
+      <thead><tr><th>Pedido</th><th>Cliente</th><th>Cidade</th><th>Frete</th><th>Produto</th><th class="num">Disponível</th><th></th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    ${parciais.map(([nr, prot]) => `<div class="form-hint">Parte do pedido ${esc(nr)} já agendada em ${prot.map(esc).join(', ')}.</div>`).join('')}`;
+  el.classList.remove('hidden');
+  atualizarSaldosCompartimentos();
+}
+
+function atualizarCamposBase() {
+  const base = baseAtual();
+  document.getElementById('campo-turno').classList.toggle('hidden', !base || base.tipo !== 'fila');
+  document.getElementById('campo-slot').classList.toggle('hidden', !base || base.tipo !== 'agendamento');
+  atualizarSlotPicker();
+}
+
+// Liga os dois listeners da base/data escolhidas (horários cadastrados + ocupação do dia) e desliga os anteriores
+function atualizarSlotPicker() {
+  cancelarListener('novoBaseSlots');
+  cancelarListener('novoOcupados');
+  STATE.novo.slotHorario = null;
+  STATE.novo.baseSlots = null;
+  STATE.novo.slotsOcupados = null;
+  const baseId = STATE.novo.baseId;
+  const base = baseAtual();
+  const data = document.getElementById('f-data').value;
+  const grid = document.getElementById('slotGrid');
+  if (!base || base.tipo !== 'agendamento') return;
+  if (!data) { grid.innerHTML = '<span class="chip-empty">Selecione a data de carregamento.</span>'; return; }
+
+  grid.innerHTML = '<span class="chip-empty">Carregando horários…</span>';
+  STATE.unsub.novoBaseSlots = window._fb.ouvirBaseSlots(baseId, (slots) => {
+    STATE.novo.baseSlots = slots;
+    renderSlotGrid();
+  }, erroListener('os horários da base'));
+  STATE.unsub.novoOcupados = window._fb.ouvirSlotsOcupados(baseId, data, (ocupados) => {
+    STATE.novo.slotsOcupados = ocupados;
+    const escolhido = STATE.novo.slotHorario && ocupados[STATE.novo.slotHorario];
+    if (escolhido && escolhido.uid !== STATE.usuario.uid) {
+      STATE.novo.slotHorario = null;
+      toast('O horário que você tinha escolhido acabou de ser reservado por outro usuário. Escolha outro.', 'info');
+    }
+    renderSlotGrid();
+  }, erroListener('a ocupação dos horários'));
+}
+
+function slotJaPassou(data, horario) { return data < hoje() || (data === hoje() && horario <= horaAgora()); }
+
+function renderSlotGrid() {
+  const grid = document.getElementById('slotGrid');
+  if (!STATE.novo.baseSlots || !STATE.novo.slotsOcupados) { grid.innerHTML = '<span class="chip-empty">Carregando horários…</span>'; return; }
+  const data = document.getElementById('f-data').value;
+  const ativos = objList(STATE.novo.baseSlots).filter((s) => s.ativo !== false).sort((a, b) => a.horario.localeCompare(b.horario));
+  if (!ativos.length) { grid.innerHTML = '<span class="chip-empty">Nenhum horário cadastrado para esta base. Avise a equipe Nexta.</span>'; return; }
+  grid.innerHTML = ativos.map((s) => {
+    const indisponivel = !!STATE.novo.slotsOcupados[s.horario] || slotJaPassou(data, s.horario);
+    const sel = STATE.novo.slotHorario === s.horario;
+    return `<button type="button" class="slot-btn ${sel ? 'selecionado' : ''}" ${indisponivel ? 'disabled' : ''} onclick="selecionarSlot('${esc(s.horario)}')">${esc(s.horario)}</button>`;
+  }).join('');
+}
+function selecionarSlot(horario) { STATE.novo.slotHorario = horario; renderSlotGrid(); }
+
+/* ── COMPARTIMENTOS: pedido + produto + volume ── */
+// Saldo de cada produto descontando o que já está nos compartimentos desta carreta (o que sobra para os próximos)
+function saldosRestantes() {
+  const agendados = volumesAgendados();
+  const neste = volumesNesteAgendamento();
+  const saldos = {};
+  for (const p of STATE.novo.pedidos) {
+    for (const i of itensDe(p)) {
+      const ref = refItem(p.nrPedido, i.codigo);
+      saldos[ref] = saldoItem(p, i, agendados) - (neste[ref] || 0);
+    }
+  }
+  return saldos;
+}
+// O saldo só aparece na lista para escolher; o produto já escolhido mostra só o nome
+// (com o compartimento preenchido, "sem saldo" no produto escolhido confundia)
+function textoOpcaoCompartimento(nome, saldo, escolhido) {
+  if (escolhido) return nome;
+  if (saldo > 0) return `${nome} · saldo ${formatVolume(saldo)}`;
+  if (saldo < 0) return `${nome} · ${formatVolume(-saldo)} acima do saldo`;
+  return `${nome} · sem saldo`;
+}
+// Atualiza o texto das opções sem redesenhar os compartimentos (não tira o foco do campo de volume)
+function atualizarSaldosCompartimentos() {
+  const saldos = saldosRestantes();
+  document.getElementById('wizardVolumeTotal').textContent = formatVolume(Object.values(volumesNesteAgendamento()).reduce((s, v) => s + v, 0));
+  document.querySelectorAll('#compartimentosList select').forEach((sel) => {
+    for (const o of sel.options) {
+      if (!o.value || !(o.value in saldos)) continue;
+      o.textContent = textoOpcaoCompartimento(o.dataset.nome, saldos[o.value], o.selected);
+      o.disabled = saldos[o.value] <= 0 && !o.selected; // produto esgotado não entra em outro compartimento
+    }
+  });
+}
+function renderCompartimentos() {
+  const wrap = document.getElementById('compartimentosList');
+  const saldos = saldosRestantes();
+  const grupos = STATE.novo.pedidos.map((p) => ({
+    rotulo: `Pedido ${p.nrPedido} – ${p.clienteNome}`,
+    itens: itensDe(p).map((i) => ({ ref: refItem(p.nrPedido, i.codigo), nome: i.descricao })),
+  }));
+  wrap.innerHTML = STATE.novo.compartimentos.map((c, i) => `
+    <div class="compart-row">
+      <div class="compart-num">Compart. ${c.numero}</div>
+      <select onchange="onCompartimentoChange(${i}, 'ref', this.value)">
+        <option value="">Selecione pedido e produto…</option>
+        ${grupos.map((g) => `<optgroup label="${esc(g.rotulo)}">${g.itens.map((o) => `<option value="${esc(o.ref)}" data-nome="${esc(o.nome)}" ${c.ref === o.ref ? 'selected' : ''} ${saldos[o.ref] <= 0 && c.ref !== o.ref ? 'disabled' : ''}>${esc(textoOpcaoCompartimento(o.nome, saldos[o.ref], c.ref === o.ref))}</option>`).join('')}</optgroup>`).join('')}
+      </select>
+      <input type="number" class="compart-volume" min="0" step="100" placeholder="Volume (L)" value="${esc(c.volume)}" oninput="onCompartimentoChange(${i}, 'volume', this.value)">
+      <button type="button" class="compart-remove" onclick="removerCompartimento(${i})" title="Remover">✕</button>
+    </div>`).join('') || '<div class="chip-empty">Nenhum compartimento adicionado.</div>';
+}
+// Só redesenha o resumo dos pedidos (saldo / nesta carreta) — redesenhar os compartimentos tiraria o foco do campo
+function onCompartimentoChange(i, campo, valor) {
+  STATE.novo.compartimentos[i][campo] = valor;
+  renderPedidosAgendamento();
+}
+function adicionarCompartimento() {
+  const proximo = (STATE.novo.compartimentos.at(-1)?.numero || 0) + 1;
+  STATE.novo.compartimentos.push({ numero: proximo, ref: '', volume: '' });
+  renderCompartimentos();
+}
+function removerCompartimento(i) {
+  STATE.novo.compartimentos.splice(i, 1);
+  STATE.novo.compartimentos.forEach((c, idx) => c.numero = idx + 1);
+  renderCompartimentos();
+  renderPedidosAgendamento();
+}
+
+/* ── ASSISTENTE: Pedidos → Data e horário → Placas → Motorista → Compartimentos ── */
+const ETAPAS_WIZARD = ['Pedidos', 'Data e horário', 'Placas', 'Motorista', 'Compartimentos'];
+let etapaWizard = 1;
+
+function lerPlacas() {
+  return ['f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2'].map((id) => normalizarPlaca(document.getElementById(id).value));
+}
+function lerMotorista() {
+  return { nome: document.getElementById('f-motorista').value.trim(), cpf: soDigitos(document.getElementById('f-motorista-cpf').value) };
+}
+
+// Problema que impede sair da etapa n ('' quando está tudo certo)
+function erroDaEtapa(n) {
+  const pedidos = STATE.novo.pedidos;
+  const base = baseAtual();
+  if (n === 1) {
+    if (!pedidos.length) return 'Adicione ao menos um pedido.';
+    if (!base) return msgBaseIndisponivel(pedidos[0], baseDoPedido(pedidos[0]));
+    // Só acontece com o assistente aberto de um dia para o outro
+    if (document.getElementById('f-data').value < hoje()) return 'A data de entrega destes pedidos já passou. Tire os pedidos e confira a data no portal do revendedor.';
+    return '';
+  }
+  if (n === 2) {
+    const data = document.getElementById('f-data').value;
+    if (base.tipo === 'fila' && !document.getElementById('f-turno').value) return 'Selecione o turno de carregamento.';
+    if (base.tipo === 'agendamento' && !STATE.novo.slotHorario) return 'Selecione um horário disponível.';
+    if (base.tipo === 'agendamento' && slotJaPassou(data, STATE.novo.slotHorario)) return 'Esse horário já passou. Escolha outro.';
+    return '';
+  }
+  if (n === 3) {
+    const [cavalo, carreta1, carreta2] = lerPlacas();
+    if (!cavalo) return 'Informe a placa do cavalo.';
+    for (const [nome, placa] of [['do cavalo', cavalo], ['da carreta 1', carreta1], ['da carreta 2', carreta2]]) {
+      if (placa && !placaValida(placa)) return `Placa ${nome} inválida. Use o formato ABC1234 ou ABC1D23.`;
+    }
+    if (carreta2 && !carreta1) return 'Preencha a placa da carreta 1 antes da carreta 2.';
+    return '';
+  }
+  if (n === 4) {
+    const { nome, cpf } = lerMotorista();
+    if (!nome) return 'Informe o nome do motorista.';
+    if (!cpf) return 'Informe o CPF do motorista.';
+    if (!cpfValido(cpf)) return 'CPF do motorista inválido.';
+    return '';
+  }
+  // 5: compartimentos
+  const compartimentos = STATE.novo.compartimentos.filter((c) => c.ref || c.volume);
+  if (!compartimentos.length) return 'Aloque ao menos um compartimento com pedido, produto e volume.';
+  for (const c of compartimentos) {
+    if (!c.ref) return `Compartimento ${c.numero}: escolha o pedido e o produto.`;
+    if (!(Number(c.volume) > 0)) return `Compartimento ${c.numero}: informe o volume em litros.`;
+  }
+  const agendados = volumesAgendados();
+  const neste = volumesNesteAgendamento();
+  for (const p of pedidos) {
+    for (const i of itensDe(p)) {
+      const vol = neste[refItem(p.nrPedido, i.codigo)] || 0;
+      const saldo = saldoItem(p, i, agendados);
+      if (vol > saldo) return `Pedido ${p.nrPedido} · ${i.descricao}: ${formatVolume(vol)} passa do saldo de ${formatVolume(saldo)}.`;
+    }
+  }
+  const semCompartimento = pedidos.filter((p) => !itensDe(p).some((i) => (neste[refItem(p.nrPedido, i.codigo)] || 0) > 0));
+  if (semCompartimento.length) return `Pedido ${semCompartimento.map((p) => p.nrPedido).join(', ')} sem nenhum compartimento: aloque ou volte à etapa Pedidos e tire do agendamento.`;
+  return '';
+}
+
+function abrirNovoAgendamento() {
+  resetarFormularioAgendamento();
+  abrirModal('modalNovo');
+  mostrarEtapa(1);
+}
+function temDadosNoAgendamento() {
+  return STATE.novo.pedidos.length > 0 ||
+    ['f-pedido-sap', 'f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2', 'f-motorista', 'f-motorista-cpf'].some((id) => document.getElementById(id).value.trim());
+}
+function fecharNovoAgendamento() {
+  if (temDadosNoAgendamento() && !confirm('Descartar este agendamento? O que foi preenchido será perdido.')) return;
+  fecharModal('modalNovo');
+  resetarFormularioAgendamento(); // também desliga os listeners de horários
+}
+
+// Vai para a etapa n se as anteriores estiverem completas; senão para na primeira com problema
+function irParaEtapa(n) {
+  for (let k = 1; k < n; k++) {
+    const msg = erroDaEtapa(k);
+    if (msg) { mostrarEtapa(k, msg); return false; }
+  }
+  mostrarEtapa(n);
+  return true;
+}
+function avancarEtapa() { irParaEtapa(etapaWizard + 1); }
+function voltarEtapa() { mostrarEtapa(Math.max(1, etapaWizard - 1)); }
+
+function mostrarEtapa(n, erro = '') {
+  etapaWizard = n;
+  const ultima = ETAPAS_WIZARD.length;
+  document.querySelectorAll('#modalNovo .wizard-etapa').forEach((el) => el.classList.toggle('hidden', Number(el.dataset.etapa) !== n));
+  document.getElementById('wizardSteps').innerHTML = ETAPAS_WIZARD.map((rotulo, i) => {
+    const k = i + 1;
+    const cls = k === n ? 'atual' : k < n ? 'feito' : '';
+    return `<button type="button" class="wizard-step ${cls}" onclick="irParaEtapa(${k})" title="${esc(rotulo)}"><span class="n">${k < n ? '✓' : k}</span><span class="rot">${esc(rotulo)}</span></button>`;
+  }).join('');
+  document.getElementById('btnWizardVoltar').classList.toggle('hidden', n === 1);
+  document.getElementById('btnWizardProximo').classList.toggle('hidden', n === ultima);
+  document.getElementById('btnConfirmarAgendamento').classList.toggle('hidden', n !== ultima);
+  mostrarErroWizard(erro);
+  if (n === 2) renderInfoBaseEtapa();
+  if (n === ultima) renderRevisaoAgendamento();
+  document.querySelector('#modalNovo .wizard-body').scrollTop = 0;
+  const foco = { 1: 'f-pedido-sap', 3: 'f-placa-cavalo', 4: 'f-motorista' }[n];
+  if (foco && !erro) document.getElementById(foco).focus();
+}
+function mostrarErroWizard(msg) {
+  const el = document.getElementById('wizardErro');
+  el.textContent = msg || '';
+  el.classList.toggle('hidden', !msg);
+}
+// Enter nos campos de placa e motorista passa para a próxima etapa (na última não confirma sozinho)
+function onTeclaWizard(ev) {
+  if (ev.key !== 'Enter' || ev.target.tagName !== 'INPUT' || ev.target.id === 'f-pedido-sap') return;
+  if (etapaWizard >= ETAPAS_WIZARD.length) return;
+  ev.preventDefault();
+  avancarEtapa();
+}
+
+function renderInfoBaseEtapa() {
+  const base = baseAtual();
+  document.getElementById('f-base-txt').textContent = base?.nome || '—';
+  document.getElementById('f-data-txt').textContent = formatDataBR(document.getElementById('f-data').value);
+}
+// Resumo das etapas anteriores no topo da última, com atalho para corrigir cada uma
+function renderRevisaoAgendamento() {
+  const base = baseAtual();
+  const data = document.getElementById('f-data').value;
+  const quando = base?.tipo === 'agendamento' ? STATE.novo.slotHorario : labelTurno(document.getElementById('f-turno').value);
+  const placas = lerPlacas().filter(Boolean);
+  const { nome, cpf } = lerMotorista();
+  const item = (rotulo, valor, etapa) => `<div class="info-item"><div class="info-lbl">${rotulo}<button type="button" class="link-alterar" onclick="irParaEtapa(${etapa})">alterar</button></div><div class="info-val">${valor}</div></div>`;
+  document.getElementById('wizardRevisao').innerHTML = `<div class="info-row">
+    ${item('Pedidos', STATE.novo.pedidos.map((p) => esc(p.nrPedido)).join(', '), 1)}
+    ${item('Data e horário', `${formatDataBR(data)} · ${esc(quando)}`, 2)}
+    ${item('Placas', placas.map(esc).join(' / '), 3)}
+    ${item('Motorista', `${esc(nome)}<div class="form-hint">CPF ${esc(formatCpf(cpf))}</div>`, 4)}
+  </div>`;
+}
+
+/* ── SUBMISSÃO DO AGENDAMENTO ── */
+async function confirmarAgendamento() {
+  // Revalida tudo: o horário pode ter sido reservado por outro usuário enquanto preenchia
+  for (let k = 1; k <= ETAPAS_WIZARD.length; k++) {
+    const msg = erroDaEtapa(k);
+    if (msg) { mostrarEtapa(k, msg); return false; }
+  }
+  const pedidos = STATE.novo.pedidos;
+  const base = baseAtual();
+  const data = document.getElementById('f-data').value;
+  const turno = document.getElementById('f-turno').value;
+  const [placaCavalo, placaCarreta, placaCarreta2] = lerPlacas();
+  const { nome: motorista, cpf: motoristaCpf } = lerMotorista();
+  const compartimentos = STATE.novo.compartimentos.filter((c) => c.ref || c.volume);
+  const neste = volumesNesteAgendamento();
+
+  const btn = document.getElementById('btnConfirmarAgendamento');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    const slotHorario = base.tipo === 'agendamento' ? STATE.novo.slotHorario : null;
+    // Se a gravação falhar depois daqui, esse número de protocolo fica pulado (sem problema)
+    const protocolo = await window._fb.gerarProtocolo();
+    const id = window._fb.novoIdAgendamento();
+    const clientes = {};
+    const pedidosAgendamento = {};
+    for (const p of pedidos) {
+      clientes[p.clienteCodigo] = { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}) };
+      const itens = {};
+      for (const i of itensDe(p)) {
+        const volume = neste[refItem(p.nrPedido, i.codigo)] || 0;
+        if (volume > 0) itens[i.codigo] = { codigo: i.codigo, descricao: i.descricao, volumePedido: i.volume ?? null, volume };
+      }
+      pedidosAgendamento[p.nrPedido] = {
+        nrPedido: p.nrPedido, clienteCodigo: p.clienteCodigo, clienteNome: p.clienteNome,
+        tipoFrete: p.tipoFrete || null, dataEntrega: p.dataEntrega || null, itens,
+      };
+    }
+    const descricao = (nr, codigo) => itensDe(pedidos.find((p) => p.nrPedido === nr)).find((i) => i.codigo === codigo)?.descricao || '?';
+    const dadosAgendamento = {
+      protocolo,
+      criadoPorUid: STATE.usuario.uid,
+      criadoPorNome: STATE.usuario.nome,
+      criadoEm: new Date().toISOString(),
+      dataCarregamento: data,
+      baseId: STATE.novo.baseId, baseNome: base.nome, baseTipo: base.tipo,
+      centro: pedidos[0].centro, depositoCodigo: pedidos[0].depositoCodigo,
+      turno: base.tipo === 'fila' ? turno : null,
+      slotHorario,
+      placaCavalo, placaCarreta: placaCarreta || null, placaCarreta2: placaCarreta2 || null,
+      motorista, motoristaCpf,
+      clientes,
+      pedidos: pedidosAgendamento,
+      compartimentos: compartimentos.map((c) => {
+        const [nr, codigo] = c.ref.split('|');
+        return { numero: c.numero, pedido: nr, produtoId: codigo, produtoNome: descricao(nr, codigo), volume: Number(c.volume) };
+      }),
+      volumeTotal: Object.values(neste).reduce((s, v) => s + v, 0),
+      status: 'agendado',
+    };
+    await window._fb.criarAgendamento(id, dadosAgendamento);
+
+    fecharModal('modalNovo');
+    resetarFormularioAgendamento();
+    switchTab('lista');
+    document.getElementById('confirmacaoProtocolo').textContent = protocolo;
+    abrirModal('modalConfirmacao');
+    toast('Agendamento criado com sucesso.', 'success');
+  } catch (e) {
+    console.error(e);
+    let msg = msgErro(e, 'Erro ao confirmar agendamento.');
+    let etapa = ETAPAS_WIZARD.length;
+    // A sincronização com o datalake pode ter tirado um pedido do portal entre a busca e o envio
+    // ou o revendedor pode ter mudado a data de entrega
+    if (ehErroPermissao(e)) {
+      const indisponiveis = [], dataMudou = [];
+      for (const p of pedidos) {
+        const atual = await window._fb.carregarPedido(p.nrPedido).catch(() => null);
+        if (!atual) indisponiveis.push(p.nrPedido);
+        else if (atual.dataEntrega !== data) dataMudou.push(`${p.nrPedido} (agora ${formatDataBR(atual.dataEntrega)})`);
+      }
+      if (indisponiveis.length) {
+        msg = `Pedido ${indisponiveis.join(', ')} não está mais disponível para agendamento (pode ter sido faturado, bloqueado ou cancelado). Tire do agendamento e confirme de novo.`;
+        etapa = 1;
+      } else if (dataMudou.length) {
+        msg = `A data de entrega do pedido ${dataMudou.join(', ')} foi alterada pelo revendedor. Tire o pedido, adicione de novo e confirme.`;
+        etapa = 1;
+      }
+    }
+    if (/horário acabou de ser reservado/.test(msg)) etapa = 2;
+    mostrarEtapa(etapa, msg);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Confirmar Agendamento';
+  }
+}
+
+function resetarFormularioAgendamento() {
+  for (const id of ['f-pedido-sap', 'f-data', 'f-turno', 'f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2', 'f-motorista', 'f-motorista-cpf']) document.getElementById(id).value = '';
+  STATE.novo.pedidos = [];
+  STATE.novo.compartimentos = compartimentosIniciais();
+  atualizarBaseDosPedidos(); // desliga os listeners de horários
+  mostrarStatusPedido('');
+  mostrarErroWizard('');
+}
+
+/* ── LISTA DE AGENDAMENTOS ── */
+function renderListaAgendamentos() {
+  const lista = objList(STATE.agendamentos).sort((a, b) => (b.dataCarregamento || '').localeCompare(a.dataCarregamento || '') || (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+  const filtroBase = document.getElementById('filtroBase')?.value || '';
+  const filtroStatus = document.getElementById('filtroStatus')?.value || '';
+  const filtroDe = document.getElementById('filtroDataDe')?.value || '';
+  const filtroAte = document.getElementById('filtroDataAte')?.value || '';
+
+  const filtrada = lista.filter((a) =>
+    (!filtroBase || a.baseId === filtroBase) &&
+    (!filtroStatus || a.status === filtroStatus) &&
+    (!filtroDe || a.dataCarregamento >= filtroDe) &&
+    (!filtroAte || a.dataCarregamento <= filtroAte));
+
+  const tbody = document.getElementById('tbodyAgendamentos');
+  tbody.innerHTML = filtrada.length ? filtrada.map((a) => `
+    <tr onclick="abrirDetalheAgendamento('${a.id}')">
+      <td><strong>${esc(a.protocolo)}</strong></td>
+      <td class="quebra">${Object.keys(a.pedidos || {}).map(esc).join(', ')}</td>
+      <td>${formatDataBR(a.dataCarregamento)}</td>
+      <td class="quebra" title="${esc(Object.values(a.clientes || {}).map((c) => c.nome).join('\n'))}">${esc(resumoClientes(a))}</td>
+      <td class="quebra">${esc(a.baseNome)}</td>
+      <td>${a.baseTipo === 'agendamento' ? esc(a.slotHorario) : esc(labelTurno(a.turno))}</td>
+      <td>${esc(a.placaCavalo)}</td>
+      <td>${esc(a.motorista)}</td>
+      <td class="num"><strong>${formatVolume(a.volumeTotal)}</strong></td>
+      <td><span class="badge ${a.status === 'cancelado' ? 'badge-danger' : 'badge-success'}">${a.status === 'cancelado' ? 'Cancelado' : 'Agendado'}</span></td>
+      <td class="quebra">${esc(a.criadoPorNome)}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="11">Nenhum agendamento encontrado.</td></tr>';
+
+  const dataHoje = hoje();
+  const em7dias = somarDias(dataHoje, 7);
+  const ativos = lista.filter((a) => a.status !== 'cancelado');
+  document.getElementById('statTotal').textContent = ativos.length;
+  document.getElementById('statHoje').textContent = ativos.filter((a) => a.dataCarregamento === dataHoje).length;
+  document.getElementById('statSemana').textContent = ativos.filter((a) => a.dataCarregamento >= dataHoje && a.dataCarregamento <= em7dias).length;
+}
+function capitalizar(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; }
+// Um agendamento pode ter vários clientes/pedidos: resumos para lista e detalhe
+function resumoClientes(a) {
+  const nomes = Object.values(a.clientes || {}).map((c) => c.nome);
+  return nomes.length > 1 ? `${nomes[0]} +${nomes.length - 1}` : (nomes[0] || '—');
+}
+
+function abrirDetalheAgendamento(id) {
+  const a = STATE.agendamentos[id];
+  if (!a) return;
+  const podeCancel = a.status !== 'cancelado' && (STATE.usuario.admin || a.criadoPorUid === STATE.usuario.uid);
+  document.getElementById('modalDetalheConteudo').innerHTML = `
+    <div class="modal-title">${esc(a.protocolo)}</div>
+    <div class="modal-sub">Criado por ${esc(a.criadoPorNome)} em ${new Date(a.criadoEm).toLocaleString('pt-BR')}</div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Data</div><div class="info-val">${formatDataBR(a.dataCarregamento)}</div></div>
+      <div class="info-item"><div class="info-lbl">Volume total</div><div class="info-val">${formatVolume(a.volumeTotal)}</div></div>
+      <div class="info-item"><div class="info-lbl">Status</div><div class="info-val"><span class="badge ${a.status === 'cancelado' ? 'badge-danger' : 'badge-success'}">${a.status === 'cancelado' ? 'Cancelado' : 'Agendado'}</span></div></div>
+    </div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Base</div><div class="info-val">${esc(a.baseNome)}</div></div>
+      <div class="info-item"><div class="info-lbl">${a.baseTipo === 'agendamento' ? 'Slot' : 'Turno'}</div><div class="info-val">${a.baseTipo === 'agendamento' ? esc(a.slotHorario) : esc(labelTurno(a.turno))}</div></div>
+      <div class="info-item"></div><!-- mantém o alinhamento das 3 colunas -->
+    </div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Placa Cavalo</div><div class="info-val">${esc(a.placaCavalo)}</div></div>
+      <div class="info-item"><div class="info-lbl">Placa Carreta 1</div><div class="info-val">${esc(a.placaCarreta) || '—'}</div></div>
+      <div class="info-item"><div class="info-lbl">Placa Carreta 2</div><div class="info-val">${esc(a.placaCarreta2) || '—'}</div></div>
+    </div>
+    <div class="info-row">
+      <div class="info-item"><div class="info-lbl">Motorista</div><div class="info-val">${esc(a.motorista)}</div></div>
+      <div class="info-item"><div class="info-lbl">CPF do Motorista</div><div class="info-val">${esc(formatCpf(a.motoristaCpf)) || '—'}</div></div>
+      <div class="info-item"></div><!-- mantém o alinhamento das 3 colunas -->
+    </div>
+    <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Pedidos</div>
+      <table class="tabela-itens" style="margin-top:6px">
+        <thead><tr><th>Cód. Cliente</th><th>Cliente</th><th>Pedido</th><th>Frete</th><th>Cidade</th><th>Canal</th></tr></thead>
+        <tbody>${Object.values(a.pedidos || {}).map((p) => {
+          // cidade e canal gravados no agendamento; os antigos (sem canal) usam o cadastro, quando carregado
+          const c = { ...(STATE.clientes[p.clienteCodigo] || {}), ...((a.clientes || {})[p.clienteCodigo] || {}) };
+          return `<tr><td>${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td>${esc(c.canal) || '—'}</td></tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Compartimentos</div>
+      <table class="tabela-itens" style="margin-top:6px">
+        <thead><tr><th>Comp.</th><th>Código</th><th>Produto</th><th>Pedido</th><th class="num">Volume</th></tr></thead>
+        <tbody>${Object.values(a.compartimentos || {}).map((c) => `<tr><td>${esc(c.numero)}</td><td>${esc(c.produtoId)}</td><td class="quebra">${esc(c.produtoNome)}</td><td>${esc(c.pedido)}</td><td class="num">${formatVolume(c.volume)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    ${a.status === 'cancelado' ? `<div class="form-hint">Cancelado por ${esc(a.canceladoPor)} em ${a.canceladoEm ? new Date(a.canceladoEm).toLocaleString('pt-BR') : ''}</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModal('modalDetalhe')">Fechar</button>
+      ${podeCancel ? `<button class="btn btn-danger" onclick="cancelarAgendamento('${id}')">Cancelar Agendamento</button>` : ''}
+    </div>`;
+  abrirModal('modalDetalhe');
+}
+
+async function cancelarAgendamento(id) {
+  const a = STATE.agendamentos[id];
+  if (!a || !confirm('Cancelar o agendamento ' + a.protocolo + '?')) return;
+  try {
+    // Cancela e libera o slot no mesmo update()
+    await window._fb.cancelarAgendamento(id, a, STATE.usuario);
+    fecharModal('modalDetalhe');
+    toast('Agendamento cancelado.', 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao cancelar: ' + msgErro(e), 'error');
+  }
+}
+
+/* ── ABA SLOTS (admin) ── */
+function renderSelectSlotsBase() {
+  const sel = document.getElementById('slots-base-select');
+  const agendaBases = objList(STATE.bases).filter((b) => b.tipo === 'agendamento');
+  sel.innerHTML = '<option value="">Selecione…</option>' + agendaBases.map((b) => `<option value="${b.id}">${esc(b.nome)}</option>`).join('');
+  if (agendaBases.some((b) => b.id === STATE.slotsAdmin.baseId)) sel.value = STATE.slotsAdmin.baseId;
+  if (sel.value !== STATE.slotsAdmin.baseId) onSlotsBaseChange(); // base escolhida saiu da lista
+}
+function onSlotsBaseChange() {
+  cancelarListener('adminBaseSlots');
+  cancelarListener('adminOcupados');
+  const baseId = document.getElementById('slots-base-select').value;
+  STATE.slotsAdmin = { baseId, baseSlots: {}, ocupados: {} };
+  document.getElementById('slotsCadastroCard').style.display = baseId ? '' : 'none';
+  document.getElementById('slotsOcupacaoCard').style.display = baseId ? '' : 'none';
+  if (!baseId) return;
+  if (!document.getElementById('slotsOcupacaoData').value) document.getElementById('slotsOcupacaoData').value = hoje();
+  STATE.unsub.adminBaseSlots = window._fb.ouvirBaseSlots(baseId, (slots) => {
+    STATE.slotsAdmin.baseSlots = slots;
+    renderSlotsChips();
+    renderSlotsOcupacaoGrid();
+  }, erroListener('os slots da base'));
+  ouvirOcupacaoAdmin();
+}
+function ouvirOcupacaoAdmin() {
+  cancelarListener('adminOcupados');
+  const baseId = STATE.slotsAdmin.baseId;
+  const data = document.getElementById('slotsOcupacaoData').value;
+  STATE.slotsAdmin.ocupados = {};
+  renderSlotsOcupacaoGrid();
+  if (!baseId || !data) return;
+  STATE.unsub.adminOcupados = window._fb.ouvirSlotsOcupados(baseId, data, (ocupados) => {
+    STATE.slotsAdmin.ocupados = ocupados;
+    renderSlotsOcupacaoGrid();
+  }, erroListener('a ocupação dos slots'));
+}
+function renderSlotsChips() {
+  const ativos = objList(STATE.slotsAdmin.baseSlots).sort((a, b) => a.horario.localeCompare(b.horario));
+  document.getElementById('slotsChips').innerHTML = ativos.length ? ativos.map((s) =>
+    `<div class="chip active">${esc(s.horario)} <span style="cursor:pointer;margin-left:4px" onclick="removerSlotBase('${s.id}')" title="Remover">✕</span></div>`
+  ).join('') : '<span class="chip-empty">Nenhum slot cadastrado ainda.</span>';
+}
+async function adicionarSlotBase() {
+  const baseId = STATE.slotsAdmin.baseId;
+  const horario = document.getElementById('novoSlotHorario').value;
+  if (!baseId || !horario) { toast('Selecione a base e um horário.', 'error'); return; }
+  if (Object.values(STATE.slotsAdmin.baseSlots).some((s) => s.horario === horario)) { toast('Esse horário já está cadastrado.', 'error'); return; }
+  try {
+    await window._fb.adicionarSlotBase(baseId, horario);
+    document.getElementById('novoSlotHorario').value = '';
+    toast('Slot adicionado.', 'success');
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+async function removerSlotBase(slotId) {
+  if (!confirm('Remover este slot? Agendamentos já feitos não são afetados.')) return;
+  try {
+    await window._fb.removerSlotBase(STATE.slotsAdmin.baseId, slotId);
+    toast('Slot removido.', 'success');
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+function renderSlotsOcupacaoGrid() {
+  const grid = document.getElementById('slotsOcupacaoGrid');
+  const ativos = objList(STATE.slotsAdmin.baseSlots).sort((a, b) => a.horario.localeCompare(b.horario));
+  grid.innerHTML = ativos.length ? ativos.map((s) => {
+    const oc = STATE.slotsAdmin.ocupados[s.horario];
+    if (!oc) return `<span class="slot-btn" title="Livre">${esc(s.horario)}</span>`;
+    const quem = [STATE.agendamentos[oc.agendamentoId]?.protocolo, STATE.perfis[oc.uid]?.nome].filter(Boolean).join(' · ') || 'Ocupado';
+    return `<span class="slot-btn ocupado" title="${esc(quem)}">${esc(s.horario)}</span>`;
+  }).join('') : '<span class="chip-empty">Nenhum slot cadastrado.</span>';
+}
+
+/* ── CADASTROS (admin) ── */
+function renderCadastroBases() {
+  const el = document.getElementById('listaBases');
+  const lista = objList(STATE.bases).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  el.innerHTML = lista.length ? lista.map((b) => `
+    <div class="list-item">
+      <div><strong>${esc(b.nome)}</strong> <span class="meta">${b.centro && b.deposito
+        ? `centro ${esc(b.centro)} · depósito ${esc(b.deposito)}`
+        : '<span class="texto-perigo">sem centro/depósito: edite para ligar aos pedidos</span>'} · ${b.tipo === 'agendamento' ? 'Agendamento (slot)' : 'Fila (turno)'}</span></div>
+      <div class="list-item-actions">
+        <span class="badge ${b.ativo === false ? 'badge-muted' : 'badge-success'}">${b.ativo === false ? 'Inativa' : 'Ativa'}</span>
+        <button class="btn btn-secondary btn-sm" onclick="editarBase('${b.id}')">Editar</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleAtivo('Base','${b.id}',${b.ativo === false})">${b.ativo === false ? 'Ativar' : 'Desativar'}</button>
+      </div>
+    </div>`).join('') : '<div class="chip-empty">Nenhuma base cadastrada.</div>';
+}
+function limparFormBase() {
+  STATE.baseEditando = null;
+  for (const id of ['nb-nome', 'nb-centro', 'nb-deposito']) document.getElementById(id).value = '';
+  document.getElementById('nb-tipo').value = 'fila';
+  document.getElementById('baseFormTitulo').textContent = 'Nova Base';
+  document.getElementById('btnSalvarBase').textContent = 'Adicionar Base';
+  document.getElementById('btnCancelarEdicaoBase').classList.add('hidden');
+}
+function editarBase(id) {
+  const b = STATE.bases[id];
+  if (!b) return;
+  STATE.baseEditando = id;
+  document.getElementById('nb-nome').value = b.nome || '';
+  document.getElementById('nb-centro').value = b.centro || '';
+  document.getElementById('nb-deposito').value = b.deposito || '';
+  document.getElementById('nb-tipo').value = b.tipo === 'agendamento' ? 'agendamento' : 'fila';
+  document.getElementById('baseFormTitulo').textContent = 'Editando ' + b.nome;
+  document.getElementById('btnSalvarBase').textContent = 'Salvar alterações';
+  document.getElementById('btnCancelarEdicaoBase').classList.remove('hidden');
+  document.getElementById('nb-nome').focus();
+}
+// "Usar no cadastro" da lista de depósitos sem base
+function preencherFormBase(centro, deposito, nome) {
+  limparFormBase();
+  document.getElementById('nb-centro').value = centro;
+  document.getElementById('nb-deposito').value = deposito;
+  document.getElementById('nb-nome').value = nome;
+  document.getElementById('nb-nome').focus();
+}
+async function salvarBaseForm() {
+  const nome = document.getElementById('nb-nome').value.trim();
+  const centro = document.getElementById('nb-centro').value.trim();
+  const deposito = document.getElementById('nb-deposito').value.trim();
+  const tipo = document.getElementById('nb-tipo').value;
+  const id = STATE.baseEditando;
+  if (!nome || !centro || !deposito) { toast('Informe nome fantasia, centro e depósito.', 'error'); return; }
+  const repetida = objList(STATE.bases).find((b) => b.id !== id && b.centro === centro && b.deposito === deposito);
+  if (repetida) { toast(`Centro ${centro} + depósito ${deposito} já pertence à base ${repetida.nome}.`, 'error'); return; }
+  try {
+    if (id) await window._fb.salvarBase(id, { nome, centro, deposito, tipo });
+    else await window._fb.criarBase({ nome, centro, deposito, tipo, ativo: true });
+    toast(id ? 'Base atualizada.' : 'Base cadastrada.', 'success');
+    limparFormBase();
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+
+// Lê os pedidos publicados (uma vez, sob demanda) e lista os centro + depósito que ainda não têm base
+async function carregarDepositosSemBase() {
+  const el = document.getElementById('depositosSemBase');
+  el.innerHTML = '<span class="chip-empty">Lendo pedidos…</span>';
+  try {
+    const pedidos = await window._fb.listarPedidos();
+    const combos = {};
+    for (const p of Object.values(pedidos)) {
+      const chave = `${p.centro}|${p.depositoCodigo}`;
+      (combos[chave] ||= { centro: p.centro || '', deposito: p.depositoCodigo || '', nome: p.depositoNome || '', pedidos: 0 }).pedidos++;
+    }
+    STATE.depositosSemBase = Object.values(combos);
+    renderDepositosSemBase();
+  } catch (e) {
+    console.error(e);
+    el.innerHTML = `<span class="chip-empty">Não foi possível ler os pedidos: ${esc(msgErro(e, 'sem conexão'))}</span>`;
+  }
+}
+function renderDepositosSemBase() {
+  const el = document.getElementById('depositosSemBase');
+  const semBase = (STATE.depositosSemBase || [])
+    .filter((d) => !objList(STATE.bases).some((b) => b.centro === d.centro && b.deposito === d.deposito))
+    .sort((a, b) => b.pedidos - a.pedidos);
+  el.innerHTML = (semBase.length ? semBase.map((d) => `
+    <div class="list-item">
+      <div><strong>${esc(d.nome || 'Sem nome')}</strong> <span class="meta">centro ${esc(d.centro)} · depósito ${esc(d.deposito)} · ${d.pedidos} pedido(s)</span></div>
+      <div class="list-item-actions"><button class="btn btn-secondary btn-sm" onclick="preencherFormBase(${jsArg(d.centro)}, ${jsArg(d.deposito)}, ${jsArg(d.nome)})">Usar no cadastro</button></div>
+    </div>`).join('') : '<div class="chip-empty" style="margin-bottom:8px">Todos os depósitos dos pedidos atuais já têm base.</div>')
+    + '<button class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="carregarDepositosSemBase()">Verificar de novo</button>';
+}
+
+function renderCadastroClientes() {
+  const el = document.getElementById('listaClientes');
+  const lista = objList(STATE.clientes).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  el.innerHTML = lista.length ? lista.map((c) => `
+    <div class="list-item">
+      <div><strong>${esc(c.nome)}</strong> <span class="meta">${[esc(c.codigo), esc(c.cidade), c.canal ? 'canal ' + esc(c.canal) : ''].filter(Boolean).join(' · ')}</span></div>
+      <div class="list-item-actions">
+        <span class="badge ${c.ativo === false ? 'badge-muted' : 'badge-success'}">${c.ativo === false ? 'Inativo' : 'Ativo'}</span>
+        <button class="btn btn-secondary btn-sm" onclick="toggleAtivo('Cliente',${jsArg(c.id)},${c.ativo === false})">${c.ativo === false ? 'Ativar' : 'Desativar'}</button>
+      </div>
+    </div>`).join('') : '<div class="chip-empty">Nenhum cliente cadastrado.</div>';
+}
+async function criarCliente() {
+  const codigo = document.getElementById('nc-codigo').value.trim();
+  const nome = document.getElementById('nc-nome').value.trim();
+  const cidade = document.getElementById('nc-cidade').value.trim().toUpperCase();
+  const canal = document.getElementById('nc-canal').value.trim().toUpperCase();
+  if (!codigo || !nome) { toast('Informe código e nome do cliente.', 'error'); return; }
+  // O código vira a chave clientes/<código> no Firebase
+  if (!/^[A-Za-z0-9_-]+$/.test(codigo)) { toast('Código do cliente: use só letras, números, "-" e "_".', 'error'); return; }
+  if (STATE.clientes[codigo]) { toast('Já existe um cliente com esse código.', 'error'); return; }
+  try {
+    await window._fb.criarCliente(codigo, { codigo, nome, cidade, canal, ativo: true });
+    for (const id of ['nc-codigo', 'nc-nome', 'nc-cidade', 'nc-canal']) document.getElementById(id).value = '';
+    toast('Cliente cadastrado.', 'success');
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+
+async function toggleAtivo(tipo, id, novoValor) {
+  const map = { Base: window._fb.salvarBase, Cliente: window._fb.salvarCliente };
+  try { await map[tipo](id, { ativo: novoValor }); }
+  catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+
+/* ── ADMIN: GERENCIAR USUÁRIOS ── */
+function abrirAdminModal() { limparFormUsuario(); renderAdminUsuarios(); abrirModal('adminModal'); }
+function renderAdminUsuarios() {
+  const el = document.getElementById('adminUsersList');
+  const lista = objList(STATE.perfis).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  el.innerHTML = lista.length ? lista.map((u) => `
+    <div class="login-admin-user">
+      <div>
+        <strong>${esc(u.nome)} ${u.admin ? '<span class="badge badge-accent">admin</span>' : ''} ${u.robo ? '<span class="badge badge-muted" title="Usuário do script que publica os pedidos do datalake">robô datalake</span>' : ''} ${u.trocarSenha ? '<span class="badge badge-warn">troca de senha pendente</span>' : ''}</strong>
+        <span>${esc(u.email)} · ${u.tipo === 'cliente' ? 'Cliente ' + esc(u.clienteCodigo || '') : 'Equipe interna'}</span>
+      </div>
+      <div class="list-item-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editarUsuario(${jsArg(u.id)})">Editar</button>
+        <button class="btn btn-secondary btn-sm" onclick="adminRedefinirSenha(${jsArg(u.id)})" title="Envia para o e-mail da pessoa um link para ela mesma criar uma nova senha">Redefinir senha</button>
+        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario(${jsArg(u.id)})" ${u.id === STATE.usuario?.uid ? 'disabled title="Você não pode remover o próprio acesso"' : ''}>Remover</button>
+      </div>
+    </div>`).join('') : '<div class="chip-empty">Nenhum usuário cadastrado ainda.</div>';
+}
+function renderSelectClienteAdmin() {
+  const sel = document.getElementById('admin-new-cliente-codigo');
+  const atual = sel.value;
+  const ativos = objList(STATE.clientes).filter((c) => c.ativo !== false).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  sel.innerHTML = '<option value="">Selecione o cliente…</option>' +
+    ativos.map((c) => `<option value="${esc(c.codigo)}">${esc(c.codigo)} — ${esc(c.nome)}${c.cidade ? ' · ' + esc(c.cidade) : ''}</option>`).join('');
+  sel.value = atual;
+}
+function onAdminTipoChange() {
+  const cliente = document.getElementById('admin-new-tipo').value === 'cliente';
+  document.getElementById('admin-new-cliente-wrap').style.display = cliente ? '' : 'none';
+  document.getElementById('admin-new-admin-wrap').style.display = cliente ? 'none' : '';
+  if (cliente) document.getElementById('admin-new-admin').checked = false; // cliente não pode ser admin (regra do banco)
+}
+function limparFormUsuario() {
+  document.getElementById('adminFormTitulo').textContent = 'Adicionar novo usuário';
+  for (const id of ['admin-new-nome', 'admin-new-email', 'admin-new-senha', 'admin-new-uid', 'admin-new-cliente-codigo']) document.getElementById(id).value = '';
+  document.getElementById('admin-new-uid').readOnly = false;
+  document.getElementById('admin-new-email').readOnly = false;
+  document.getElementById('admin-new-senha').disabled = false;
+  document.getElementById('admin-new-tipo').value = 'interno';
+  document.getElementById('admin-new-admin').checked = false;
+  document.getElementById('admin-new-trocar').checked = true; // usuário novo troca a senha inicial no 1º login
+  document.getElementById('adminInfo').textContent = '';
+  onAdminTipoChange();
+}
+function editarUsuario(uid) {
+  const p = STATE.perfis[uid];
+  if (!p) return;
+  limparFormUsuario();
+  document.getElementById('adminFormTitulo').textContent = 'Editando ' + (p.nome || p.email);
+  document.getElementById('admin-new-uid').value = uid;
+  document.getElementById('admin-new-uid').readOnly = true;
+  document.getElementById('admin-new-nome').value = p.nome || '';
+  document.getElementById('admin-new-email').value = p.email || '';
+  document.getElementById('admin-new-email').readOnly = true; // e-mail de login não muda por aqui
+  document.getElementById('admin-new-senha').disabled = true;
+  document.getElementById('admin-new-tipo').value = p.tipo === 'cliente' ? 'cliente' : 'interno';
+  onAdminTipoChange();
+  document.getElementById('admin-new-cliente-codigo').value = p.clienteCodigo || '';
+  document.getElementById('admin-new-admin').checked = p.admin === true;
+  document.getElementById('admin-new-trocar').checked = p.trocarSenha === true;
+  document.getElementById('admin-new-nome').focus();
+}
+async function adminSalvarUsuario() {
+  const campoUid = document.getElementById('admin-new-uid');
+  let uid = campoUid.value.trim();
+  const nome = document.getElementById('admin-new-nome').value.trim();
+  const email = document.getElementById('admin-new-email').value.trim().toLowerCase();
+  const senha = document.getElementById('admin-new-senha').value;
+  const tipo = document.getElementById('admin-new-tipo').value;
+  const clienteCodigo = document.getElementById('admin-new-cliente-codigo').value;
+  const admin = tipo === 'interno' && document.getElementById('admin-new-admin').checked;
+  const trocarSenha = document.getElementById('admin-new-trocar').checked;
+  const info = document.getElementById('adminInfo');
+  const btn = document.getElementById('btnSalvarUsuario');
+  info.textContent = '';
+  if (!nome || !email) { info.textContent = 'Preencha nome e e-mail.'; return; }
+  if (!uid && senha.length < 6) { info.textContent = 'A senha inicial precisa ter pelo menos 6 caracteres.'; return; }
+  if (tipo === 'cliente' && !clienteCodigo) { info.textContent = 'Escolha o cliente deste usuário (cadastre antes em Cadastros → Clientes).'; return; }
+  if (uid === STATE.usuario.uid && !admin) { info.textContent = 'Você não pode tirar o próprio acesso de admin.'; return; }
+
+  btn.disabled = true;
+  try {
+    if (!uid) {
+      try {
+        uid = await window._fb.criarLogin(email, senha);
+        campoUid.value = uid; // se salvar o perfil falhar, tentar de novo reaproveita o login já criado
+        campoUid.readOnly = true;
+      } catch (e) {
+        info.textContent = {
+          'auth/email-already-in-use': 'Esse e-mail já tem login no Firebase. Copie o UID dele no console (Authentication → Usuários) e cole no campo UID.',
+          'auth/invalid-email': 'E-mail inválido.',
+          'auth/weak-password': 'Senha fraca: use pelo menos 6 caracteres.',
+        }[e.code] || ('Não foi possível criar o login: ' + e.message);
+        return;
+      }
+    }
+    // Parte do perfil já gravado: o set() substitui tudo, e campos fora do formulário (ex.: robo) precisam ficar
+    const perfil = { ...(STATE.perfis[uid] || {}), nome, email, tipo, admin, atualizadoEm: new Date().toISOString() };
+    if (tipo === 'cliente') perfil.clienteCodigo = clienteCodigo; else delete perfil.clienteCodigo;
+    if (trocarSenha) perfil.trocarSenha = true; else delete perfil.trocarSenha;
+    await window._fb.salvarPerfil(uid, perfil);
+    toast(`Usuário ${nome} salvo.`, 'success');
+    limparFormUsuario();
+  } catch (e) {
+    console.error(e);
+    info.textContent = 'Erro ao salvar o perfil: ' + msgErro(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function adminRedefinirSenha(uid) {
+  const p = STATE.perfis[uid];
+  if (!p?.email) { toast('Esse usuário não tem e-mail no perfil.', 'error'); return; }
+  if (!confirm(`Enviar para ${p.email} um link de redefinição de senha?`)) return;
+  try {
+    await window._fb.resetarSenha(p.email);
+    toast(`Link de redefinição enviado para ${p.email}.`, 'success');
+  } catch (e) { console.error(e); toast('Não foi possível enviar o e-mail agora.', 'error'); }
+}
+async function adminRemoverUsuario(uid) {
+  const p = STATE.perfis[uid];
+  if (!p || uid === STATE.usuario.uid) return;
+  if (!confirm(`Remover o acesso de ${p.nome || p.email}? O login continua existindo no Firebase, mas a pessoa não entra mais no portal.`)) return;
+  try {
+    await window._fb.removerPerfil(uid);
+    toast('Acesso removido.', 'success');
+    if (document.getElementById('admin-new-uid').value === uid) limparFormUsuario();
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+
+/* ── TROCAR SENHA ── */
+function limparCamposSenha() {
+  for (const id of ['senha-atual', 'senha-nova', 'senha-nova-confirma']) document.getElementById(id).value = '';
+  document.getElementById('senha-erro').classList.remove('visible');
+}
+function abrirTrocaSenha() {
+  document.getElementById('trocaSenhaTitulo').textContent = 'Trocar Senha';
+  document.getElementById('trocaSenhaSub').textContent = 'Informe sua senha atual e a nova senha.';
+  document.getElementById('btnCancelarTrocaSenha').textContent = 'Cancelar';
+  limparCamposSenha();
+  abrirModal('modalTrocarSenha');
+}
+// Primeiro login com a senha inicial definida pelo admin: só entra no app depois de trocar
+function abrirTrocaSenhaObrigatoria(sessao) {
+  STATE.trocaSenhaPendente = sessao;
+  mostrarCarregandoLogin('Troca de senha pendente.');
+  document.getElementById('trocaSenhaTitulo').textContent = 'Defina sua nova senha';
+  document.getElementById('trocaSenhaSub').textContent = 'Seu acesso foi criado com uma senha inicial. Troque por uma senha só sua para continuar.';
+  document.getElementById('btnCancelarTrocaSenha').textContent = 'Sair';
+  limparCamposSenha();
+  abrirModal('modalTrocarSenha');
+}
+function cancelarTrocaSenha() {
+  if (STATE.trocaSenhaPendente) { fazerLogout(); return; }
+  fecharModal('modalTrocarSenha');
+}
+async function trocarSenha() {
+  const atual = document.getElementById('senha-atual').value;
+  const nova = document.getElementById('senha-nova').value;
+  const confirma = document.getElementById('senha-nova-confirma').value;
+  const erroEl = document.getElementById('senha-erro');
+  const btn = document.getElementById('btnSalvarSenha');
+  const erro = (msg) => { erroEl.textContent = msg; erroEl.classList.add('visible'); };
+  erroEl.classList.remove('visible');
+  if (!atual || !nova) { erro('Preencha todos os campos.'); return; }
+  if (nova.length < 6) { erro('A nova senha deve ter ao menos 6 caracteres.'); return; }
+  if (nova !== confirma) { erro('A confirmação não confere com a nova senha.'); return; }
+  if (nova === atual) { erro('A nova senha precisa ser diferente da atual.'); return; }
+  btn.disabled = true;
+  try {
+    try {
+      await window._fb.trocarSenha(atual, nova);
+    } catch (e) {
+      console.error(e);
+      erro({
+        'auth/invalid-credential': 'Senha atual incorreta.',
+        'auth/wrong-password': 'Senha atual incorreta.',
+        'auth/weak-password': 'Senha fraca: use pelo menos 6 caracteres.',
+        'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
+        'auth/network-request-failed': 'Sem conexão com o servidor.',
+      }[e.code] || ('Não foi possível trocar a senha: ' + e.message));
+      return;
+    }
+    const pendente = STATE.trocaSenhaPendente;
+    if (pendente) {
+      try {
+        await window._fb.liberarTrocaSenha(pendente.uid);
+      } catch (e) {
+        console.error(e);
+        erro('Sua senha foi trocada, mas o banco recusou liberar o acesso (regras do Firebase desatualizadas). Avise o administrador.');
+        return;
+      }
+      STATE.trocaSenhaPendente = null;
+      fecharModal('modalTrocarSenha');
+      limparCamposSenha();
+      toast('Senha trocada. Bem-vindo!', 'success');
+      entrarNoApp(pendente);
+      return;
+    }
+    fecharModal('modalTrocarSenha');
+    limparCamposSenha();
+    toast('Senha alterada com sucesso.', 'success');
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction, query, orderByValue, startAt }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+    sendPasswordResetEmail, createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  // Config pública (não é segredo): o acesso aos dados é protegido pelas regras em firebase_database.rules.json
+  const firebaseConfig = {
+    apiKey:            "AIzaSyCYwhCHiTr2zdEB31yraW-DJRzOQJ3tJAY",
+    authDomain:        "nexta-agendamento.firebaseapp.com",
+    databaseURL:       "https://nexta-agendamento-default-rtdb.firebaseio.com",
+    projectId:         "nexta-agendamento",
+    storageBucket:     "nexta-agendamento.firebasestorage.app",
+    messagingSenderId: "806131011718",
+    appId:             "1:806131011718:web:2c439446fbd62c2fb18107",
+  };
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app);
+  // Instância auxiliar só para o admin criar logins sem perder a própria sessão
+  const authCadastro = initializeAuth(initializeApp(firebaseConfig, "cadastro"), { persistence: inMemoryPersistence });
+
+  // onValue devolve a função de unsubscribe — o app guarda e desliga ao trocar base/data
+  const ouvir = (caminho, cb, onErro) => onValue(ref(db, caminho), (snap) => cb(snap.val() || {}), onErro);
+
+  window._fb = {
+    /* Auth */
+    login: (email, senha) => signInWithEmailAndPassword(auth, email, senha),
+    logout: () => signOut(auth),
+    resetarSenha: (email) => sendPasswordResetEmail(auth, email),
+    // updatePassword exige login recente: reautentica com a senha atual antes (também confirma que é a própria pessoa)
+    trocarSenha: async (atual, nova) => {
+      const u = auth.currentUser;
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, atual));
+      await updatePassword(u, nova);
+    },
+    // A regra do banco só deixa o próprio usuário gravar trocarSenha = false
+    liberarTrocaSenha: (uid) => set(ref(db, `usuarios/${uid}/trocarSenha`), false),
+    criarLogin: async (email, senha) => {
+      const cred = await createUserWithEmailAndPassword(authCadastro, email, senha);
+      await signOut(authCadastro).catch(() => {});
+      return cred.user.uid;
+    },
+
+    /* Perfis: usuarios/<uid> */
+    carregarPerfil: async (uid) => (await get(ref(db, 'usuarios/' + uid))).val(),
+    ouvirPerfis: (cb, onErro) => ouvir('usuarios', cb, onErro),
+    salvarPerfil: (uid, dados) => set(ref(db, 'usuarios/' + uid), dados),
+    removerPerfil: (uid) => remove(ref(db, 'usuarios/' + uid)),
+
+    /* Cadastros */
+    ouvirBases: (cb, onErro) => ouvir('bases', cb, onErro),
+    criarBase: async (dados) => (await push(ref(db, 'bases'), dados)).key,
+    salvarBase: (id, dados) => update(ref(db, 'bases/' + id), dados),
+
+    // clientes/<código>: chave = código do cliente no SAP (o sync do datalake grava codigo/nome)
+    ouvirClientes: (cb, onErro) => ouvir('clientes', cb, onErro),
+    criarCliente: (codigo, dados) => set(ref(db, 'clientes/' + codigo), dados),
+    salvarCliente: (codigo, dados) => update(ref(db, 'clientes/' + codigo), dados),
+
+    /* Pedidos do datalake: pedidosSap/<nr>, publicados por extracao_portal_pedidos.py */
+    // Cliente só lê pedido do próprio código — o de outro cliente (ou inexistente) volta como permissão negada
+    carregarPedido: async (nr) => (await get(ref(db, 'pedidosSap/' + nr))).val(),
+    listarPedidos: async () => (await get(ref(db, 'pedidosSap'))).val() || {},
+
+    /* Slots: baseSlots/<base>/<id> = horários cadastrados; slotsOcupados/<base>/<data>/<HH:MM> = reservas */
+    ouvirBaseSlots: (baseId, cb, onErro) => ouvir('baseSlots/' + baseId, cb, onErro),
+    adicionarSlotBase: async (baseId, horario) => (await push(ref(db, 'baseSlots/' + baseId), { horario, ativo: true })).key,
+    removerSlotBase: (baseId, slotId) => remove(ref(db, `baseSlots/${baseId}/${slotId}`)),
+    ouvirSlotsOcupados: (baseId, data, cb, onErro) => ouvir(`slotsOcupados/${baseId}/${data}`, cb, onErro),
+
+    /* Agendamentos */
+    gerarProtocolo: async () => {
+      const r = await runTransaction(ref(db, 'contadores/protocolo'), (atual) => (atual || 0) + 1);
+      if (!r.committed) throw new Error('Não foi possível gerar o protocolo. Tente de novo.');
+      return 'AG-' + String(r.snapshot.val()).padStart(6, '0');
+    },
+    novoIdAgendamento: () => push(ref(db, 'agendamentos')).key,
+    // Agendamento + reserva do slot + índice por cliente num único update() multi-path: grava tudo ou nada.
+    // A regra de slotsOcupados só aceita gravar num horário livre, então se dois usuários pegam o mesmo
+    // horário o segundo recebe PERMISSION_DENIED e nada dele é gravado (sem slot preso sem agendamento).
+    // agendamentosPorCliente/<código>/<id> = data de carregamento: é por ele que cada cliente da carreta enxerga o agendamento.
+    criarAgendamento: async (id, dados) => {
+      const caminhoSlot = dados.slotHorario ? `slotsOcupados/${dados.baseId}/${dados.dataCarregamento}/${dados.slotHorario}` : null;
+      const updates = { ['agendamentos/' + id]: dados };
+      if (caminhoSlot) updates[caminhoSlot] = { uid: dados.criadoPorUid, agendamentoId: id, ocupadoEm: dados.criadoEm };
+      for (const codigo of Object.keys(dados.clientes || {})) updates[`agendamentosPorCliente/${codigo}/${id}`] = dados.dataCarregamento;
+      try {
+        await update(ref(db), updates);
+      } catch (e) {
+        const ocupado = caminhoSlot && await get(ref(db, caminhoSlot)).then((s) => s.exists(), () => false);
+        if (ocupado) throw new Error('Esse horário acabou de ser reservado por outro usuário. Escolha outro horário.');
+        throw e;
+      }
+    },
+    // Cancela e libera o slot no mesmo update()
+    cancelarAgendamento: (id, agendamento, usuario) => {
+      const updates = {
+        [`agendamentos/${id}/status`]: 'cancelado',
+        [`agendamentos/${id}/canceladoEm`]: new Date().toISOString(),
+        [`agendamentos/${id}/canceladoPor`]: usuario.nome,
+        [`agendamentos/${id}/canceladoPorUid`]: usuario.uid,
+      };
+      if (agendamento.slotHorario) {
+        updates[`slotsOcupados/${agendamento.baseId}/${agendamento.dataCarregamento}/${agendamento.slotHorario}`] = null;
+      }
+      return update(ref(db), updates);
+    },
+    ouvirAgendamentosTodos: (cb, onErro) => ouvir('agendamentos', cb, onErro),
+    // Cliente não lê agendamentos/ inteiro: segue o índice agendamentosPorCliente/<código> (a partir de `desde`)
+    // e abre um listener por agendamento — a regra libera cada agendamentos/<id> que está no índice dele.
+    ouvirAgendamentosCliente: (codigo, desde, cb, onErro) => {
+      const dados = {};
+      const porId = {};
+      const emitir = () => cb({ ...dados });
+      const pararIndice = onValue(query(ref(db, 'agendamentosPorCliente/' + codigo), orderByValue(), startAt(desde)), (snap) => {
+        const ids = snap.val() || {};
+        for (const id of Object.keys(porId)) {
+          if (!(id in ids)) { porId[id](); delete porId[id]; delete dados[id]; }
+        }
+        for (const id of Object.keys(ids)) {
+          if (porId[id]) continue;
+          porId[id] = onValue(ref(db, 'agendamentos/' + id), (s) => {
+            if (s.exists()) dados[id] = s.val(); else delete dados[id];
+            emitir();
+          }, onErro);
+        }
+        emitir();
+      }, onErro);
+      return () => { pararIndice(); Object.values(porId).forEach((parar) => parar()); };
+    },
+  };
+
+  onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
+</script>
+</body>
+</html>
