@@ -380,7 +380,8 @@ tbody tr:hover td { background: var(--panel-soft); }
       <div class="lbl">Protocolo de Agendamento</div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" style="width:100%" onclick="fecharModal('modalConfirmacao')">Fechar</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="baixarPdfAgendamento('', this)">Baixar comprovante (PDF)</button>
+      <button class="btn btn-primary" style="flex:1" onclick="fecharModal('modalConfirmacao')">Fechar</button>
     </div>
   </div>
 </div>
@@ -498,7 +499,8 @@ tbody tr:hover td { background: var(--panel-soft); }
 
 <!-- MODAL: Detalhe do Agendamento -->
 <div class="modal-overlay" id="modalDetalhe">
-  <div class="modal" style="width:680px" id="modalDetalheConteudo"></div>
+  <div class="modal" style="width:1200px" id="modalDetalheConteudo"></div><!-- mesma largura do Novo Agendamento -->
+
 </div>
 
 <header class="topbar">
@@ -710,6 +712,7 @@ const STATE = {
   // unsubscribe dos listeners que dependem da base/data escolhida — trocar a seleção desliga o anterior
   unsub: { novoBaseSlots: null, novoOcupados: null, adminBaseSlots: null, adminOcupados: null, agendamentos: null },
   trocaSenhaPendente: null, // sessão aguardando a troca obrigatória da senha inicial
+  ultimoAgendamento: null,  // dados do agendamento que acabou de ser criado (comprovante em PDF)
   msgLogin: '',
 };
 
@@ -1457,6 +1460,7 @@ async function confirmarAgendamento() {
       status: 'agendado',
     };
     await window._fb.criarAgendamento(id, dadosAgendamento);
+    STATE.ultimoAgendamento = dadosAgendamento; // botão "Baixar comprovante" da janela de confirmação
 
     fecharModal('modalNovo');
     resetarFormularioAgendamento();
@@ -1576,8 +1580,7 @@ function abrirDetalheAgendamento(id) {
       <table class="tabela-itens" style="margin-top:6px">
         <thead><tr><th>Cód. Cliente</th><th>Cliente</th><th>Pedido</th><th>Frete</th><th>Cidade</th><th>Canal</th></tr></thead>
         <tbody>${Object.values(a.pedidos || {}).map((p) => {
-          // cidade e canal gravados no agendamento; os antigos (sem canal) usam o cadastro, quando carregado
-          const c = { ...(STATE.clientes[p.clienteCodigo] || {}), ...((a.clientes || {})[p.clienteCodigo] || {}) };
+          const c = clienteDoPedido(a, p);
           return `<tr><td>${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td>${esc(c.canal) || '—'}</td></tr>`;
         }).join('')}</tbody>
       </table>
@@ -1590,10 +1593,15 @@ function abrirDetalheAgendamento(id) {
     </div>
     ${a.status === 'cancelado' ? `<div class="form-hint">Cancelado por ${esc(a.canceladoPor)} em ${a.canceladoEm ? new Date(a.canceladoEm).toLocaleString('pt-BR') : ''}</div>` : ''}
     <div class="modal-actions">
+      <button class="btn btn-secondary" style="margin-right:auto" onclick="baixarPdfAgendamento('${id}', this)">Baixar PDF</button>
       <button class="btn btn-secondary" onclick="fecharModal('modalDetalhe')">Fechar</button>
       ${podeCancel ? `<button class="btn btn-danger" onclick="cancelarAgendamento('${id}')">Cancelar Agendamento</button>` : ''}
     </div>`;
   abrirModal('modalDetalhe');
+}
+// Cidade e canal gravados no agendamento; os antigos (sem canal) usam o cadastro, quando carregado
+function clienteDoPedido(a, p) {
+  return { ...(STATE.clientes[p.clienteCodigo] || {}), ...((a.clientes || {})[p.clienteCodigo] || {}) };
 }
 
 async function cancelarAgendamento(id) {
@@ -1608,6 +1616,166 @@ async function cancelarAgendamento(id) {
     console.error(e);
     toast('Erro ao cancelar: ' + msgErro(e), 'error');
   }
+}
+
+/* ── COMPROVANTE EM PDF ── */
+// jsPDF + autoTable só são baixados na primeira vez que alguém pede o PDF
+const PDF_LIBS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
+];
+let _pdfLibs = null;
+function carregarScript(src) {
+  return new Promise((ok, falha) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = ok;
+    s.onerror = () => falha(new Error('sem conexão com o servidor da biblioteca de PDF'));
+    document.head.appendChild(s);
+  });
+}
+function carregarLibsPdf() {
+  _pdfLibs = _pdfLibs || PDF_LIBS.reduce((p, src) => p.then(() => carregarScript(src)), Promise.resolve())
+    .catch((e) => { _pdfLibs = null; throw e; });
+  return _pdfLibs;
+}
+// As fontes padrão do PDF só têm o alfabeto latino básico: troca travessões/aspas tipográficas e tira o resto
+function pdfTxt(v) {
+  return String(v ?? '').replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    .replace(/…/g, '...').replace(/[  ]/g, ' ').replace(/[^\x00-\xFF]/g, '');
+}
+// Logotipo do topo da página convertido em PNG (amarelo, para a faixa azul do comprovante)
+async function logoNextaPng() {
+  const svg = document.querySelector('.topbar .nexta-logo-svg').cloneNode(true);
+  svg.setAttribute('width', '726'); svg.setAttribute('height', '135');
+  svg.querySelectorAll('[fill="currentColor"]').forEach((el) => el.setAttribute('fill', '#EEFE7A'));
+  const img = new Image();
+  await new Promise((ok, falha) => {
+    img.onload = ok; img.onerror = falha;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = 726; canvas.height = 135;
+  canvas.getContext('2d').drawImage(img, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+async function baixarPdfAgendamento(id, btn) {
+  const a = id ? STATE.agendamentos[id] : STATE.ultimoAgendamento;
+  if (!a) return;
+  const texto = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Gerando PDF…';
+  try {
+    await gerarPdfAgendamento(a);
+  } catch (e) {
+    console.error(e);
+    toast('Não foi possível gerar o PDF: ' + (e?.message || 'erro desconhecido'), 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = texto;
+  }
+}
+
+async function gerarPdfAgendamento(a) {
+  await carregarLibsPdf();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const L = 210, M = 15, larg = L - 2 * M;
+  // Mesmas cores do portal (tema claro)
+  const NAVY = [16, 40, 58], INK2 = [70, 88, 106], INK3 = [110, 127, 140], LINHA = [213, 220, 223], FUNDO2 = [233, 238, 239];
+  const cancelado = a.status === 'cancelado';
+  const dataHora = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR') : '');
+
+  // Faixa azul do topo, como a barra do portal
+  doc.setFillColor(...NAVY); doc.rect(0, 0, L, 22, 'F');
+  try {
+    doc.addImage(await logoNextaPng(), 'PNG', M, 8.2, 30, 30 * 45 / 242, 'logo', 'FAST');
+  } catch (e) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(238, 254, 122); doc.text('NEXTA', M, 14);
+  }
+  doc.setDrawColor(80, 100, 116); doc.setLineWidth(0.3); doc.line(M + 35, 7, M + 35, 15);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(242, 245, 246);
+  doc.text('Agendamento de Carregamento', M + 39, 12.8);
+
+  // Protocolo + situação
+  let y = 34;
+  doc.setFontSize(8); doc.setTextColor(...INK3); doc.text('COMPROVANTE DE AGENDAMENTO', M, y);
+  doc.setFontSize(22); doc.setTextColor(...NAVY); doc.text(pdfTxt(a.protocolo), M, y + 9);
+  const selo = cancelado ? 'CANCELADO' : 'AGENDADO';
+  doc.setFontSize(9);
+  const larguraSelo = doc.getTextWidth(selo) + 8;
+  doc.setFillColor(...(cancelado ? [247, 228, 224] : [221, 239, 229]));
+  doc.roundedRect(L - M - larguraSelo, y + 2.5, larguraSelo, 7, 3.5, 3.5, 'F');
+  doc.setTextColor(...(cancelado ? [184, 65, 47] : [43, 115, 82]));
+  doc.text(selo, L - M - larguraSelo / 2, y + 7.2, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...INK2);
+  doc.text(pdfTxt(`Criado por ${a.criadoPorNome || '-'} em ${dataHora(a.criadoEm)}`), M, y + 15);
+  y += 15;
+  if (cancelado) {
+    doc.setTextColor(184, 65, 47);
+    doc.text(pdfTxt(`Cancelado por ${a.canceladoPor || '-'} em ${dataHora(a.canceladoEm)}`), M, y + 5);
+    y += 5;
+  }
+
+  // Quadro com os dados do carregamento (3 colunas)
+  const linhasDados = [
+    [['Data de carregamento', formatDataBR(a.dataCarregamento)], ['Base', a.baseNome],
+      [a.baseTipo === 'agendamento' ? 'Horário' : 'Turno', a.baseTipo === 'agendamento' ? a.slotHorario : labelTurno(a.turno)]],
+    [['Placa do cavalo', a.placaCavalo], ['Placa da carreta 1', a.placaCarreta], ['Placa da carreta 2', a.placaCarreta2]],
+    [['Motorista', a.motorista], ['CPF do motorista', formatCpf(a.motoristaCpf)], ['Volume total', formatVolume(a.volumeTotal)]],
+  ];
+  const altLinha = 14, topo = y + 6, col = larg / 3;
+  doc.setDrawColor(...LINHA); doc.setLineWidth(0.25);
+  doc.roundedRect(M, topo, larg, altLinha * linhasDados.length, 2.5, 2.5, 'S');
+  linhasDados.forEach((linha, i) => {
+    const yl = topo + i * altLinha;
+    if (i > 0) doc.line(M, yl, M + larg, yl);
+    linha.forEach(([rotulo, valor], j) => {
+      const x = M + 5 + j * col;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...INK3);
+      doc.text(pdfTxt(rotulo.toUpperCase()), x, yl + 5.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(...NAVY);
+      doc.text(doc.splitTextToSize(pdfTxt(valor || '-'), col - 8)[0], x, yl + 11);
+    });
+  });
+  y = topo + altLinha * linhasDados.length + 9;
+
+  const tabela = (titulo, head, body, extra = {}) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...INK3);
+    doc.text(titulo, M, y);
+    doc.autoTable({
+      startY: y + 2.5, head: [head], body, theme: 'plain', margin: { left: M, right: M },
+      styles: { font: 'helvetica', fontSize: 9.5, textColor: NAVY, cellPadding: { top: 2.4, bottom: 2.4, left: 3, right: 3 }, lineColor: LINHA, lineWidth: { bottom: 0.25 } },
+      headStyles: { fillColor: FUNDO2, textColor: INK2, fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: FUNDO2, textColor: NAVY, fontStyle: 'bold' },
+      ...extra,
+    });
+    y = doc.lastAutoTable.finalY + 9;
+  };
+  const direita = (v) => ({ content: v, styles: { halign: 'right' } });
+
+  tabela('PEDIDOS', ['Cód. cliente', 'Cliente', 'Pedido', 'Frete', 'Cidade', 'Canal'],
+    Object.values(a.pedidos || {}).map((p) => {
+      const c = clienteDoPedido(a, p);
+      return [p.clienteCodigo, p.clienteNome, p.nrPedido, p.tipoFrete || '-', c.cidade || '-', c.canal || '-'].map(pdfTxt);
+    }),
+    { columnStyles: { 2: { fontStyle: 'bold' } } });
+
+  const compartimentos = Object.values(a.compartimentos || {});
+  tabela('COMPARTIMENTOS', ['Comp.', 'Código', 'Produto', 'Pedido', direita('Volume')],
+    compartimentos.map((c) => [String(c.numero), pdfTxt(c.produtoId), pdfTxt(c.produtoNome), pdfTxt(c.pedido), direita(formatVolume(c.volume))]),
+    { foot: [['', '', '', 'Total', direita(formatVolume(a.volumeTotal))]], showFoot: 'lastPage' });
+
+  // Rodapé em todas as páginas
+  const geradoEm = new Date().toLocaleString('pt-BR');
+  const paginas = doc.getNumberOfPages();
+  for (let i = 1; i <= paginas; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(...LINHA); doc.line(M, 282, L - M, 282);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...INK3);
+    doc.text(pdfTxt(cancelado ? 'Este agendamento foi cancelado e não vale para carregamento.' : `Apresente o protocolo ${a.protocolo} na portaria da base no dia do carregamento.`), M, 287);
+    doc.text(pdfTxt(`Gerado em ${geradoEm}${paginas > 1 ? ` · página ${i} de ${paginas}` : ''}`), L - M, 287, { align: 'right' });
+  }
+  doc.save(`Agendamento_${pdfTxt(a.protocolo)}.pdf`);
 }
 
 /* ── ABA SLOTS (admin) ── */
