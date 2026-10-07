@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nexta Logística — Agendamento</title>
+<title>Nexta Agendamento</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -71,11 +71,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar .btn-primary { background: #5BA8CF; color: #0D1820; }
 .topbar .btn-secondary { background: transparent; border-color: rgba(255,255,255,.3); color: var(--navy-ink); }
 .topbar .btn-secondary:hover { background: rgba(255,255,255,.08); }
-@media (max-width: 640px) {
-  .topbar-in { padding: 12px 16px; }
-  .brand { flex-wrap: wrap; gap: 8px; }
-  .brand-txt { padding-left: 0; border-left: none; font-size: 17px; }
-}
 
 /* ── ABAS ── */
 .tabs-bar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); width: calc(100% - 48px); max-width: 1632px; margin: 20px auto 0; }
@@ -293,6 +288,93 @@ tbody tr:hover td { background: var(--panel-soft); }
 .toast-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
+/* Etapa Pedidos: no celular a tabela vira um cartão por pedido */
+.pedidos-cards { display: none; }
+.pedido-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+.pedido-card-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pedido-card-cli { font-size: 13px; color: var(--text-dim); margin: 2px 0 6px; }
+.pedido-card-item { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.pedido-card-item .vol { font-family: var(--mono); text-align: right; white-space: nowrap; }
+.pedido-card-item .vol small { display: block; font-size: 12px; color: var(--text-muted); }
+.tabela-scroll { overflow-x: auto; }
+
+/* ── CELULAR (até 640 px) ── */
+@media (max-width: 640px) {
+  /* iPhone dá zoom sozinho ao tocar em campo com fonte menor que 16 px */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* Topo compacto: logo + título numa linha; conta, Usuários e Sair na outra */
+  .topbar-in { gap: 8px 12px; padding: 10px 16px; }
+  .brand { gap: 10px; }
+  .nexta-logo-svg { height: 20px; }
+  .brand-txt { font-size: 15px; padding-left: 10px; }
+  .sessao { width: 100%; gap: 8px; }
+  .sessao .quem { margin-right: auto; text-align: left; padding-left: 0; }
+  .sessao .btn { padding: 6px 12px; font-size: 13px; }
+  /* "+ Novo Agendamento" vira botão fixo no rodapé, sempre ao alcance do polegar */
+  #btnNovoAgendamento { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 300; padding: 13px 16px; font-size: 16px; box-shadow: var(--shadow-lg); }
+  .main { padding-bottom: 96px; }
+  #toastContainer { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+
+  .section-header { margin-top: 18px; }
+  .stats-row { gap: 8px; }
+  .stat-card { padding: 10px 12px; }
+  .stat-val { font-size: 24px; }
+
+  /* Lista: cada agendamento vira um cartão (protocolo e status em cima; data, horário e volume; cliente; base; pedidos e placa) */
+  .table-scroll { max-height: none; overflow: visible; }
+  #tabelaAgendamentos thead { display: none; }
+  #tabelaAgendamentos, #tbodyAgendamentos { display: block; }
+  #tbodyAgendamentos tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "prot prot status" "data slot vol" "cli cli cli" "base base base" "ped ped placa"; gap: 3px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  #tbodyAgendamentos tr:last-child { border-bottom: none; }
+  #tbodyAgendamentos tr:hover { background: var(--panel-soft); }
+  #tbodyAgendamentos td { display: block; padding: 0; border: none; white-space: normal; min-width: 0; background: none !important; }
+  #tbodyAgendamentos td:nth-child(1) { grid-area: prot; font-size: 16px; }
+  #tbodyAgendamentos td:nth-child(2) { grid-area: ped; font-size: 13px; color: var(--text-muted); }
+  #tbodyAgendamentos td:nth-child(2)::before { content: "Pedidos "; }
+  #tbodyAgendamentos td:nth-child(3) { grid-area: data; }
+  #tbodyAgendamentos td:nth-child(4) { grid-area: cli; font-weight: 600; }
+  #tbodyAgendamentos td:nth-child(5) { grid-area: base; color: var(--text-dim); }
+  #tbodyAgendamentos td:nth-child(6) { grid-area: slot; }
+  #tbodyAgendamentos td:nth-child(7) { grid-area: placa; font-size: 13px; color: var(--text-muted); text-align: right; font-family: var(--mono); }
+  #tbodyAgendamentos td:nth-child(9) { grid-area: vol; text-align: right; }
+  #tbodyAgendamentos td:nth-child(10) { grid-area: status; justify-self: end; }
+  #tbodyAgendamentos td:nth-child(8), #tbodyAgendamentos td:nth-child(11) { display: none; }
+  #tbodyAgendamentos tr.empty-row { display: block; }
+
+  /* Janelas sobem de baixo; o Novo Agendamento ocupa a tela toda */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal { width: 100% !important; max-width: 100%; max-height: 92vh; max-height: 92dvh; border-radius: 14px 14px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  .modal.wizard { height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions .btn { flex: 1 1 auto; }
+  .info-row { gap: 12px 16px; }
+
+  /* Assistente: etapa atual com mais espaço; ✕ do topo faz o papel do Cancelar */
+  .wizard-steps { display: flex; gap: 6px; }
+  .wizard-step { flex: 1 1 0; }
+  .wizard-step.atual { flex: 3 1 0; }
+  .wizard-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .wizard-foot .btn-cancelar { display: none; }
+  .wizard-foot > div { flex: 1; }
+  .wizard-foot > div .btn { flex: 1; }
+  .pedidos-tabela { display: none; }
+  .pedidos-cards { display: block; }
+  /* Compartimento: número e ✕ em cima, produto e volume embaixo em largura total */
+  .compart-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "num rem" "sel sel" "vol vol"; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; }
+  .compart-num { grid-area: num; width: auto; align-self: center; }
+  .compart-row select { grid-area: sel; width: 100%; }
+  .compart-volume { grid-area: vol; width: 100%; flex: none; }
+  .compart-remove { grid-area: rem; padding: 6px 10px; }
+  /* Detalhe: colunas secundárias somem e o texto quebra para caber na largura */
+  .col-opc { display: none; }
+  .tabela-itens th, .tabela-itens td { padding-left: 8px; padding-right: 8px; }
+  .tabela-itens td.quebra { min-width: 0; }
+  /* Filtros da lista em duas colunas */
+  .table-filters { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .table-filters select, .table-filters input { width: 100%; min-width: 0; }
+}
+
 .hidden { display: none !important; }
 .text-muted { color: var(--text-muted); }
 </style>
@@ -448,15 +530,15 @@ tbody tr:hover td { background: var(--panel-soft); }
         <div class="form-row">
           <div class="form-field">
             <label>Placa do Cavalo</label>
-            <input type="text" id="f-placa-cavalo" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+            <input type="text" id="f-placa-cavalo" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase">
           </div>
           <div class="form-field">
             <label>Placa da Carreta 1 <span class="lbl-opc">(opcional)</span></label>
-            <input type="text" id="f-placa-carreta" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+            <input type="text" id="f-placa-carreta" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase">
           </div>
           <div class="form-field">
             <label>Placa da Carreta 2 <span class="lbl-opc">(opcional)</span></label>
-            <input type="text" id="f-placa-carreta2" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase">
+            <input type="text" id="f-placa-carreta2" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase">
           </div>
         </div>
       </div>
@@ -487,7 +569,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     </div>
 
     <div class="wizard-foot">
-      <button class="btn btn-secondary" onclick="fecharNovoAgendamento()">Cancelar</button>
+      <button class="btn btn-secondary btn-cancelar" onclick="fecharNovoAgendamento()">Cancelar</button>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-secondary hidden" id="btnWizardVoltar" onclick="voltarEtapa()">← Voltar</button>
         <button class="btn btn-primary" id="btnWizardProximo" onclick="avancarEtapa()">Próximo →</button>
@@ -514,7 +596,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     <div class="sessao" id="headerUser" style="display:none">
       <button class="quem" id="btnTrocarSenha" type="button" onclick="abrirTrocaSenha()" title="Minha conta: trocar senha"><span class="nome" id="headerUserName">Usuário</span><small id="headerUserTipo"></small></button>
       <button class="btn btn-secondary" id="btnAdmin" type="button" onclick="abrirAdminModal()" style="display:none">Usuários</button>
-      <button class="btn btn-primary" type="button" onclick="abrirNovoAgendamento()">+ Novo Agendamento</button>
+      <button class="btn btn-primary" id="btnNovoAgendamento" type="button" onclick="abrirNovoAgendamento()">+ Novo Agendamento</button>
       <button class="btn btn-secondary" id="btnLogout" type="button" onclick="fazerLogout()">Sair</button>
     </div>
   </div>
@@ -580,7 +662,7 @@ tbody tr:hover td { background: var(--panel-soft); }
         </div>
       </div>
       <div class="table-scroll">
-        <table>
+        <table id="tabelaAgendamentos">
           <thead>
             <tr>
               <th>Protocolo</th><th>Pedido</th><th>Data</th><th>Cliente</th><th>Base</th><th>Turno/Slot</th>
@@ -1120,13 +1202,26 @@ function renderPedidosAgendamento() {
       return `<tr>${doPedido}<td class="quebra">${esc(i.descricao)}</td><td class="num">${disponivel}</td>${remover}</tr>`;
     }).join('');
   }).join('');
+  // No celular: um cartão por pedido (a tabela não cabe na largura)
+  const cartoes = pedidos.map((p) => `
+    <div class="pedido-card">
+      <div class="pedido-card-topo"><strong>Pedido ${esc(p.nrPedido)}</strong>
+        <button type="button" class="compart-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></div>
+      <div class="pedido-card-cli">${[p.clienteNome, p.clienteCidade, p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
+      ${itensDe(p).map((i) => {
+        const saldo = saldoItem(p, i, agendados);
+        const total = Number(i.volume) || 0;
+        return `<div class="pedido-card-item"><span>${esc(i.descricao)}</span><span class="vol"><strong>${formatVolume(saldo)}</strong>${saldo !== total ? `<small>de ${formatVolume(total)}</small>` : ''}</span></div>`;
+      }).join('')}
+    </div>`).join('');
   const parciais = pedidos.map((p) => [p.nrPedido, protocolosDoPedido(p.nrPedido)]).filter(([, prot]) => prot.length);
   el.innerHTML = `
     <div class="resumo-base">Base: ${baseTxt}</div>
-    <table class="tabela-itens">
+    <table class="tabela-itens pedidos-tabela">
       <thead><tr><th>Pedido</th><th>Cliente</th><th>Cidade</th><th>Frete</th><th>Produto</th><th class="num">Disponível</th><th></th></tr></thead>
       <tbody>${linhas}</tbody>
     </table>
+    <div class="pedidos-cards">${cartoes}</div>
     ${parciais.map(([nr, prot]) => `<div class="form-hint">Parte do pedido ${esc(nr)} já agendada em ${prot.map(esc).join(', ')}.</div>`).join('')}`;
   el.classList.remove('hidden');
   atualizarSaldosCompartimentos();
@@ -1577,19 +1672,19 @@ function abrirDetalheAgendamento(id) {
       <div class="info-item"></div><!-- mantém o alinhamento das 3 colunas -->
     </div>
     <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Pedidos</div>
-      <table class="tabela-itens" style="margin-top:6px">
-        <thead><tr><th>Cód. Cliente</th><th>Cliente</th><th>Pedido</th><th>Frete</th><th>Cidade</th><th>Canal</th></tr></thead>
+      <div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
+        <thead><tr><th class="col-opc">Cód. Cliente</th><th>Cliente</th><th>Pedido</th><th>Frete</th><th>Cidade</th><th class="col-opc">Canal</th></tr></thead>
         <tbody>${Object.values(a.pedidos || {}).map((p) => {
           const c = clienteDoPedido(a, p);
-          return `<tr><td>${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td>${esc(c.canal) || '—'}</td></tr>`;
+          return `<tr><td class="col-opc">${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td class="col-opc">${esc(c.canal) || '—'}</td></tr>`;
         }).join('')}</tbody>
-      </table>
+      </table></div>
     </div>
     <div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Compartimentos</div>
-      <table class="tabela-itens" style="margin-top:6px">
-        <thead><tr><th>Comp.</th><th>Código</th><th>Produto</th><th>Pedido</th><th class="num">Volume</th></tr></thead>
-        <tbody>${Object.values(a.compartimentos || {}).map((c) => `<tr><td>${esc(c.numero)}</td><td>${esc(c.produtoId)}</td><td class="quebra">${esc(c.produtoNome)}</td><td>${esc(c.pedido)}</td><td class="num">${formatVolume(c.volume)}</td></tr>`).join('')}</tbody>
-      </table>
+      <div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
+        <thead><tr><th>Comp.</th><th class="col-opc">Código</th><th>Produto</th><th>Pedido</th><th class="num">Volume</th></tr></thead>
+        <tbody>${Object.values(a.compartimentos || {}).map((c) => `<tr><td>${esc(c.numero)}</td><td class="col-opc">${esc(c.produtoId)}</td><td class="quebra">${esc(c.produtoNome)}</td><td>${esc(c.pedido)}</td><td class="num">${formatVolume(c.volume)}</td></tr>`).join('')}</tbody>
+      </table></div>
     </div>
     ${a.status === 'cancelado' ? `<div class="form-hint">Cancelado por ${esc(a.canceladoPor)} em ${a.canceladoEm ? new Date(a.canceladoEm).toLocaleString('pt-BR') : ''}</div>` : ''}
     <div class="modal-actions">
