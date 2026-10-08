@@ -231,6 +231,11 @@
     padding: 0 32px;
     display: flex;
     gap: 0;
+    /* 11 abas não cabem em telas mais estreitas — rola na horizontal em vez de quebrar linha */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
   .tab {
     padding: 14px 20px;
@@ -694,6 +699,41 @@
   .modal-label { font-family: var(--font-cond); font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
   .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+
+  /* ── TABELA DE FRETE (ver renderTabelaFrete) ── */
+  #tabelaFreteTable td { white-space: nowrap; }
+  .tf-num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tf-transp { font-family: var(--font-cond); font-size: 14px; font-weight: 700; color: var(--accent); }
+  .tf-valor { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tf-valor-ant { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tf-var-up { color: var(--danger); font-weight: 600; white-space: nowrap; }
+  .tf-var-down { color: var(--success); font-weight: 600; white-space: nowrap; }
+  .tf-var-eq { color: var(--text-muted); white-space: nowrap; }
+  .tf-var-inline { font-size: 10.5px; margin-right: 6px; }
+  .tf-badge-menor { padding: 1px 7px; font-size: 10px; margin-right: 6px; }
+  .tf-pendente { color: var(--accent2); font-weight: 600; cursor: pointer; }
+  .tf-pendente:hover { text-decoration: underline; }
+  .tf-chk { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+  .tf-chk input { accent-color: var(--accent); }
+  .tf-meta { font-size: 11px; color: var(--text-muted); }
+  .tf-hint { font-size: 11px; color: var(--text-muted); margin-top: 5px; min-height: 14px; }
+  .tf-trecho-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; color: var(--text-dim); }
+  #modalFreteVinculo .modal { max-height: 92vh; overflow-y: auto; }
+  .tf-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+  .tf-card { background: var(--panel-soft); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .tf-card.atual { border-color: rgba(141,200,48,0.45); }
+  .tf-card-lbl { font-family: var(--font-cond); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 4px; }
+  .tf-card-valor { font-family: var(--font-cond); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tf-card-un { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-left: 2px; }
+  .tf-card.atual .tf-card-valor { color: var(--accent); }
+  .tf-card-meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
+  .tf-secao-titulo { font-family: var(--font-cond); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin: 4px 0 10px; }
+  .tf-form { border-top: 1px solid var(--border); padding-top: 16px; margin-bottom: 4px; }
+  .tf-historico-wrap { max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .tf-historico-wrap th, .tf-historico-wrap td { font-size: 11.5px; padding: 6px 10px; }
+  .tf-historico-wrap td { white-space: nowrap; }
+  .tf-historico-wrap td.tf-motivo { white-space: normal; min-width: 180px; color: var(--text-dim); }
+  @media (max-width: 640px) { .tf-cards { grid-template-columns: 1fr; } }
 
   /* ── REVISÃO DA QUEBRA EM VIAGENS (ver revisarQuebraViagens) ── */
   .rq-resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
@@ -1408,6 +1448,7 @@
   body.transportador-mode #tabBtn7,
   body.transportador-mode #tabBtn8,
   body.transportador-mode #tabBtn9,
+  body.transportador-mode #tabBtn10,
   body.transportador-mode #pipeline,
   body.transportador-mode #btnNovaSemana,
   body.transportador-mode #bulkBar,
@@ -1757,7 +1798,7 @@
 <!-- ── FIREBASE ── -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, get, update, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, runTransaction, query, orderByChild, equalTo, startAt }
+  import { getDatabase, ref, set, get, update, push, onValue, onChildAdded, onChildChanged, onChildRemoved, remove, runTransaction, query, orderByChild, equalTo, startAt }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -1904,9 +1945,22 @@
     };
   }
 
+  // Uma aba aberta antes da renomeacao nao pode recriar o endereco antigo.
+  // Nao redireciona escritas: o payload em memoria pode sobrescrever dados novos.
+  // As regras do banco repetem a protecao para versoes antigas deste HTML.
+  async function validarSemanaParaEscrita(key) {
+    const snap = await get(ref(db, 'meta/semanasRenomeadas/' + key));
+    if (snap.exists()) {
+      const mensagem = `Esta semana foi renomeada para ${snap.val()}. Recarregue a página antes de continuar.`;
+      mostrarStatus('saving', mensagem);
+      throw new Error(mensagem);
+    }
+  }
+
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
     salvar: async (key, payload) => {
+      await validarSemanaParaEscrita(key);
       await set(ref(db, 'sessoes/' + key), payload);
     },
     carregar: async (key) => {
@@ -1993,9 +2047,11 @@
       return snap.exists() ? snap.val() : {};
     },
     marcarSemanaDisponivel: async (key) => {
+      await validarSemanaParaEscrita(key);
       await set(ref(db, 'semanasDisponiveis/' + key), true);
     },
     limpar: async (key) => {
+      await validarSemanaParaEscrita(key);
       await remove(ref(db, 'sessoes/' + key));
       await remove(ref(db, 'semanasDisponiveis/' + key));
     },
@@ -2049,6 +2105,7 @@
     // se atropelem, e evita reescrever (e redistribuir a quem está ouvindo) a semana
     // inteira por causa de um campo.
     salvarViagensParciais: async (key, viagensPorId) => {
+      await validarSemanaParaEscrita(key);
       const updates = {};
       const agora = new Date().toISOString();
       Object.entries(viagensPorId).forEach(([id, v]) => {
@@ -2065,6 +2122,7 @@
     // confirmado na Herrlog. A transacao le o registro atual no servidor para
     // nao sobrescrever edicoes concorrentes feitas por outro usuario.
     autorizarReprocessamentoHerrlog: async (key, idViagem, usuario) => {
+      await validarSemanaParaEscrita(key);
       const viagemRef = ref(db, 'sessoes/' + key + '/viagens/' + idViagem);
       const gracaDatalakeMs = 10 * 60 * 1000;
       let sincronizandoAte = null;
@@ -2129,6 +2187,7 @@
     // de viagens, não vale a pena granularizar por item; grava os dois paths de uma vez,
     // sem tocar em `viagens` (preserva o mesmo motivo do salvarViagensParciais acima).
     salvarCadenciasEConfig: async (key, cadencias, config) => {
+      await validarSemanaParaEscrita(key);
       await update(ref(db), {
         ['sessoes/' + key + '/cadencias']: cadencias,
         ['sessoes/' + key + '/config']: config,
@@ -2235,6 +2294,7 @@
     // ele). Sem isso, aborta com erro em vez de arriscar gerar um ID que colide com o
     // que ja existe.
     salvarComViagensUnicas: async (key, payload, viagensBase, prefixo = 'NXT') => {
+      await validarSemanaParaEscrita(key);
       const semId = viagensBase.filter(v => !String(v?.idViagem || '').trim()).length;
 
       let proximoSeq = 1;
@@ -2335,6 +2395,44 @@
     },
     salvarMetasShareRegional: async (lista) => {
       await set(ref(db, 'metasShareRegional'), lista);
+    },
+    // Tabela de Frete (trecho origem/destino × transportador). Mapa chaveado por ID gerado
+    // (push key), não lista como leadtimes: cada gravação mexe só no trecho/vínculo alterado
+    // (update multi-path), sem regravar a tabela inteira por cima da edição de outro
+    // usuário — o que perderia valor e quebraria o log. O log fica em ramo separado
+    // (tabelaFrete/historico/<trechoId>/<vinculoId>/<logId>), só de inclusão (ver regras do
+    // Firebase), e é lido sob demanda ao abrir uma combinação: fora do listener da tabela,
+    // pra não baixar o histórico inteiro a cada mudança.
+    ouvirTabelaFrete: (callback) => {
+      return onValue(ref(db, 'tabelaFrete/trechos'),
+        (snap) => callback(snap.exists() ? snap.val() : {}, null),
+        (err) => callback(null, err));
+    },
+    novoIdTabelaFrete: () => push(ref(db, 'tabelaFrete/trechos')).key,
+    // Lê direto do servidor antes de gravar uma alteração, pra o "valor anterior" do log
+    // ser o que está no banco (e não uma cópia local possivelmente desatualizada).
+    lerVinculoFrete: async (trechoId, vinculoId) => {
+      const snap = await get(ref(db, `tabelaFrete/trechos/${trechoId}/vinculos/${vinculoId}`));
+      return snap.exists() ? snap.val() : null;
+    },
+    carregarHistoricoFrete: async (trechoId, vinculoId) => {
+      const snap = await get(ref(db, `tabelaFrete/historico/${trechoId}/${vinculoId}`));
+      return snap.exists() ? snap.val() : {};
+    },
+    // updates: caminhos relativos a tabelaFrete/ ({ 'trechos/<id>/...': valor | null }).
+    // logs: [{ trechoId, vinculoId, entrada }] — gravados no MESMO request (atômico), pra
+    // nunca existir alteração de frete sem a linha correspondente no log.
+    gravarTabelaFrete: async (updates, logs = []) => {
+      // update() rejeita o request inteiro se algum campo vier `undefined` (ex.: vínculo
+      // antigo sem `valor`) — o round-trip JSON descarta esses campos e preserva os null.
+      const semUndefined = (v) => (v !== null && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+      const tudo = {};
+      Object.entries(updates).forEach(([caminho, valor]) => { tudo['tabelaFrete/' + caminho] = semUndefined(valor); });
+      logs.forEach(({ trechoId, vinculoId, entrada }) => {
+        const logId = push(ref(db, `tabelaFrete/historico/${trechoId}/${vinculoId}`)).key;
+        tudo[`tabelaFrete/historico/${trechoId}/${vinculoId}/${logId}`] = semUndefined(entrada);
+      });
+      await update(ref(db), tudo);
     },
     // ── Firebase Authentication ──
     login: async (email, senha) => {
@@ -2692,6 +2790,7 @@
   <div class="tab" id="tabBtn7" onclick="switchTab(7)">⑧ Veículos Dedicados</div>
   <div class="tab" id="tabBtn8" onclick="switchTab(8)">⑨ Leadtime</div>
   <div class="tab" id="tabBtn9" onclick="switchTab(9)">⑩ Performance</div>
+  <div class="tab" id="tabBtn10" onclick="switchTab(10)">⑪ Tabela de Frete</div>
 </div>
 
 <div class="main">
@@ -3893,6 +3992,73 @@
   </div>
 </div>
 
+<!-- ===== TAB 11: TABELA DE FRETE ===== -->
+<div class="tab-content" id="tab-10">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Tabela de Frete</div>
+      <div class="section-sub">Frete em R$/m³ por origem, destino e transportador — clique no ✏️ para ver o histórico de valores e atualizar</div>
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalNovoFrete()">＋ Novo Frete</button>
+  </div>
+
+  <div id="tabelaFreteAviso" class="alert alert-warn" style="display:none"></div>
+
+  <div id="tabelaFreteEmpty" class="empty-state">
+    <div class="empty-icon">💲</div>
+    <div class="empty-text" id="tabelaFreteEmptyText">Nenhum frete cadastrado</div>
+    <div class="empty-sub">Clique em "+ Novo Frete" para cadastrar o primeiro</div>
+  </div>
+
+  <div id="tabelaFreteContent" style="display:none">
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Fretes</span>
+          <span class="badge badge-accent" id="badge-tabela-frete">0 fretes</span>
+          <span class="badge badge-warn" id="badge-tabela-frete-sem-km" style="display:none;cursor:pointer" onclick="filtrarSemDistanciaTabelaFrete()" title="Clique para ver só os trechos sem distância"></span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fTabelaFreteBusca"
+            placeholder="🔍  Cidade, UF ou transportador..."
+            oninput="renderTabelaFrete()">
+          <select class="filter-select" id="fTabelaFreteOrigem" onchange="renderTabelaFrete()">
+            <option value="">Origem: Todas</option>
+          </select>
+          <select class="filter-select" id="fTabelaFreteDestino" onchange="renderTabelaFrete()">
+            <option value="">Destino: Todos</option>
+          </select>
+          <select class="filter-select" id="fTabelaFreteTransp" onchange="renderTabelaFrete()">
+            <option value="">Transportador: Todos</option>
+          </select>
+          <label class="tf-chk" title="Mostrar só os trechos sem distância cadastrada">
+            <input type="checkbox" id="fTabelaFreteSemKm" onchange="renderTabelaFrete()"> Sem distância
+          </label>
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosTabelaFrete()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table id="tabelaFreteTable">
+          <thead>
+            <tr>
+              <th class="th-sortable" data-col="origem" onclick="ordenarColunaFrete('origem')">Origem<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="destino" onclick="ordenarColunaFrete('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="km" onclick="ordenarColunaFrete('km')" style="text-align:right">Distância<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="transportador" onclick="ordenarColunaFrete('transportador')">Transportador<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="valor" onclick="ordenarColunaFrete('valor')" style="text-align:right">Frete (R$/m³)<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="atualizado" onclick="ordenarColunaFrete('atualizado')">Atualizado em<span class="sort-arrow"></span></th>
+              <th class="col-acao" style="text-align:center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaFreteBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- MODAL: Nova Cadência -->
@@ -4025,7 +4191,7 @@
     <div class="alert alert-warn" id="alertaPlacaDuplicadaBanner" style="display:none"></div>
 
     <div class="alert alert-warn" id="alertaPedagioCompradoBanner" style="display:none">
-      🔒 Pedágio já comprado — só Motorista, CPF do Motorista e Observação podem ser alterados aqui.
+      🔒 Pedágio já comprado — só Programador, Motorista, CPF do Motorista e Observação podem ser alterados aqui.
     </div>
 
     <div class="info-row">
@@ -4513,6 +4679,173 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="fecharModalLeadtime()">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarLeadtime()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Novo Frete (trecho + transportador + valor) -->
+<div class="modal-overlay" id="modalNovoFrete">
+  <div class="modal" style="width:560px;max-width:96vw">
+    <div class="modal-title">Novo Frete</div>
+    <div class="modal-sub">Valor em R$/m³ — se o trecho já existir, a distância é reaproveitada</div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Origem Cidade *</div>
+        <input type="text" class="config-input" id="nf-origemCidade" list="dl-tf-origem" placeholder="PAULINIA"
+          onchange="sugerirUfTrechoFrete('nf', 'origem'); atualizarTrechoNovoFrete()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Origem UF *</div>
+        <input type="text" class="config-input" id="nf-origemUf" placeholder="SP" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()" onchange="atualizarTrechoNovoFrete()">
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Destino Cidade *</div>
+        <input type="text" class="config-input" id="nf-destinoCidade" list="dl-tf-destino" placeholder="BARRA DO GARCAS"
+          onchange="sugerirUfTrechoFrete('nf', 'destino'); atualizarTrechoNovoFrete()">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Destino UF *</div>
+        <input type="text" class="config-input" id="nf-destinoUf" placeholder="MT" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()" onchange="atualizarTrechoNovoFrete()">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Distância (km) *</div>
+      <input type="text" inputmode="decimal" class="config-input" id="nf-distancia" placeholder="1.020"
+        oninput="this.dataset.auto = ''">
+      <div class="tf-hint" id="nf-hint-trecho"></div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Transportador *</div>
+      <select class="config-input" id="nf-transportador"></select>
+    </div>
+
+    <div class="modal-row">
+      <div class="modal-field">
+        <div class="modal-label">Frete (R$/m³) *</div>
+        <input type="text" inputmode="decimal" class="config-input" id="nf-valor" placeholder="125,50">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Vigência a partir de</div>
+        <input type="date" class="config-input" id="nf-vigencia">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Motivo / Observação</div>
+      <input type="text" class="config-input" id="nf-observacao" maxlength="300" placeholder="Ex.: nova negociação, BID...">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalNovoFrete()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarNovoFrete" onclick="salvarNovoFrete()">Salvar</button>
+    </div>
+  </div>
+</div>
+<datalist id="dl-tf-origem"></datalist>
+<datalist id="dl-tf-destino"></datalist>
+
+<!-- MODAL: Detalhe do frete (atual × anterior + histórico + atualização) -->
+<div class="modal-overlay" id="modalFreteVinculo">
+  <div class="modal" style="width:880px;max-width:96vw">
+    <div class="modal-title" id="fv-titulo">Frete</div>
+    <div class="modal-sub tf-trecho-linha" id="fv-sub"></div>
+
+    <div class="tf-cards" id="fv-cards"></div>
+
+    <div style="margin-bottom:18px">
+      <div class="tf-secao-titulo">Histórico de alterações</div>
+      <div class="tf-historico-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data/Hora · Usuário</th>
+              <th>Ação</th>
+              <th style="text-align:right">Valor Anterior</th>
+              <th style="text-align:right">Valor Novo</th>
+              <th>Variação</th>
+              <th>Vigência</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody id="fv-historico-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tf-form">
+      <div class="tf-secao-titulo">Atualizar frete</div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">Novo frete (R$/m³) *</div>
+          <input type="text" inputmode="decimal" class="config-input" id="fv-valor" placeholder="125,50">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">Vigência a partir de</div>
+          <input type="date" class="config-input" id="fv-vigencia">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Motivo / Observação</div>
+        <input type="text" class="config-input" id="fv-observacao" maxlength="300" placeholder="Ex.: reajuste do diesel, nova negociação, BID...">
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="fecharModalFreteVinculo()">Fechar</button>
+      <button class="btn btn-primary" id="btnSalvarFreteVinculo" onclick="salvarFreteVinculo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar trecho (origem/destino/distância — vale para todos os transportadores do trecho).
+     Fica DEPOIS do detalhe no HTML pra abrir por cima dele (mesmo z-index, ordem do DOM decide). -->
+<div class="modal-overlay" id="modalTrechoFrete">
+  <div class="modal" style="width:480px;max-width:96vw">
+    <div class="modal-title">Editar Trecho</div>
+    <div class="modal-sub" id="tf-sub">Vale para todos os transportadores deste trecho</div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Origem Cidade *</div>
+        <input type="text" class="config-input" id="tf-origemCidade" list="dl-tf-origem"
+          onchange="sugerirUfTrechoFrete('tf', 'origem')">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Origem UF *</div>
+        <input type="text" class="config-input" id="tf-origemUf" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-row" style="grid-template-columns:2fr 1fr">
+      <div class="modal-field">
+        <div class="modal-label">Destino Cidade *</div>
+        <input type="text" class="config-input" id="tf-destinoCidade" list="dl-tf-destino"
+          onchange="sugerirUfTrechoFrete('tf', 'destino')">
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Destino UF *</div>
+        <input type="text" class="config-input" id="tf-destinoUf" maxlength="2"
+          oninput="this.value = this.value.toUpperCase()">
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Distância (km) *</div>
+      <input type="text" inputmode="decimal" class="config-input" id="tf-distancia" placeholder="1.020">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharModalTrechoFrete()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarTrechoFrete" onclick="salvarTrechoFrete()">Salvar</button>
     </div>
   </div>
 </div>
@@ -5117,6 +5450,7 @@ function fazerLogout() {
   _indiceCacheCompleto = {};
   _viagensCacheMemoria = {};
   _cacheInicialCarregado = false;
+  resetarTabelaFrete();
   document.getElementById('headerUser').style.display = 'none';
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('login-usuario').value = '';
@@ -5848,7 +6182,16 @@ async function aplicarEmLote() {
   let bloqueadasPedagio = 0;
   selectedViagens.forEach(idx => {
     const v = arr[idx];
-    if (pedagioComprado(v)) { bloqueadasPedagio++; return; } // pula, sem interromper o resto do lote
+    // Pedágio comprado: só o programador é aplicado (não entra na compra Pamcard, ver
+    // pedagioComprado); status/agendamento/transportador pulam essa viagem, sem
+    // interromper o resto do lote.
+    if (pedagioComprado(v)) {
+      if (status || agendamento || transpRaw) bloqueadasPedagio++;
+      if (!progRaw) return;
+      v.programador = programador;
+      if (modoMultiSemana && v._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
+      return;
+    }
     const statusAnterior = v.status;
     const agendamentoAnterior = v.statusAgendamento || 'Não Agendado';
     if (removerAlocacao) {
@@ -5890,7 +6233,7 @@ async function aplicarEmLote() {
   agendarAutosave();
   renderViagensTable();
   if (bloqueadasPedagio > 0) {
-    alert(`${bloqueadasPedagio} viagem(ns) não foram alteradas por já terem o pedágio comprado — para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.`);
+    alert(`${bloqueadasPedagio} viagem(ns) não tiveram status/agendamento/transportador alterados por já terem o pedágio comprado${progRaw ? ' (o programador foi aplicado normalmente)' : ''} — para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.`);
   }
 }
 
@@ -6421,6 +6764,7 @@ function switchTab(i) {
   if (i === 7) { renderVeiculosTable(); if (subViewVeiculos === 'frota') renderStatusFrota(); }
   if (i === 8) { renderLeadtimeTable(); renderLeadtimesPendentes(); }
   if (i === 9) renderPerformance();
+  if (i === 10) { garantirListenerTabelaFrete(); renderTabelaFrete(); }
 }
 
 // ── SUB-MODO "STATUS FROTA" DENTRO DA ABA VEÍCULOS DEDICADOS ──
@@ -8170,7 +8514,7 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
+        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Programador, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
         <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
@@ -9389,6 +9733,727 @@ function processarArquivoLeadtime(file) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ── TABELA DE FRETE (trecho Origem → Destino × transportador) ──
+// Trecho = Origem Cidade/UF → Destino Cidade/UF, mesma chave da aba Leadtime (casa com a
+// viagem por Fornecedores.cidade/uf e Bases.cidade/estado — ver buscarLeadtimeHorasParaViagem).
+// A distância (km) é do trecho, vale pra todos os transportadores dele. Cada trecho tem N
+// vínculos (um por transportador do cadastro) com o frete vigente — sempre em R$/m³ — e o
+// vínculo guarda também o estado anterior (`anterior`), pro detalhe mostrar atual × anterior
+// sem precisar do log. A tela lista uma linha por trecho × transportador; o histórico só é
+// baixado ao abrir o detalhe (✏️). Toda inclusão/alteração/remoção grava uma linha no log
+// (tabelaFrete/historico) no mesmo request — ver window._fb.gravarTabelaFrete.
+// Não carrega no login (iniciarFirebase): o listener só liga na 1ª vez que a aba é aberta.
+// Transportador não vê a aba (frete de um não pode vazar pros outros — sem leitura nas
+// regras do Firebase também).
+const ACOES_LOG_FRETE = {
+  inclusao:  { rotulo: 'Inclusão',        classe: 'badge-success' },
+  alteracao: { rotulo: 'Alteração',       classe: 'badge-accent' },
+  remocao:   { rotulo: 'Remoção',         classe: 'badge-danger' },
+  trecho:    { rotulo: 'Trecho alterado', classe: 'badge-warn' },
+};
+let trechosFrete = {}; // trechoId -> { origemCidade, origemUf, destinoCidade, destinoUf, distanciaKm, criadoEm, criadoPor, vinculos: { vinculoId -> vínculo } }
+let _unsubTabelaFrete = null;
+let _tabelaFreteCarregada = false;
+let _tabelaFreteErro = null;
+let _salvandoTabelaFrete = false;
+let editingTrechoFreteId = null;
+let _freteVinculoAberto = null; // { trechoId, vinculoId } do detalhe aberto
+let _tokenHistoricoFrete = 0;   // descarta resposta de histórico que chega depois de trocar/fechar o detalhe
+let sortColunaFrete = null;     // null = Origem → Destino → Transportador
+let sortDirFrete = 'asc';
+
+function garantirListenerTabelaFrete() {
+  if (_unsubTabelaFrete || isTransportador() || !window._fb?.ouvirTabelaFrete) return;
+  _unsubTabelaFrete = window._fb.ouvirTabelaFrete((dados, err) => {
+    if (err) {
+      // Listener cancelado pelo Firebase (regra de tabelaFrete não publicada, sessão
+      // expirada...) — solta a referência pra próxima entrada na aba tentar de novo.
+      console.error('Erro ao ouvir tabela de frete:', err);
+      _unsubTabelaFrete = null;
+      _tabelaFreteErro = err;
+    } else {
+      trechosFrete = dados || {};
+      _tabelaFreteErro = null;
+    }
+    _tabelaFreteCarregada = true;
+    if (activeTab === 10) renderTabelaFrete();
+    if (_freteVinculoAberto) renderDetalheFreteVinculo();
+  });
+}
+
+function resetarTabelaFrete() {
+  if (_unsubTabelaFrete) _unsubTabelaFrete();
+  _unsubTabelaFrete = null;
+  trechosFrete = {};
+  _tabelaFreteCarregada = false;
+  _tabelaFreteErro = null;
+}
+
+function erroPermissaoFirebase(e) {
+  return /permission/i.test(String(e?.code || '') + ' ' + String(e?.message || ''));
+}
+
+function normTrechoFrete(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function chaveTrechoFrete(t) {
+  return [t.origemCidade, t.origemUf, t.destinoCidade, t.destinoUf].map(normTrechoFrete).join('|');
+}
+
+function rotuloOrigemFrete(t) { return `${t?.origemCidade || '?'}/${t?.origemUf || '?'}`; }
+function rotuloDestinoFrete(t) { return `${t?.destinoCidade || '?'}/${t?.destinoUf || '?'}`; }
+function rotuloTrechoFrete(t) { return `${rotuloOrigemFrete(t)} → ${rotuloDestinoFrete(t)}`; }
+
+function usuarioLogFrete() {
+  return {
+    por: _authUsuarioAtual?.nome || _authUsuarioAtual?.login || 'Desconhecido',
+    porEmail: _authUsuarioAtual?.login || '',
+  };
+}
+
+// Aceita "125,50", "125.50", "R$ 1.234,56" e "1.020" (milhar sem decimais). null se não for número.
+function parseNumeroFrete(str) {
+  let s = String(str ?? '').replace(/R\$|km|\s/gi, '');
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  return parseFloat(s);
+}
+
+function temNumeroFrete(v) {
+  return v !== null && v !== undefined && v !== '' && !isNaN(Number(v));
+}
+
+// Frete é sempre R$/m³ (padronizado) — só o número formatado em reais.
+function formatarValorFrete(valor) {
+  return temNumeroFrete(valor)
+    ? 'R$ ' + Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+    : '—';
+}
+
+function numeroParaInputFrete(valor, casas = 2) {
+  return temNumeroFrete(valor)
+    ? Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: 4, useGrouping: false })
+    : '';
+}
+
+function formatarKmFrete(km) {
+  return temNumeroFrete(km) && Number(km) > 0
+    ? Number(km).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' km'
+    : null;
+}
+
+// Subida de frete em vermelho (custo maior), queda em verde.
+function variacaoFreteHtml(anterior, atual) {
+  const a = Number(anterior), b = Number(atual);
+  if (!temNumeroFrete(anterior) || !a || isNaN(b)) return '<span class="tf-var-eq">—</span>';
+  const pct = (b - a) / a * 100;
+  if (Math.abs(pct) < 0.05) return '<span class="tf-var-eq">= 0,0%</span>';
+  const txt = Math.abs(pct).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  return pct > 0
+    ? `<span class="tf-var-up" title="Frete subiu">▲ ${txt}</span>`
+    : `<span class="tf-var-down" title="Frete caiu">▼ ${txt}</span>`;
+}
+
+function fmtDataHoraFrete(iso) {
+  const d = new Date(iso);
+  return (!iso || isNaN(d.getTime()))
+    ? '—'
+    : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDataCurtaFrete(iso) {
+  const d = new Date(iso);
+  return (!iso || isNaN(d.getTime())) ? '—' : d.toLocaleDateString('pt-BR');
+}
+
+// 'AAAA-MM-DD' -> 'DD/MM/AAAA'
+function fmtDataFrete(isoDia) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDia || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
+}
+
+// IDs vêm de push() — só [A-Za-z0-9_-]; o filtro garante que dá pra usar direto nos onclick.
+function listaTrechosFrete() {
+  return Object.entries(trechosFrete || {})
+    .filter(([id, t]) => /^[\w-]+$/.test(id) && t && typeof t === 'object')
+    .map(([id, t]) => ({ id, ...t }));
+}
+
+function listaVinculosFrete(t) {
+  return Object.entries(t?.vinculos || {})
+    .filter(([id, v]) => /^[\w-]+$/.test(id) && v && typeof v === 'object')
+    .map(([id, v]) => ({ id, ...v }));
+}
+
+function buscarTrechoFretePorChave(dados, ignorarId = null) {
+  const chave = chaveTrechoFrete(dados);
+  return listaTrechosFrete().find(t => t.id !== ignorarId && chaveTrechoFrete(t) === chave) || null;
+}
+
+function leadtimeDoTrechoFrete(t) {
+  const reg = leadtimes.find(l => chaveTrechoFrete(l) === chaveTrechoFrete(t));
+  return reg ? reg.leadtimeHoras : null;
+}
+
+// Uma linha por trecho × transportador. Trecho sem nenhum transportador (o último foi
+// desvinculado) não aparece — fica guardado só pra reaproveitar a distância num Novo Frete.
+function linhasTabelaFrete() {
+  const linhas = [];
+  listaTrechosFrete().forEach(t => {
+    const vinculos = listaVinculosFrete(t);
+    // "menor" só faz sentido com mais de um transportador no trecho
+    const menor = vinculos.length > 1 ? Math.min(...vinculos.map(v => Number(v.valor))) : null;
+    vinculos.forEach(v => linhas.push({
+      t, v,
+      origem: rotuloOrigemFrete(t),
+      destino: rotuloDestinoFrete(t),
+      km: temNumeroFrete(t.distanciaKm) ? Number(t.distanciaKm) : null,
+      transportador: v.transportador || '',
+      valor: Number(v.valor),
+      atualizado: v.atualizadoEm || v.criadoEm || '',
+      ehMenor: menor !== null && Number(v.valor) === menor,
+    }));
+  });
+  return linhas;
+}
+
+function popularSelectFiltroFrete(id, rotuloTodos, valores) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const atual = sel.value;
+  const ordenados = [...new Set(valores.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  sel.innerHTML = `<option value="">${rotuloTodos}</option>`
+    + ordenados.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  sel.value = ordenados.includes(atual) ? atual : '';
+}
+
+function limparFiltrosTabelaFrete() {
+  ['fTabelaFreteBusca', 'fTabelaFreteOrigem', 'fTabelaFreteDestino', 'fTabelaFreteTransp'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('fTabelaFreteSemKm').checked = false;
+  renderTabelaFrete();
+}
+
+function filtrarSemDistanciaTabelaFrete() {
+  document.getElementById('fTabelaFreteSemKm').checked = true;
+  renderTabelaFrete();
+}
+
+function ordenarColunaFrete(coluna) {
+  if (sortColunaFrete === coluna) sortDirFrete = sortDirFrete === 'asc' ? 'desc' : 'asc';
+  else { sortColunaFrete = coluna; sortDirFrete = 'asc'; }
+  renderTabelaFrete();
+}
+
+function atualizarSetasOrdenacaoFrete() {
+  document.querySelectorAll('#tabelaFreteTable th[data-col]').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = sortColunaFrete === th.dataset.col ? (sortDirFrete === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
+function compararLinhasFrete(a, b) {
+  const txt = (x, y) => normTrechoFrete(x).localeCompare(normTrechoFrete(y), 'pt-BR');
+  const padrao = () => txt(a.origem, b.origem) || txt(a.destino, b.destino) || txt(a.transportador, b.transportador);
+  if (!sortColunaFrete) return padrao();
+  const dir = sortDirFrete === 'asc' ? 1 : -1;
+  let r;
+  if (sortColunaFrete === 'km') {
+    // sem distância vai sempre pro fim, independente da direção
+    if (a.km === null || b.km === null) return (a.km === null) - (b.km === null) || padrao();
+    r = a.km - b.km;
+  } else if (sortColunaFrete === 'valor') r = a.valor - b.valor;
+  else if (sortColunaFrete === 'atualizado') r = String(a.atualizado).localeCompare(String(b.atualizado));
+  else r = txt(a[sortColunaFrete], b[sortColunaFrete]);
+  return (r * dir) || padrao();
+}
+
+function renderTabelaFrete() {
+  const aviso = document.getElementById('tabelaFreteAviso');
+  if (_tabelaFreteErro) {
+    aviso.style.display = 'block';
+    aviso.textContent = erroPermissaoFirebase(_tabelaFreteErro)
+      ? '⚠️ Sem permissão para ler a Tabela de Frete no Firebase — a regra do nó "tabelaFrete" precisa estar publicada (Realtime Database → Regras).'
+      : '⚠️ Erro ao carregar a Tabela de Frete: ' + (_tabelaFreteErro.message || _tabelaFreteErro);
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const todas = linhasTabelaFrete();
+  const isEmpty = todas.length === 0;
+  document.getElementById('tabelaFreteEmpty').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('tabelaFreteContent').style.display = isEmpty ? 'none' : 'block';
+  if (isEmpty) {
+    document.getElementById('tabelaFreteEmptyText').textContent = _tabelaFreteErro
+      ? 'Tabela de frete indisponível'
+      : (_tabelaFreteCarregada ? 'Nenhum frete cadastrado' : 'Carregando tabela de frete...');
+    return;
+  }
+
+  popularSelectFiltroFrete('fTabelaFreteOrigem', 'Origem: Todas', todas.map(l => l.origem));
+  popularSelectFiltroFrete('fTabelaFreteDestino', 'Destino: Todos', todas.map(l => l.destino));
+  popularSelectFiltroFrete('fTabelaFreteTransp', 'Transportador: Todos', todas.map(l => l.transportador));
+
+  const busca = normTrechoFrete(document.getElementById('fTabelaFreteBusca').value);
+  const fOrigem = document.getElementById('fTabelaFreteOrigem').value;
+  const fDestino = document.getElementById('fTabelaFreteDestino').value;
+  const fTransp = document.getElementById('fTabelaFreteTransp').value;
+  const soSemKm = document.getElementById('fTabelaFreteSemKm').checked;
+  const filtradas = todas.filter(l =>
+    (!busca || normTrechoFrete(`${l.origem} ${l.destino} ${l.transportador}`).includes(busca)) &&
+    (!fOrigem || l.origem === fOrigem) &&
+    (!fDestino || l.destino === fDestino) &&
+    (!fTransp || l.transportador === fTransp) &&
+    (!soSemKm || l.km === null)
+  ).sort(compararLinhasFrete);
+
+  document.getElementById('badge-tabela-frete').textContent =
+    (filtradas.length < todas.length ? `${filtradas.length} de ${todas.length}` : `${todas.length}`)
+    + ` frete${todas.length !== 1 ? 's' : ''}`;
+  const trechosSemKm = listaTrechosFrete().filter(t => listaVinculosFrete(t).length && !formatarKmFrete(t.distanciaKm)).length;
+  const badgeSemKm = document.getElementById('badge-tabela-frete-sem-km');
+  badgeSemKm.style.display = trechosSemKm ? '' : 'none';
+  badgeSemKm.textContent = `⚠ ${trechosSemKm} trecho${trechosSemKm !== 1 ? 's' : ''} sem distância`;
+  atualizarSetasOrdenacaoFrete();
+
+  document.getElementById('tabelaFreteBody').innerHTML = filtradas.length
+    ? filtradas.map(linhaTabelaFreteHtml).join('')
+    : '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Nenhum frete encontrado para o filtro</td></tr>';
+}
+
+function linhaTabelaFreteHtml(l) {
+  const { t, v } = l;
+  const ant = v.anterior || null;
+  const noCadastro = transportadores.some(x => x.nomeFantasia === v.transportador);
+  const km = formatarKmFrete(t.distanciaKm);
+  return `
+    <tr>
+      <td>${esc(l.origem)}</td>
+      <td>${esc(l.destino)}</td>
+      <td class="tf-num">${km
+        ? esc(km)
+        : `<span class="tf-pendente" onclick="abrirModalTrechoFrete('${t.id}')" title="Clique para informar a distância do trecho">⚠ informar</span>`}</td>
+      <td><span class="tf-transp">${esc(v.transportador)}</span>${noCadastro ? '' : ' <span style="color:var(--accent2)" title="Não consta mais no cadastro de Transportadores">⚠</span>'}</td>
+      <td class="tf-num">
+        ${l.ehMenor ? '<span class="badge badge-success tf-badge-menor" title="Menor frete deste trecho">menor</span>' : ''}
+        ${ant ? `<span class="tf-var-inline" title="${esc(`Anterior: ${formatarValorFrete(ant.valor)}`)}">${variacaoFreteHtml(ant.valor, v.valor)}</span>` : ''}
+        <span class="tf-valor">${esc(formatarValorFrete(v.valor))}</span>
+      </td>
+      <td title="${esc(`por ${v.atualizadoPor || '—'}`)}">${esc(fmtDataCurtaFrete(l.atualizado))}</td>
+      <td class="col-acao">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteVinculo('${t.id}', '${v.id}')" title="Ver histórico e atualizar o frete">✏️</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerFreteVinculo('${t.id}', '${v.id}')" title="Remover este frete">✕</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+// Gravação única de toda a aba — trava o botão e evita duplo clique gerando log duplicado.
+async function executarGravacaoTabelaFrete(updates, logs, btnId) {
+  if (_salvandoTabelaFrete) return false;
+  if (!window._fb?.gravarTabelaFrete) { alert('Firebase indisponível — recarregue a página.'); return false; }
+  const btn = btnId ? document.getElementById(btnId) : null;
+  _salvandoTabelaFrete = true;
+  if (btn) btn.disabled = true;
+  mostrarStatus('saving', 'Salvando tabela de frete...');
+  try {
+    await window._fb.gravarTabelaFrete(updates, logs);
+    return true;
+  } catch (e) {
+    console.error('Erro ao salvar tabela de frete:', e);
+    mostrarStatus('saving', 'Erro ao salvar tabela de frete');
+    alert('Não foi possível salvar na Tabela de Frete: ' + (e?.message || e)
+      + (erroPermissaoFirebase(e) ? '\n\nA regra do nó "tabelaFrete" precisa estar publicada no Firebase.' : ''));
+    return false;
+  } finally {
+    _salvandoTabelaFrete = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Mudança de origem/destino/distância muda o significado dos fretes do trecho — vai pro log
+// de cada transportador dele (exceto `exceto`, o vínculo que já ganha log próprio no request).
+function logsMudancaTrechoFrete(trecho, descricao, agora, exceto = null) {
+  const { por, porEmail } = usuarioLogFrete();
+  return listaVinculosFrete(trecho).filter(v => v.id !== exceto).map(v => ({
+    trechoId: trecho.id, vinculoId: v.id,
+    entrada: { acao: 'trecho', trecho: rotuloTrechoFrete(trecho), transportador: v.transportador || '', em: agora, por, porEmail, observacao: descricao },
+  }));
+}
+
+// Sugestões: cidade/UF dos Fornecedores (origem) e das Bases (destino) primeiro — é a
+// grafia que casa com a viagem —, depois as da aba Leadtime e as dos trechos já cadastrados.
+function paresCidadeTrechoFrete(lado) {
+  const trechos = listaTrechosFrete();
+  return lado === 'origem'
+    ? [...fornecedores.map(f => [f.cidade, f.uf]), ...leadtimes.map(l => [l.origemCidade, l.origemUf]), ...trechos.map(t => [t.origemCidade, t.origemUf])]
+    : [...bases.map(b => [b.cidade, b.estado]), ...leadtimes.map(l => [l.destinoCidade, l.destinoUf]), ...trechos.map(t => [t.destinoCidade, t.destinoUf])];
+}
+
+function popularDatalistsTrechoFrete() {
+  ['origem', 'destino'].forEach(lado => {
+    const vistos = new Map();
+    paresCidadeTrechoFrete(lado).forEach(([cidade, uf]) => {
+      const c = String(cidade || '').trim();
+      if (!c) return;
+      const u = String(uf || '').trim().toUpperCase();
+      const k = normTrechoFrete(c) + '|' + u;
+      if (!vistos.has(k)) vistos.set(k, [c, u]);
+    });
+    document.getElementById(`dl-tf-${lado}`).innerHTML = [...vistos.values()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+      .map(([c, u]) => `<option value="${esc(c)}">${esc(c)}${u ? ' / ' + esc(u) : ''}</option>`)
+      .join('');
+  });
+}
+
+// prefixo: 'nf' (Novo Frete) ou 'tf' (Editar Trecho)
+function sugerirUfTrechoFrete(prefixo, lado) {
+  const cidade = normTrechoFrete(document.getElementById(`${prefixo}-${lado}Cidade`).value);
+  if (!cidade) return;
+  const ufs = new Set(paresCidadeTrechoFrete(lado)
+    .filter(([c]) => normTrechoFrete(c) === cidade)
+    .map(([, uf]) => String(uf || '').trim().toUpperCase())
+    .filter(Boolean));
+  if (ufs.size === 1) document.getElementById(`${prefixo}-${lado}Uf`).value = [...ufs][0];
+}
+
+// Cidade/UF sempre em maiúsculas (as sugestões das Bases vêm em "Rio Verde"; o resto do
+// cadastro, em "RIO VERDE") — a comparação de trecho já ignora caixa/acento, é só visual.
+function lerCamposTrechoFrete(prefixo) {
+  const dados = {};
+  ['origemCidade', 'origemUf', 'destinoCidade', 'destinoUf'].forEach(c => {
+    dados[c] = document.getElementById(`${prefixo}-${c}`).value.trim().replace(/\s+/g, ' ').toUpperCase();
+  });
+  return dados;
+}
+
+function validarCamposTrechoFrete(dados, distanciaKm) {
+  if (!dados.origemCidade || !dados.origemUf || !dados.destinoCidade || !dados.destinoUf) return 'Preencha Origem Cidade/UF e Destino Cidade/UF.';
+  if (!/^[A-Z]{2}$/.test(dados.origemUf) || !/^[A-Z]{2}$/.test(dados.destinoUf)) return 'UF deve ter 2 letras (ex.: MG).';
+  if (distanciaKm === null || distanciaKm <= 0) return 'Informe a distância do trecho em km (ex.: 1.020).';
+  return null;
+}
+
+// ── Modal: Novo Frete (cria o trecho se ainda não existir) ──
+function abrirModalNovoFrete() {
+  ['origemCidade', 'origemUf', 'destinoCidade', 'destinoUf', 'distancia', 'valor', 'observacao'].forEach(c => {
+    document.getElementById('nf-' + c).value = '';
+  });
+  document.getElementById('nf-distancia').dataset.auto = '';
+  document.getElementById('nf-vigencia').value = isoHojeReal();
+  document.getElementById('nf-hint-trecho').textContent = '';
+  const nomes = transportadores.map(x => x.nomeFantasia).filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  document.getElementById('nf-transportador').innerHTML = '<option value="">Selecione o transportador...</option>'
+    + nomes.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  popularDatalistsTrechoFrete();
+  document.getElementById('modalNovoFrete').classList.add('open');
+  setTimeout(() => document.getElementById('nf-origemCidade').focus(), 100);
+}
+
+function fecharModalNovoFrete() {
+  fecharModal('modalNovoFrete');
+}
+
+// Trecho já cadastrado: traz a distância dele (sem sobrescrever o que o usuário digitou) e
+// avisa quais transportadores já têm frete ali.
+function atualizarTrechoNovoFrete() {
+  const dados = lerCamposTrechoFrete('nf');
+  const inputKm = document.getElementById('nf-distancia');
+  const hint = document.getElementById('nf-hint-trecho');
+  const completo = dados.origemCidade && dados.origemUf && dados.destinoCidade && dados.destinoUf;
+  const trecho = completo ? buscarTrechoFretePorChave(dados) : null;
+  const podeAutoPreencher = !inputKm.value || inputKm.dataset.auto === '1';
+  if (trecho && formatarKmFrete(trecho.distanciaKm)) {
+    if (podeAutoPreencher) { inputKm.value = numeroParaInputFrete(trecho.distanciaKm, 0); inputKm.dataset.auto = '1'; }
+  } else if (inputKm.dataset.auto === '1') {
+    inputKm.value = '';
+    inputKm.dataset.auto = '';
+  }
+  if (!trecho) { hint.textContent = completo ? 'Trecho novo — será cadastrado junto com o frete.' : ''; return; }
+  const jaTem = listaVinculosFrete(trecho).map(v => v.transportador).filter(Boolean);
+  hint.textContent = 'Trecho já cadastrado'
+    + (formatarKmFrete(trecho.distanciaKm) ? ` (${formatarKmFrete(trecho.distanciaKm)})` : ' (sem distância)')
+    + (jaTem.length ? ` — já tem frete de: ${jaTem.join(', ')}` : '');
+}
+
+async function salvarNovoFrete() {
+  const dados = lerCamposTrechoFrete('nf');
+  const distanciaKm = parseNumeroFrete(document.getElementById('nf-distancia').value);
+  const erroTrecho = validarCamposTrechoFrete(dados, distanciaKm);
+  if (erroTrecho) { alert(erroTrecho); return; }
+  const transportador = document.getElementById('nf-transportador').value;
+  if (!transportador) { alert('Selecione o transportador.'); return; }
+  const valor = parseNumeroFrete(document.getElementById('nf-valor').value);
+  if (valor === null || valor <= 0) { alert('Informe um frete válido em R$/m³, maior que zero (ex.: 125,50).'); return; }
+  const vigenciaInicio = document.getElementById('nf-vigencia').value || '';
+  const observacao = document.getElementById('nf-observacao').value.trim();
+
+  const agora = new Date().toISOString();
+  const { por, porEmail } = usuarioLogFrete();
+  const trecho = buscarTrechoFretePorChave(dados);
+  const rotulo = trecho ? rotuloTrechoFrete(trecho) : rotuloTrechoFrete(dados);
+  if (trecho && listaVinculosFrete(trecho).some(v => normTrechoFrete(v.transportador) === normTrechoFrete(transportador))) {
+    alert(`${transportador} já tem frete cadastrado no trecho ${rotulo}.\n\nUse o ✏️ na linha dele para atualizar o valor.`);
+    return;
+  }
+
+  const trechoId = trecho ? trecho.id : window._fb.novoIdTabelaFrete();
+  const vinculoId = window._fb.novoIdTabelaFrete();
+  const vinculo = {
+    transportador, valor, vigenciaInicio, observacao,
+    criadoEm: agora, criadoPor: por, atualizadoEm: agora, atualizadoPor: por, atualizadoPorEmail: porEmail,
+  };
+  const updates = {};
+  const logs = [{
+    trechoId, vinculoId,
+    entrada: { acao: 'inclusao', trecho: rotulo, transportador, valorNovo: valor, vigenciaNova: vigenciaInicio, em: agora, por, porEmail, observacao },
+  }];
+  if (!trecho) {
+    // Trecho e 1º vínculo no MESMO objeto: update() recusa caminhos sobrepostos
+    // (trechos/<id> e trechos/<id>/vinculos/<v>) no mesmo request.
+    updates[`trechos/${trechoId}`] = { ...dados, distanciaKm, criadoEm: agora, criadoPor: por, criadoPorEmail: porEmail, vinculos: { [vinculoId]: vinculo } };
+  } else {
+    updates[`trechos/${trechoId}/vinculos/${vinculoId}`] = vinculo;
+    const kmAntes = formatarKmFrete(trecho.distanciaKm);
+    if (Number(trecho.distanciaKm) !== distanciaKm) {
+      if (kmAntes && !confirm(`O trecho ${rotulo} já está com ${kmAntes}. Alterar para ${formatarKmFrete(distanciaKm)}?\n\nA distância vale para todos os transportadores do trecho.`)) return;
+      updates[`trechos/${trechoId}/distanciaKm`] = distanciaKm;
+      updates[`trechos/${trechoId}/atualizadoEm`] = agora;
+      updates[`trechos/${trechoId}/atualizadoPor`] = por;
+      logs.push(...logsMudancaTrechoFrete(trecho, `Distância alterada de ${kmAntes || '—'} para ${formatarKmFrete(distanciaKm)}`, agora));
+    }
+  }
+
+  const ok = await executarGravacaoTabelaFrete(updates, logs, 'btnSalvarNovoFrete');
+  if (!ok) return;
+  fecharModalNovoFrete();
+  mostrarStatus('saved', `Frete cadastrado: ${transportador} · ${rotulo}`);
+}
+
+// ── Modal: Editar trecho (origem/destino/distância) ──
+function abrirModalTrechoFrete(trechoId) {
+  const t = trechosFrete[trechoId];
+  if (!t) { alert('Trecho não encontrado — pode ter sido removido por outro usuário.'); return; }
+  editingTrechoFreteId = trechoId;
+  ['origemCidade', 'origemUf', 'destinoCidade', 'destinoUf'].forEach(c => {
+    document.getElementById('tf-' + c).value = t[c] || '';
+  });
+  document.getElementById('tf-distancia').value = numeroParaInputFrete(t.distanciaKm, 0);
+  const qtd = listaVinculosFrete(t).length;
+  document.getElementById('tf-sub').textContent = `Vale para ${qtd > 1 ? `os ${qtd} transportadores` : 'todos os transportadores'} deste trecho`;
+  popularDatalistsTrechoFrete();
+  document.getElementById('modalTrechoFrete').classList.add('open');
+  setTimeout(() => document.getElementById(formatarKmFrete(t.distanciaKm) ? 'tf-origemCidade' : 'tf-distancia').focus(), 100);
+}
+
+function fecharModalTrechoFrete() {
+  fecharModal('modalTrechoFrete', () => editingTrechoFreteId = null);
+}
+
+async function salvarTrechoFrete() {
+  const trechoId = editingTrechoFreteId;
+  const antes = trechosFrete[trechoId];
+  if (!antes) { alert('Trecho não encontrado — pode ter sido removido por outro usuário.'); return; }
+  const dados = lerCamposTrechoFrete('tf');
+  const distanciaKm = parseNumeroFrete(document.getElementById('tf-distancia').value);
+  const erro = validarCamposTrechoFrete(dados, distanciaKm);
+  if (erro) { alert(erro); return; }
+  const duplicado = buscarTrechoFretePorChave(dados, trechoId);
+  if (duplicado) { alert(`Já existe o trecho "${rotuloTrechoFrete(duplicado)}" na tabela de frete.`); return; }
+
+  const mudancas = [];
+  const rotuloAntes = rotuloTrechoFrete(antes), rotuloDepois = rotuloTrechoFrete(dados);
+  if (rotuloAntes !== rotuloDepois) mudancas.push(`Trecho alterado de ${rotuloAntes} para ${rotuloDepois}`);
+  if (Number(antes.distanciaKm) !== distanciaKm) mudancas.push(`Distância alterada de ${formatarKmFrete(antes.distanciaKm) || '—'} para ${formatarKmFrete(distanciaKm)}`);
+  if (!mudancas.length) { fecharModalTrechoFrete(); return; }
+
+  const agora = new Date().toISOString();
+  const { por } = usuarioLogFrete();
+  // Caminho por campo (não o objeto inteiro) pra não apagar os vínculos do trecho
+  const updates = {};
+  Object.entries({ ...dados, distanciaKm, atualizadoEm: agora, atualizadoPor: por }).forEach(([campo, valor]) => {
+    updates[`trechos/${trechoId}/${campo}`] = valor;
+  });
+  const logs = logsMudancaTrechoFrete({ ...antes, ...dados, id: trechoId }, mudancas.join(' · '), agora);
+  const ok = await executarGravacaoTabelaFrete(updates, logs, 'btnSalvarTrechoFrete');
+  if (!ok) return;
+  fecharModalTrechoFrete();
+  mostrarStatus('saved', 'Trecho atualizado');
+  if (_freteVinculoAberto?.trechoId === trechoId) carregarHistoricoFreteModal(trechoId, _freteVinculoAberto.vinculoId);
+}
+
+// ── Modal: detalhe do frete (atual × anterior + histórico + atualização) ──
+function abrirModalFreteVinculo(trechoId, vinculoId) {
+  const v = trechosFrete[trechoId]?.vinculos?.[vinculoId];
+  if (!v) { alert('Este frete não existe mais (removido por outro usuário?).'); return; }
+  _freteVinculoAberto = { trechoId, vinculoId };
+  document.getElementById('fv-valor').value = numeroParaInputFrete(v.valor);
+  document.getElementById('fv-vigencia').value = isoHojeReal();
+  document.getElementById('fv-observacao').value = '';
+  renderDetalheFreteVinculo();
+  carregarHistoricoFreteModal(trechoId, vinculoId);
+  document.getElementById('modalFreteVinculo').classList.add('open');
+  setTimeout(() => document.getElementById('fv-valor').focus(), 100);
+}
+
+function fecharModalFreteVinculo() {
+  fecharModal('modalFreteVinculo', () => { _freteVinculoAberto = null; _tokenHistoricoFrete++; });
+}
+
+// Re-renderizado também pelo listener: se outro usuário mudar o frete/trecho com o detalhe
+// aberto, cabeçalho e cards refletem na hora (o formulário não é mexido).
+function renderDetalheFreteVinculo() {
+  const aberto = _freteVinculoAberto;
+  if (!aberto) return;
+  const t = trechosFrete[aberto.trechoId];
+  const v = t?.vinculos?.[aberto.vinculoId];
+  const cards = document.getElementById('fv-cards');
+  if (!v) {
+    cards.innerHTML = '<div class="alert alert-warn" style="grid-column:1/-1;margin:0">Este frete foi removido por outro usuário.</div>';
+    return;
+  }
+  document.getElementById('fv-titulo').textContent = v.transportador || 'Frete';
+  const km = formatarKmFrete(t.distanciaKm);
+  const lt = leadtimeDoTrechoFrete(t);
+  document.getElementById('fv-sub').innerHTML = `
+    <span>📍 ${esc(rotuloTrechoFrete(t))}</span>
+    <span>${km ? '🛣️ ' + esc(km) : '<span style="color:var(--accent2)">⚠ sem distância</span>'}</span>
+    ${lt !== null && lt !== undefined ? `<span>⏱️ leadtime ${esc(Number(lt).toLocaleString('pt-BR', { maximumFractionDigits: 1 }))}h</span>` : ''}
+    <button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px" onclick="abrirModalTrechoFrete('${aberto.trechoId}')">✏️ Editar trecho</button>`;
+  const ant = v.anterior || null;
+  cards.innerHTML = `
+    <div class="tf-card atual">
+      <div class="tf-card-lbl">Frete atual ${ant ? variacaoFreteHtml(ant.valor, v.valor) : ''}</div>
+      <div class="tf-card-valor">${esc(formatarValorFrete(v.valor))}<span class="tf-card-un">/m³</span></div>
+      <div class="tf-card-meta">
+        Vigência: ${esc(fmtDataFrete(v.vigenciaInicio))}<br>
+        Alterado em ${esc(fmtDataHoraFrete(v.atualizadoEm))} por <strong>${esc(v.atualizadoPor || '—')}</strong>
+        ${v.observacao ? `<br>Motivo: ${esc(v.observacao)}` : ''}
+      </div>
+    </div>
+    <div class="tf-card">
+      <div class="tf-card-lbl">Frete anterior</div>
+      ${ant ? `
+        <div class="tf-card-valor" style="color:var(--text-dim)">${esc(formatarValorFrete(ant.valor))}<span class="tf-card-un">/m³</span></div>
+        <div class="tf-card-meta">
+          Vigência: ${esc(fmtDataFrete(ant.vigenciaInicio))}<br>
+          Definido em ${esc(fmtDataHoraFrete(ant.em))} por <strong>${esc(ant.por || '—')}</strong>
+          ${ant.observacao ? `<br>Motivo: ${esc(ant.observacao)}` : ''}
+        </div>` : `
+        <div class="tf-card-valor" style="color:var(--text-muted)">—</div>
+        <div class="tf-card-meta">Sem alteração desde o cadastro inicial</div>`}
+    </div>`;
+}
+
+async function carregarHistoricoFreteModal(trechoId, vinculoId) {
+  const body = document.getElementById('fv-historico-body');
+  const token = ++_tokenHistoricoFrete;
+  body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text-muted)">Carregando histórico...</td></tr>';
+  try {
+    const raw = await window._fb.carregarHistoricoFrete(trechoId, vinculoId);
+    if (token !== _tokenHistoricoFrete) return;
+    // Mais recente primeiro; empate de horário desempata pela chave do push (cronológica)
+    const lista = Object.entries(raw || {})
+      .filter(([, h]) => h && typeof h === 'object')
+      .sort(([ka, a], [kb, b]) => String(b.em || '').localeCompare(String(a.em || '')) || kb.localeCompare(ka))
+      .map(([, h]) => h);
+    body.innerHTML = lista.length
+      ? lista.map(linhaHistoricoFrete).join('')
+      : '<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text-muted)">Nenhuma alteração registrada</td></tr>';
+  } catch (e) {
+    if (token !== _tokenHistoricoFrete) return;
+    console.error('Erro ao carregar histórico de frete:', e);
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--danger)">Erro ao carregar o histórico: ${esc(e?.message || e)}</td></tr>`;
+  }
+}
+
+function linhaHistoricoFrete(h) {
+  const acao = ACOES_LOG_FRETE[h.acao] || { rotulo: h.acao || '—', classe: 'badge-accent' };
+  const temAnterior = temNumeroFrete(h.valorAnterior);
+  const temNovo = temNumeroFrete(h.valorNovo);
+  return `
+    <tr>
+      <td>${esc(fmtDataHoraFrete(h.em))}<div class="tf-meta" title="${esc(h.porEmail || '')}">${esc(h.por || '—')}</div></td>
+      <td><span class="badge ${acao.classe}" style="padding:1px 8px;font-size:10px">${esc(acao.rotulo)}</span></td>
+      <td class="tf-num tf-valor-ant">${temAnterior ? esc(formatarValorFrete(h.valorAnterior)) : '—'}</td>
+      <td class="tf-num tf-valor">${temNovo ? esc(formatarValorFrete(h.valorNovo)) : '—'}</td>
+      <td>${temAnterior && temNovo ? variacaoFreteHtml(h.valorAnterior, h.valorNovo) : '<span class="tf-var-eq">—</span>'}</td>
+      <td>${esc(fmtDataFrete(temNovo ? h.vigenciaNova : h.vigenciaAnterior))}</td>
+      <td class="tf-motivo">${esc(h.observacao || '—')}</td>
+    </tr>`;
+}
+
+async function salvarFreteVinculo() {
+  if (_salvandoTabelaFrete || !_freteVinculoAberto) return;
+  const { trechoId, vinculoId } = _freteVinculoAberto;
+  const t = trechosFrete[trechoId];
+  if (!t) { alert('Trecho não encontrado — pode ter sido removido por outro usuário.'); return; }
+  const valor = parseNumeroFrete(document.getElementById('fv-valor').value);
+  if (valor === null || valor <= 0) { alert('Informe um frete válido em R$/m³, maior que zero (ex.: 125,50).'); return; }
+  const vigenciaInicio = document.getElementById('fv-vigencia').value || '';
+  const observacao = document.getElementById('fv-observacao').value.trim();
+
+  // Valor anterior lido do servidor na hora — não da cópia local
+  let atual;
+  try { atual = await window._fb.lerVinculoFrete(trechoId, vinculoId); }
+  catch (e) { alert('Não foi possível ler o frete atual no Firebase: ' + (e?.message || e)); return; }
+  if (!atual) { alert('Este frete não existe mais (removido por outro usuário?).'); return; }
+  const vigenciaAtual = atual.vigenciaInicio || '';
+  if (Number(atual.valor) === valor && vigenciaAtual === vigenciaInicio) {
+    alert('Nada mudou: valor e vigência são iguais aos atuais.');
+    return;
+  }
+  const rotulo = rotuloTrechoFrete(t);
+  if (!confirm(`Confirmar alteração do frete de ${atual.transportador} no trecho ${rotulo}?\n\n`
+    + `${formatarValorFrete(atual.valor)}/m³  →  ${formatarValorFrete(valor)}/m³`)) return;
+
+  const agora = new Date().toISOString();
+  const { por, porEmail } = usuarioLogFrete();
+  const vinculo = {
+    ...atual, valor, vigenciaInicio, observacao,
+    atualizadoEm: agora, atualizadoPor: por, atualizadoPorEmail: porEmail,
+    anterior: {
+      valor: atual.valor, vigenciaInicio: vigenciaAtual, observacao: atual.observacao || '',
+      em: atual.atualizadoEm || atual.criadoEm || '', por: atual.atualizadoPor || atual.criadoPor || '',
+    },
+  };
+  delete vinculo.unidade; // legado (antes da padronização em R$/m³)
+  const entrada = {
+    acao: 'alteracao', trecho: rotulo, transportador: atual.transportador || '',
+    valorAnterior: atual.valor, vigenciaAnterior: vigenciaAtual,
+    valorNovo: valor, vigenciaNova: vigenciaInicio,
+    em: agora, por, porEmail, observacao,
+  };
+  const ok = await executarGravacaoTabelaFrete(
+    { [`trechos/${trechoId}/vinculos/${vinculoId}`]: vinculo },
+    [{ trechoId, vinculoId, entrada }],
+    'btnSalvarFreteVinculo');
+  if (!ok) return;
+  fecharModalFreteVinculo();
+  mostrarStatus('saved', 'Frete atualizado');
+}
+
+async function removerFreteVinculo(trechoId, vinculoId) {
+  const t = trechosFrete[trechoId];
+  const v = t?.vinculos?.[vinculoId];
+  if (!v) return;
+  const rotulo = rotuloTrechoFrete(t);
+  if (!confirm(`Remover o frete de "${v.transportador}" no trecho ${rotulo}?\n\nFrete atual: ${formatarValorFrete(v.valor)}/m³\nO histórico de alterações continua guardado.`)) return;
+  const { por, porEmail } = usuarioLogFrete();
+  const entrada = {
+    acao: 'remocao', trecho: rotulo, transportador: v.transportador || '',
+    valorAnterior: v.valor, vigenciaAnterior: v.vigenciaInicio || '',
+    em: new Date().toISOString(), por, porEmail, observacao: 'Frete removido da tabela',
+  };
+  const ok = await executarGravacaoTabelaFrete({ [`trechos/${trechoId}/vinculos/${vinculoId}`]: null }, [{ trechoId, vinculoId, entrada }]);
+  if (ok) mostrarStatus('saved', 'Frete removido');
 }
 
 // Renomeação de siglas do status diário (FO→DSR, R→RV) — converte os registros já
@@ -11442,20 +12507,21 @@ function ajustarModalParaTipoUsuario(v) {
   document.getElementById('btnSalvarViagem').style.display = (transportador && !podeEditarPlaca) ? 'none' : '';
 
   // Pedágio comprado: tudo que mexe com o que foi comprado na Pamcard fica travado (ver
-  // pedagioComprado). Motorista/CPF/Observação continuam liberados — não entram na compra
-  // (bot_pamcard.py usa placa/rota/transportador) — e são os únicos que salvarViagem grava
-  // nesse caso. Mantém a regra de janela do transportador acima (podeEditarPlaca).
+  // pedagioComprado). Programador/Motorista/CPF/Observação continuam liberados — não entram
+  // na compra (bot_pamcard.py usa placa/rota/transportador) — e são os únicos que
+  // salvarViagem grava nesse caso. Mantém a regra de janela do transportador acima
+  // (podeEditarPlaca).
   const travadoPedagio = pedagioComprado(v);
   document.getElementById('alertaPedagioCompradoBanner').style.display = travadoPedagio ? '' : 'none';
   if (travadoPedagio) {
-    ['m-transportador', 'm-transportador-cnpj', 'm-status', 'm-veiculo-dedicado', 'm-programador',
+    ['m-transportador', 'm-transportador-cnpj', 'm-status', 'm-veiculo-dedicado',
      'm-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-ajuste-seta']
       .forEach(id => { document.getElementById(id).disabled = true; });
     document.getElementById('m-diaDsr').classList.add('chip-group-disabled');
   } else {
     // Selects abaixo não são tocados pela regra de transportador — reabilita ao abrir
     // outra viagem sem pedágio comprado (o modal é reaproveitado entre viagens).
-    ['m-transportador-cnpj', 'm-veiculo-dedicado', 'm-programador']
+    ['m-transportador-cnpj', 'm-veiculo-dedicado']
       .forEach(id => { document.getElementById(id).disabled = false; });
   }
 }
@@ -12461,8 +13527,9 @@ function salvarViagemCamposLiberadosPedagio(v) {
   const novoNome = document.getElementById('m-nomeMotorista').value.trim();
   const novoCpf  = document.getElementById('m-cpfMotorista').value.trim();
   const novaObs  = document.getElementById('m-obs').value;
+  const novoProgramador = document.getElementById('m-programador').value;
   const mudouMotorista = novoNome !== (v.nomeMotorista || '') || novoCpf !== (v.cpfMotorista || '');
-  if (!mudouMotorista && novaObs === (v.obs || '')) { closeModal(); return; }
+  if (!mudouMotorista && novaObs === (v.obs || '') && novoProgramador === (v.programador || '')) { closeModal(); return; }
   if (mudouMotorista) {
     // Troca de motorista depois da compra fica registrada — ajuda a conferir a ordem de
     // carregamento/comprovante emitidos antes da troca.
@@ -12476,6 +13543,7 @@ function salvarViagemCamposLiberadosPedagio(v) {
   v.nomeMotorista = novoNome;
   v.cpfMotorista  = novoCpf;
   v.obs           = novaObs;
+  v.programador   = novoProgramador;
   if (isTransportador()) viagensAlteradas.add(v.idViagem);
   closeModal();
   updatePipeline();
@@ -13500,9 +14568,10 @@ function renderStatusCelulaMon(v, mon) {
 // com a Pamcard — trocar transportador/placa/status (inclusive cancelar) depois disso
 // deixa a compra órfã/incorreta sem que ninguém do time perceba. Único jeito de destravar é
 // operacional (estornar na Pamcard + excluir o log em monitoramentoPamcard), não tem bypass
-// no app. Destino (mesmo CNPJ, ver trocarDestinoInline), as duas Datas (Desejada/Programação)
-// e, no modal, Motorista/CPF/Observação (ver salvarViagemCamposLiberadosPedagio) ficam de
-// fora da trava — são os únicos ajustes que não mexem com o que já foi comprado.
+// no app. Destino (mesmo CNPJ, ver trocarDestinoInline), as duas Datas (Desejada/Programação),
+// o Programador (modal e lote, ver aplicarEmLote) e, no modal, Motorista/CPF/Observação (ver
+// salvarViagemCamposLiberadosPedagio) ficam de fora da trava — são os únicos ajustes que
+// não mexem com o que já foi comprado.
 function pedagioComprado(v) {
   return monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio === 'COMPRADO';
 }
