@@ -4194,6 +4194,8 @@
       🔒 Pedágio já comprado — só Programador, Motorista, CPF do Motorista e Observação podem ser alterados aqui.
     </div>
 
+    <div class="alert alert-warn" id="alertaViagemCanceladaBanner" style="display:none"></div>
+
     <div class="info-row">
       <div class="info-item">
         <div class="info-lbl">Produto</div>
@@ -5276,7 +5278,7 @@ function formatarHistoricoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', 'Em Andamento': '🛣️', 'Viagem Finalizada': '🏁', Cancelado: '✕' }[h.evento] || '•';
+  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', 'Em Andamento': '🛣️', 'Viagem Finalizada': '🏁', Cancelado: '✕', Reaberto: '↩️' }[h.evento] || '•';
   // "quem" combina autor (usuário logado ou "Herrlog (automático)") + transportador/CNPJ
   // quando relevante (ex.: Frota Dedicada mostra para qual transportador foi atribuída).
   const partesQuem = [];
@@ -6180,8 +6182,12 @@ async function aplicarEmLote() {
   }
   const arr = viagensAtivo();
   let bloqueadasPedagio = 0;
+  let bloqueadasCancelamento = 0;
   selectedViagens.forEach(idx => {
     const v = arr[idx];
+    // Cancelada: nada do lote é aplicado (nem programador) — reabertura só pelo admin,
+    // viagem a viagem (ver reabrirViagemCancelada).
+    if (viagemCancelada(v)) { bloqueadasCancelamento++; return; }
     // Pedágio comprado: só o programador é aplicado (não entra na compra Pamcard, ver
     // pedagioComprado); status/agendamento/transportador pulam essa viagem, sem
     // interromper o resto do lote.
@@ -6232,6 +6238,9 @@ async function aplicarEmLote() {
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
+  if (bloqueadasCancelamento > 0) {
+    alert(`${bloqueadasCancelamento} viagem(ns) cancelada(s) não foram alteradas — viagem cancelada não pode ser editada. Para reabrir, solicitar a um administrador.`);
+  }
   if (bloqueadasPedagio > 0) {
     alert(`${bloqueadasPedagio} viagem(ns) não tiveram status/agendamento/transportador alterados por já terem o pedágio comprado${progRaw ? ' (o programador foi aplicado normalmente)' : ''} — para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.`);
   }
@@ -8507,6 +8516,7 @@ function renderViagensTable() {
     // descarga, então libera o ajuste manual da data — mesmo padrão do carregamento.
     const descEditavel = v.status === 'CIF' && !isTransportador();
     const pedagioTravado = pedagioComprado(v);
+    const cancelada = viagemCancelada(v);
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -8514,13 +8524,13 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Programador, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}</td>
+        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Programador, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}${cancelada ? ` <span style="cursor:help" title="Viagem cancelada — somente leitura. Para reabrir, solicitar a um administrador.">⛔</span>` : ''}</td>
         <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
             onblur="salvarPedidoMisInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-            ${(isTransportador() || !v.pedidoProvisorio || pedagioTravado) ? 'disabled' : ''}>
+            ${(isTransportador() || !v.pedidoProvisorio || pedagioTravado || cancelada) ? 'disabled' : ''}>
           ${v.pedidoProvisorio ? `<br><span class="badge badge-warn" style="margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block" title="Pedido MIS ainda não confirmado — edite e informe o número oficial">⏳ Provisório</span>` : ''}
         </td>
         <td data-label="Produto">${prodTag(v.produto)}</td>
@@ -8531,7 +8541,7 @@ function renderViagensTable() {
         <td class="cell-truncate" data-label="Destino" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
           ${renderSeletorDestino(v, realIdx)}
         </td>
-        <td class="cell-periodo col-data-desejada"${isTransportador() ? '' : ` style="cursor:pointer" onclick="abrirModalDataDesejada(${realIdx})" title="Clique para editar a Data Desejada"`}>
+        <td class="cell-periodo col-data-desejada"${(isTransportador() || cancelada) ? '' : ` style="cursor:pointer" onclick="abrirModalDataDesejada(${realIdx})" title="Clique para editar a Data Desejada"`}>
           <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtShort(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtCarregOriginal)) + '">✎</span>' : ''}</div>
           <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtShort(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtDescOriginal)) + '">✎</span>' : ''}</div>
         </td>
@@ -8542,7 +8552,7 @@ function renderViagensTable() {
               value="${progCarreg === '-' ? '' : esc(fmtShort(progCarreg)) + ' ' + esc(horaCarreg)}" placeholder="DD/MM HH:mm" maxlength="11"
               onblur="salvarDataProgramacaoInline(${realIdx}, 'carreg', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
-              ${isTransportador() ? 'disabled' : ''}>
+              ${(isTransportador() || cancelada) ? 'disabled' : ''}>
             ${v.alertaProgramacao ? `<span style="color:var(--accent2);font-size:13px;cursor:help;flex-shrink:0" title="Data alterada após o aceite — confira com o transportador">⚠</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
@@ -8562,7 +8572,7 @@ function renderViagensTable() {
             value="${v.volume}"
             onblur="salvarVolumeInline(${realIdx}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-            ${(isTransportador() || pedagioTravado) ? 'disabled' : ''}>
+            ${(isTransportador() || pedagioTravado || cancelada) ? 'disabled' : ''}>
           ${renderBadgeAjusteSeta(v, realIdx)}
         </td>
         <td data-label="Status">${renderSeletorStatus(v, realIdx)}</td>
@@ -8583,7 +8593,7 @@ function renderViagensTable() {
             ` : `
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="openModal(${realIdx})" title="Editar">✏️</button>
               <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="gerarOrdemRetirada(${realIdx})" title="Gerar Ordem de Retirada">📄</button>
-              ${!isTransportador() && v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteRetorno(${realIdx})" title="Criar viagem de Frete Retorno a partir desta entrega">🔄</button>` : ''}
+              ${!isTransportador() && !cancelada && v.veiculoDedicadoId && v.produto !== PRODUTO_RETORNO_VAZIO ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteRetorno(${realIdx})" title="Criar viagem de Frete Retorno a partir desta entrega">🔄</button>` : ''}
               ${renderBotaoComprovantePamcard(v)}
             `}
           </div>
@@ -12524,6 +12534,25 @@ function ajustarModalParaTipoUsuario(v) {
     ['m-transportador-cnpj', 'm-veiculo-dedicado']
       .forEach(id => { document.getElementById(id).disabled = false; });
   }
+
+  // Viagem cancelada: modal só leitura (ver viagemCancelada). Admin reabre trocando só o
+  // Status e salvando (ver salvarViagem) — o resto continua travado até sair de Cancelado.
+  const cancelada = viagemCancelada(v);
+  const adminReabre = cancelada && !!_authUsuarioAtual?.admin && !travadoPedagio;
+  const bannerCancelada = document.getElementById('alertaViagemCanceladaBanner');
+  bannerCancelada.style.display = cancelada ? '' : 'none';
+  bannerCancelada.textContent = adminReabre
+    ? '⛔ Viagem cancelada — somente leitura. Para reabrir, troque o Status e salve (o motivo será pedido e registrado no histórico).'
+    : '⛔ Viagem cancelada — somente leitura. Para reabrir, solicitar a um administrador.';
+  document.getElementById('m-programador').disabled = cancelada;
+  if (cancelada) {
+    ['m-transportador', 'm-transportador-cnpj', 'm-veiculo-dedicado', 'm-placa', 'm-placaCarreta1',
+     'm-placaCarreta2', 'm-nomeMotorista', 'm-cpfMotorista', 'm-obs', 'm-ajuste-seta']
+      .forEach(id => { document.getElementById(id).disabled = true; });
+    document.getElementById('m-status').disabled = !adminReabre;
+    document.getElementById('m-diaDsr').classList.add('chip-group-disabled');
+    document.getElementById('btnSalvarViagem').style.display = adminReabre ? '' : 'none';
+  }
 }
 
 function closeModal() {
@@ -12621,7 +12650,7 @@ function recusarOfertasSelecionadasTransportador() {
 function salvarPedidoMisInline(realIdx, valorInput) {
   const v = viagensAtivo()[realIdx];
   if (!v.pedidoProvisorio) return;
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const novo = valorInput.trim();
   const anterior = v.cadenciaOrigem || '';
   if (!novo) {
@@ -12673,7 +12702,7 @@ function alternarOpcoesCnpjSelect(select, mostrarRazao) {
 function salvarCnpjTransportadorInline(realIdx, cnpj) {
   const v = viagensAtivo()[realIdx];
   if (v.transportadorCnpj === cnpj) return;
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const anterior = v.transportadorCnpj || '';
   v.transportadorCnpj = cnpj;
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
@@ -12705,7 +12734,7 @@ function basesComMesmoCnpj(v) {
 function renderSeletorDestino(v, realIdx) {
   const estatico = `${esc(v.destino)}${v.destinoBase ? `<span style="color:var(--text-muted)"> (${esc(v.destinoBase)})</span>` : ''}
     ${v.cnpjDestino ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjDestino)}</span>` : ''}`;
-  if (isTransportador() || v.produto === PRODUTO_RETORNO_VAZIO || v.status === 'Viagem Finalizada') return estatico;
+  if (isTransportador() || v.produto === PRODUTO_RETORNO_VAZIO || v.status === 'Viagem Finalizada' || viagemCancelada(v)) return estatico;
   const opcoes = basesComMesmoCnpj(v);
   if (opcoes.length < 2) return estatico; // nenhuma outra base com o mesmo CNPJ — nada a trocar
 
@@ -12725,6 +12754,7 @@ async function trocarDestinoInline(realIdx, novoNomeMis) {
   const v = viagensAtivo()[realIdx];
   if (!novoNomeMis || novoNomeMis === v.destino) return;
   if (v.status === 'Viagem Finalizada') { alert('Viagem finalizada — o destino não pode mais ser alterado.'); renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v)) { renderViagensTable(); return; }
 
   // Sem transportador alocado e fora de andamento: nada pra avisar ainda, troca direto.
   const precisaAvisar = !!(v.transportador && v.transportador.trim()) || v.status === 'Em Andamento';
@@ -12751,7 +12781,7 @@ function salvarPlacaInline(realIdx, value) {
   const placa = value.toUpperCase().trim();
   const v = viagensAtivo()[realIdx];
   if (v.placa === placa) return;
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   v.placa = placa;
   if (placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
@@ -12782,6 +12812,7 @@ function abrirModalDataDesejada(realIdx) {
   const v = viagensAtivo()[realIdx];
   if (!v) return;
   if (v.status === 'Viagem Finalizada') { alert('Viagem finalizada — a Data Desejada não pode mais ser alterada.'); return; }
+  if (bloqueadoPorCancelamento(v)) return;
   _ddRealIdx = realIdx;
   document.getElementById('dd-viagem-label').textContent = `Viagem ${v.idViagem} · ${v.origem || ''} → ${v.destino || ''}`;
   document.getElementById('dd-carreg').value = dataDmyParaIso(v.dtCarreg);
@@ -12921,6 +12952,7 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     }
   }
   if (novo === anterior && novaHora === horaAnterior) return;
+  if (bloqueadoPorCancelamento(v)) { renderViagensTable(); return; }
   let motivo = null;
   if (novo !== anterior) {
     motivo = await pedirMotivoProgramacao();
@@ -12959,7 +12991,7 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
 
 function salvarVolumeInline(realIdx, valorInput) {
   const v = viagensAtivo()[realIdx];
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   const anterior = v.volume;
   const valor = valorInput.trim().replace(',', '.');
   const novo = parseFloat(valor);
@@ -13000,7 +13032,9 @@ function renderBadgeAjusteSeta(v, realIdx) {
     if (isTransportador()) {
       return `<br><span style="font-size:11px;color:var(--accent2)" title="Aguardando aprovação do analista">seta ${v.volumeSetaProposto} m³ enviada</span>`;
     }
-    return `<br><span style="font-size:11px;color:var(--accent2)" title="Proposta de seta do transportador">seta ${v.volumeSetaProposto} m³</span>
+    const proposta = `<br><span style="font-size:11px;color:var(--accent2)" title="Proposta de seta do transportador">seta ${v.volumeSetaProposto} m³</span>`;
+    if (viagemCancelada(v)) return proposta;
+    return `${proposta}
       <button class="btn btn-success btn-sm" style="padding:1px 5px;font-size:10px;margin-left:3px" onclick="aprovarAjusteSeta(${realIdx})" title="Aprovar ajuste de seta">✓</button>
       <button class="btn btn-danger btn-sm" style="padding:1px 5px;font-size:10px" onclick="recusarAjusteSeta(${realIdx})" title="Recusar ajuste de seta">✕</button>`;
   }
@@ -13016,6 +13050,7 @@ function renderBadgeAjusteSeta(v, realIdx) {
 function aprovarAjusteSeta(realIdx) {
   const v = viagensAtivo()[realIdx];
   if (!v || v.statusAjusteSeta !== 'pendente') return;
+  if (bloqueadoPorCancelamento(v)) { renderViagensTable(); return; }
   const anterior = v.volume;
   v.volume = v.volumeSetaProposto;
   v.volumeAjustadoManualmente = true;
@@ -13036,6 +13071,7 @@ function aprovarAjusteSeta(realIdx) {
 function recusarAjusteSeta(realIdx) {
   const v = viagensAtivo()[realIdx];
   if (!v || v.statusAjusteSeta !== 'pendente') return;
+  if (bloqueadoPorCancelamento(v)) { renderViagensTable(); return; }
   if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
   v.historicoProgramacao.push({
     data: new Date().toISOString(),
@@ -13112,8 +13148,10 @@ function renderSeletorStatus(v, realIdx) {
     .filter(op => !STATUS_SOMENTE_AUTOMATICO.includes(op) || op === v.status)
     .map(op => `<option value="${op}" ${op === v.status ? 'selected' : ''} ${STATUS_SOMENTE_AUTOMATICO.includes(op) ? 'disabled' : ''}>${labelStatus(op)}</option>`)
     .join('');
+  // Cancelada: select só fica ativo pro admin, como forma de reabrir (ver reabrirViagemCancelada).
+  const travadoCancelamento = viagemCancelada(v) && !_authUsuarioAtual?.admin;
   let html = `<select class="placa-input sel-status ${claseStatus(v.status)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
-      onchange="salvarStatusInline(${realIdx}, this.value)" ${(transportador || pedagioComprado(v)) ? 'disabled' : ''}>
+      onchange="salvarStatusInline(${realIdx}, this.value)" ${(transportador || pedagioComprado(v) || travadoCancelamento) ? 'disabled' : ''}>
       ${opcoes}
     </select>`;
   if (v.status === 'Frota Dedicada' && !transportador) {
@@ -13148,7 +13186,7 @@ function renderPlacaCelula(v, realIdx) {
   return `<input class="placa-input" style="width:100%;max-width:96px;font-size:11px" value="${esc(v.placa||'')}" placeholder="AAA0A000"
       onblur="salvarPlacaInline(${realIdx}, this.value)"
       onkeydown="if(event.key==='Enter')this.blur()"
-      ${(transportador && !['Aceito','Placa Enviada'].includes(v.status)) || pedagioComprado(v) ? 'disabled' : ''}
+      ${(transportador && !['Aceito','Placa Enviada'].includes(v.status)) || pedagioComprado(v) || viagemCancelada(v) ? 'disabled' : ''}
       maxlength="8">${badgePlacaConflitante(v)}`;
 }
 
@@ -13176,6 +13214,10 @@ async function salvarStatusInline(realIdx, novoStatus) {
   const v = viagensAtivo()[realIdx];
   if (novoStatus === v.status) return;
   if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (viagemCancelada(v)) {
+    if (!reabrirViagemCancelada(v, novoStatus)) renderViagensTable(); // volta o select pra Cancelado
+    return;
+  }
   if (novoStatus === 'Frota Dedicada') {
     renderViagensTable(); // mantém o select no status anterior até a troca ser concluída no modal
     openModal(realIdx);
@@ -13205,7 +13247,7 @@ function salvarVeiculoDedicadoInline(realIdx, veiculoId) {
   const v = viagensAtivo()[realIdx];
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   if (!vd) return;
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
   v.veiculoDedicadoId = veiculoId;
   v.transportador = vd.transportador || '';
   v.placa = vd.placaCavalo || '';
@@ -13318,7 +13360,7 @@ function renderSeletorAgendamento(v, realIdx) {
   const atual = v.statusAgendamento || 'Não Agendado';
   const opcoes = OPCOES_AGENDAMENTO.map(op => `<option value="${op}" ${op === atual ? 'selected' : ''}>${op}</option>`).join('');
   return `<select class="placa-input sel-agend ${claseAgendamento(atual)}" style="width:auto;min-width:118px;text-transform:none;font-family:var(--font-cond)"
-      onchange="salvarAgendamentoInline(${realIdx}, this.value)" ${(isTransportador() || pedagioComprado(v)) ? 'disabled' : ''}>
+      onchange="salvarAgendamentoInline(${realIdx}, this.value)" ${(isTransportador() || pedagioComprado(v) || viagemCancelada(v)) ? 'disabled' : ''}>
       ${opcoes}
     </select>`;
 }
@@ -13327,7 +13369,7 @@ async function salvarAgendamentoInline(realIdx, valor) {
   const v = viagensAtivo()[realIdx];
   const anterior = v.statusAgendamento || 'Não Agendado';
   if (valor === anterior) return;
-  if (bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
+  if (bloqueadoPorCancelamento(v) || bloqueadoPorPedagio(v)) { renderViagensTable(); return; }
 
   // Virar "Agendado" pede confirmação da data/hora de carregamento — é o momento em que
   // o agendamento junto ao fornecedor normalmente confirma (ou corrige) o horário
@@ -13383,6 +13425,13 @@ async function salvarAgendamentoInline(realIdx, valor) {
 async function salvarViagem() {
   if (editingIdx === null) return;
   const v = viagensAtivo()[editingIdx];
+  // Cancelada: único salvamento possível é a reabertura pelo admin (só o status muda) —
+  // o resto do formulário é ignorado, mesmo que algo tenha sido alterado por fora da trava.
+  if (viagemCancelada(v)) {
+    const novoStatus = document.getElementById('m-status').value;
+    if (novoStatus === v.status || reabrirViagemCancelada(v, novoStatus)) closeModal();
+    return;
+  }
   // Pedágio comprado: grava só os campos liberados (ver ajustarModalParaTipoUsuario) e
   // ignora o resto do formulário, mesmo que algo tenha sido alterado por fora da trava.
   if (pedagioComprado(v)) return salvarViagemCamposLiberadosPedagio(v);
@@ -14579,6 +14628,46 @@ function pedagioComprado(v) {
 function bloqueadoPorPedagio(v) {
   if (!pedagioComprado(v)) return false;
   alert('Não é possível alterar esta viagem considerando que o pedágio já foi comprado, para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.');
+  return true;
+}
+
+// ── TRAVA DE EDIÇÃO DE VIAGEM CANCELADA ──
+// Viagem cancelada é somente leitura pra todo mundo — já houve viagem "ressuscitada"
+// semanas depois por troca manual de status (NXT-000155: cancelada em 10/09, voltou a
+// Aceito em 07/10 e seguiu até Em Andamento). Única saída é a reabertura por um admin,
+// trocando o status (ver reabrirViagemCancelada), com motivo registrado no histórico.
+// Transportador nem vê viagem cancelada (ver passaFiltrosViagem), e Monitoramento/Herrlog
+// só olham status ativos — a trava cobre a aba Gerir Viagens (tabela, modal e lote).
+function viagemCancelada(v) {
+  return v?.status === 'Cancelado';
+}
+
+function bloqueadoPorCancelamento(v) {
+  if (!viagemCancelada(v)) return false;
+  alert('Viagem cancelada não pode ser alterada. Para reabrir, solicitar a um administrador.');
+  return true;
+}
+
+// Reabertura (Cancelado → outro status), só admin. Retorna true se reabriu — o chamador
+// re-renderiza/fecha o modal; false mantém tudo como estava. Frota Dedicada fica de fora
+// porque exige escolher o veículo (campo travado enquanto a viagem está cancelada).
+function reabrirViagemCancelada(v, novoStatus) {
+  if (!_authUsuarioAtual?.admin) { bloqueadoPorCancelamento(v); return false; }
+  if (novoStatus === 'Frota Dedicada') {
+    alert('Para reabrir como Frota Dedicada, reabra primeiro em outro status (ex.: Sem Programação) e depois aloque o veículo dedicado.');
+    return false;
+  }
+  const motivo = (prompt(`Reabrir a viagem ${v.idViagem} (Cancelado → ${labelStatus(novoStatus)})?\n\nInforme o motivo da reabertura:`) || '').trim();
+  if (!motivo) return false;
+  registrarHistoricoOferta(v, 'Reaberto', undefined, motivo);
+  v.status = (novoStatus === 'Aceito' && v.placa) ? 'Placa Enviada' : novoStatus;
+  v.veiculoDedicadoId = '';
+  if (['Ofertado', 'Recusado', 'Aceito', 'Placa Enviada'].includes(v.status)) {
+    registrarHistoricoOferta(v, v.status);
+  }
+  updatePipeline();
+  marcarEAgendar(v);
+  renderViagensTable();
   return true;
 }
 
