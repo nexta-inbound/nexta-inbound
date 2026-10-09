@@ -310,6 +310,9 @@
   .cli-rodape { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
   .cli-rodape .mono { font-weight: 600; color: var(--ink); }
   .cli-linha .seg label { padding: 9px 4px; }
+  /* Volume acima do limite (provável digitação em litros) */
+  label.f input.vol-alto { border-color: var(--crit); background: var(--crit-bg); color: var(--crit); }
+  .vol-alerta { margin-top: 10px; }
   /* Aprovação parcial: volume aprovado por cliente na tabela do detalhe */
   .vol-aprov { width: 96px; border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 6px 8px; text-align: right; font-family: var(--mono); font-size: 14px; }
   table.clientes-det td.corte { color: var(--warn); font-weight: 600; }
@@ -505,6 +508,7 @@
     slaDemanda: { h: 10, m: 30 },   // retorno do Time Demanda
     slaLogistica: { h: 11, m: 0 },  // retorno do Time Logística
     portalD1: { h: 15, m: 0 },      // até este horário o pedido D+1 ainda entra direto no portal revendedor (pede confirmação)
+    volumeMaxCliente: 1000,         // m³ por cliente; acima disso é quase certo que digitaram em litros (bloqueia a abertura)
   };
 
   // ---------- Cadastros (bases no mesmo formato do Portal Inbound) ----------
@@ -1852,14 +1856,25 @@
     const totalEl = el("span", { class: "mono" });
     let seqLinha = 0;
     const linhasCli = () => [...boxClientes.querySelectorAll(".cli-linha")];
+    // Alerta de volume alto: o campo é em m³, mas há quem digite em litros (ex.: 15000 em vez de 15)
+    const volAlerta = el("div", { class: "hint t-crit vol-alerta", role: "alert", hidden: true });
+    const volDe = ln => parseFloat(ln.querySelector("[data-vol]").value.replace(",", ".")) || 0;
     function atualizarTotal() {
-      const tot = linhasCli().reduce((s, ln) => s + (parseFloat(ln.querySelector("[data-vol]").value.replace(",", ".")) || 0), 0);
-      totalEl.textContent = fmtVol(tot);
       const ls = linhasCli();
+      totalEl.textContent = fmtVol(ls.reduce((s, ln) => s + volDe(ln), 0));
+      const altos = [];
       ls.forEach((ln, i) => {
         ln.querySelector(".cli-num").textContent = ls.length > 1 ? `Cliente ${i + 1}` : "Cliente";
         ln.querySelector("[data-remover]").style.visibility = ls.length < 2 ? "hidden" : "";
+        const alto = volDe(ln) > REGRAS.volumeMaxCliente;
+        const inp = ln.querySelector("[data-vol]");
+        inp.classList.toggle("vol-alto", alto);
+        inp.setAttribute("aria-invalid", alto ? "true" : "false");
+        if (alto) altos.push(i + 1);
       });
+      volAlerta.hidden = !altos.length;
+      volAlerta.textContent = altos.length ? `Volume acima de ${fmtVol(REGRAS.volumeMaxCliente)}${ls.length > 1 ? ` (cliente ${altos.join(", ")})` : ""}. `
+        + `O volume é em m³, não em litros: 15.000 L = 15 m³. Corrija para abrir o chamado.` : "";
     }
     function novaLinha() {
       const k = ++seqLinha;
@@ -1918,6 +1933,7 @@
       el("div", {},
         el("p", { class: "section-t", text: "Clientes" }),
         boxClientes,
+        volAlerta,
         el("datalist", { id: "dl-clientes" }, sugestoes.map(s => el("option", { value: s }))),
         el("div", { class: "cli-rodape" },
           el("button", { class: "btn ghost sm", type: "button", onclick: () => novaLinha().focus() }, "+ Adicionar cliente"),
@@ -1962,6 +1978,12 @@
       }
       if (!v.motivo) faltando.push("motivo");
       if (faltando.length) { err.textContent = "Preencha: " + faltando.join(", ") + "."; return; }
+      const alto = clientes.find(x => x.volume > REGRAS.volumeMaxCliente);
+      if (alto) {
+        err.textContent = `Volume${clientes.length > 1 ? ` do cliente ${alto.n}` : ""} (${fmtVol(alto.volume)}) acima de ${fmtVol(REGRAS.volumeMaxCliente)}. Informe o volume em m³, não em litros (15.000 L = 15 m³).`;
+        linhasCli()[alto.n - 1].querySelector("[data-vol]").focus();
+        return;
+      }
       const nomes = clientes.map(x => x.nome.toLowerCase());
       if (new Set(nomes).size < nomes.length) { err.textContent = "Há cliente repetido. Junte os volumes numa linha só."; return; }
       v.clientes = clientes.map(({ n, ...x }) => x);
