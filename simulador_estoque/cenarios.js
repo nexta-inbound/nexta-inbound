@@ -28,6 +28,9 @@
  const tableSection=$('grid').closest('section');
  tableSection.classList.add('simulation-table');
  document.querySelector('.filters').after(tableSection);
+ // Ordem pedida pela usuaria (2026-10-09): grafico -> simulacao -> politica/cards/conferir fontes
+ // (a barra "Salvar na equipe" do compartilhado.js entra depois, logo abaixo dos filtros).
+ tableSection.before($('chart').closest('section'));
  document.querySelector('.editor-panel').hidden=true;
  tableSection.querySelector('.section-title').append($('saved'));
  const sourceDetails=$('source').closest('details');
@@ -58,7 +61,7 @@
  // Bombeio + Transferencia-entrada. O <select id="entrada"> continua existindo (escondido) so' como
  // estado — os botoes espelham ele, igual o #scenario acima.
  const entradaSelector=$('entrada');
- const entradaModes=[['auto','Fontes automáticas'],['cadencia','Cadência MIS']];
+ const entradaModes=[['auto','Fontes automáticas'],['cadencia','Cadência MIS'],['auto+naoprog','Programado + Não programado']];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');
  entradaControls.className='scenario-controls';
@@ -129,16 +132,13 @@
   // direcionado?"): record.bi.emp_dep e' null (nao existe 1 so'), entao busca o transito ao vivo de
   // CADA registro real por tras da soma (_registrosCombinados) e junta tudo, marcando de qual
   // deposito+empresa cada viagem e' — senao some tudo igual aconteceria no modo normal (1 emp_dep so').
-  const combinados=record._registrosCombinados;
-  const viagens=combinados
-   ?combinados.flatMap(r=>{const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(index)];return (vivo?.viagens||[]).filter(v=>v.modal===modal).map(v=>({...v,_origem:`${depositoDe(r)} · ${empresaDe(r)}`}));})
-   :(D.transitoAoVivo?.[record.bi?.emp_dep]?.[record.bi?.material]?.[day(index)]?.viagens||[]).filter(v=>v.modal===modal);
+  // viagensDoDia (app.js) ja' junta os registros do combinado e marca o destino de cada viagem.
+  const viagens=viagensDoDia(index,modal);
   if(!viagens.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong><p>Sem detalhe de viagem ao vivo pra este dia.</p>`;
-  const linha=(v,prog)=>{const partes=[v.transportador,v.placa].filter(Boolean).map(esc);return `<div style="color:${prog?'#F97316':'#60A5FA'}"><dt>${prog?'Programado · ':''}${[v.idViagem,v.fornecedor,v._origem].filter(Boolean).map(esc).join(' · ')||'Viagem'}</dt><dd>${partes.map(p=>p+' · ').join('')}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${v.chegadaReal?' · chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?' · ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;};
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
-   +(realizadas.length?`<dl>${realizadas.map(v=>linha(v)).join('')}</dl><p style="color:#60A5FA">${realizadas.length} viagem(ns) · total ${fmt(realizadas.reduce((s,v)=>s+v.volume,0))} m³</p>`:'')
-   +(programadas.length?`<dl>${programadas.map(v=>linha(v,true)).join('')}</dl><p style="color:#F97316">${programadas.length} programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · não soma na projeção</p>`:'');
+   +(realizadas.length?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}</dl><p style="color:#60A5FA">${realizadas.length} viagem(ns) · total ${fmt(realizadas.reduce((s,v)=>s+v.volume,0))} m³</p>`:'')
+   +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma com "Programado + Não programado"</p>`:'');
  }
  // Popup "de qual deposito/empresa vem essa abertura" no modo combinado — pedido da usuaria,
  // 2026-10-05: "na abertura, quando selecionar + de 1, eu preciso saber qual deposito e empresa".
@@ -156,7 +156,7 @@
  function showPopup(input){
   closePopup();anchor=input;
   const index=input.dataset.day===undefined?editDay:Number(input.dataset.day);
-  const tipo=input.dataset.row||input.dataset.result;
+  const tipo=input.dataset.row||input.dataset.transito||input.dataset.result;
   popup.innerHTML=tipo==='fob'||tipo==='cif'?conteudoPopupTransito(index,tipo):tipo==='opening'?conteudoPopupAbertura():conteudoPopupVendas(index);
   input.setAttribute('aria-describedby','sales-popover');
   popup.hidden=false;
@@ -164,7 +164,8 @@
   popup.style.left=Math.max(8,Math.min(rect.left,innerWidth-width-8))+'px';
   popup.style.top=Math.max(8,rect.bottom+height+8<=innerHeight?rect.bottom+8:rect.top-height-8)+'px';
  }
- const salesInput=target=>target instanceof Element?(target.closest('[data-row="sale"], [data-row="fob"], [data-row="cif"], [data-edit-key="sale"], [data-result="opening"][data-day="0"]')||target.closest('td, label')?.querySelector('[data-row="sale"], [data-row="fob"], [data-row="cif"], [data-edit-key="sale"]')):null;
+ // [data-transito]: celulas FOB/CIF dos dias de historico (texto, nao input) — abrem o mesmo popup.
+ const salesInput=target=>target instanceof Element?(target.closest('[data-row="sale"], [data-row="fob"], [data-row="cif"], [data-transito], [data-edit-key="sale"], [data-result="opening"][data-day="0"]')||target.closest('td, label')?.querySelector('[data-row="sale"], [data-row="fob"], [data-row="cif"], [data-edit-key="sale"]')):null;
  document.addEventListener('pointerover',event=>{const input=salesInput(event.target);if(input)showPopup(input);});
  document.addEventListener('focusin',event=>{const input=salesInput(event.target);if(input){requestAnimationFrame(()=>{if(document.activeElement===input)showPopup(input);});}else closePopup();});
  document.addEventListener('pointerout',event=>{if(salesInput(event.target)&&document.activeElement!==event.target)closePopup();});

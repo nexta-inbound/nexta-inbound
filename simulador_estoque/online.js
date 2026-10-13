@@ -1,7 +1,7 @@
 import { firebaseAuth as auth, firebaseDatabase as db } from './firebase.js';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
   browserSessionPersistence, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { ref, get, set, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { ref, get, set, runTransaction, serverTimestamp, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const el = id => document.getElementById(id);
 let started = false;
@@ -23,9 +23,45 @@ function script(name) {
   });
 }
 const hex = text => Array.from(new TextEncoder().encode(text), b => b.toString(16).padStart(2, '0')).join('');
+
+// ── Logout por inatividade (pedido da usuaria, 2026-10-10: "tem como fazer isso no simulador tbm?", igual
+// ao portal inbound). Apos 2h sem mouse/teclado/rolagem/toque em QUALQUER aba do simulador (a ultima
+// atividade fica em localStorage, compartilhada entre abas), sai e volta pra tela de login. Nada se perde:
+// o rascunho do simulador ja' e' gravado no navegador a cada edicao e o "Salvar na equipe" e' manual.
+const INATIVIDADE_LIMITE_MS = 2 * 60 * 60 * 1000;
+const ULTIMA_ATIVIDADE_KEY = 'simEstoqueUltimaAtividade';
+const LOGOUT_INATIVIDADE_FLAG = 'simEstoqueLogoutInatividade';
+const MSG_INATIVIDADE = 'Sessão encerrada após 2h sem uso. Entre novamente.';
+let ultimaAtividadeGravada = 0, encerrando = false;
+function registrarAtividade(forcar = false) {
+  const agora = Date.now();
+  if (!forcar && agora - ultimaAtividadeGravada < 30 * 1000) return;  // mousemove dispara dezenas de vezes/s
+  ultimaAtividadeGravada = agora;
+  try { localStorage.setItem(ULTIMA_ATIVIDADE_KEY, String(agora)); } catch {}
+}
+function inativoHaMuitoTempo() {
+  let salvo = NaN;
+  try { salvo = parseInt(localStorage.getItem(ULTIMA_ATIVIDADE_KEY), 10); } catch {}
+  const ultima = Math.max(Number.isFinite(salvo) ? salvo : 0, ultimaAtividadeGravada);
+  return ultima > 0 && Date.now() - ultima > INATIVIDADE_LIMITE_MS;
+}
+async function encerrarPorInatividade() {
+  if (encerrando || !auth.currentUser) return;
+  encerrando = true;
+  try { sessionStorage.setItem(LOGOUT_INATIVIDADE_FLAG, '1'); } catch {}
+  try { await signOut(auth); } catch {}
+  location.reload();  // o reload ja' traz a versao publicada mais recente do site
+}
+function verificarInatividade() { if (started && inativoHaMuitoTempo()) encerrarPorInatividade(); }
+['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(evento =>
+  document.addEventListener(evento, () => { if (started) registrarAtividade(); }, {capture: true, passive: true}));
+// Voltar pra aba / desbloquear o PC: confere ANTES de contar a volta como atividade.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') verificarInatividade(); });
+setInterval(verificarInatividade, 60 * 1000);
 el('login-show').onchange = () => { el('login-password').type = el('login-show').checked ? 'text' : 'password'; };
 el('login-form').onsubmit = async event => {
   event.preventDefault(); el('login-submit').disabled = true; status('Entrando…');
+  registrarAtividade(true);  // zera o relogio: uma marca antiga nao pode derrubar a sessao recem-aberta
   try { await signInWithEmailAndPassword(auth, el('login-email').value.trim(), el('login-password').value); }
   catch (error) { status(errorText(error)); }
   finally { el('login-password').value = ''; el('login-submit').disabled = false; }
@@ -40,6 +76,9 @@ el('login-switch').onclick = el('logout').onclick;
 await setPersistence(auth, browserSessionPersistence);
 el('login-submit').disabled = el('login-reset').disabled = false;
 status('Entre com o e-mail liberado para o simulador.');
+try {
+  if (sessionStorage.getItem(LOGOUT_INATIVIDADE_FLAG)) { sessionStorage.removeItem(LOGOUT_INATIVIDADE_FLAG); status(MSG_INATIVIDADE); }
+} catch {}
 onAuthStateChanged(auth, async user => {
   const version = ++generation;
   document.body.classList.add('auth-pending');
@@ -47,6 +86,8 @@ onAuthStateChanged(auth, async user => {
   el('account-bar').hidden = true;
   if (!user) { if (started) location.reload(); return; }
   if (started) return;
+  // F5 numa aba que ficou mais de 2h parada (a sessao do Firebase sobrevive ao F5 na mesma aba).
+  if (inativoHaMuitoTempo()) { try { await signOut(auth); } catch {} status(MSG_INATIVIDADE); return; }
   try {
     status('Conferindo acesso e carregando estoques…');
     const profile = (await get(ref(db, `perfis/${user.uid}`))).val();
@@ -54,10 +95,8 @@ onAuthStateChanged(auth, async user => {
         || !['administrador', 'regional', 'leitura'].includes(profile.perfil)) {
       throw new Error('Sua conta ainda não tem acesso liberado ao simulador.');
     }
-    // A carga é publicada por região: administrador e leitura baixam todas; regional, só a sua.
-    const visibleRegions = profile.admin === true || profile.perfil === 'leitura'
-      ? ['SP', 'MG_RJ', 'CO'] : [profile.regiao];
-    if (!visibleRegions[0]) throw new Error('Sua conta não tem região definida. Peça a liberação ao administrador.');
+    // A carga continua publicada por região, mas todo perfil baixa todas (sem segregação, 2026-10-09).
+    const visibleRegions = ['SP', 'MG_RJ', 'CO'];
     const [metaSnapshot, regions, transitoSnapshot, ...regionSnapshots] = await Promise.all([
       get(ref(db, 'fontes/atual/meta')), get(ref(db, 'cadastros/regioes')), get(ref(db, 'transitoAoVivo')),
       ...visibleRegions.map(name => get(ref(db, `fontes/atual/regioes/${name}`))),
@@ -72,6 +111,7 @@ onAuthStateChanged(auth, async user => {
     // inbound). So' fica tao "ao vivo" quanto o recarregamento da pagina — mesmo nivel do resto da
     // tela, que ja' nao se atualiza sozinha dentro da mesma aba ("Recarregue a pagina...").
     data.transitoAoVivo = transitoSnapshot.val()?.porBase || null;
+    window.SIM_TRANSITO_EM = transitoSnapshot.val()?.meta?.atualizadoEm || null;  // horario na linha do FOB/CIF
     for (const snap of regionSnapshots) {
       const part = snap.val();
       if (!part) continue;
@@ -88,7 +128,8 @@ onAuthStateChanged(auth, async user => {
     window.ESTOQUE_DATA = data;
     window.SIM_AUTH = {uid: user.uid, email: user.email, profile};
     window.SIM_CLOUD = {
-      canEdit(base) { return profile.admin === true || (profile.perfil === 'regional' && regions.val()?.[hex(base)] === profile.regiao); },
+      // Edita qualquer base: administrador e regional; perfil 'leitura' (Thiago/Thales) só consulta.
+      canEdit(base) { return profile.admin === true || profile.perfil === 'regional'; },
       async list(base) { return (await get(ref(db, `cenarios/${hex(base)}`))).val() || {}; },
       async save(base, id, content, expected) {
         const result = await runTransaction(ref(db, `cenarios/${hex(base)}/${id}`), current => {
@@ -127,17 +168,52 @@ onAuthStateChanged(auth, async user => {
         return Object.fromEntries(dias.map((dia, i) => [dia, arvores[i]]));
       },
     };
-    for (const name of ['motor.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js']) await script(name);
+    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js']) await script(name);
     started = true;
+    registrarAtividade(true);
     document.body.classList.remove('auth-pending'); el('login-screen').hidden = true;
     el('account-bar').hidden = false;
     el('account-email').textContent = `${profile.nome || user.email} · ${profile.perfil}`;
     el('auto-status').textContent = `Fontes de ${data.date}. Recarregue a página para buscar uma nova carga.`;
     const sync = el('sync-status');
-    if (sync && data.bi?.extractedAt) {
-      const quando = new Date(data.bi.extractedAt);
-      sync.textContent = 'Sincronizado ' + quando.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
-      sync.title = 'Dados das fontes lidos em ' + quando.toLocaleString('pt-BR');
-    }
+    const textoSync = () => {
+      if (!sync || !data.bi?.extractedAt) return;
+      const quando = new Date(data.bi.extractedAt), hm = d => d.toLocaleString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+      sync.textContent = 'Sincronizado ' + quando.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})
+        + (transitoEm ? ` · trânsito ${hm(transitoEm)}` : '');
+      sync.title = 'Dados das fontes lidos em ' + quando.toLocaleString('pt-BR')
+        + (transitoEm ? `\nTrânsito FOB/CIF atualizado em tempo real às ${transitoEm.toLocaleTimeString('pt-BR')}` : '');
+    };
+    // Transito em TEMPO REAL (2026-10-10, igual ao portal inbound): escuta transitoAoVivo/meta; quando
+    // o transito_tempo_real.py publica, baixa SO' as bases alteradas, troca em D.transitoAoVivo e refaz a
+    // tela com select() — que preserva o que a pessoa editou (mergeSource/sourceBaseline). Se ela estiver
+    // digitando num campo, espera sair do campo pra nao roubar o foco.
+    let transitoEm = transitoSnapshot.val()?.meta?.atualizadoEm ? new Date(transitoSnapshot.val().meta.atualizadoEm) : null;
+    let ultimoMeta = transitoSnapshot.val()?.meta?.atualizadoEm || null, refazerPendente = false;
+    const digitando = () => document.activeElement?.matches?.('input, select, textarea');
+    const refazer = () => {
+      if (digitando()) { refazerPendente = true; return; }
+      refazerPendente = false;
+      try { window.select?.(); } catch (e) { console.warn('Falha ao atualizar o trânsito na tela', e); }
+    };
+    document.addEventListener('focusout', () => setTimeout(() => { if (refazerPendente) refazer(); }, 300));
+    onValue(ref(db, 'transitoAoVivo/meta'), async snap => {
+      const meta = snap.val();
+      if (!meta?.atualizadoEm || meta.atualizadoEm === ultimoMeta) return;
+      ultimoMeta = meta.atualizadoEm;
+      const alteradas = Array.isArray(meta.alteradas) ? meta.alteradas : null;
+      try {
+        if (!alteradas) data.transitoAoVivo = (await get(ref(db, 'transitoAoVivo/porBase'))).val() || {};
+        else {
+          data.transitoAoVivo = data.transitoAoVivo || {};
+          const novos = await Promise.all(alteradas.map(ed => get(ref(db, `transitoAoVivo/porBase/${ed}`))));
+          alteradas.forEach((ed, i) => { const v = novos[i].val(); if (v) data.transitoAoVivo[ed] = v; else delete data.transitoAoVivo[ed]; });
+        }
+        transitoEm = new Date(meta.atualizadoEm); window.SIM_TRANSITO_EM = meta.atualizadoEm; textoSync();
+        if (!alteradas || alteradas.length) refazer();
+        else document.querySelectorAll('.fonte-hora[data-fonte="transito"]').forEach(n => { n.outerHTML = window.horaFonte?.('transito') || ''; });
+      } catch (e) { console.warn('Falha ao baixar o trânsito atualizado', e); }
+    });
+    textoSync();
   } catch (error) { status(errorText(error)); el('login-switch').hidden = false; }
 });

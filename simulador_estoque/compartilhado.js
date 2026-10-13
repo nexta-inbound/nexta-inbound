@@ -33,7 +33,7 @@
     });
     // 'reset' e 'import' (botoes do topo) foram tirados da tela em 2026-10-02 — 'reset-tabela' (↺
     // Restaurar, junto da tabela) e' quem faz a restauracao agora; 'import' nao tem mais substituto.
-    for (const id of ['reset-tabela', 'repeat-day']) {
+    for (const id of ['reset-tabela', 'repeat-day', 'sugerir-cadencia']) {
       $(id).disabled = !allowed || busy;
     }
     $('cloud-save').disabled = !podeSalvarEquipe || busy;
