@@ -299,3 +299,4 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .ranking-dias{overflow:hidden}
 @media(max-width:1350px){.ranking-corpo{grid-template-columns:1fr}.ranking-produtos{border-left:0;padding-left:0;border-top:1px solid var(--border);padding-top:14px}}
 .ranking-controles{display:flex;align-items:end;gap:16px;flex-wrap:wrap}.ranking-transito-label{display:inline-flex;align-items:center;gap:6px;min-width:0!important;padding-bottom:10px;font-size:13px;cursor:pointer}
+.matriz-risco tr.regiao-linha th{background:#8dc8301f;color:#EEFE7A;font-size:13px;font-weight:700;text-align:left;padding:8px 10px;border-radius:6px;letter-spacing:.3px}.matriz-risco tr.regiao-linha th small{color:var(--muted);font-weight:400;margin-left:8px}

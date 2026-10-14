@@ -11,6 +11,7 @@
   // critico = fechamento negativo ou abaixo do lastro em algum dia; atencao = sem critico, mas algum dia
   // com fechamento igual ou abaixo do minimo. Critico HOJE tem cor propria (vermelho sangue).
   const DIAS_A_FRENTE = 5;
+  const REGIONAIS = [['SP', 'SP'], ['CO', 'CO'], ['MG_RJ', 'MG + RJ'], ['OUTRAS', 'Outras']];
   const CENARIO = 'VMD';
   const SITUACOES = {
     'critico-hoje': {rotulo: 'Crítico hoje', peso: 0},
@@ -224,7 +225,8 @@
     statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
     let itens = calcular();
     const regiao = campoRegiao.value, busca = campoBusca.value.trim().toLowerCase();
-    itens = itens.filter(it => !it.semVmd && (!regiao || cloud.regionOf(it.registro.base) === regiao) && (!busca || it.cidade.toLowerCase().includes(busca)));
+    // Fora dos Alertas: sem VMD na janela e sem capacidade de tanque estabelecida (venda no bico, 2026-10-14).
+    itens = itens.filter(it => !it.semVmd && it.registro.capacidadeFisica !== 0 && (!regiao || cloud.regionOf(it.registro.base) === regiao) && (!busca || it.cidade.toLowerCase().includes(busca)));
     const celulas = matriz(itens);
     const filtroSituacao = campoSituacao.value;
     const passaSituacao = c => !filtroSituacao || (filtroSituacao === 'critico' ? c.pior.situacao.startsWith('critico') : c.pior.situacao === filtroSituacao);
@@ -244,12 +246,19 @@
     barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
       `<span class="${s}" style="flex:${resumo[s]}" title="${SITUACOES[s].rotulo}">${resumo[s]}</span>`).join('');
 
-    tabela.innerHTML = `<thead><tr><th>Cidade / produto</th>${colunas.map(([, rotulo]) => `<th>${esc(rotulo)}</th>`).join('')}</tr></thead><tbody>`
-      + cidades.map(cid => `<tr><th>${esc(cid)}</th>${colunas.map(([p]) => {
+    // Agrupada por regional (usuaria, 2026-10-14): SP, CO, MG + RJ — dentro de cada uma, pior situacao primeiro.
+    const regiaoDaCidade = new Map(itens.map(it => [it.cidade, cloud.regionOf(it.registro.base) || 'OUTRAS']));
+    const linhaCidade = cid => `<tr><th>${esc(cid)}</th>${colunas.map(([p]) => {
         const c = celulas.get(`${cid}|${p}`);
         if (!c || !passaSituacao(c)) return '<td class="vazio">—</td>';
         return `<td class="${c.pior.situacao}"><button type="button" data-abrir="${esc(c.pior.registro.base)}|${esc(p)}" data-celula="${esc(`${cid}|${p}`)}" aria-label="${esc(`${cid} · ${p}: ${SITUACOES[c.pior.situacao].rotulo}`)}">${textoCelula(c)}</button></td>`;
-      }).join('')}</tr>`).join('') + '</tbody>';
+      }).join('')}</tr>`;
+    tabela.innerHTML = `<thead><tr><th>Cidade / produto</th>${colunas.map(([, rotulo]) => `<th>${esc(rotulo)}</th>`).join('')}</tr></thead><tbody>`
+      + REGIONAIS.map(([codigo, rotulo]) => {
+        const doGrupo = cidades.filter(cid => (regiaoDaCidade.get(cid) === codigo) || (codigo === 'OUTRAS' && !REGIONAIS.some(([r]) => r === regiaoDaCidade.get(cid))));
+        if (!doGrupo.length) return '';
+        return `<tr class="regiao-linha"><th colspan="${colunas.length + 1}">${esc(rotulo)} <small>${doGrupo.length} cidade(s)</small></th></tr>` + doGrupo.map(linhaCidade).join('');
+      }).join('') + '</tbody>';
     celulasAtuais = celulas;
   }
 
