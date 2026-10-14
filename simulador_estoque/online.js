@@ -1,6 +1,7 @@
 import { firebaseAuth as auth, firebaseDatabase as db } from './firebase.js';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
-  browserSessionPersistence, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+  browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential,
+  updatePassword } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { ref, get, set, runTransaction, serverTimestamp, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const el = id => document.getElementById(id);
@@ -72,6 +73,104 @@ el('login-reset').onclick = async () => {
   catch (error) { status(errorText(error)); }
 };
 el('logout').onclick = async () => { await signOut(auth); location.reload(); };
+// Trocar a propria senha (pedido da usuaria, 2026-10-14, igual ao portal inbound): reautentica com a
+// senha atual e grava a nova no Firebase Auth. Nada passa por servidor nosso.
+const dialogoSenha = el('senha-dialogo');
+function limparSenha() { for (const id of ['senha-atual', 'senha-nova', 'senha-confirma']) el(id).value = ''; el('senha-info').textContent = ''; }
+el('trocar-senha').onclick = () => { limparSenha(); dialogoSenha.showModal(); el('senha-atual').focus(); };
+el('senha-cancelar').onclick = () => { if (!senhaObrigatoria) dialogoSenha.close(); };
+el('senha-form').onsubmit = async event => {
+  event.preventDefault();
+  const info = el('senha-info'), atual = el('senha-atual').value, nova = el('senha-nova').value;
+  if (!atual) { info.textContent = 'Informe a senha atual.'; return; }
+  if (nova.length < 6) { info.textContent = 'A nova senha deve ter pelo menos 6 caracteres.'; return; }
+  if (nova !== el('senha-confirma').value) { info.textContent = 'A confirmação não corresponde à nova senha.'; return; }
+  if (nova === atual) { info.textContent = 'A nova senha deve ser diferente da atual.'; return; }
+  const user = auth.currentUser; if (!user) { info.textContent = 'Sessão encerrada. Entre novamente.'; return; }
+  el('senha-salvar').disabled = true; info.textContent = 'Atualizando senha…';
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, atual));
+    await updatePassword(user, nova);
+    info.textContent = 'Senha atualizada com sucesso.';
+    senhaTrocada();
+    setTimeout(() => dialogoSenha.close(), 1200);
+  } catch (error) {
+    info.textContent = ({'auth/wrong-password': 'Senha atual incorreta.', 'auth/invalid-credential': 'Senha atual incorreta.',
+      'auth/weak-password': 'A nova senha é muito fraca.', 'auth/too-many-requests': 'Muitas tentativas. Aguarde antes de tentar novamente.',
+      'auth/requires-recent-login': 'Sessão expirada. Saia e entre novamente antes de trocar a senha.'})[error.code] || errorText(error);
+  } finally { el('senha-salvar').disabled = false; }
+};
+
+// ── Validade da senha (pedido da usuaria, 2026-10-14) ──
+// Senha temporaria (a da criacao da conta, nunca trocada): 72h pra trocar, depois o login e' bloqueado e
+// so' "Esqueci minha senha" resolve. Senha propria: vale 90 dias; avisa nos 5 ultimos; vencida, a pessoa
+// so' usa o portal depois de trocar. A data vem do proprio Firebase Auth (passwordUpdatedAt, que tambem
+// muda quando a senha e' redefinida pelo "Esqueci minha senha"). Prazos de quem ja tinha conta contam a
+// partir da entrada da regra, pra ninguem ser bloqueado de surpresa. E' regra do portal, nao do banco.
+const HORA = 3600 * 1000, DIA = 24 * HORA;
+const SENHA_TEMPORARIA_MS = 72 * HORA, SENHA_VALIDADE_MS = 90 * DIA, SENHA_AVISO_MS = 5 * DIA;
+const POLITICA_SENHA_DESDE = Date.parse('2026-10-14T18:00:00-03:00');
+let senhaObrigatoria = false;
+async function senhaAtualizadaEm(user) {
+  const direto = Number(user.reloadUserInfo?.passwordUpdatedAt);
+  if (direto) return direto;
+  try {
+    const resposta = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${auth.app.options.apiKey}`,
+      {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({idToken: await user.getIdToken()})});
+    return Number((await resposta.json()).users?.[0]?.passwordUpdatedAt) || null;
+  } catch { return null; }
+}
+async function situacaoSenha(user, profile) {
+  const atualizada = await senhaAtualizadaEm(user);
+  if (!atualizada) return {tipo: 'ok'};  // sem a data, nao bloqueia ninguem
+  const agora = Date.now(), criada = Date.parse(user.metadata.creationTime);
+  const temporaria = Math.abs(atualizada - criada) < 2 * 60 * 1000
+    || (profile.senhaTemporariaEm && atualizada <= profile.senhaTemporariaEm + 2 * 60 * 1000);
+  if (temporaria) {
+    const prazo = Math.max(atualizada, POLITICA_SENHA_DESDE) + SENHA_TEMPORARIA_MS;
+    return agora > prazo ? {tipo: 'bloqueada'} : {tipo: 'temporaria', prazo, atualizada};
+  }
+  const vence = Math.max(atualizada, POLITICA_SENHA_DESDE) + SENHA_VALIDADE_MS;
+  if (agora > vence) return {tipo: 'vencida', vence};
+  return vence - agora <= SENHA_AVISO_MS ? {tipo: 'aviso', vence} : {tipo: 'ok', vence};
+}
+const quando = t => new Date(t).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+function mostrarAvisoSenha(senha) {
+  const aviso = el('aviso-senha');
+  if (senha.tipo === 'temporaria') {
+    aviso.querySelector('span').textContent = `Você está usando a senha inicial. Troque agora: no próximo login a troca será obrigatória, e sem troca até ${quando(senha.prazo)} o acesso fica bloqueado (só volta com “Esqueci minha senha”).`;
+  } else if (senha.tipo === 'aviso') {
+    const dias = Math.max(1, Math.ceil((senha.vence - Date.now()) / DIA));
+    aviso.querySelector('span').textContent = `Sua senha vence em ${dias} dia(s), em ${quando(senha.vence)}. Troque agora para não perder o acesso.`;
+  } else { aviso.hidden = true; return; }
+  aviso.dataset.tipo = senha.tipo; aviso.hidden = false;
+}
+// Troca obrigatoria (a janela nao fecha): senha vencida, ou senha inicial no primeiro acesso — igual ao
+// gerenciador de adicionais ("Defina sua nova senha", pedido da usuaria 2026-10-14).
+function abrirTrocaObrigatoria(motivo = 'vencida') {
+  senhaObrigatoria = true;
+  limparSenha();
+  el('senha-titulo').textContent = motivo === 'inicial' ? 'Defina sua nova senha' : 'Sua senha venceu';
+  el('senha-explica').textContent = motivo === 'inicial'
+    ? 'Por segurança, troque a senha inicial (a que você recebeu do administrador) antes de continuar.'
+    : 'A senha do simulador vale 3 meses. Crie uma nova senha para continuar.';
+  // Obrigatorio de verdade (usuaria, 2026-10-14): sem Cancelar nem Sair, so' Salvar.
+  el('senha-cancelar').hidden = true;
+  el('aviso-senha').hidden = true;
+  dialogoSenha.showModal(); el('senha-atual').focus();
+}
+function senhaTrocada() {
+  senhaObrigatoria = false;
+  el('aviso-senha').hidden = true;
+  el('senha-cancelar').hidden = false;
+  el('senha-titulo').textContent = 'Trocar senha';
+  el('senha-explica').textContent = 'Informe sua senha atual e a nova senha (mínimo de 6 caracteres).';
+}
+dialogoSenha.addEventListener('cancel', event => { if (senhaObrigatoria) event.preventDefault(); });
+// O Chrome deixa o Esc fechar o <dialog> mesmo com preventDefault (sem interacao recente na pagina);
+// na troca obrigatoria a janela reabre na hora.
+dialogoSenha.addEventListener('close', () => { if (senhaObrigatoria) dialogoSenha.showModal(); });
+el('aviso-senha-trocar').onclick = () => el('trocar-senha').click();
 el('login-switch').onclick = el('logout').onclick;
 await setPersistence(auth, browserSessionPersistence);
 el('login-submit').disabled = el('login-reset').disabled = false;
@@ -94,6 +193,12 @@ onAuthStateChanged(auth, async user => {
     if (!profile || profile.email?.toLowerCase() !== user.email?.toLowerCase()
         || !['administrador', 'regional', 'leitura'].includes(profile.perfil)) {
       throw new Error('Sua conta ainda não tem acesso liberado ao simulador.');
+    }
+    const senha = await situacaoSenha(user, profile);
+    if (senha.tipo === 'bloqueada') {
+      try { await signOut(auth); } catch {}
+      status('Sua senha temporária expirou (prazo de 72 horas sem troca). Clique em “Esqueci minha senha” para criar uma nova.');
+      return;
     }
     // A carga continua publicada por região, mas todo perfil baixa todas (sem segregação, 2026-10-09).
     const visibleRegions = ['SP', 'MG_RJ', 'CO'];
@@ -174,6 +279,16 @@ onAuthStateChanged(auth, async user => {
     document.body.classList.remove('auth-pending'); el('login-screen').hidden = true;
     el('account-bar').hidden = false;
     el('account-email').textContent = `${profile.nome || user.email} · ${profile.perfil}`;
+    mostrarAvisoSenha(senha);
+    if (senha.tipo === 'vencida') abrirTrocaObrigatoria('vencida');
+    else if (senha.tipo === 'temporaria') {
+      // Senha inicial (regra da usuaria, 2026-10-14): o 1o login com ela e' livre (so' fica o aviso); a
+      // partir do 2o, a troca e' obrigatoria. "1o login" = ainda nao ha primeiroAcessoEm desta senha inicial.
+      if (!profile.primeiroAcessoEm || profile.primeiroAcessoEm < senha.atualizada) {
+        try { await set(ref(db, `perfis/${user.uid}/primeiroAcessoEm`), serverTimestamp()); }
+        catch (e) { console.warn('Não foi possível registrar o primeiro acesso', e); }
+      } else abrirTrocaObrigatoria('inicial');
+    }
     el('auto-status').textContent = `Fontes de ${data.date}. Recarregue a página para buscar uma nova carga.`;
     const sync = el('sync-status');
     const textoSync = () => {

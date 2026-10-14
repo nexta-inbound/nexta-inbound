@@ -1,402 +1,378 @@
 'use strict';
-// Visao do dia: consolidado dos cenarios salvos pela equipe, em duas abas.
-// - "Riscos da semana": junta os 7 dias da semana selecionada e mostra, por base+deposito+produto,
-//   a versao mais recente salva na semana (visao gerencial resumida, sem grafico de biblioteca externa).
-// - "Por data": tabela de um dia so, igual existia antes.
-// So le o que ja foi gravado (registros imutaveis) — nao recalcula nada, nao gerencia estado da simulacao.
+// Visao do dia (refeita a pedido da usuaria, 2026-10-14): matriz cidade x produto, OK/NOK, olhando hoje
+// + 5 dias com a VMD reprojetada como saida. Calculada na hora para todas as bases do snapshot (nao
+// depende de cenario salvo); a cidade fica com a situacao do PIOR deposito. As abas antigas de
+// simulacoes salvas ("Simulações de hoje" e "Por data") sairam: "nao faz sentido isso aqui".
 (() => {
   const cloud = window.SIM_CLOUD;
   const view = $('dia-view'), abrir = $('ver-dia'), fechar = $('dia-fechar');
-  const rotuloSituacao = {ok: 'OK', atencao: 'Atenção', critico: 'Crítico'};
-  const peso = {critico: 0, atencao: 1, ok: 2};
-  abrir.hidden = false;
 
-  function abrirCenario(base, produto, cenario) {
-    view.hidden = true;
-    const registro = D.records.find(r => r.base === base);
-    if (registro) { $('cidade').value = cidadeDe(registro); refreshDepositoOptions(); $('deposito').value = depositoDe(registro); refreshEmpresaOptions(); $('empresa').value = empresaDe(registro); }
-    products();
+  // Janela e regras (mesmas de antes, so' que em hoje + 5 dias, nao 14):
+  // critico = fechamento negativo ou abaixo do lastro em algum dia; atencao = sem critico, mas algum dia
+  // com fechamento igual ou abaixo do minimo. Critico HOJE tem cor propria (vermelho sangue).
+  const DIAS_A_FRENTE = 5;
+  const CENARIO = 'VMD';
+  const SITUACOES = {
+    'critico-hoje': {rotulo: 'Crítico hoje', peso: 0},
+    critico: {rotulo: 'Crítico até D+' + DIAS_A_FRENTE, peso: 1},
+    atencao: {rotulo: 'Atenção', peso: 2},
+    ok: {rotulo: 'OK', peso: 3},
+  };
+  // Colunas na ordem da planilha da usuaria; produto que nao estiver aqui entra no fim com o proprio nome.
+  const COLUNAS = [['Gasolina A', 'Gasolina'], ['Gasolina Premium', 'Gasolina Premium'], ['Diesel S10 A', 'S10'],
+    ['Diesel S500 A', 'S500'], ['Etanol Anidro', 'Anidro'], ['Etanol Hidratado', 'Hidratado'], ['Biodiesel', 'B100']];
+
+  function abrirCenario(base, produto, cenario = CENARIO) {
+    trocarAba('simulacao');
+    // Mesmo caminho de quem escolhe na mao (onchange), pra marcar os chips de deposito/empresa —
+    // so' trocar o .value dos selects deixava a tela sem base selecionada.
+    const registro = D.records.find(r => r.base === base && r.product === produto) || D.records.find(r => r.base === base);
+    if (registro) {
+      $('cidade').value = cidadeDe(registro); $('cidade').onchange();
+      $('deposito').value = depositoDe(registro); $('deposito').onchange();
+      $('empresa').value = empresaDe(registro); $('empresa').onchange();
+    }
     if ([...$('product').options].some(o => o.value === produto)) $('product').value = produto;
     $('scenario').value = cenario; select();
+    scrollTo({top: 0, behavior: 'smooth'});
   }
 
-  // ---- Abas ----
-  const tabs = view.querySelectorAll('[data-dia-tab]');
-  const paineis = {semana: $('semana-view'), hoje: $('hoje-view'), data: $('data-view')};
-  tabs.forEach(botao => botao.onclick = () => {
-    tabs.forEach(b => b.setAttribute('aria-selected', String(b === botao)));
-    for (const [nome, painel] of Object.entries(paineis)) painel.hidden = nome !== botao.dataset.diaTab;
-    if (botao.dataset.diaTab === 'semana') renderSemana();
-    else if (botao.dataset.diaTab === 'hoje') renderHoje();
-    else renderDia();
+  const iso = i => day(i);
+  const dataCurta = d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+  const indiceHoje = () => Math.max(0, Math.round((new Date(simulationToday() + 'T12:00:00') - new Date(D.date + 'T12:00:00')) / 86400000));
+
+  // "Em trânsito" do BI (coluna transito_caminhoes): so' FOB com status Em Andamento ou Viagem Finalizada,
+  // de hoje em diante — sem CIF e sem Frota Dedicada/Placa Enviada (que o simulador conta no grafico).
+  // Conferido 2026-10-14: com isso o ranking bateu 15 de 15 cidades com o BI.
+  const STATUS_TRANSITO_BI = ['Em Andamento', 'Viagem Finalizada'];
+  function transitoBI(r, hojeIso) {
+    const porDia = D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material];
+    if (!porDia) return 0;
+    let total = 0;
+    for (const [dia, dados] of Object.entries(porDia)) {
+      if (dia < hojeIso) continue;
+      for (const v of dados?.viagens || []) if (v.modal === 'fob' && STATUS_TRANSITO_BI.includes(v.status)) total += v.volume || 0;
+    }
+    return total;
+  }
+
+  // Situacao de um registro (base + deposito + empresa + produto) na janela hoje..hoje+5.
+  function avaliar(r) {
+    const content = fresh(r, CENARIO, 'auto'), resultado = E.calculate(content, n);
+    const inicio = indiceHoje(), fim = Math.min(resultado.length - 1, inicio + DIAS_A_FRENTE);
+    if (inicio > fim) return null;
+    let primeiroCritico = null, atencao = false, menor = Infinity, diaMenor = null, ruptura = null;
+    for (let i = inicio; i <= fim; i++) {
+      const fechamento = resultado[i].close;
+      if (fechamento < menor) { menor = fechamento; diaMenor = i; }
+      const critico = fechamento < 0 || (content.lastro !== null && fechamento < content.lastro);
+      if (critico && primeiroCritico === null) primeiroCritico = i;
+      if (!critico && content.min !== null && fechamento <= content.min) atencao = true;
+      if (fechamento < 0 && ruptura === null) ruptura = i;
+    }
+    const situacao = primeiroCritico !== null ? (primeiroCritico === inicio ? 'critico-hoje' : 'critico') : atencao ? 'atencao' : 'ok';
+    // Sem venda prevista (VMD) na janela: fica fora dos Alertas (usuaria, 2026-10-14), mas segue no Cenario.
+    let vendaJanela = 0;
+    for (let i = inicio; i <= fim; i++) vendaJanela += content.movements.sale[i] || 0;
+    // Pro ranking de dias de estoque: abertura de hoje (ja' projetada, se a planilha for de dia anterior)
+    // e a VMD reprojetada de hoje.
+    return {situacao, semVmd: vendaJanela <= 0, aberturaHoje: resultado[inicio].opening, vmdHoje: content.movements.sale[inicio] || 0,
+      vmdPlanejada: r.bi?.vmdPlanejada ?? null,
+      // Igual ao BI ('Abertura Estoque' = abertura - lastro; 'Estoque total' = isso + em transito de hoje em diante).
+      lastroHoje: content.lastro || 0,
+      transitoFuturo: transitoBI(r, iso(inicio)),
+      menor, diaMenor: iso(diaMenor), primeiroCritico: primeiroCritico === null ? null : iso(primeiroCritico),
+      ruptura: ruptura === null ? null : iso(ruptura), inicio: iso(inicio), fim: iso(fim)};
+  }
+
+  function calcular() {
+    const itens = [];
+    for (const r of D.records) {
+      try { const av = avaliar(r); if (av) itens.push({registro: r, cidade: cidadeDe(r), produto: r.product, ...av}); }
+      catch { /* registro sem dado suficiente pro calculo (ex.: sem abertura); fica fora */ }
+    }
+    return itens;
+  }
+
+  // Pior deposito da cidade por produto (pedido da usuaria: "nao precisa abrir por deposito").
+  function matriz(itens) {
+    const celulas = new Map();
+    for (const it of itens) {
+      const chave = `${it.cidade}|${it.produto}`, atual = celulas.get(chave);
+      if (!atual) { celulas.set(chave, {pior: it, itens: [it]}); continue; }
+      atual.itens.push(it);
+      const p = SITUACOES[it.situacao].peso - SITUACOES[atual.pior.situacao].peso;
+      if (p < 0 || (p === 0 && it.menor < atual.pior.menor)) atual.pior = it;
+    }
+    return celulas;
+  }
+
+  function textoCelula(c) {
+    const it = c.pior;
+    if (it.situacao === 'ok') return 'OK';
+    if (it.situacao === 'atencao') return 'Atenção';
+    return it.situacao === 'critico-hoje' ? 'NOK · hoje' : `NOK · ${dataCurta(it.primeiroCritico)}`;
+  }
+  // Popup ao passar o mouse na celula (pedido da usuaria, 2026-10-14: os cartoes por cidade sairam;
+  // o detalhe aparece so' ao "relar" no dia). Uma linha por deposito/empresa da cidade, pior primeiro.
+  function popupCelula(c) {
+    const it = c.pior;
+    const depositos = [...c.itens].sort((a, b) => SITUACOES[a.situacao].peso - SITUACOES[b.situacao].peso || a.menor - b.menor);
+    return `<strong>${esc(it.cidade)} · ${esc(it.produto)}</strong><p>${esc(SITUACOES[it.situacao].rotulo)}, de ${dataCurta(it.inicio)} a ${dataCurta(it.fim)}</p>`
+      + `<dl>${depositos.map(d => `<div><dt>${esc(depositoDe(d.registro))} · ${esc(empresaDe(d.registro))}</dt><dd>${esc(SITUACOES[d.situacao].rotulo)} · menor ${fmt(d.menor)} m³ em ${dataCurta(d.diaMenor)}${d.ruptura ? ` · ruptura ${dataCurta(d.ruptura)}` : ''}</dd></div>`).join('')}</dl>`
+      + `<p>Clique para abrir ${depositos.length > 1 ? 'o pior depósito' : 'este depósito'} no simulador.</p>`;
+  }
+
+  const campoRegiao = $('semana-regiao'), campoBusca = $('semana-base'), campoSituacao = $('semana-situacao'),
+    statusEl = $('semana-status'), barra = $('semana-barra'), tabela = $('matriz-risco'), popup = $('matriz-popover'),
+    campoProdutoRanking = $('ranking-produto'), ranking = $('ranking-lista'), campoTransito = $('ranking-transito');
+
+  // Ranking de dias de estoque por cidade (pedido da usuaria, 2026-10-14, igual ao visual "Ranking Dias
+  // de Estoque" do BI): dias = abertura de hoje / VMD reprojetada de hoje, somando todos os depositos
+  // (e todos os produtos, se nenhum for escolhido). A cor da barra e' a pior situacao da matriz.
+  function renderRanking(itens, colunas, celulas) {
+    const produto = campoProdutoRanking.value;
+    const opcoes = [['', 'Todos os produtos'], ...colunas];
+    if (campoProdutoRanking.options.length !== opcoes.length) {
+      campoProdutoRanking.innerHTML = opcoes.map(([v, r]) => `<option value="${esc(v)}">${esc(r)}</option>`).join('');
+      campoProdutoRanking.value = opcoes.some(([v]) => v === produto) ? produto : '';
+    }
+    const escolhido = campoProdutoRanking.value;
+    const porCidade = new Map();
+    for (const it of itens) {
+      if (escolhido && it.produto !== escolhido) continue;
+      const c = porCidade.get(it.cidade) || {abertura: 0, vmd: 0};
+      c.abertura += estoqueTotal(it); c.vmd += vmdRef(it);
+      porCidade.set(it.cidade, c);
+    }
+    const piorSituacao = cid => {
+      const pesos = colunas.filter(([p]) => !escolhido || p === escolhido).map(([p]) => celulas.get(`${cid}|${p}`)).filter(Boolean).map(c => c.pior.situacao);
+      return pesos.sort((a, b) => SITUACOES[a].peso - SITUACOES[b].peso)[0] || 'ok';
+    };
+    // Com todos os produtos juntos, a barra fica na cor neutra (um produto ruim pintaria a cidade inteira).
+    const linhas = [...porCidade.entries()].filter(([, c]) => c.vmd >= 1).map(([cidade, c]) => ({cidade, dias: c.abertura / c.vmd, ...c, situacao: escolhido ? piorSituacao(cidade) : 'neutra'}))
+      .sort((a, b) => b.dias - a.dias);
+    const maximo = Math.max(...linhas.map(l => l.dias), 1);
+    if (cidadeRanking && !linhas.some(l => l.cidade === cidadeRanking)) cidadeRanking = null;
+    ranking.innerHTML = !linhas.length ? '<p class="muted">Sem VMD para calcular os dias de estoque.</p>'
+      : linhas.map(l => `<button type="button" class="ranking-linha${l.cidade === cidadeRanking ? ' selecionada' : ''}" data-ranking-cidade="${esc(l.cidade)}" title="${esc(`${l.cidade}: estoque total (abertura − lastro + trânsito) ${fmt(l.abertura)} m³ ÷ VMD planejada ${fmt(l.vmd)} m³/dia = ${dias1(l.dias)} dias. Clique para ver por produto.`)}">
+        <span class="ranking-cidade">${esc(l.cidade)}</span>
+        <span class="ranking-trilho"><span class="ranking-barra ${l.situacao}" style="width:${Math.max(1, l.dias / maximo * 100)}%"></span></span>
+        <span class="ranking-valor">${dias1(l.dias)}</span></button>`).join('');
+    renderPorProduto(itens, colunas);
+  }
+  const dias1 = v => v.toFixed(1).replace('.', ',');
+  // VMD do Cenario = 'VMD Planejada' do BI (media por dia util de hoje ate' o fim do mes, calculada na carga);
+  // carga antiga sem esse campo cai na VMD de hoje.
+  const vmdRef = it => it.vmdPlanejada ?? Math.max(it.vmdHoje, 0);
+  const aberturaLiquida = it => Math.max(it.aberturaHoje, 0) - (it.lastroHoje || 0);
+  // Ticzinho "Considerar trânsito" (usuaria, 2026-10-14): marcado = igual ao BI; desmarcado = so' a abertura.
+  const comTransito = () => campoTransito.checked;
+  const estoqueTotal = it => aberturaLiquida(it) + (comTransito() ? (it.transitoFuturo || 0) : 0);
+
+  // Quadro por produto ao lado do ranking (pedido da usuaria, 2026-10-14, igual ao BI: Abertura Estoque,
+  // VMD Planejada, Dias Estoque), mais o tamanho do tanque. Todas as cidades, ou a cidade clicada no ranking.
+  let cidadeRanking = null;
+  function renderPorProduto(itens, colunas) {
+    const alvo = $('ranking-produtos');
+    const escolhidos = itens.filter(it => !cidadeRanking || it.cidade === cidadeRanking);
+    const linhas = colunas.map(([produto, rotulo]) => {
+      const doProduto = escolhidos.filter(it => it.produto === produto);
+      if (!doProduto.length) return null;
+      const soma = f => doProduto.reduce((s, it) => s + f(it), 0);
+      const abertura = soma(aberturaLiquida), transito = soma(it => it.transitoFuturo || 0), vmd = soma(vmdRef);
+      const capacidade = it => it.registro.capacidadeFisica ?? it.registro.policy?.capacity ?? 0;
+      const tanque = soma(capacidade);
+      // Autonomia do tanque (pedido da usuaria, 2026-10-14): tanque / VMD = quantos dias de venda o tanque
+      // cheio aguenta. So' a VMD de quem tem capacidade, pra venda no bico nao diminuir a autonomia.
+      const vmdComTanque = soma(it => (capacidade(it) > 0 ? vmdRef(it) : 0));
+      return {rotulo, abertura, transito, vmd, tanque, vmdComTanque, dias: vmd >= 1 ? (abertura + (comTransito() ? transito : 0)) / vmd : null, autonomia: tanque > 0 && vmdComTanque > 0 ? tanque / vmdComTanque : null};
+    }).filter(Boolean);
+    // Linha de total (pedido da usuaria, 2026-10-14: "faca um somatorio"): volumes somados; dias e
+    // autonomia recalculados sobre os totais (nao e' soma nem media dos dias de cada produto).
+    const total = ['abertura', 'transito', 'vmd', 'tanque', 'vmdComTanque'].reduce((t, k) => ({...t, [k]: linhas.reduce((s, l) => s + l[k], 0)}), {});
+    total.dias = total.vmd >= 1 ? (total.abertura + (comTransito() ? total.transito : 0)) / total.vmd : null;
+    total.autonomia = total.tanque > 0 && total.vmdComTanque > 0 ? total.tanque / total.vmdComTanque : null;
+    alvo.innerHTML = `<div class="ranking-produtos-topo"><strong>${esc(cidadeRanking || 'Todas as cidades')}</strong>${cidadeRanking ? ' <button type="button" id="ranking-limpar">ver todas</button>' : '<small>clique numa cidade do ranking para filtrar</small>'}</div>
+      <table class="ranking-produtos-tabela"><thead><tr><th>Produto</th><th title="Abertura de hoje menos o lastro mínimo">Abertura estoque</th><th>Em trânsito</th><th>VMD planejada</th><th>Dias de estoque</th><th>Tamanho do tanque</th><th title="Tamanho do tanque ÷ VMD planejada: quantos dias de venda o tanque cheio aguenta">Autonomia do tanque (dias)</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr><th>${esc(l.rotulo)}</th><td>${fmt(l.abertura)}</td><td>${fmt(l.transito)}</td><td>${fmt(l.vmd)}</td><td>${l.dias == null ? '—' : dias1(l.dias)}</td><td>${l.tanque ? fmt(l.tanque) : '<span class="sem-capacidade">Sem capacidade estabelecida</span>'}</td><td>${l.autonomia == null ? '—' : dias1(l.autonomia)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th>Total</th><td>${fmt(total.abertura)}</td><td>${fmt(total.transito)}</td><td>${fmt(total.vmd)}</td><td>${total.dias == null ? '—' : dias1(total.dias)}</td><td>${total.tanque ? fmt(total.tanque) : '—'}</td><td>${total.autonomia == null ? '—' : dias1(total.autonomia)}</td></tr></tfoot></table>`;
+  }
+  $('ranking-dias-bloco').addEventListener('click', event => {
+    const linha = event.target.closest('[data-ranking-cidade]');
+    if (linha) { cidadeRanking = cidadeRanking === linha.dataset.rankingCidade ? null : linha.dataset.rankingCidade; renderCenario(); return; }
+    if (event.target.closest('#ranking-limpar')) { cidadeRanking = null; renderCenario(); }
   });
 
-  // ================= Por data =================
-  // Pedido da usuaria, 2026-10-05: "historico da data da simulação > base/cidade > produto" — escolhe
-  // o dia no campo acima (como sempre), e o resultado fica agrupado por cidade (1 card expansivel),
-  // com a tabela completa de base+produto dentro, igual a aba "Simulações de hoje" — so' que aqui
-  // cobre QUALQUER dia e mantem os indicadores de risco (situacao, menor estoque, dias critico/atencao)
-  // que ja existiam nessa aba, pra triagem.
-  const campoData = $('dia-data'), campoRegiaoDia = $('dia-regiao'), campoBaseDia = $('dia-base'),
-    campoSituacaoDia = $('dia-situacao'), listaDia = $('dia-lista'), statusDia = $('dia-status');
-  campoData.value = D.date;
-  let geracaoDia = 0;
+  function colunasDe(itens) {
+    const presentes = new Set(itens.map(it => it.produto));
+    return COLUNAS.filter(([p]) => presentes.has(p))
+      .concat([...presentes].filter(p => !COLUNAS.some(([c]) => c === p)).sort().map(p => [p, p]));
+  }
+  // Ranking + quadro por produto ficam na aba Cenario (pedido da usuaria, 2026-10-14); a aba Alertas
+  // fica so' com a matriz. Aqui sem filtro de regiao/cidade: visao geral de todas as cidades do login.
+  function renderCenario() {
+    ranking.innerHTML = '';
+    const itens = calcular();
+    renderRanking(itens, colunasDe(itens), matriz(itens));
+  }
+  campoProdutoRanking.onchange = renderCenario;
+  try { campoTransito.checked = localStorage.getItem('simulador.cenarioTransito') !== 'nao'; } catch { /* sem armazenamento: fica marcado */ }
+  campoTransito.onchange = () => { try { localStorage.setItem('simulador.cenarioTransito', campoTransito.checked ? 'sim' : 'nao'); } catch {} renderCenario(); };
 
-  async function linhasDoDia(dia) {
-    const arvore = await cloud.listDay(dia);
-    const linhas = [];
+  function render() {
+    statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
+    let itens = calcular();
+    const regiao = campoRegiao.value, busca = campoBusca.value.trim().toLowerCase();
+    itens = itens.filter(it => !it.semVmd && (!regiao || cloud.regionOf(it.registro.base) === regiao) && (!busca || it.cidade.toLowerCase().includes(busca)));
+    const celulas = matriz(itens);
+    const filtroSituacao = campoSituacao.value;
+    const passaSituacao = c => !filtroSituacao || (filtroSituacao === 'critico' ? c.pior.situacao.startsWith('critico') : c.pior.situacao === filtroSituacao);
+    const cidades = [...new Set(itens.map(it => it.cidade))].filter(cid => [...celulas.entries()].some(([k, c]) => k.startsWith(cid + '|') && passaSituacao(c)));
+    const colunas = colunasDe(itens);
+    if (!cidades.length) { statusEl.textContent = 'Nenhuma cidade encontrada com os filtros atuais.'; return; }
+
+    const piorDaCidade = cid => Math.min(...colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(Boolean).map(c => SITUACOES[c.pior.situacao].peso));
+    cidades.sort((a, b) => piorDaCidade(a) - piorDaCidade(b) || a.localeCompare(b, 'pt-BR'));
+
+    const visiveis = cidades.flatMap(cid => colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(c => c && passaSituacao(c)));
+    const resumo = visiveis.reduce((acc, c) => ({...acc, [c.pior.situacao]: (acc[c.pior.situacao] || 0) + 1}), {});
+    const amostra = itens[0];
+    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas pela VMD reprojetada · `
+      + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
+      + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
+    barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
+      `<span class="${s}" style="flex:${resumo[s]}" title="${SITUACOES[s].rotulo}">${resumo[s]}</span>`).join('');
+
+    tabela.innerHTML = `<thead><tr><th>Cidade / produto</th>${colunas.map(([, rotulo]) => `<th>${esc(rotulo)}</th>`).join('')}</tr></thead><tbody>`
+      + cidades.map(cid => `<tr><th>${esc(cid)}</th>${colunas.map(([p]) => {
+        const c = celulas.get(`${cid}|${p}`);
+        if (!c || !passaSituacao(c)) return '<td class="vazio">—</td>';
+        return `<td class="${c.pior.situacao}"><button type="button" data-abrir="${esc(c.pior.registro.base)}|${esc(p)}" data-celula="${esc(`${cid}|${p}`)}" aria-label="${esc(`${cid} · ${p}: ${SITUACOES[c.pior.situacao].rotulo}`)}">${textoCelula(c)}</button></td>`;
+      }).join('')}</tr>`).join('') + '</tbody>';
+    celulasAtuais = celulas;
+  }
+
+  let celulasAtuais = new Map();
+  function mostrarPopup(botao) {
+    const c = celulasAtuais.get(botao.dataset.celula); if (!c) return;
+    popup.innerHTML = popupCelula(c); popup.hidden = false;
+    const r = botao.getBoundingClientRect(), w = popup.offsetWidth, h = popup.offsetHeight;
+    const esquerda = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+    const topo = r.bottom + 8 + h <= innerHeight - 8 ? r.bottom + 8 : Math.max(8, r.top - h - 8);
+    popup.style.left = `${esquerda}px`; popup.style.top = `${topo}px`;
+  }
+  const fecharPopup = () => { popup.hidden = true; };
+  tabela.addEventListener('pointerover', event => { const b = event.target.closest('[data-celula]'); if (b) mostrarPopup(b); });
+  tabela.addEventListener('focusin', event => { const b = event.target.closest('[data-celula]'); if (b) mostrarPopup(b); });
+  tabela.addEventListener('pointerout', event => { if (event.target.closest('[data-celula]')) fecharPopup(); });
+  tabela.addEventListener('focusout', fecharPopup);
+  addEventListener('scroll', fecharPopup, true);
+
+  tabela.addEventListener('click', event => {
+    const botao = event.target.closest('[data-abrir]'); if (!botao) return;
+    fecharPopup();
+    const [base, produto] = botao.dataset.abrir.split('|');
+    abrirCenario(base, produto);
+  });
+  [campoRegiao, campoSituacao].forEach(el => el.onchange = render);
+  let atraso;
+  campoBusca.oninput = () => { clearTimeout(atraso); atraso = setTimeout(render, 250); };
+
+  // ================= Historico =================
+  // Simulacoes salvas pela equipe ("Salvar na equipe"), por dia — juncao das antigas abas "Simulações de
+  // hoje" e "Por data" (pedido da usuaria, 2026-10-14: "a parte do historico, pra pessoa acompanhar as
+  // simulacoes feitas"). So' le o que foi gravado (versoes imutaveis), agrupado por cidade.
+  const campoDiaHist = $('hist-dia'), campoRegiaoHist = $('hist-regiao'), campoBuscaHist = $('hist-busca'),
+    statusHist = $('hist-status'), listaHist = $('hist-lista');
+  campoDiaHist.value = simulationToday();
+  let geracaoHist = 0;
+  const rotuloSalvo = {critico: 'Crítico', atencao: 'Atenção', ok: 'OK'};
+
+  async function renderHistorico() {
+    const minha = ++geracaoHist;
+    statusHist.textContent = 'Carregando…'; listaHist.innerHTML = '';
+    const dia = campoDiaHist.value || simulationToday();
+    let arvore;
+    try { arvore = await cloud.listDay(dia); }
+    catch (error) { if (minha === geracaoHist) statusHist.textContent = `Não foi possível carregar: ${error.message}`; return; }
+    if (minha !== geracaoHist) return;
+    let itens = [];
     for (const porChave of Object.values(arvore || {})) {
       for (const chaveNode of Object.values(porChave)) {
         const versoes = Object.values(chaveNode.versoes || {});
-        if (!versoes.length) continue;
-        linhas.push(versoes.reduce((a, b) => (a.versao > b.versao ? a : b)));
+        if (versoes.length) itens.push(versoes.reduce((a, b) => (a.versao > b.versao ? a : b)));
       }
     }
-    return linhas;
-  }
-
-  async function renderDia() {
-    const minha = ++geracaoDia;
-    statusDia.textContent = 'Carregando…'; listaDia.innerHTML = '';
-    const dia = campoData.value || D.date;
-    let itens;
-    try { itens = await linhasDoDia(dia); }
-    catch (error) { if (minha === geracaoDia) statusDia.textContent = `Não foi possível carregar: ${error.message}`; return; }
-    if (minha !== geracaoDia) return;
-    itens = itens.map(it => {
-      const registro = D.records.find(r => r.base === it.base);
-      return {...it, cidade: registro ? cidadeDe(registro) : (it.base || '—')};
-    });
-    const regiao = campoRegiaoDia.value, base = campoBaseDia.value.trim().toLowerCase(), situacao = campoSituacaoDia.value;
+    itens = itens.map(it => { const r = D.records.find(x => x.base === it.base); return {...it, cidade: r ? cidadeDe(r) : (it.base || '—')}; });
+    const regiao = campoRegiaoHist.value, busca = campoBuscaHist.value.trim().toLowerCase();
     itens = itens.filter(it => (!regiao || cloud.regionOf(it.base) === regiao)
-      && (!base || it.base.toLowerCase().includes(base) || it.cidade.toLowerCase().includes(base))
-      && (!situacao || it.indicadores.situacao === situacao));
-    if (!itens.length) { statusDia.textContent = 'Nenhuma visão salva para este dia com os filtros atuais.'; return; }
-    const resumo = itens.reduce((c, it) => ({...c, [it.indicadores.situacao]: (c[it.indicadores.situacao] || 0) + 1}), {});
-    const cidades = agruparPorCidade(itens)
-      .sort((a, b) => peso[a.situacao] - peso[b.situacao] || b.urgenciaMax - a.urgenciaMax || a.cidade.localeCompare(b.cidade, 'pt-BR'));
-    statusDia.textContent = `${itens.length} visão(ões) em ${cidades.length} cidade(s) · ${resumo.critico || 0} crítica(s) · ${resumo.atencao || 0} em atenção · ${resumo.ok || 0} ok.`;
-    listaDia.innerHTML = cidades.map(c => `<details class="card dia-${c.situacao}">
-      <summary><strong>${esc(c.cidade)}</strong> <small>${c.itens.length} visão(ões) · ${c.resumoSituacao.critico || 0} crítica(s) · ${c.resumoSituacao.atencao || 0} em atenção · ${c.resumoSituacao.ok || 0} ok</small></summary>
-      <table class="hoje-tabela"><thead><tr><th>Base</th><th>Depósito</th><th>Produto</th><th>Cenário</th><th>Situação</th><th>Menor estoque (m³)</th><th>Dia do menor</th><th>Dias crítico</th><th>Dias atenção</th><th>Versão</th><th>Autor / motivo</th><th></th></tr></thead>
-      <tbody>${c.itens.map(it => `<tr class="dia-${it.indicadores.situacao}">
-        <td>${esc(it.base)}</td><td>${esc(it.deposito || '—')}</td><td>${esc(it.produto)}</td><td>${esc(it.cenario)}</td>
-        <td>${rotuloSituacao[it.indicadores.situacao]}</td>
-        <td>${fmt(it.indicadores.menorEstoque)}</td>
-        <td>${it.indicadores.diaMenorEstoque ? new Date(it.indicadores.diaMenorEstoque + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-        <td>${it.indicadores.diasCritico}</td><td>${it.indicadores.diasAtencao}</td>
+      && (!busca || [it.base, it.cidade, it.produto].some(v => (v || '').toLowerCase().includes(busca))));
+    const dataFmt = new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR');
+    if (!itens.length) { statusHist.textContent = `Nenhuma simulação salva em ${dataFmt} com os filtros atuais.`; return; }
+    const porCidade = new Map();
+    for (const it of itens) { if (!porCidade.has(it.cidade)) porCidade.set(it.cidade, []); porCidade.get(it.cidade).push(it); }
+    const cidades = [...porCidade.entries()].map(([cidade, lista]) => ({cidade, lista: lista.sort((a, b) => (b.atualizadoEm || 0) - (a.atualizadoEm || 0))}))
+      .sort((a, b) => b.lista.length - a.lista.length || a.cidade.localeCompare(b.cidade, 'pt-BR'));
+    statusHist.textContent = `${itens.length} simulação(ões) salva(s) em ${dataFmt}, em ${cidades.length} cidade(s). Mostra a versão mais recente de cada base, produto e cenário.`;
+    listaHist.innerHTML = cidades.map(c => `<details class="card"${cidades.length <= 3 ? ' open' : ''}>
+      <summary><strong>${esc(c.cidade)}</strong> <small>${c.lista.length} simulação(ões)</small></summary>
+      <table class="hoje-tabela"><thead><tr><th>Base</th><th>Produto</th><th>Cenário</th><th>Situação ao salvar</th><th>Menor estoque (m³)</th><th>Versão</th><th>Autor / motivo</th><th>Horário</th><th></th></tr></thead>
+      <tbody>${c.lista.map(it => `<tr class="dia-${it.indicadores?.situacao || ''}">
+        <td>${esc(it.base)}</td><td>${esc(it.produto)}</td><td>${esc(it.cenario)}</td>
+        <td>${esc(rotuloSalvo[it.indicadores?.situacao] || '—')}</td>
+        <td>${it.indicadores ? fmt(it.indicadores.menorEstoque) : '—'}${it.indicadores?.diaMenorEstoque ? ` <small>em ${dataCurta(it.indicadores.diaMenorEstoque)}</small>` : ''}</td>
         <td>v${it.versao}</td>
-        <td>${esc(it.autorNome)}${it.motivo ? `<br><small>${esc(it.motivo)}</small>` : ''}</td>
-        <td><button type="button" data-abrir="${esc(it.base)}|${esc(it.produto)}|${esc(it.cenario)}">Abrir</button></td>
-      </tr>`).join('')}</tbody></table>
-    </details>`).join('');
-  }
-
-  listaDia.addEventListener('click', event => {
-    const botao = event.target.closest('[data-abrir]'); if (!botao) return;
-    const [base, produto, cenario] = botao.dataset.abrir.split('|');
-    abrirCenario(base, produto, cenario);
-  });
-  [campoData, campoRegiaoDia, campoSituacaoDia].forEach(el => el.onchange = renderDia);
-  let atrasoDia;
-  campoBaseDia.oninput = () => { clearTimeout(atrasoDia); atrasoDia = setTimeout(renderDia, 250); };
-
-  // ================= Simulações de hoje =================
-  // Pedido da usuaria, 2026-10-05: "uma outra aba com os resultados das simulações do dia... pra
-  // entender os cenarios" — "É pra mostrar os cenários que a equipe salvou hoje (tipo a aba 'Por
-  // data' e cidade e produtos salvos ja)". Reaproveita linhasDoDia() (so' o que foi REALMENTE salvo,
-  // sem fallback de LE calculado — diferente da semana) fixo em D.date, agrupado por cidade; depois
-  // "quando abrir a cidade, quero a opção de abrir por produto" — cada card e' um <details> que expande
-  // pra tabela com 1 linha por base+produto salvo.
-  const campoRegiaoHoje = $('hoje-regiao'), campoBaseHoje = $('hoje-base'), statusHoje = $('hoje-status'), listaHoje = $('hoje-lista');
-  let geracaoHoje = 0;
-
-  async function renderHoje() {
-    const minha = ++geracaoHoje;
-    statusHoje.textContent = 'Carregando…'; listaHoje.innerHTML = '';
-    let itens;
-    try { itens = await linhasDoDia(D.date); }
-    catch (error) { if (minha === geracaoHoje) statusHoje.textContent = `Não foi possível carregar: ${error.message}`; return; }
-    if (minha !== geracaoHoje) return;
-    itens = itens.map(it => {
-      const registro = D.records.find(r => r.base === it.base);
-      return {...it, cidade: registro ? cidadeDe(registro) : (it.base || '—')};
-    });
-    const regiao = campoRegiaoHoje.value, busca = campoBaseHoje.value.trim().toLowerCase();
-    itens = itens.filter(it => (!regiao || cloud.regionOf(it.base) === regiao)
-      && (!busca || it.base.toLowerCase().includes(busca) || it.cidade.toLowerCase().includes(busca) || it.produto.toLowerCase().includes(busca)));
-    if (!itens.length) { statusHoje.textContent = 'Nenhuma simulação salva hoje com os filtros atuais.'; return; }
-    const porCidade = new Map();
-    for (const it of itens) {
-      const cidade = it.cidade || '—';
-      if (!porCidade.has(cidade)) porCidade.set(cidade, []);
-      porCidade.get(cidade).push(it);
-    }
-    const cidades = [...porCidade.entries()].map(([cidade, lista]) => {
-      lista.sort((a, b) => (b.atualizadoEm || 0) - (a.atualizadoEm || 0));
-      return {cidade, itens: lista};
-    }).sort((a, b) => b.itens.length - a.itens.length || a.cidade.localeCompare(b.cidade, 'pt-BR'));
-    statusHoje.textContent = `${itens.length} simulação(ões) salva(s) hoje em ${cidades.length} cidade(s).`;
-    listaHoje.innerHTML = cidades.map(c => `<details class="card">
-      <summary><strong>${esc(c.cidade)}</strong> <small>${c.itens.length} simulação(ões) salva(s)</small></summary>
-      <table class="hoje-tabela"><thead><tr><th>Base</th><th>Depósito</th><th>Produto</th><th>Cenário</th><th>Versão</th><th>Autor</th><th>Horário</th><th></th></tr></thead>
-      <tbody>${c.itens.map(it => `<tr>
-        <td>${esc(it.base)}</td><td>${esc(it.deposito || '—')}</td><td>${esc(it.produto)}</td><td>${esc(it.cenario)}</td>
-        <td>v${it.versao}</td><td>${esc(it.autorNome)}${it.motivo ? `<br><small>${esc(it.motivo)}</small>` : ''}</td>
+        <td>${esc(it.autorNome || '—')}${it.motivo ? `<br><small>${esc(it.motivo)}</small>` : ''}</td>
         <td>${it.atualizadoEm ? new Date(it.atualizadoEm).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}) : '—'}</td>
-        <td><button type="button" data-abrir="${esc(it.base)}|${esc(it.produto)}|${esc(it.cenario)}">Abrir</button></td>
+        <td><button type="button" data-abrir-hist="${esc(it.base)}|${esc(it.produto)}|${esc(it.cenario)}">Abrir</button></td>
       </tr>`).join('')}</tbody></table>
     </details>`).join('');
   }
-
-  listaHoje.addEventListener('click', event => {
-    const botao = event.target.closest('[data-abrir]'); if (!botao) return;
-    const [base, produto, cenario] = botao.dataset.abrir.split('|');
+  listaHist.addEventListener('click', event => {
+    const botao = event.target.closest('[data-abrir-hist]'); if (!botao) return;
+    const [base, produto, cenario] = botao.dataset.abrirHist.split('|');
     abrirCenario(base, produto, cenario);
   });
-  campoRegiaoHoje.onchange = renderHoje;
-  let atrasoHoje;
-  campoBaseHoje.oninput = () => { clearTimeout(atrasoHoje); atrasoHoje = setTimeout(renderHoje, 250); };
+  [campoDiaHist, campoRegiaoHist].forEach(el => el.onchange = renderHistorico);
+  let atrasoHist;
+  campoBuscaHist.oninput = () => { clearTimeout(atrasoHist); atrasoHist = setTimeout(renderHistorico, 250); };
 
-  // ================= Riscos da semana =================
-  const pills = $('semana-pills'), botaoAnterior = $('semana-anterior'), botaoProxima = $('semana-proxima'),
-    campoRegiaoSemana = $('semana-regiao'), campoBaseSemana = $('semana-base'), campoSituacaoSemana = $('semana-situacao'),
-    statusSemana = $('semana-status'), barra = $('semana-barra'), lista = $('semana-lista');
-  let semanaOffset = 0; // 0 = semana atual (calendario, segunda a domingo), a partir de hoje de verdade
-  let geracaoSemana = 0;
+  // ================= Abas da pagina =================
+  // Abas no estilo do portal inbound (pedido da usuaria, 2026-10-14): Simulacao de estoques, Alertas
+  // (a Visao do dia), Cenario (editar volumes do dia + politica) e Historico. Cada filho de <main>
+  // recebe data-aba com as abas em que aparece; o CSS esconde o resto conforme body[data-aba].
+  const main = document.querySelector('main');
+  const historicoView = $('historico-view'), rankingView = $('ranking-view');
+  main.prepend(view, historicoView, rankingView);
+  view.hidden = false; historicoView.hidden = false; rankingView.hidden = false;
+  rankingView.dataset.aba = 'cenario';
+  const filhoDeMain = el => { while (el && el.parentElement !== main) el = el.parentElement; return el; };
+  const marcar = (seletor, abas) => { const el = filhoDeMain(document.querySelector(seletor)); if (el) el.dataset.aba = abas; };
+  view.dataset.aba = 'alertas'; historicoView.dataset.aba = 'historico';
+  marcar('main > .title', 'simulacao');
+  marcar('section.filters', 'simulacao cenario');
+  // Editor do dia continua escondido (cenarios.js): a usuaria preferiu a aba Cenario so' com a politica.
+  marcar('section.editor-panel', 'cenario');
+  marcar('section.assumptions', 'cenario');
+  // "Pontos de atencao" saiu da tela (usuaria, 2026-10-14: "pode tirar"): fica fora de todas as abas.
+  marcar('#alerts', 'nenhuma');
+  for (const filho of main.children) if (!filho.dataset.aba) filho.dataset.aba = 'simulacao';
 
-  function segundaFeira(data) {
-    const d = new Date(data); d.setHours(12, 0, 0, 0);
-    const diasDesdeSegunda = (d.getDay() + 6) % 7;
-    d.setDate(d.getDate() - diasDesdeSegunda);
-    return d;
+  const botoesAba = [...document.querySelectorAll('#abas-bar [data-aba-alvo]')];
+  function trocarAba(nome) {
+    document.body.dataset.aba = nome;
+    botoesAba.forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
+    fecharPopup();
+    try { localStorage.setItem('simulador.aba', nome); } catch { /* sem armazenamento: so' nao lembra a aba */ }
+    if (nome === 'alertas') render();
+    else if (nome === 'cenario') renderCenario();
+    else if (nome === 'historico') renderHistorico();
   }
-  function isoData(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-  function numeroSemanaISO(data) {
-    const d = new Date(Date.UTC(data.getFullYear(), data.getMonth(), data.getDate()));
-    const diaSemana = (d.getUTCDay() + 6) % 7;
-    d.setUTCDate(d.getUTCDate() - diaSemana + 3);
-    const primeiraQuinta = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-    const diffSemanas = Math.round((d - primeiraQuinta) / (7 * 86400000));
-    return diffSemanas + 1;
-  }
-  function diasDaSemana(segunda) {
-    return Array.from({length: 7}, (_, i) => { const d = new Date(segunda); d.setDate(d.getDate() + i); return isoData(d); });
-  }
-  function segundaComOffset(offset) {
-    const base = segundaFeira(new Date());
-    base.setDate(base.getDate() + offset * 7);
-    return base;
-  }
-
-  function renderPills() {
-    const hojeSegunda = segundaFeira(new Date());
-    pills.innerHTML = '';
-    for (let i = -2; i <= 2; i++) {
-      const offset = semanaOffset + i;
-      const segunda = segundaComOffset(offset);
-      const botao = document.createElement('button');
-      botao.type = 'button';
-      botao.textContent = String(numeroSemanaISO(segunda));
-      const dias = diasDaSemana(segunda);
-      botao.title = `${dias[0]} a ${dias[6]}`.split('-').join('/');
-      if (offset === semanaOffset) botao.classList.add('active');
-      if (segunda.getTime() === hojeSegunda.getTime()) botao.classList.add('hoje');
-      botao.onclick = () => { semanaOffset = offset; renderSemana(); };
-      pills.appendChild(botao);
-    }
-  }
-
-  async function linhasDaSemana(dias) {
-    const porDia = await cloud.listRange(dias);
-    // Salvos: a versao mais recente da semana por base+deposito+produto, QUALQUER cenario (nao separa
-    // mais por cenario — pra visao gerencial, uma linha por base+produto e' o que faz sentido).
-    const salvos = new Map();
-    for (const dia of dias) {
-      const arvore = porDia[dia] || {};
-      for (const porChave of Object.values(arvore)) {
-        for (const chaveNode of Object.values(porChave)) {
-          const versoes = Object.values(chaveNode.versoes || {});
-          if (!versoes.length) continue;
-          const ultima = versoes.reduce((a, b) => (a.versao > b.versao ? a : b));
-          const chaveGlobal = `${ultima.base}|${ultima.deposito || ''}|${ultima.produto}`;
-          const atual = salvos.get(chaveGlobal);
-          if (!atual || (ultima.atualizadoEm || 0) > (atual.atualizadoEm || 0)) salvos.set(chaveGlobal, {...ultima, dia, salvo: true});
-        }
-      }
-    }
-    // Cobertura completa (pedido da usuaria, 2026-10-01: "considere o cenario do dia, caso salvo; se
-    // nao for salvo, considere o cenario padrao, pela simulacao do LE" — antes so' aparecia o que
-    // alguem tinha salvo, ficando vazio a maior parte do tempo). Toda base+deposito+produto do
-    // snapshot atual entra na lista: usa o salvo quando existir essa semana, senao calcula o LE
-    // padrao na hora (sem gravar nada, sem precisar de ninguem ter salvo antes).
-    const vistos = new Set(), linhas = [];
-    for (const r of D.records) {
-      const deposito = r.bi?.emp_dep || '';
-      const chaveGlobal = `${r.base}|${deposito}|${r.product}`;
-      if (vistos.has(chaveGlobal)) continue;
-      vistos.add(chaveGlobal);
-      // % do LE da semana ja' vendido (pedido da usuaria, 2026-10-01) — vem do mesmo campo usado na
-      // barrinha "Ritmo da semana"; so' existe pros 4 produtos cobertos pela reprojecao. Preenchido
-      // pro registro ATUAL (hoje), independente de ser um item salvo ou calculado agora.
-      const semana = r.bi?.semana && r.bi.semana.leSemana > 0 ? r.bi.semana : null;
-      // cidade (pedido da usuaria, 2026-10-05, visao executiva por cidade): mesma funcao cidadeDe() de
-      // app.js, cadastro oficial — usada pra agrupar itens de bases/depositos diferentes da mesma cidade.
-      const cidade = cidadeDe(r);
-      const existente = salvos.get(chaveGlobal);
-      if (existente) { linhas.push({...existente, semana, cidade}); continue; }
-      try {
-        const content = fresh(r, 'LE'), resultado = E.calculate(content, n), indicadores = window.SIM_INDICATORS(content);
-        const diaIdx = indicadores.diaMenorEstoque == null ? null
-          : Math.round((new Date(indicadores.diaMenorEstoque + 'T12:00:00') - new Date(D.date + 'T12:00:00')) / 86400000);
-        const fluxoDia = diaIdx != null && resultado[diaIdx] ? {incoming: resultado[diaIdx].incoming, outgoing: resultado[diaIdx].outgoing} : null;
-        linhas.push({base: r.base, deposito, produto: r.product, cenario: 'LE', salvo: false, indicadores, fluxoDia, semana, cidade});
-      } catch { /* registro sem dado suficiente pro calculo (ex.: sem abertura); ignora */ }
-    }
-    return linhas;
-  }
-  // Texto curto explicando a causa (pedido da usuaria, 2026-10-01: "resumo de causas" pra diretoria
-  // bater o olho). So' descreve o que da' pra ver nos dados — nao tenta adivinhar motivo de negocio.
-  function causaTexto(it) {
-    const ind = it.indicadores;
-    if (ind.situacao === 'ok') return null;
-    const partes = [];
-    const diaFmt = ind.diaMenorEstoque ? new Date(ind.diaMenorEstoque + 'T12:00:00').toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'}) : null;
-    partes.push(`menor estoque ${fmt(ind.menorEstoque)} m³${diaFmt ? ' em ' + diaFmt : ''}`);
-    if (it.fluxoDia) {
-      const {incoming, outgoing} = it.fluxoDia;
-      if (outgoing > incoming) partes.push(`saiu ${fmt(outgoing)} m³ e entrou só ${fmt(incoming)} m³ nesse dia`);
-      else if (incoming === 0) partes.push('nenhuma entrada programada nesse dia');
-    }
-    if (it.semana) partes.push(`${Math.round(it.semana.realSemana / it.semana.leSemana * 100)}% do LE da semana já vendido`);
-    if (ind.primeiraRuptura) partes.push(`ruptura a partir de ${new Date(ind.primeiraRuptura + 'T12:00:00').toLocaleDateString('pt-BR')}`);
-    return partes.join(' · ');
-  }
-  // Versao curta de causaTexto() pra lista/resumo (pedido da usuaria, 2026-10-06: a frase corrida com
-  // todos os detalhes "ta bem feio" quando empilhada em varias cidades/produtos — aqui so' o essencial
-  // (estoque + data + ruptura, se for diferente do dia do menor estoque), 1 linha curta por produto;
-  // o detalhe completo continua nas abas "Simulações de hoje"/"Por data" (tabela, não texto).
-  function causaResumida(it) {
-    const ind = it.indicadores;
-    if (ind.situacao === 'ok') return null;
-    const diaFmt = ind.diaMenorEstoque ? new Date(ind.diaMenorEstoque + 'T12:00:00').toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}) : null;
-    let texto = `estoque ${fmt(ind.menorEstoque)} m³${diaFmt ? ' em ' + diaFmt : ''}`;
-    if (ind.primeiraRuptura && ind.primeiraRuptura !== ind.diaMenorEstoque) {
-      texto += ` · ruptura ${new Date(ind.primeiraRuptura + 'T12:00:00').toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}`;
-    }
-    return texto;
-  }
-  // Urgencia (pedido da usuaria, 2026-10-02: "quanto mais proximo de termos ruptura e maior for o
-  // volume dessa ruptura" — usado pra ranquear o TOP 10, porque 87 criticos de uma vez "fica confuso
-  // pra diretores e gerentes tomarem acao"). Deficit (m³ negativos) dividido pelos dias ate' a ruptura
-  // — deficit grande chegando logo pesa mais que deficit grande daqui a 2 semanas.
-  function urgencia(it) {
-    const ind = it.indicadores;
-    if (ind.situacao === 'ok') return -Infinity;
-    const diaRuptura = ind.primeiraRuptura || ind.diaMenorEstoque;
-    const diasAte = diaRuptura ? Math.max(0, Math.round((new Date(diaRuptura + 'T12:00:00') - new Date(D.date + 'T12:00:00')) / 86400000)) : 14;
-    const deficit = Math.max(0, -ind.menorEstoque);
-    return deficit / (diasAte + 1);
-  }
-  // Pedido da usuaria, 2026-10-05: "tira isso [cards por base/deposito] da visao do dia, eu queria
-  // algo + executivo... pode analisar por cidade como um todo os highlights, nao precisa ser por
-  // deposito". Agrupa os itens (base+deposito+produto) por CIDADE — 1 card por cidade, com a pior
-  // situacao entre os seus itens, a contagem por situacao, e os piores casos dela em texto.
-  function agruparPorCidade(itens) {
-    const porCidade = new Map();
-    for (const it of itens) {
-      const cidade = it.cidade || '—';
-      if (!porCidade.has(cidade)) porCidade.set(cidade, []);
-      porCidade.get(cidade).push(it);
-    }
-    return [...porCidade.entries()].map(([cidade, lista]) => {
-      lista.sort((a, b) => peso[a.indicadores.situacao] - peso[b.indicadores.situacao] || urgencia(b) - urgencia(a));
-      const resumoSituacao = lista.reduce((c, it) => ({...c, [it.indicadores.situacao]: (c[it.indicadores.situacao] || 0) + 1}), {});
-      return {
-        cidade, itens: lista,
-        situacao: lista[0].indicadores.situacao,
-        urgenciaMax: Math.max(...lista.map(urgencia)),
-        resumoSituacao,
-        piores: lista.filter(it => it.indicadores.situacao !== 'ok').slice(0, 3),
-      };
-    });
-  }
-
-  async function renderSemana() {
-    const minha = ++geracaoSemana;
-    renderPills();
-    statusSemana.textContent = 'Carregando…'; barra.innerHTML = ''; lista.innerHTML = '';
-    const segunda = segundaComOffset(semanaOffset), dias = diasDaSemana(segunda);
-    let itens;
-    try { itens = await linhasDaSemana(dias); }
-    catch (error) { if (minha === geracaoSemana) statusSemana.textContent = `Não foi possível carregar: ${error.message}`; return; }
-    if (minha !== geracaoSemana) return;
-    const regiao = campoRegiaoSemana.value, base = campoBaseSemana.value.trim().toLowerCase(), situacao = campoSituacaoSemana.value;
-    itens = itens.filter(it => (!regiao || cloud.regionOf(it.base) === regiao)
-      && (!base || it.base.toLowerCase().includes(base))
-      && (!situacao || it.indicadores.situacao === situacao));
-    itens.sort((a, b) => peso[a.indicadores.situacao] - peso[b.indicadores.situacao] || urgencia(b) - urgencia(a) || a.base.localeCompare(b.base));
-    const semanaNum = numeroSemanaISO(segunda);
-    const periodo = `${new Date(dias[0] + 'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(dias[6] + 'T12:00:00').toLocaleDateString('pt-BR')}`;
-    if (!itens.length) {
-      statusSemana.textContent = `Semana ${semanaNum} (${periodo}): nenhuma base encontrada com os filtros atuais.`;
-      return;
-    }
-    const resumo = itens.reduce((c, it) => ({...c, [it.indicadores.situacao]: (c[it.indicadores.situacao] || 0) + 1}), {});
-    const salvos = itens.filter(it => it.salvo).length;
-    // Visao MACRO por cidade (pedido da usuaria, 2026-10-05: "tira isso [por base/deposito] da visao
-    // do dia, queria algo + executivo... pode analisar por cidade como um todo os highlights, nao
-    // precisa ser por deposito" — "pq e' highlight ne? entao tem que ser macro"). 1 card por cidade,
-    // ordenado pela pior situacao + maior urgencia entre os itens dela — nao lista cada deposito
-    // separado, so' o resumo e os 2-3 piores casos em texto corrido dentro do card.
-    const cidades = agruparPorCidade(itens)
-      .sort((a, b) => peso[a.situacao] - peso[b.situacao] || b.urgenciaMax - a.urgenciaMax || a.cidade.localeCompare(b.cidade, 'pt-BR'));
-    statusSemana.textContent = `Semana ${semanaNum} (${periodo}) · ${itens.length} base(s) em ${cidades.length} cidade(s) — `
-      + `${resumo.critico || 0} crítica(s) · ${resumo.atencao || 0} em atenção · ${resumo.ok || 0} ok `
-      + `· ${salvos} salva(s) pela equipe, ${itens.length - salvos} calculada(s) agora pelo LE padrão.`;
-    barra.innerHTML = ['critico', 'atencao', 'ok'].filter(s => resumo[s]).map(s =>
-      `<span class="${s}" style="flex:${resumo[s]}">${resumo[s]}</span>`).join('');
-    // Resumo executivo (pedido da usuaria: "consolidar em formato de texto, com as principais causas,
-    // pra diretoria bater o olho") — pedido da usuaria, 2026-10-06: "isso ta bem feio" na frase corrida
-    // original; agora 1 card curto por cidade, com 1 linha por produto (bullet de verdade, nao middot).
-    const resumoEl = $('semana-resumo');
-    const cidadesComProblema = cidades.filter(c => c.situacao !== 'ok');
-    resumoEl.innerHTML = !cidadesComProblema.length ? '' : `<p class="resumo-exec-titulo"><strong>${cidadesComProblema.length} cidade(s) com atenção esta semana</strong></p>
-      <div class="resumo-exec-grid">${cidadesComProblema.map(c => `<div class="resumo-exec-item dia-${c.situacao}">
-        <div class="resumo-exec-cidade">${esc(c.cidade)}</div>
-        <ul class="causas-lista">${c.piores.map(it => `<li><strong>${esc(it.base.replace(c.cidade, '').trim() || it.base)}</strong> <span class="tag">${esc(it.produto)}</span> — ${esc(causaResumida(it))}</li>`).join('')}</ul>
-      </div>`).join('')}</div>`;
-    lista.innerHTML = cidades.map(c => `<div class="card dia-${c.situacao}">
-      <h3>${esc(c.cidade)}</h3>
-      <small>${c.itens.length} base(s)/depósito(s)/produto(s) · ${c.resumoSituacao.critico || 0} crítica(s) · ${c.resumoSituacao.atencao || 0} em atenção · ${c.resumoSituacao.ok || 0} ok</small>
-      <p><strong>${rotuloSituacao[c.situacao]}</strong></p>
-      ${c.piores.length ? `<ul class="causas-lista">${c.piores.map(it => `<li><strong>${esc(it.base.replace(c.cidade, '').trim() || it.base)}</strong> <span class="tag">${esc(it.produto)}</span> — ${esc(causaResumida(it))}</li>`).join('')}</ul>` : ''}
-      <div>${c.piores.map(it => `<button type="button" data-abrir="${esc(it.base)}|${esc(it.produto)}|${esc(it.cenario)}">Abrir ${esc(it.base.replace(c.cidade, '').trim() || it.base)}</button>`).join(' ')}</div>
-    </div>`).join('');
-  }
-
-  lista.addEventListener('click', event => {
-    const botao = event.target.closest('[data-abrir]'); if (!botao) return;
-    const [base, produto, cenario] = botao.dataset.abrir.split('|');
-    abrirCenario(base, produto, cenario);
-  });
-  botaoAnterior.onclick = () => { semanaOffset--; renderSemana(); };
-  botaoProxima.onclick = () => { semanaOffset++; renderSemana(); };
-  [campoRegiaoSemana, campoSituacaoSemana].forEach(el => el.onchange = renderSemana);
-  let atrasoSemana;
-  campoBaseSemana.oninput = () => { clearTimeout(atrasoSemana); atrasoSemana = setTimeout(renderSemana, 250); };
-
-  // Rola pro topo ao abrir — a secao #dia-view ja fica no comeco do HTML (antes do header/main), mas
-  // sem isso a pagina pode continuar com o scroll de onde o usuario estava na simulacao.
-  abrir.onclick = () => { view.hidden = false; renderSemana(); scrollTo({top: 0, behavior: 'smooth'}); };
-  fechar.onclick = () => { view.hidden = true; };
-  document.addEventListener('visao-dia:atualizar', event => {
-    view.hidden = false;
-    tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.diaTab === 'data')));
-    paineis.semana.hidden = true; paineis.hoje.hidden = true; paineis.data.hidden = false;
-    campoData.value = event.detail.dia; renderDia();
-    scrollTo({top: 0, behavior: 'smooth'});
-  });
+  botoesAba.forEach(b => b.onclick = () => { trocarAba(b.dataset.abaAlvo); scrollTo({top: 0}); });
+  $('abas-bar').hidden = false;
+  abrir.hidden = true; fechar.hidden = true;
+  let abaInicial = 'simulacao';
+  try { abaInicial = localStorage.getItem('simulador.aba') || 'simulacao'; } catch { /* idem */ }
+  trocarAba(botoesAba.some(b => b.dataset.abaAlvo === abaInicial) ? abaInicial : 'simulacao');
 })();

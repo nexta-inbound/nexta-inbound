@@ -24,11 +24,13 @@ function simulationToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Ame
 // registro com um cenario especifico, sem depender do que esta selecionado na tela — usado pela
 // "Visao da semana" pra calcular o LE padrao ao vivo de bases sem cenario salvo.
 // Nomes da usuaria (2026-10-08): "programado" = FOB que ja conta hoje (Em Andamento/Viagem Finalizada,
-// com placa); "nao programado" = viagens FOB do portal ainda sem placa (Ofertado/Aceito/Backlog), que o
+// e desde 2026-10-14 tambem Placa Enviada/Frota Dedicada — com placa, Herrlog ainda sem rastrear); "nao programado" = viagens FOB do portal ainda sem placa (Ofertado/Aceito/Backlog), que o
 // publicar_transito_ao_vivo.py ja manda so' no detalhe (viagens[].grupo==='programado' no codigo).
 // Nao entra na conta, a nao ser na origem de entrada "Programado + Não programado".
 function fobNaoProgramado(r,iso){const vs=(D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[iso]?.viagens||[]).filter(v=>v.modal==='fob'&&v.grupo==='programado');return vs.length?vs.reduce((s,v)=>s+(v.volume||0),0):null;}
-function fresh(r,cenarioForcado){
+// entradaForcada: a Visao do dia sempre usa as fontes automaticas, qualquer que seja a origem de
+// entrada escolhida na tela do simulador.
+function fresh(r,cenarioForcado,entradaForcada){
  const scenario=cenarioForcado||$('scenario')?.value||'LE',today=simulationToday();
  // Origem da entrada (pedido da usuaria, 2026-10-01): 'auto' = fontes de sempre (FOB/CIF do portal +
  // Bombeio da cadencia DAP); 'cadencia' = substitui FOB+CIF+Bombeio inteiros pelos valores PLANEJADOS
@@ -37,7 +39,7 @@ function fresh(r,cenarioForcado){
  // $('entrada').value quando nao vem cenarioForcado — e o botao restaurar chama fresh(record) puro,
  // que relê o select; o select em si so' muda quando o usuario mexe, entao o reset preserva a escolha
  // atual do select — por isso o botao "Restaurar" tambem reseta o select pra 'auto' (ver mais abaixo).
- const entrada=$('entrada')?.value||'auto';
+ const entrada=entradaForcada||$('entrada')?.value||'auto';
  const startIndex=Math.max(0,Math.round((new Date(today+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const switchIndex=Math.max(startIndex,Math.round((new Date(D.bi.inbound.switchDate+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const movements=Object.fromEntries(E.rows.map(([k])=>[k,Array(30).fill(0)]));
@@ -76,7 +78,7 @@ function fresh(r,cenarioForcado){
   else if(scenario==='Real'){if(day(i)<=D.bi.extractedAt.slice(0,10))movements.sale[i]=semanaDia?.real??0;}
   else if(['Disp MIS','Inbound + MIS'].includes(scenario))movements.sale[i]=loaded.scenarios?.[scenario]?.availability??0;
  }
- return {version:1,id:r.id,date:D.date,sourceRevision:D.revision,name:'Minha simulação',opening:r.opening,lastro:r.bi?.days[day(0)]?.scenarios?.[scenario]?.lastro??r.policy?.lastro??null,min:r.policy?.min??null,mid:r.policy?.mid??null,max:r.policy?.max??null,capacity:r.policy?.capacity??null,clamp:false,scenario,switchIndex,movements};
+ return {version:1,id:r.id,date:D.date,sourceRevision:D.revision,name:'Minha simulação',opening:r.opening,lastro:r.bi?.days[day(0)]?.scenarios?.[scenario]?.lastro??r.policy?.lastro??null,min:r.policy?.min??null,mid:r.policy?.mid??null,max:r.policy?.max??null,capacity:r.capacidadeFisica??r.policy?.capacity??null,clamp:false,scenario,switchIndex,movements};
 }
 function key(){return 'nexta-stock-auto-v2:'+D.date+':'+record.id+':'+($('scenario')?.value||'LE')+':'+($('entrada')?.value||'auto');}
 function sourceNote(k,i){const loaded=record.bi?.days[day(i)],mode=state.scenario;if(k==='planned')return 'Cadência sugerida pelo simulador (cargas de '+CARGA_SUGESTAO+' m³) ou digitada. Não altera a cadência do MIS.';if(['received','planned','purchase','loanIn','loanOut'].includes(k))return 'Ajuste adicional manual; não repetir um volume já importado.';if(['fob','cif'].includes(k)){const mis=mode==='Inbound + MIS'&&i>=state.switchIndex;return `${mis?'Cadências MIS ('+k.toUpperCase()+')':'CSV do portal, com filtro de status e data de descarga'} · ${fmt((mis?loaded?.inboundMis[k]:loaded?.[k])??0)} m³ · ${day(i)}`;}
@@ -167,7 +169,9 @@ function diasAtrasoAbertura(){
  if(!datas.length)return 0;
  return Math.max(...datas.map(d=>Math.round((new Date(D.date+'T12:00:00')-new Date(d+'T12:00:00'))/86400000)));
 }
-function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):`Política: ${fmt(baseline[k])} m³`}</small></label>`).join('');}
+function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
+// Capacidade 0 = base/produto fora da planilha de tancagem (venda no bico): "Sem capacidade estabelecida".
+function semCapacidade(){return record?.capacidadeFisica===0;}
 function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product];}
 // Dias passados da grade: o que realmente aconteceu (mesmas fontes do BI): abertura da planilha do dia,
 // vendas realizadas (VA05 fornecido), FOB/CIF realizados (trânsito publicado) e fechamento = abertura do dia seguinte.
@@ -223,7 +227,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  const first=result.findIndex(x=>['danger','warn'].includes(status(x.opening))||['danger','warn'].includes(status(x.close)));
  $('cards').innerHTML=[['Abertura de referência',fmt(state.opening),'m³ · início do dia'],['Fechamento ao fim de 14 dias',fmt(last),`m³ · diferença de ${fmt(last-original.at(-1).close)} vs. original`],['Menor estoque no período',fmt(low),'m³ · abertura e fechamento'],['Primeira atenção',first<0?'Sem alerta de limite':label(first),first<0?'Verifique os limites e campos não preenchidos':'Confira os pontos de atenção abaixo']].map(([title,value,sub],i)=>`<article class="card"><small>${title}</small><strong class="${i===2?status(low):''}">${value}</strong><em>${sub}</em></article>`).join('');
  const passado=mostrarHistoricoGrade?5:0;const offsets=Array.from({length:passado+n},(_,i)=>i-passado);
- if(rebuild){let html=`<thead><tr><th class="row-controls"><button type="button" id="toggle-historico" title="Mostrar ou ocultar o histórico dos 5 dias anteriores">${mostrarHistoricoGrade?'−':'+'} dias</button> <button type="button" id="toggle-info" title="Mostrar ou ocultar as linhas de referência (em itálico)">${mostrarInfoGrade?'−':'+'} linhas</button></th><th class="row-label">Movimento / m³</th>`+offsets.map(i=>`<th class="${i<0?'history':i===0?'today':''}">${label(i)}<br><span class="dia-semana">${diaSemana(i)}</span><br><small>${i<0?'Histórico':i===0?'Referência':'Simulação'}</small></th>`).join('')+'</tr></thead><tbody>';
+ if(rebuild){let html=`<thead><tr><th class="row-controls"><button type="button" id="toggle-historico" title="Mostrar ou ocultar o histórico dos 5 dias anteriores">${mostrarHistoricoGrade?'−':'+'} dias</button> <button type="button" id="toggle-info" title="Mostrar ou ocultar as linhas de referência (em itálico)">${mostrarInfoGrade?'−':'+'} linhas</button></th><th class="row-label">Movimento / m³</th>`+offsets.map(i=>`<th class="${i<0?'history':i===0?'today':''}" data-col-day="${i}">${label(i)}<br><span class="dia-semana">${diaSemana(i)}</span><br><small>${i<0?'Histórico':i===0?'Referência':'Simulação'}</small></th>`).join('')+'</tr></thead><tbody>';
  const outputRow=(key,name,fonte)=>`<tr class="total"><th class="row-controls"></th><th class="row-label">${name}${horaFonte(fonte)}</th>${offsets.map(i=>`<td data-result="${key}" data-day="${i}"></td>`).join('')}</tr>`;
  html+=outputRow('opening','Estoque inicial · abertura','abertura');html+=outputRow('lastro','Lastro mínimo','politica');html+=outputRow('openingNet','Abertura menos lastro');
  // 4 linhas informativas (so' leitura, nao entram no calculo) mostrando as referencias da venda antes
@@ -275,7 +279,8 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  document.querySelectorAll('[data-row="fob"]').forEach(input=>{const i=+input.dataset.day,d1=fobAposCorte(i);input.parentElement.classList.toggle('fob-d1',d1>0&&state.movements.fob[i]>=d1);});
  document.querySelectorAll('[data-row]').forEach(input=>input.parentElement.classList.toggle('edited',state.movements[input.dataset.row][+input.dataset.day]!==baseline.movements[input.dataset.row][+input.dataset.day]));
  document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
- chart(result,original,Array.from({length:7+n},(_,i)=>i-7));alerts(result);
+ // Grafico com os MESMOS dias da tabela (o botao "+ dias" vale pros dois), pra ficar no mesmo eixo x.
+ chart(result,original,offsets);alerts(result);
 }
 // record.bi.semana: {leSemana, realSemana} — vem da reprojecao do VMD (cidade+familia de produto);
 // so' existe pros 4 produtos cobertos (Gasolina, Diesel S10, Diesel S500, Hidratado) e quando o banco
@@ -326,10 +331,26 @@ document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){
 // Disp. MIS por cima; eixo com dia da semana em cima e data embaixo.
 // Escala comeca no zero: estoque negativo nao aparece no grafico (2026-10-09); o valor continua na tabela.
 const COR_LASTRO='#F9B96B',COR_ABERTURA='#3AAE9C';
+// Eixo x da grade (pedido da usuaria, 2026-10-14: "a tabela com o dia abaixo do grafico, no mesmo eixo x"):
+// cada barra fica em cima da coluna do mesmo dia na tabela logo abaixo. Mede as colunas de verdade (a
+// largura muda com a tela e com a rolagem horizontal) e converte pra unidade do viewBox; sem grade
+// visivel (tela ainda escondida), devolve null e o grafico usa o espacamento uniforme de antes.
+function eixoDaGrade(offsets,W){
+ const box=$('chart')?.getBoundingClientRect();if(!box?.width)return null;
+ const k=W/box.width,cols={};
+ for(const th of document.querySelectorAll('#grid thead th[data-col-day]')){const r=th.getBoundingClientRect();cols[+th.dataset.colDay]={c:(r.left+r.width/2-box.left)*k,w:r.width*k};}
+ if(!offsets.every(i=>cols[i]?.w>0))return null;
+ const rotulos=document.querySelector('#grid thead th.row-label')?.getBoundingClientRect();
+ const primeira=cols[offsets[0]];
+ return {x:i=>cols[i].c,cw:primeira.w,L:rotulos?.width?(rotulos.right-box.left)*k:primeira.c-primeira.w/2};
+}
 function chart(result,original,offsets){
- chartContext={result,offsets};
+ chartContext={result,original,offsets};
  // Altura acompanha a largura da tela (style.css: height:auto) — ocupa a tela toda (usuaria, 2026-10-09).
- const W=1200,H=320,L=50,R=12,T=16,B=36;
+ const W=1200,H=320,R=12,T=16,B=36;
+ const eixo=eixoDaGrade(offsets,W);
+ const L=eixo?eixo.L:50,cw=eixo?eixo.cw:(W-L-R)/offsets.length,bw=cw*.78,x=eixo?eixo.x:(i=>L+(i-offsets[0]+.5)*cw);
+ const fim=eixo?Math.min(W,x(offsets.at(-1))+cw/2):W-R;
  const lastro=Math.max(state.lastro??0,0);
  const movValores=movSeries.flatMap(([,,,f])=>offsets.map(f)).filter(v=>v!=null);
  // Sem linha de fechamento/cenario original (usuaria, 2026-10-09: "n precisa disso"): escala so' pelas barras e linhas.
@@ -337,10 +358,11 @@ function chart(result,original,offsets){
   parameters.slice(1).map(([k])=>state[k]).filter(v=>v!==null),movValores,[0]);
  const hi=Math.max(...values),span=Math.max(hi,1);
  const y=v=>T+(hi+span*.1-Math.max(v,0))/(span*1.2)*(H-T-B);
- const cw=(W-L-R)/offsets.length,bw=cw*.78,x=i=>L+(i+7+.5)*cw;
  const today=simulationToday();
- let fundo=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Histórico de abertura e projeção de estoque em metros cúbicos"><rect x="${L}" y="0" width="${x(0)-L-cw/2}" height="${H-B}" fill="#ffffff04"/>`;
- for(let j=0;j<5;j++){const v=hi*j/4;fundo+=`<path d="M${L} ${y(v)}H${W-R}" stroke="#314A32"/><text x="${L-8}" y="${y(v)+4}" fill="#7FA069" text-anchor="end" font-size="11">${fmt(v)}</text>`;}
+ // Recorte na borda das colunas fixas de rotulo: com rolagem horizontal (tela estreita), os dias que
+ // passam por baixo dos rotulos da tabela tambem somem do grafico.
+ let fundo=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Histórico de abertura e projeção de estoque em metros cúbicos"><clipPath id="chart-recorte"><rect x="${L}" y="0" width="${Math.max(0,W-L)}" height="${H}"/></clipPath><rect x="${L}" y="0" width="${Math.max(0,x(0)-L-cw/2)}" height="${H-B}" fill="#ffffff04"/>`;
+ for(let j=0;j<5;j++){const v=hi*j/4;fundo+=`<path d="M${L} ${y(v)}H${fim}" stroke="#314A32"/><text x="${L-8}" y="${y(v)+4}" fill="#7FA069" text-anchor="end" font-size="11">${fmt(v)}</text>`;}
  const hojeI=offsets.find(i=>day(i)===today);
  if(hojeI!=null)fundo+=`<rect x="${x(hojeI)-cw/2}" y="0" width="${cw}" height="${H-B}" fill="#EEFE7A" opacity=".08"><title>Hoje</title></rect>`;
  // Barras empilhadas + rotulos (caixinha clara no meio de cada pedaco com altura suficiente).
@@ -371,15 +393,22 @@ function chart(result,original,offsets){
  }
  // Linhas de politica (sem o lastro, que ja' e' a faixa laranja da barra).
  let politica='';
- for(const [k,cor,traco] of [['min','#FF4D4D','3 4'],['mid','#9CA3AF','3 4'],['max','#4CAF1F','3 4'],['capacity','#38BDF8','']])if(state[k]!==null)politica+=`<path d="M${L} ${y(state[k])}H${W-R}" stroke="${cor}" stroke-width="${k==='capacity'?2:1.5}" stroke-dasharray="${traco}"><title>${k}: ${fmt(state[k])} m³</title></path>`;
+ for(const [k,cor,traco] of [['min','#FF4D4D','3 4'],['mid','#9CA3AF','3 4'],['max','#4CAF1F','3 4'],['capacity','#38BDF8','']])if(state[k]!==null)politica+=`<path d="M${L} ${y(state[k])}H${fim}" stroke="${cor}" stroke-width="${k==='capacity'?2:1.5}" stroke-dasharray="${traco}"><title>${k}: ${fmt(state[k])} m³</title></path>`;
  // Linhas de venda/Disp. MIS por cima das barras.
  let linhas='';
  for(const [,nome,cor,valorEm] of movSeries.filter(m=>!ENTRADAS_BLOCO.includes(m[0]))){const pontos=offsets.map(i=>[i,valorEm(i)]).filter(([,v])=>v!=null);if(!pontos.length)continue;linhas+=`<polyline points="${pontos.map(([i,v])=>`${x(i)},${y(v)}`).join(' ')}" fill="none" stroke="${cor}" stroke-width="2"/>`;for(const [i,v] of pontos)linhas+=`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³</title></circle>`;}
  // Area invisivel por dia, por cima de tudo, pra abrir o popup com o detalhamento completo do dia.
  let alvos='';
  for(const i of offsets)alvos+=`<rect x="${x(i)-cw/2}" y="0" width="${cw}" height="${H-B}" fill="transparent" data-chart-day="${i}" tabindex="0" aria-label="Detalhes de ${esc(label(i))}"/>`;
- $('chart').innerHTML=fundo+barras+politica+linhas+rot+alvos+'</svg>';
+ $('chart').innerHTML=fundo+`<g clip-path="url(#chart-recorte)">`+barras+politica+linhas+rot+alvos+'</g></svg>';
 }
+// Redesenha o grafico quando as colunas da tabela mudam de lugar (janela redimensionada, tabela rolada
+// na horizontal, tela que acabou de aparecer depois do login), pra manter o mesmo eixo x.
+let redesenhoGrafico=0;
+function redesenharGrafico(){if(redesenhoGrafico||!chartContext)return;redesenhoGrafico=requestAnimationFrame(()=>{redesenhoGrafico=0;const {result,original,offsets}=chartContext;chart(result,original,offsets);});}
+window.addEventListener('resize',redesenharGrafico);
+document.addEventListener('scroll',e=>{if(e.target?.classList?.contains('table-scroll'))redesenharGrafico();},true);
+if(window.ResizeObserver&&$('grid'))new ResizeObserver(redesenharGrafico).observe($('grid'));
 function popupGrafico(i){
  const {result,offsets}=chartContext||{};if(!result)return'';
  const futuro=i>=0;
@@ -413,7 +442,7 @@ document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-cha
 document.addEventListener('focusin',e=>{const el=e.target.closest('[data-chart-day]');if(el)mostrarPopupGrafico(el);});
 document.addEventListener('pointerdown',e=>{const el=e.target.closest('[data-chart-day]');if(el)mostrarPopupGrafico(el);else if(!$('chart-popover').contains(e.target))fecharPopupGrafico();});
 document.addEventListener('pointerout',e=>{if(e.target.closest('[data-chart-day]')&&document.activeElement!==e.target)fecharPopupGrafico();});
-function alerts(result){const items=['O histórico de vendas realizadas não é carregado nesta versão; as vendas futuras usam o LE vigente e, hoje, o maior entre o LE e os pedidos do SAP.',`Valores futuros carregados das fontes (${D.bi.extractedAt.replace('T',' ')}). Portal carregado até ${D.bi.coverage.portal_max.slice(0,10)}; cadências MIS até ${D.bi.coverage.cadencia_max.slice(0,10)}.`];if(parameters.slice(1).some(([k])=>state[k]===null))items.push('A planilha de política tem campos vazios neste recorte; os alertas correspondentes estão indisponíveis.');result.forEach((r,i)=>{const low=Math.min(r.opening,r.close),high=Math.max(r.opening,r.close),a=[];if(low<0)a.push(`déficit físico de ${fmt(-low)} m³`);if(state.lastro!==null&&low<state.lastro)a.push('estoque abaixo do lastro');if(state.min!==null&&low<=state.min)a.push(`no mínimo ou abaixo em ${fmt(state.min-low)} m³`);if(state.capacity!==null&&high>state.capacity)a.push(`capacidade excedida em ${fmt(high-state.capacity)} m³`);else if(state.max!==null&&high>state.max)a.push('acima do estoque máximo');if(a.length)items.push(label(i)+': '+a.join(' • '));});$('alerts').innerHTML=items.map(s=>`<div class="alert">${esc(s)}</div>`).join('');}
+function alerts(result){const items=['O histórico de vendas realizadas não é carregado nesta versão; as vendas futuras usam o LE vigente e, hoje, o maior entre o LE e os pedidos do SAP.',`Valores futuros carregados das fontes (${D.bi.extractedAt.replace('T',' ')}). Portal carregado até ${D.bi.coverage.portal_max.slice(0,10)}; cadências MIS até ${D.bi.coverage.cadencia_max.slice(0,10)}.`];if(parameters.slice(1).some(([k])=>state[k]===null))items.push('A planilha de política tem campos vazios neste recorte; os alertas correspondentes estão indisponíveis.');result.forEach((r,i)=>{const low=Math.min(r.opening,r.close),high=Math.max(r.opening,r.close),a=[];if(low<0)a.push(`déficit físico de ${fmt(-low)} m³`);if(state.lastro!==null&&low<state.lastro)a.push('estoque abaixo do lastro');if(state.min!==null&&low<=state.min)a.push(`no mínimo ou abaixo em ${fmt(state.min-low)} m³`);if(state.capacity>0&&high>state.capacity)a.push(`capacidade excedida em ${fmt(high-state.capacity)} m³`);else if(state.max!==null&&high>state.max)a.push('acima do estoque máximo');if(a.length)items.push(label(i)+': '+a.join(' • '));});$('alerts').innerHTML=items.map(s=>`<div class="alert">${esc(s)}</div>`).join('');}
 // Selecionar pelo <select> nativo sempre colapsa pra 1 so' (troca o Set inteiro) — e' a ferramenta de
 // "escolher so' esse"; os chips (abaixo) sao quem permite ligar varios ao mesmo tempo sem perder os
 // outros ja ativos.
@@ -440,11 +469,13 @@ $('reset-tabela').onclick=restaurarDaFonte;
 // tanque. Capacidade = tanque informado no MIS; sem ele, a capacidade da politica.
 // Recalcula do zero a cada clique (ignora o que ja' estava na linha) e considera FOB/CIF/Bombeio do jeito que
 // estao na tela, inclusive editados. Antecedencia, cargas por dia e dias sem recebimento ainda nao entram.
-function capacidadeDoTanque(){return record?.capacidadeFisica||state?.capacity||null;}
+// Capacidade = planilha de tancagem (0 = fora da planilha, venda no bico); a politica so' entra se o
+// snapshot for antigo e nao trouxer capacidadeFisica.
+function capacidadeDoTanque(){return record?.capacidadeFisica??state?.capacity??null;}
 function sugerirCadencia(){
  if(!record){message('Escolha cidade, depósito e produto antes de sugerir a cadência.');return;}
  const capacidade=capacidadeDoTanque();
- if(!capacidade){message('Este recorte não tem a capacidade do tanque informada; não é possível sugerir a cadência.');return;}
+ if(!capacidade){message(semCapacidade()?'Sem capacidade estabelecida para este recorte; não é possível sugerir a cadência.':'Este recorte não tem a capacidade do tanque informada; não é possível sugerir a cadência.');return;}
  const hojeI=Math.max(0,Math.round((new Date(simulationToday()+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const semSugestao=structuredClone(state);semSugestao.movements.planned=Array(30).fill(0);
  const plano=E.suggest(semSugestao,n,{carga:CARGA_SUGESTAO,gatilho:capacidade*GATILHO_SUGESTAO,teto:capacidade,inclusive:false,inicio:hojeI+1});

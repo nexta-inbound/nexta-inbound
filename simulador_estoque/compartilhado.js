@@ -88,8 +88,7 @@
     await cloud.saveDailyVersion(dia, base, chave, {base, deposito, produto: record.product, cenario: content.scenario,
       nome: content.name, motivo, conteudo: JSON.stringify(content), fonteRevisao: D.revision,
       indicadores: indicators(content)});
-    document.dispatchEvent(new CustomEvent('visao-dia:atualizar', {detail: {dia}}));
-    note('Cenário salvo para a equipe e na visão do dia.');
+    note('Cenário salvo para a equipe.');
   }
   async function save(copy) {
     if (modoCombinado) throw new Error('Modo combinado: não dá pra salvar na equipe, só existe cenário salvo por base.');

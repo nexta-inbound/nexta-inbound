@@ -172,3 +172,130 @@ td.danger{background:#8B0000!important;color:white!important;box-shadow:inset 0 
 /* Cadencia sugerida: dia em que o estoque encosta no minimo, mas a carga nao cabe no tanque. */
 #grid td.sugestao-nao-cabe{background:#8B000055!important}#grid td.sugestao-nao-cabe input{border-color:var(--danger);box-shadow:inset 0 0 0 1px var(--danger)}
 #grid tr.entry:has([data-row="planned"]) th.row-label{color:#d9f99d}
+/* Visao do dia: matriz cidade x produto (2026-10-14) */
+body.visao-dia-aberta>header,body.visao-dia-aberta>main{display:none}
+.semana-barra .critico-hoje,.matriz-risco td.critico-hoje button,.matriz-legenda .critico-hoje::before{background:#8B0000;color:#fff}
+.semana-barra .critico,.matriz-risco td.critico button,.matriz-legenda .critico::before{background:#FF6B5F;color:#2A0A08}
+.semana-barra .atencao,.matriz-risco td.atencao button,.matriz-legenda .atencao::before{background:#FACC15;color:#2A2205}
+.semana-barra .ok,.matriz-risco td.ok button,.matriz-legenda .ok::before{background:#8DC830;color:#13200B}
+.semana-barra .critico-hoje{color:#fff}
+.matriz-legenda{display:flex;flex-wrap:wrap;gap:16px;margin:0 0 12px;font-size:12px;color:var(--muted)}
+.matriz-legenda span{display:inline-flex;align-items:center;gap:6px}
+.matriz-legenda span::before{content:'';width:12px;height:12px;border-radius:3px}
+.matriz-scroll{overflow-x:auto;margin-bottom:18px}
+.matriz-risco{border-collapse:separate;border-spacing:4px;font-size:13px;min-width:100%}
+.matriz-risco thead th{color:var(--dim);font-weight:600;font-size:12px;text-align:center;padding:6px 8px}
+.matriz-risco thead th:first-child,.matriz-risco tbody th{text-align:left}
+.matriz-risco tbody th{color:var(--text);font-weight:600;padding:4px 12px 4px 4px;white-space:nowrap}
+.matriz-risco td{padding:0;text-align:center;min-width:96px}
+.matriz-risco td button{width:100%;min-height:34px;border:0;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;padding:6px 8px}
+.matriz-risco td button:hover,.matriz-risco td button:focus-visible{outline:2px solid #EEFE7A;outline-offset:1px}
+.matriz-risco td.vazio{color:var(--dim)}
+.semana-lista .card.dia-critico-hoje{border-left-color:#8B0000}
+.semana-lista .card.dia-critico{border-left-color:#FF6B5F}
+.semana-lista .card.dia-atencao{border-left-color:#FACC15}
+.semana-lista .causas-lista li b{color:var(--text);font-weight:700;font-size:12px}
+/* Ranking de dias de estoque */
+.ranking-dias{background:#17251B;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px}
+.ranking-topo{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ranking-topo h3{margin:0;font-size:15px}
+.ranking-topo label{min-width:200px}
+.ranking-nota{font-size:12px;margin:6px 0 12px}
+.ranking-lista{display:flex;flex-direction:column;gap:5px}
+.ranking-linha{display:grid;grid-template-columns:150px 1fr 48px;align-items:center;gap:10px;font-size:12px}
+.ranking-cidade{color:var(--text);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ranking-trilho{height:18px;background:#ffffff08;border-radius:4px;overflow:hidden}
+.ranking-barra{display:block;height:100%;border-radius:4px}
+.ranking-barra.critico-hoje{background:#8B0000}.ranking-barra.critico{background:#FF6B5F}.ranking-barra.atencao{background:#FACC15}.ranking-barra.ok{background:#8DC830}
+.ranking-valor{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+@media(max-width:600px){.ranking-linha{grid-template-columns:96px 1fr 40px}}
+/* Pisca: critico hoje mais rapido, critico dos proximos dias e atencao mais devagar */
+@keyframes pisca{0%,100%{opacity:1}50%{opacity:.35}}
+.matriz-risco td.critico-hoje button,.ranking-barra.critico-hoje{animation:pisca .8s ease-in-out infinite}
+.matriz-risco td.critico button,.ranking-barra.critico{animation:pisca 1.4s ease-in-out infinite}
+.matriz-risco td button:hover{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.matriz-risco td button,.ranking-barra{animation:none!important}}
+.ranking-barra.neutra{background:#3AAE9C}
+#matriz-popover{position:fixed;z-index:100;width:max-content;min-width:min(280px,calc(100vw - 16px));max-width:min(520px,calc(100vw - 16px));padding:14px 16px;background:#272a2d;color:#fff;border:1px solid #92999f;border-radius:12px;box-shadow:0 6px 24px #0006;pointer-events:none;font-size:13px}
+#matriz-popover p{margin:4px 0;color:#e0e5e8;font-size:12px}
+#matriz-popover dl{margin:10px 0;border-block:1px solid #52575b;padding:6px 0}
+#matriz-popover dl div{padding:4px 0}
+#matriz-popover dt{font-weight:700;font-size:12px}
+#matriz-popover dd{margin:0;font-size:12px;color:#e0e5e8}
+/* Abas da pagina, no estilo do portal inbound (2026-10-14) */
+.abas-bar{display:flex;gap:2px;margin:0 16px 16px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:thin}
+.abas-bar button{flex:none;background:none;border:0;border-bottom:2px solid transparent;border-radius:0;padding:12px 18px;color:var(--muted);font-weight:600;font-size:14px;white-space:nowrap;cursor:pointer}
+.abas-bar button:hover{color:var(--dim);background:#ffffff06}
+.abas-bar button[aria-selected="true"]{color:#EEFE7A;border-bottom-color:#EEFE7A;background:linear-gradient(to bottom,transparent 60%,#8dc8301f)}
+body[data-aba="simulacao"] main>:not([data-aba~="simulacao"]),
+body[data-aba="alertas"] main>:not([data-aba~="alertas"]),
+body[data-aba="cenario"] main>:not([data-aba~="cenario"]),
+body[data-aba="historico"] main>:not([data-aba~="historico"]){display:none!important}
+/* Ranking + quadro por produto lado a lado */
+.ranking-corpo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media(max-width:1000px){.ranking-corpo{grid-template-columns:1fr}}
+button.ranking-linha{width:100%;background:none;border:0;border-radius:6px;padding:2px 4px;cursor:pointer;text-align:left;color:inherit;font:inherit}
+button.ranking-linha:hover{background:#ffffff08}
+button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px #EEFE7A66}
+.ranking-produtos{border-left:1px solid var(--border);padding-left:20px}
+@media(max-width:1000px){.ranking-produtos{border-left:0;padding-left:0}}
+.ranking-produtos-topo{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:14px}
+.ranking-produtos-topo small{color:var(--muted);font-size:11px}
+.ranking-produtos-topo button{padding:4px 10px;font-size:11px}
+.ranking-produtos-tabela{width:100%;border-collapse:collapse;font-size:12px}
+.ranking-produtos-tabela th,.ranking-produtos-tabela td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+.ranking-produtos-tabela thead th{color:var(--dim);font-weight:600;font-size:11px}
+.ranking-produtos-tabela th:first-child{text-align:left;color:#EEFE7A;font-weight:700}
+.ranking-produtos-tabela thead th:first-child{color:var(--dim)}
+.ranking-secao{margin-bottom:16px}
+.sem-capacidade{color:var(--muted);font-weight:400;font-style:italic;font-size:11px}
+.ranking-produtos-tabela tfoot th,.ranking-produtos-tabela tfoot td{font-weight:700;color:#EEFE7A;border-top:2px solid var(--border);border-bottom:0;background:#8dc8301a}
+.abas-bar button{display:inline-flex;align-items:center;gap:8px}
+.aba-icone{width:18px;height:18px;flex:none;opacity:.75;transition:transform .15s,opacity .15s}
+.abas-bar button:hover .aba-icone{opacity:1;transform:translateY(-1px)}
+.abas-bar button[aria-selected="true"] .aba-icone{opacity:1;filter:drop-shadow(0 0 6px #EEFE7A66)}
+.abas-bar button[data-aba-alvo="alertas"] .aba-icone{color:#FF8A7F}
+.abas-bar button[data-aba-alvo="alertas"][aria-selected="true"] .aba-icone{color:#FF6B5F;filter:drop-shadow(0 0 6px #FF6B5F88)}
+/* Trocar senha */
+#trocar-senha{display:inline-flex;align-items:center;gap:6px}
+#trocar-senha .aba-icone{width:16px;height:16px;opacity:.85}
+.senha-dialogo{width:min(420px,calc(100vw - 32px));padding:24px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px #000a}
+.senha-dialogo::backdrop{background:#0009}
+.senha-dialogo h2{margin:0 0 6px}
+.senha-dialogo form{display:flex;flex-direction:column;gap:12px}
+.senha-dialogo p{margin:0}
+#senha-info{min-height:18px;font-size:13px;color:#f3c787}
+.senha-acoes{display:flex;justify-content:flex-end;gap:8px}
+/* Legenda com as regras da matriz */
+.matriz-legenda{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 8px}
+@media(max-width:1000px){.matriz-legenda{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.matriz-legenda{grid-template-columns:1fr}}
+.matriz-legenda>div{display:flex;flex-direction:column;gap:3px;padding:9px 12px;background:#17251B;border:1px solid var(--border);border-left-width:5px;border-radius:8px;font-size:12px;color:var(--muted);line-height:1.35}
+.matriz-legenda>div::before{display:none}
+.matriz-legenda b{color:var(--text);font-size:13px}
+.matriz-legenda strong{color:var(--text)}
+.matriz-legenda .critico-hoje{border-left-color:#8B0000}.matriz-legenda .critico{border-left-color:#FF6B5F}
+.matriz-legenda .atencao{border-left-color:#FACC15}.matriz-legenda .ok{border-left-color:#8DC830}
+.matriz-legenda-nota{margin:0 0 12px;font-size:12px;color:var(--muted)}
+.matriz-legenda span{display:block}.matriz-legenda span::before{display:none}
+/* Regras da aba Cenario */
+.regras-cenario{margin-top:14px;background:#17251B;border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.regras-cenario h3{margin:0 0 10px;font-size:14px}
+.regras-cenario dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 18px;margin:0}
+@media(max-width:1000px){.regras-cenario dl{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.regras-cenario dl{grid-template-columns:1fr}}
+.regras-cenario dt{color:#EEFE7A;font-weight:700;font-size:12px;margin-bottom:2px}
+.regras-cenario dd{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+/* Aviso de senha (temporaria ou perto de vencer) */
+.aviso-senha{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 16px 0;padding:10px 14px;border-radius:10px;background:#3a2a0a;border:1px solid #FACC15;color:#FDE68A;font-size:13px}
+.aviso-senha[data-tipo="temporaria"]{background:#3b1210;border-color:#FF6B5F;color:#FFD0CC}
+.aviso-senha button{flex:none;padding:6px 12px;font-size:12px}
+/* Ajuste de largura: quadro com 7 colunas nao pode empurrar a pagina (2026-10-14) */
+.ranking-corpo{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
+.ranking-corpo>*{min-width:0}
+.ranking-produtos{overflow-x:auto}
+.ranking-produtos-tabela th,.ranking-produtos-tabela td{padding:6px 7px}
+.ranking-produtos-tabela thead th{white-space:normal;line-height:1.2;vertical-align:bottom}
+.ranking-dias{overflow:hidden}
+@media(max-width:1350px){.ranking-corpo{grid-template-columns:1fr}.ranking-produtos{border-left:0;padding-left:0;border-top:1px solid var(--border);padding-top:14px}}
+.ranking-controles{display:flex;align-items:end;gap:16px;flex-wrap:wrap}.ranking-transito-label{display:inline-flex;align-items:center;gap:6px;min-width:0!important;padding-bottom:10px;font-size:13px;cursor:pointer}
