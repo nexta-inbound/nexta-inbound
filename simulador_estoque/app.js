@@ -176,6 +176,39 @@ function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product]
 // Dias passados da grade: o que realmente aconteceu (mesmas fontes do BI): abertura da planilha do dia,
 // vendas realizadas (VA05 fornecido), FOB/CIF realizados (trânsito publicado) e fechamento = abertura do dia seguinte.
 // Cor da abertura pela ocupacao do tanque: vermelho abaixo de 70% da capacidade, amarelo ate 75%, verde acima.
+// Aviso de capacidade excedida (pedido da usuaria, 2026-10-14: "se extrapolar a capacidade maxima, aparece
+// um recado avisando o porque"). Mesma regua da sugestao de cadencia: fechamento do dia (abertura + entradas
+// - vendas) acima da capacidade do tanque, de hoje em diante. Explica o dia, quanto passou e de onde veio
+// o volume; marca a celula "Total de entradas" desses dias. Sem capacidade estabelecida, nao avisa.
+const NOMES_ENTRADA={fob:'Trânsito FOB',cif:'Trânsito CIF',pump:'Bombeio',planned:'Cadência sugerida',received:'Recebimento adicional',transferIn:'Transferência'};
+function avisoCapacidade(result){
+ let el=$('aviso-capacidade');
+ if(!el){const secao=$('grid').closest('section');el=document.createElement('div');el.id='aviso-capacidade';el.className='aviso-capacidade';el.setAttribute('role','alert');el.hidden=true;secao.querySelector('.table-scroll').before(el);}
+ document.querySelectorAll('#grid td.excede-capacidade').forEach(td=>{td.classList.remove('excede-capacidade');td.removeAttribute('title');});
+ const cap=capacidadeDoTanque();
+ const hoje=Math.max(0,Math.round((new Date(simulationToday()+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
+ const dias=cap>0?result.map((r,i)=>({r,i})).filter(({r,i})=>i>=hoje&&r.close>cap+1e-6):[];
+ if(!dias.length){el.hidden=true;el.innerHTML='';return;}
+ const detalhe=({r,i})=>{const partes=Object.entries(NOMES_ENTRADA).map(([k,n])=>[n,state.movements[k]?.[i]||0]).filter(([,v])=>v>0).map(([n,v])=>`${n} ${fmt(v)}`);
+  return `abertura ${fmt(r.opening)} + entradas ${fmt(r.incoming)}${partes.length?` (${partes.join(', ')})`:''} − vendas ${fmt(r.outgoing)} = ${fmt(r.close)} m³`;};
+ // Causa = dia que estoura COM entrada; os dias seguintes so' carregam o excesso (nao adianta mandar
+ // rever entrada onde nao chega nada).
+ const causas=dias.filter(d=>d.r.incoming>0),ultimo=dias.at(-1);
+ const periodo=dias.length>1?`de ${esc(label(dias[0].i))} a ${esc(label(ultimo.i))}`:`em ${esc(label(dias[0].i))}`;
+ el.innerHTML=`<strong>⚠ O estoque passa da capacidade do tanque (${fmt(cap)} m³) ${periodo}.</strong> `
+  +(causas.length
+   ?causas.slice(0,3).map(d=>`Em ${esc(label(d.i))}: ${detalhe(d)}, ${fmt(d.r.close-cap)} m³ a mais do que cabe.`).join(' ')
+    +(causas.length>3?` E em mais ${causas.length-3} dia(s).`:'')
+    +` Chega mais produto do que o tanque comporta para a venda prevista: reveja as entradas de ${causas.map(d=>esc(label(d.i))).join(', ')} (FOB, CIF, bombeio ou cadência sugerida).`
+   :`A abertura (${fmt(dias[0].r.opening)} m³) já está acima da capacidade: confira a abertura ou a capacidade cadastrada do tanque.`)
+  +(dias.length>causas.length&&causas.length?` Nos outros dias o excesso só continua no tanque, até as vendas trazerem o estoque de volta para baixo da capacidade.`:'');
+ el.hidden=false;
+ // Cinza listrado (usuaria: "um cinza, alguma coisa com aspecto ruim"), pra nao confundir com o vermelho de
+ // falta: as entradas do dia que estoura e a abertura do dia seguinte, onde o volume que nao cabe aparece.
+ for(const d of dias){const dica=`${label(d.i)}: ${detalhe(d)}. Capacidade do tanque: ${fmt(cap)} m³ (passa ${fmt(d.r.close-cap)} m³).`;
+  for(const td of [d.r.incoming>0?document.querySelector(`#grid td[data-result="incoming"][data-day="${d.i}"]`):null,document.querySelector(`#grid td[data-result="opening"][data-day="${d.i+1}"]`)])
+   if(td){td.classList.add('excede-capacidade');td.title=dica;}}
+}
 function capBand(v){const cap=record.capacidadeFisica;if(v==null||!cap)return'';const p=v/cap;return p<0.70?'danger':p<=0.75?'warn':'high';}
 // No modo combinado soma o passado de cada registro real por tras da soma (o record sintetico nao tem emp_dep).
 const registrosReais=()=>record._registrosCombinados||[record];
@@ -280,7 +313,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  document.querySelectorAll('[data-row]').forEach(input=>input.parentElement.classList.toggle('edited',state.movements[input.dataset.row][+input.dataset.day]!==baseline.movements[input.dataset.row][+input.dataset.day]));
  document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
  // Grafico com os MESMOS dias da tabela (o botao "+ dias" vale pros dois), pra ficar no mesmo eixo x.
- chart(result,original,offsets);alerts(result);
+ chart(result,original,offsets);alerts(result);avisoCapacidade(result);
 }
 // record.bi.semana: {leSemana, realSemana} — vem da reprojecao do VMD (cidade+familia de produto);
 // so' existe pros 4 produtos cobertos (Gasolina, Diesel S10, Diesel S500, Hidratado) e quando o banco
