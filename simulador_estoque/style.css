@@ -305,3 +305,12 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .aviso-capacidade{border-color:#9CA3AF;background:repeating-linear-gradient(135deg,#2b2f33 0 10px,#24282c 10px 20px);color:#E5E7EB}
 .aviso-capacidade strong{color:#fff}
 #grid td.excede-capacidade{background:repeating-linear-gradient(135deg,#5b6168 0 6px,#3f444a 6px 12px)!important;color:#F3F4F6!important;box-shadow:inset 0 0 0 2px #9CA3AF;font-weight:700;cursor:help}
+.cadencia-grupo{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.cadencia-rotulo{font-size:12px;color:var(--muted);margin-right:2px}
+/* Transferencias entre bases (2026-10-15) */
+#transf-popover{position:fixed;z-index:100;width:max-content;min-width:min(300px,calc(100vw - 16px));max-width:min(560px,calc(100vw - 16px));padding:14px 16px;background:#272a2d;color:#fff;border:1px solid #92999f;border-radius:12px;box-shadow:0 6px 24px #0006;pointer-events:none;font-size:13px}
+#transf-popover p{margin:4px 0;color:#e0e5e8;font-size:12px}
+#transf-popover dl{margin:8px 0;padding:4px 0;border-block:1px solid #52575b}
+#transf-popover dl div{padding:4px 0;border-bottom:1px solid #3a3f43}#transf-popover dl div:last-child{border-bottom:0}
+#transf-popover dt{font-weight:700;font-size:12px}#transf-popover dd{margin:0;font-size:11.5px;color:#e0e5e8}
+#grid tr.transf-row td[data-transf]{cursor:help;color:#C4B5FD;font-weight:700;text-decoration:underline dotted}
+#grid td.transf-com-detalhe{box-shadow:inset 0 0 0 1px #C4B5FD;cursor:help}

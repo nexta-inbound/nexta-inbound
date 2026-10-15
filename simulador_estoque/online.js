@@ -94,6 +94,7 @@ el('senha-form').onsubmit = async event => {
     info.textContent = 'Senha atualizada com sucesso.';
     senhaTrocada();
     setTimeout(() => dialogoSenha.close(), 1200);
+    if (aguardarLiberacao) setTimeout(() => esperarLiberacao(auth.currentUser), 1300);
   } catch (error) {
     info.textContent = ({'auth/wrong-password': 'Senha atual incorreta.', 'auth/invalid-credential': 'Senha atual incorreta.',
       'auth/weak-password': 'A nova senha é muito fraca.', 'auth/too-many-requests': 'Muitas tentativas. Aguarde antes de tentar novamente.',
@@ -110,7 +111,19 @@ el('senha-form').onsubmit = async event => {
 const HORA = 3600 * 1000, DIA = 24 * HORA;
 const SENHA_TEMPORARIA_MS = 72 * HORA, SENHA_VALIDADE_MS = 90 * DIA, SENHA_AVISO_MS = 5 * DIA;
 const POLITICA_SENHA_DESDE = Date.parse('2026-10-14T18:00:00-03:00');
-let senhaObrigatoria = false;
+let senhaObrigatoria = false, aguardarLiberacao = false;
+// Depois da troca, o script da maquina logistica tira o bloqueio do banco em ate' ~1 min; a tela confere
+// o proprio perfil a cada 10 s e recarrega quando liberar.
+async function esperarLiberacao(user) {
+  if (!user) return;
+  status('Senha em dia. Liberando seu acesso… isso leva até 2 minutos.');
+  const limite = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < limite) {
+    try { if ((await get(ref(db, `perfis/${user.uid}/acessoBloqueado`))).val() !== true) { location.reload(); return; } } catch {}
+    await new Promise(r => setTimeout(r, 10000));
+  }
+  status('O acesso ainda não foi liberado. Tente entrar de novo em alguns minutos ou avise o administrador do simulador.');
+}
 async function senhaAtualizadaEm(user) {
   const direto = Number(user.reloadUserInfo?.passwordUpdatedAt);
   if (direto) return direto;
@@ -198,6 +211,16 @@ onAuthStateChanged(auth, async user => {
     if (senha.tipo === 'bloqueada') {
       try { await signOut(auth); } catch {}
       status('Sua senha temporária expirou (prazo de 72 horas sem troca). Clique em “Esqueci minha senha” para criar uma nova.');
+      return;
+    }
+    // Protecao no banco (2026-10-14): com acessoBloqueado, o banco nega os dados. Troca a senha antes de
+    // carregar (se ela for o motivo) e espera o script da maquina logistica liberar o perfil.
+    if (profile.acessoBloqueado === true) {
+      if (senha.tipo === 'vencida' || senha.tipo === 'temporaria') {
+        status('Troque sua senha para continuar.');
+        aguardarLiberacao = true;
+        abrirTrocaObrigatoria(senha.tipo === 'vencida' ? 'vencida' : 'inicial');
+      } else esperarLiberacao(user);
       return;
     }
     // A carga continua publicada por região, mas todo perfil baixa todas (sem segregação, 2026-10-09).

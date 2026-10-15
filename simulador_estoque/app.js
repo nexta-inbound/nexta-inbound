@@ -30,6 +30,17 @@ function simulationToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Ame
 function fobNaoProgramado(r,iso){const vs=(D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[iso]?.viagens||[]).filter(v=>v.modal==='fob'&&v.grupo==='programado');return vs.length?vs.reduce((s,v)=>s+(v.volume||0),0):null;}
 // entradaForcada: a Visao do dia sempre usa as fontes automaticas, qualquer que seja a origem de
 // entrada escolhida na tela do simulador.
+// Transferencias de entrada por dia, com a linha em que cada viagem ja' estava ('fob'/'cif'/'naoprog'/null).
+// Com o transito ao vivo, o dia e a linha vem dele (achando a viagem pelo numero); sem ele, da carga de 30 min.
+function entradasTransfPorDia(r){
+ const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material],noVivo={},porDia={};
+ if(vivo)for(const [iso,d] of Object.entries(vivo))for(const v of d?.viagens||[])if(v.idViagem)noVivo[v.idViagem]={iso,conta:v.grupo==='programado'?'naoprog':v.modal};
+ for(const [iso,d] of Object.entries(r.bi?.days||{}))for(const t of d?.transferenciasEntrada||[]){
+  const vivoT=t.viagem?noVivo[t.viagem]:null;
+  (porDia[vivoT?vivoT.iso:iso]??=[]).push({...t,conta:vivoT?vivoT.conta:(vivo?null:t.conta)});
+ }
+ return porDia;
+}
 function fresh(r,cenarioForcado,entradaForcada){
  const scenario=cenarioForcado||$('scenario')?.value||'LE',today=simulationToday();
  // Origem da entrada (pedido da usuaria, 2026-10-01): 'auto' = fontes de sempre (FOB/CIF do portal +
@@ -43,6 +54,7 @@ function fresh(r,cenarioForcado,entradaForcada){
  const startIndex=Math.max(0,Math.round((new Date(today+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const switchIndex=Math.max(startIndex,Math.round((new Date(D.bi.inbound.switchDate+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const movements=Object.fromEntries(E.rows.map(([k])=>[k,Array(30).fill(0)]));
+ const transfEntrada=entradasTransfPorDia(r);
  for(let i=0;i<15;i++){
   const loaded=r.bi?.days[day(i)];if(!loaded)continue;
   const future=day(i)>=today;
@@ -63,6 +75,14 @@ function fresh(r,cenarioForcado,entradaForcada){
    if(vivo&&(vivo.fob!=null||vivo.cif!=null)){movements.fob[i]=vivo.fob??0;movements.cif[i]=vivo.cif??0;}
    // "Programado + Não programado" (pedido da usuaria, 2026-10-08): soma no FOB as viagens ainda sem placa.
    if(entrada==='auto+naoprog')movements.fob[i]+=fobNaoProgramado(r,day(i))??0;
+   // Transferencia de entrada em linha propria (pedido da usuaria, 2026-10-15): a viagem que vem de outra base
+   // nossa sai do FOB/CIF (se ja' estava la') e entra em "Transferencia · entrada"; a que nao estava em linha
+   // nenhuma (programada no portal ou na cadencia) passa a contar aqui, fechando com a saida da origem.
+   for(const t of transfEntrada[day(i)]||[]){
+    const conta=t.conta==='naoprog'?(entrada==='auto+naoprog'?'fob':null):t.conta;
+    if(conta)movements[conta][i]-=Math.min(movements[conta][i],t.volume);
+    movements.transferIn[i]+=t.volume;
+   }
   }
   // Datas anteriores usam a mesma base em todos os cenarios.
   if(!future)continue;
@@ -123,7 +143,7 @@ function somaOuNula(valores){const presentes=valores.filter(v=>v!==null&&v!==und
 // So' os campos realmente lidos de record.bi.days fora do fresh() (VMD/Pedidos em tela nas linhas de
 // referencia da tabela) — tudo que alimenta a simulacao de verdade (fob/cif/pump/sale/...) ja vem
 // somado via freshCombinado, que chama fresh() em CADA registro real antes de somar.
-function biDiaCombinado(registros,iso){const dias=registros.map(r=>r.bi?.days?.[iso]).filter(Boolean);if(!dias.length)return null;return{vmd:somaOuNula(dias.map(d=>d.vmd)),billing:somaOuNula(dias.map(d=>d.billing))};}
+function biDiaCombinado(registros,iso){const dias=registros.map(r=>r.bi?.days?.[iso]).filter(Boolean);if(!dias.length)return null;return{vmd:somaOuNula(dias.map(d=>d.vmd)),billing:somaOuNula(dias.map(d=>d.billing)),vendaMediaSemana:somaOuNula(dias.map(d=>d.vendaMediaSemana))};}
 function semanaCombinada(registros){const semanas=registros.map(r=>r.bi?.semana).filter(Boolean);if(!semanas.length)return null;const dias=new Set();for(const s of semanas)for(const d of Object.keys(s.porDia||{}))dias.add(d);const porDia={};for(const d of dias){const les=semanas.map(s=>s.porDia?.[d]?.le).filter(v=>v!=null),reais=semanas.map(s=>s.porDia?.[d]?.real).filter(v=>v!=null);porDia[d]={le:les.length?les.reduce((a,b)=>a+b,0):0,real:reais.length?reais.reduce((a,b)=>a+b,0):null};}return{leSemana:somaOuNula(semanas.map(s=>s.leSemana))??0,realSemana:somaOuNula(semanas.map(s=>s.realSemana))??0,porDia};}
 // "record" sintetico pro modo combinado: so' metadados/exibicao (base/politica/texto) — a simulacao em
 // si usa freshCombinado, nao os campos deste objeto. emp_dep fica null de proposito: o popup de
@@ -176,6 +196,25 @@ function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product]
 // Dias passados da grade: o que realmente aconteceu (mesmas fontes do BI): abertura da planilha do dia,
 // vendas realizadas (VA05 fornecido), FOB/CIF realizados (trânsito publicado) e fechamento = abertura do dia seguinte.
 // Cor da abertura pela ocupacao do tanque: vermelho abaixo de 70% da capacidade, amarelo ate 75%, verde acima.
+// Transferencias entre bases (pedido da usuaria, 2026-10-15): detalhe por dia (bi.days[iso].transferenciasSaida /
+// transferenciasEntrada, montado em fontes_arquivos.py) e popup "pra onde vai / de onde vem" nas duas linhas.
+function transferencias(i,campo){return registrosReais().flatMap(r=>campo==='transferenciasEntrada'?(entradasTransfPorDia(r)[day(i)]||[]):(r.bi?.days?.[day(i)]?.[campo]||[]));}
+function marcarTransferencias(){
+ for(const [row,campo] of [['transferIn','transferenciasEntrada'],['transferOut','transferenciasSaida']])
+  document.querySelectorAll(`#grid input[data-row="${row}"]`).forEach(input=>{const i=+input.dataset.day,td=input.parentElement;
+   if(transferencias(i,campo).length){td.dataset.transf=campo;td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
+}
+const dataTransf=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
+function popupTransferencia(campo,i){
+ const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
+ const total=itens.reduce((s,t)=>s+(t.volume||0),0);
+ return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}</dd></div>`).join('')}</dl>`;
+}
+function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
+ const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
+document.addEventListener('pointerover',e=>{const el=e.target.closest?.('#grid [data-transf]');if(el)mostrarPopupTransf(el);});
+document.addEventListener('pointerout',e=>{if(e.target.closest?.('#grid [data-transf]')&&$('transf-popover'))$('transf-popover').hidden=true;});
 // Aviso de capacidade excedida (pedido da usuaria, 2026-10-14: "se extrapolar a capacidade maxima, aparece
 // um recado avisando o porque"). Mesma regua da sugestao de cadencia: fechamento do dia (abertura + entradas
 // - vendas) acima da capacidade do tanque, de hoje em diante. Explica o dia, quanto passou e de onde veio
@@ -279,7 +318,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  // transferIn; saida: sale/transferOut) recebe um <th rowspan> vazio que o cenarios.js preenche depois
  // (ver #entrada-controls-cell/#scenario-controls-cell); as demais linhas do mesmo grupo nao emitem
  // celula nenhuma nessa coluna, porque o rowspan da 1a linha ja' a ocupa.
- const linhasVisiveis=E.rows.filter(([k])=>!['received','transferIn','transferOut'].includes(k));
+ const linhasVisiveis=E.rows.filter(([k])=>!['received'].includes(k));
  // "Cadência sugerida" (movimento 'planned', voltou a aparecer em 2026-10-12 com outro papel) logo depois
  // do Bombeio, como a linha "Cadencia" da planilha da usuaria; preenchida pelo botao #sugerir-cadencia.
  {const [p]=linhasVisiveis.splice(linhasVisiveis.findIndex(r=>r[0]==='planned'),1);linhasVisiveis.splice(linhasVisiveis.findIndex(r=>r[0]==='pump')+1,0,p);}
@@ -300,8 +339,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
   html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Faturamento pendente de integração':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:history(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
   // Linha logo abaixo do FOB (pedido da usuaria, 2026-10-08) — so' referencia; entra na conta apenas
   // com a origem de entrada "Programado + Não programado".
-  if(k==='fob')html+=infoRow('Trânsito FOB · não programado (sem placa)',i=>somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i)))),true,'transito');
- }
+  if(k==='fob')html+=infoRow('Trânsito FOB · não programado (sem placa)',i=>somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i)))),true,'transito'); }
  for(const [k,l] of [['incoming','Total de entradas'],['outgoing','Total de saídas']])html+=outputRow(k,l);
  $('grid').innerHTML=html+'</tbody>';}
  // Celula de abertura (dia 0) ganha um aviso visual quando a leitura nao e' de hoje — pedido da
@@ -311,9 +349,9 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  // Borda roxa no FOB que tem volume empurrado pra D+1 pela regra das 15h (detalhe no popup da celula).
  document.querySelectorAll('[data-row="fob"]').forEach(input=>{const i=+input.dataset.day,d1=fobAposCorte(i);input.parentElement.classList.toggle('fob-d1',d1>0&&state.movements.fob[i]>=d1);});
  document.querySelectorAll('[data-row]').forEach(input=>input.parentElement.classList.toggle('edited',state.movements[input.dataset.row][+input.dataset.day]!==baseline.movements[input.dataset.row][+input.dataset.day]));
- document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
+ document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo ${aviso.motivo||`de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque`} neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
  // Grafico com os MESMOS dias da tabela (o botao "+ dias" vale pros dois), pra ficar no mesmo eixo x.
- chart(result,original,offsets);alerts(result);avisoCapacidade(result);
+ chart(result,original,offsets);alerts(result);avisoCapacidade(result);marcarTransferencias();
 }
 // record.bi.semana: {leSemana, realSemana} — vem da reprojecao do VMD (cidade+familia de produto);
 // so' existe pros 4 produtos cobertos (Gasolina, Diesel S10, Diesel S500, Hidratado) e quando o banco
@@ -505,21 +543,36 @@ $('reset-tabela').onclick=restaurarDaFonte;
 // Capacidade = planilha de tancagem (0 = fora da planilha, venda no bico); a politica so' entra se o
 // snapshot for antigo e nao trouxer capacidadeFisica.
 function capacidadeDoTanque(){return record?.capacidadeFisica??state?.capacity??null;}
-function sugerirCadencia(){
+// Tres objetivos de cadencia (pedido da usuaria, 2026-10-15), todos em cargas de 60 m3, de amanha em diante
+// e sem nunca passar da capacidade do tanque:
+//  'tanque' = Encher o tanque: sugere quando o saldo fica abaixo de 70% do tanque, ate' voltar a 70%;
+//  'minimo' = Atingir o estoque minimo: sugere quando o saldo fica abaixo do minimo da politica, ate' atingi-lo;
+//  'media'  = Venda media da rede: alvo = "Vendas media semana" (media seg-sex da venda da Rede na semana);
+//             cargas que deixam o fechamento o mais perto possivel dela ("teto atingivel"), sem deixar faltar.
+const OBJETIVOS_CADENCIA={
+ tanque:{nome:'Encher o tanque',motivo:cap=>`de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque`,opcoes:cap=>({gatilho:cap*GATILHO_SUGESTAO})},
+ minimo:{nome:'Atingir o estoque mínimo',motivo:()=>`do estoque mínimo (${fmt(state.min)} m³)`,opcoes:()=>({gatilho:state.min})},
+ media:{nome:'Venda média da rede',motivo:()=>'da venda média da rede na semana',opcoes:()=>({gatilho:i=>record.bi?.days?.[day(i)]?.vendaMediaSemana??null,modo:'proximo'})},
+};
+function sugerirCadencia(objetivo='tanque'){
+ const obj=OBJETIVOS_CADENCIA[objetivo];
  if(!record){message('Escolha cidade, depósito e produto antes de sugerir a cadência.');return;}
  const capacidade=capacidadeDoTanque();
  if(!capacidade){message(semCapacidade()?'Sem capacidade estabelecida para este recorte; não é possível sugerir a cadência.':'Este recorte não tem a capacidade do tanque informada; não é possível sugerir a cadência.');return;}
+ if(objetivo==='minimo'&&!(state.min>0)){message('Este recorte não tem estoque mínimo na política; não é possível sugerir por esse objetivo.');return;}
  const hojeI=Math.max(0,Math.round((new Date(simulationToday()+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
+ if(objetivo==='media'&&!Array.from({length:n},(_,i)=>i).some(i=>i>hojeI&&record.bi?.days?.[day(i)]?.vendaMediaSemana>0)){message('Não há venda média da rede para este recorte nos próximos dias; não é possível sugerir por esse objetivo.');return;}
  const semSugestao=structuredClone(state);semSugestao.movements.planned=Array(30).fill(0);
- const plano=E.suggest(semSugestao,n,{carga:CARGA_SUGESTAO,gatilho:capacidade*GATILHO_SUGESTAO,teto:capacidade,inclusive:false,inicio:hojeI+1});
+ const plano=E.suggest(semSugestao,n,{carga:CARGA_SUGESTAO,teto:capacidade,inclusive:false,inicio:hojeI+1,...obj.opcoes(capacidade)});
  avisosSugestao={};
- plano.forEach((d,i)=>{state.movements.planned[i]=d.volume;if(d.situacao==='nao-cabe')avisosSugestao[i]=d;});
+ plano.forEach((d,i)=>{state.movements.planned[i]=d.volume;if(d.situacao==='nao-cabe')avisosSugestao[i]={...d,motivo:obj.motivo(capacidade)};});
  persist();render(true);
- const cargas=plano.reduce((s,d)=>s+d.cargas,0),semEspaco=plano.filter(d=>d.situacao==='nao-cabe').length,pct=Math.round(GATILHO_SUGESTAO*100);
- const aviso=semEspaco?` Em ${semEspaco} dia(s) o estoque fica abaixo de ${pct}% do tanque, mas uma carga de ${CARGA_SUGESTAO} m³ não cabe (células em vermelho).`:'';
- message(cargas?`Cadência sugerida: ${cargas} carga(s) de ${CARGA_SUGESTAO} m³, ${fmt(cargas*CARGA_SUGESTAO)} m³ no total (tanque de ${fmt(capacidade)} m³).${aviso}`:semEspaco?`Nenhuma carga sugerida.${aviso}`:`Nenhuma carga necessária: o estoque não fica abaixo de ${pct}% do tanque (${fmt(capacidade*GATILHO_SUGESTAO)} m³) nos próximos dias.`);
+ const cargas=plano.reduce((s,d)=>s+d.cargas,0),semEspaco=plano.filter(d=>d.situacao==='nao-cabe').length;
+ const aviso=semEspaco?` Em ${semEspaco} dia(s) o estoque fica abaixo ${obj.motivo(capacidade)}, mas uma carga de ${CARGA_SUGESTAO} m³ não cabe no tanque (células em vermelho).`:'';
+ message(cargas?`${obj.nome}: ${cargas} carga(s) de ${CARGA_SUGESTAO} m³, ${fmt(cargas*CARGA_SUGESTAO)} m³ no total (tanque de ${fmt(capacidade)} m³).${aviso}`
+  :semEspaco?`${obj.nome}: nenhuma carga sugerida.${aviso}`:`${obj.nome}: nenhuma carga necessária nos próximos dias.`);
 }
-$('sugerir-cadencia').onclick=sugerirCadencia;
+for(const [objetivo,id] of [['tanque','sugerir-cadencia'],['minimo','sugerir-cadencia-minimo'],['media','sugerir-cadencia-media']])if($(id))$(id).onclick=()=>sugerirCadencia(objetivo);
 // Filtro de regiao (SP/MG+RJ/Centro-Oeste): so aparece quando ha SIM_CLOUD.regionOf (versao hospedada
 // com Firebase); no modo local (sem login) nao ha regiao cadastrada, entao o campo fica escondido.
 function basesPermitidas(){const todas=[...new Set(D.records.map(r=>r.base))];const regiao=$('regiao-filtro')?.value;return regiao&&window.SIM_CLOUD?.regionOf?todas.filter(b=>window.SIM_CLOUD.regionOf(b)===regiao):todas;}
