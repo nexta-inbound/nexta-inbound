@@ -198,6 +198,9 @@ function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product]
 // Cor da abertura pela ocupacao do tanque: vermelho abaixo de 70% da capacidade, amarelo ate 75%, verde acima.
 // Transferencias entre bases (pedido da usuaria, 2026-10-15): detalhe por dia (bi.days[iso].transferenciasSaida /
 // transferenciasEntrada, montado em fontes_arquivos.py) e popup "pra onde vai / de onde vem" nas duas linhas.
+// Transferencia de entrada ainda PLANEJADA no dia (programada no portal sem placa ou na cadencia MIS): o
+// que nao esta' no transito real. Usada pela sugestao de cadencia e pra nao repetir no Prog. Rodoviario.
+function transfPlanejadaDia(i){return transferencias(i,'transferenciasEntrada').filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);}
 function transferencias(i,campo){return registrosReais().flatMap(r=>campo==='transferenciasEntrada'?(entradasTransfPorDia(r)[day(i)]||[]):(r.bi?.days?.[day(i)]?.[campo]||[]));}
 function marcarTransferencias(){
  for(const [row,campo] of [['transferIn','transferenciasEntrada'],['transferOut','transferenciasSaida']])
@@ -378,7 +381,10 @@ function semanaProgresso(){
 const movSeries=[
  ['received','Recebimentos','#C8F2EC',i=>i>=0?state.movements.received[i]:recebidoPassado(i)],
  ['pump','Prog. Bombeio','#9EDFD6',i=>i>=0?state.movements.pump[i]:null],
- ['progRoad','Prog. Rodoviário','#7FC4BA',i=>i>=0?(record.bi?.days[day(i)]?.progRoad??null):null],
+ // Prog. Rodoviario so' no grafico (nao entra na conta); tira o que ja' virou "Transferencia · entrada"
+ // (2026-10-15), senao a mesma carga aparece duas vezes na barra.
+ ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0)return null;const v=record.bi?.days[day(i)]?.progRoad;return v==null?null:Math.max(0,v-transfPlanejadaDia(i));}],
+ ['transferIn','Transferência entrada','#C4B5FD',i=>i>=0?state.movements.transferIn[i]:null],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
@@ -388,7 +394,7 @@ const movSeries=[
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
-const ENTRADAS_BLOCO=['received','pump','progRoad','planned','fob','cif'];
+const ENTRADAS_BLOCO=['received','pump','progRoad','transferIn','planned','fob','cif'];
 const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
@@ -554,6 +560,20 @@ const OBJETIVOS_CADENCIA={
  minimo:{nome:'Atingir o estoque mínimo',motivo:()=>`do estoque mínimo (${fmt(state.min)} m³)`,opcoes:()=>({gatilho:state.min})},
  media:{nome:'Venda média da rede',motivo:()=>'da venda média da rede na semana',opcoes:()=>({gatilho:i=>record.bi?.days?.[day(i)]?.vendaMediaSemana??null,modo:'proximo'})},
 };
+// Parte PLANEJADA das entradas do dia (o que a sugestao substitui): Bombeio da cadencia MIS, transferencias
+// programadas e, na origem "Programado + Nao programado", as viagens FOB sem placa. Em "Cadencia MIS" tudo e'
+// planejado. Transito real (com placa/em viagem) e transferencia ja' em viagem ficam.
+function planejadoDoDia(i){
+ const m=state.movements,entrada=$('entrada')?.value||'auto';
+ if(entrada==='cadencia')return {pump:m.pump[i],fob:m.fob[i],cif:m.cif[i]};
+ const out={pump:m.pump[i],transferIn:Math.min(m.transferIn[i],transfPlanejadaDia(i))};
+ if(entrada==='auto+naoprog'){
+  const naoProg=somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0;
+  const naoProgTransf=transferencias(i,'transferenciasEntrada').filter(t=>t.conta==='naoprog').reduce((s,t)=>s+(t.volume||0),0);
+  out.fob=Math.min(m.fob[i],Math.max(0,naoProg-naoProgTransf));
+ }
+ return out;
+}
 function sugerirCadencia(objetivo='tanque'){
  const obj=OBJETIVOS_CADENCIA[objetivo];
  if(!record){message('Escolha cidade, depósito e produto antes de sugerir a cadência.');return;}
@@ -562,6 +582,12 @@ function sugerirCadencia(objetivo='tanque'){
  if(objetivo==='minimo'&&!(state.min>0)){message('Este recorte não tem estoque mínimo na política; não é possível sugerir por esse objetivo.');return;}
  const hojeI=Math.max(0,Math.round((new Date(simulationToday()+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  if(objetivo==='media'&&!Array.from({length:n},(_,i)=>i).some(i=>i>hojeI&&record.bi?.days?.[day(i)]?.vendaMediaSemana>0)){message('Não há venda média da rede para este recorte nos próximos dias; não é possível sugerir por esse objetivo.');return;}
+ // A sugestao propoe a cadencia do zero (pedido da usuaria, 2026-10-15: "entrada + transitos reais - saidas;
+ // as cadencias planejadas saem fora quando for simular"): de amanha em diante, tira da conta E da tabela o
+ // Bombeio (cadencia MIS) e as transferencias ainda programadas; ficam abertura, transito real e as saidas.
+ // "Restaurar" traz a cadencia planejada de volta.
+ let retirado=0;
+ for(let i=hojeI+1;i<n;i++){const p=planejadoDoDia(i);for(const [k,v] of Object.entries(p))if(v>0){state.movements[k][i]-=v;retirado+=v;}}
  const semSugestao=structuredClone(state);semSugestao.movements.planned=Array(30).fill(0);
  const plano=E.suggest(semSugestao,n,{carga:CARGA_SUGESTAO,teto:capacidade,inclusive:false,inicio:hojeI+1,...obj.opcoes(capacidade)});
  avisosSugestao={};
@@ -569,8 +595,9 @@ function sugerirCadencia(objetivo='tanque'){
  persist();render(true);
  const cargas=plano.reduce((s,d)=>s+d.cargas,0),semEspaco=plano.filter(d=>d.situacao==='nao-cabe').length;
  const aviso=semEspaco?` Em ${semEspaco} dia(s) o estoque fica abaixo ${obj.motivo(capacidade)}, mas uma carga de ${CARGA_SUGESTAO} m³ não cabe no tanque (células em vermelho).`:'';
- message(cargas?`${obj.nome}: ${cargas} carga(s) de ${CARGA_SUGESTAO} m³, ${fmt(cargas*CARGA_SUGESTAO)} m³ no total (tanque de ${fmt(capacidade)} m³).${aviso}`
-  :semEspaco?`${obj.nome}: nenhuma carga sugerida.${aviso}`:`${obj.nome}: nenhuma carga necessária nos próximos dias.`);
+ const tirou=retirado>0?` Cadência planejada retirada de amanhã em diante: ${fmt(retirado)} m³ (bombeio e transferências programadas; ↺ Restaurar traz de volta).`:'';
+ message((cargas?`${obj.nome}: ${cargas} carga(s) de ${CARGA_SUGESTAO} m³, ${fmt(cargas*CARGA_SUGESTAO)} m³ no total (tanque de ${fmt(capacidade)} m³).${aviso}`
+  :semEspaco?`${obj.nome}: nenhuma carga sugerida.${aviso}`:`${obj.nome}: nenhuma carga necessária nos próximos dias.`)+tirou);
 }
 for(const [objetivo,id] of [['tanque','sugerir-cadencia'],['minimo','sugerir-cadencia-minimo'],['media','sugerir-cadencia-media']])if($(id))$(id).onclick=()=>sugerirCadencia(objetivo);
 // Filtro de regiao (SP/MG+RJ/Centro-Oeste): so aparece quando ha SIM_CLOUD.regionOf (versao hospedada
