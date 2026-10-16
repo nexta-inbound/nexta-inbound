@@ -387,7 +387,11 @@ const movSeries=[
  ['pump','Prog. Bombeio','#9EDFD6',i=>i>=0?state.movements.pump[i]:null],
  // Prog. Rodoviario so' no grafico (nao entra na conta); tira o que ja' virou "Transferencia · entrada"
  // (2026-10-15), senao a mesma carga aparece duas vezes na barra.
- ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0)return null;const v=record.bi?.days[day(i)]?.progRoad;return v==null?null:Math.max(0,v-transfPlanejadaDia(i));}],
+ // Idem com o FOB sem placa (2026-10-16): o Rodoviario ja' inclui essas viagens; na origem "Programado + Nao
+ // programado" elas entram no FOB e a barra mostrava 60 + 60 com so' 60 na conta.
+ ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0)return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
+  const naoProg=$('entrada')?.value==='auto+naoprog'?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
+  return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
  ['transferIn','Transferência entrada','#C4B5FD',i=>i>=0?state.movements.transferIn[i]:null],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
