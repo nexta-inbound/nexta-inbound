@@ -2,7 +2,7 @@ import { firebaseAuth as auth, firebaseDatabase as db } from './firebase.js';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
   browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential,
   updatePassword } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { ref, get, set, runTransaction, serverTimestamp, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { ref, get, set, update, push, runTransaction, serverTimestamp, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const el = id => document.getElementById(id);
 let started = false;
@@ -204,7 +204,7 @@ onAuthStateChanged(auth, async user => {
     status('Conferindo acesso e carregando estoques…');
     const profile = (await get(ref(db, `perfis/${user.uid}`))).val();
     if (!profile || profile.email?.toLowerCase() !== user.email?.toLowerCase()
-        || !['administrador', 'regional', 'leitura'].includes(profile.perfil)) {
+        || !['administrador', 'regional', 'leitura', 'base'].includes(profile.perfil)) {
       throw new Error('Sua conta ainda não tem acesso liberado ao simulador.');
     }
     const senha = await situacaoSenha(user, profile);
@@ -221,6 +221,69 @@ onAuthStateChanged(auth, async user => {
         aguardarLiberacao = true;
         abrirTrocaObrigatoria(senha.tipo === 'vencida' ? 'vencida' : 'inicial');
       } else esperarLiberacao(user);
+      return;
+    }
+    // Aba Aberturas (2026-10-16): as bases preenchem a abertura do dia no portal, no lugar da planilha.
+    // Layout (cidades > terminais > produtos) vem de cadastros/aberturas, gerado da planilha por
+    // gerar_layout_aberturas.py. Valores em aberturas/<dia>/<empDep>/<produtoHex>; cada alteracao vira
+    // uma linha em aberturasHistorico/<dia>/<empDep> (quem, quando, valor anterior e novo).
+    // Perfil 'base' edita so' as bases dele (perfis/<uid>/bases/<empDep> = true); admin/regional, todas.
+    const aberturasApi = {
+      // Quem enxerga a aba: perfil 'base' (so' ela) e quem tiver perfis/<uid>/verAberturas = true. Enquanto
+      // o processo e' implantado (usuaria, 2026-10-16: "deixa so eu ver a aba de abertura por enquanto"),
+      // so' a conta dela tem a marca; liberar outras pessoas e' so' marcar o perfil.
+      veAberturas() { return profile.perfil === 'base' || profile.verAberturas === true; },
+      canEditAbertura(empDep) {
+        return profile.admin === true || profile.perfil === 'regional' || (profile.perfil === 'base' && profile.bases?.[empDep] === true);
+      },
+      produtoKey(produto) { return hex(produto); },
+      async aberturasLayout() { return (await get(ref(db, 'cadastros/aberturas'))).val(); },
+      async aberturasDoDia(dia) { return (await get(ref(db, `aberturas/${dia}`))).val() || {}; },
+      async historicoAberturas(dia, empDep) { return (await get(ref(db, `aberturasHistorico/${dia}/${empDep}`))).val() || {}; },
+      // Grava o terminal inteiro numa operacao so' (valores + historico das mudancas). `linhas`:
+      // [{produto, unidade, valores:{abertura, recebEfetuado, recebProgramado}, anteriores:{...}|null}].
+      async salvarAberturaTerminal(dia, empDep, terminal, linhas) {
+        const autorNome = profile.nome || user.email, caminhos = {};
+        for (const l of linhas) {
+          const chave = hex(l.produto);
+          caminhos[`aberturas/${dia}/${empDep}/${chave}`] = {terminal, produto: l.produto, unidade: l.unidade, ...l.valores,
+            atualizadoPor: user.uid, atualizadoPorNome: autorNome, atualizadoEm: serverTimestamp()};
+          for (const campo of ['abertura', 'recebEfetuado', 'recebProgramado']) {
+            const de = l.anteriores?.[campo] ?? null, para = l.valores[campo];
+            if (de === para || (de === null && para === 0)) continue;   // campo em branco salvo como 0 nao e' alteracao
+            caminhos[`aberturasHistorico/${dia}/${empDep}/${push(ref(db, `aberturasHistorico/${dia}/${empDep}`)).key}`] =
+              {produto: l.produto, campo, de, para, por: user.uid, porNome: autorNome, em: serverTimestamp()};
+          }
+        }
+        await update(ref(db), caminhos);
+      },
+    };
+    // Fim comum do login (os dois caminhos: completo e so' Aberturas).
+    const concluirEntrada = async () => {
+      started = true;
+      registrarAtividade(true);
+      document.body.classList.remove('auth-pending'); el('login-screen').hidden = true;
+      el('account-bar').hidden = false;
+      el('account-email').textContent = `${profile.nome || user.email} · ${profile.perfil}`;
+      mostrarAvisoSenha(senha);
+      if (senha.tipo === 'vencida') abrirTrocaObrigatoria('vencida');
+      else if (senha.tipo === 'temporaria') {
+        // Senha inicial (regra da usuaria, 2026-10-14): o 1o login com ela e' livre (so' fica o aviso); a
+        // partir do 2o, a troca e' obrigatoria. "1o login" = ainda nao ha primeiroAcessoEm desta senha inicial.
+        if (!profile.primeiroAcessoEm || profile.primeiroAcessoEm < senha.atualizada) {
+          try { await set(ref(db, `perfis/${user.uid}/primeiroAcessoEm`), serverTimestamp()); }
+          catch (e) { console.warn('Não foi possível registrar o primeiro acesso', e); }
+        } else abrirTrocaObrigatoria('inicial');
+      }
+    };
+    // Perfil 'base' (decisao da usuaria, 2026-10-16: "so a aba de abertura"): nao baixa os estoques nem
+    // carrega o simulador — so' a aba Aberturas. As regras do banco tambem negam fontes/cenarios pra ele.
+    if (profile.perfil === 'base') {
+      if (version !== generation || auth.currentUser?.uid !== user.uid) return;
+      window.SIM_AUTH = {uid: user.uid, email: user.email, profile, soAberturas: true};
+      window.SIM_CLOUD = {...aberturasApi};
+      await script('aberturas.js');
+      await concluirEntrada();
       return;
     }
     // A carga continua publicada por região, mas todo perfil baixa todas (sem segregação, 2026-10-09).
@@ -290,28 +353,15 @@ onAuthStateChanged(auth, async user => {
         return {...registro, numero};
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
+      ...aberturasApi,
       // Varias datas em paralelo (visao semanal) — cada dia falho vira {} em vez de derrubar a semana toda.
       async listRange(dias) {
         const arvores = await Promise.all(dias.map(dia => get(ref(db, `cenariosDia/${dia}`)).then(s => s.val() || {}).catch(() => ({}))));
         return Object.fromEntries(dias.map((dia, i) => [dia, arvores[i]]));
       },
     };
-    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js']) await script(name);
-    started = true;
-    registrarAtividade(true);
-    document.body.classList.remove('auth-pending'); el('login-screen').hidden = true;
-    el('account-bar').hidden = false;
-    el('account-email').textContent = `${profile.nome || user.email} · ${profile.perfil}`;
-    mostrarAvisoSenha(senha);
-    if (senha.tipo === 'vencida') abrirTrocaObrigatoria('vencida');
-    else if (senha.tipo === 'temporaria') {
-      // Senha inicial (regra da usuaria, 2026-10-14): o 1o login com ela e' livre (so' fica o aviso); a
-      // partir do 2o, a troca e' obrigatoria. "1o login" = ainda nao ha primeiroAcessoEm desta senha inicial.
-      if (!profile.primeiroAcessoEm || profile.primeiroAcessoEm < senha.atualizada) {
-        try { await set(ref(db, `perfis/${user.uid}/primeiroAcessoEm`), serverTimestamp()); }
-        catch (e) { console.warn('Não foi possível registrar o primeiro acesso', e); }
-      } else abrirTrocaObrigatoria('inicial');
-    }
+    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js']) await script(name);
+    await concluirEntrada();
     el('auto-status').textContent = `Fontes de ${data.date}. Recarregue a página para buscar uma nova carga.`;
     const sync = el('sync-status');
     const textoSync = () => {

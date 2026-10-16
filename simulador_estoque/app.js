@@ -206,6 +206,9 @@ function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product]
 // Transferencia de entrada ainda PLANEJADA no dia (programada no portal sem placa ou na cadencia MIS): o
 // que nao esta' no transito real. Usada pela sugestao de cadencia e pra nao repetir no Prog. Rodoviario.
 function transfPlanejadaDia(i){return transferencias(i,'transferenciasEntrada').filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);}
+// Transferencia de entrada JA' EM VIAGEM (com placa: Placa Enviada, Em Andamento, T1-T4...) = a que estava no
+// Transito FOB/CIF. No grafico fica roxa; a planejada (Backlog/cadencia) ganha outra cor (usuaria, 2026-10-16).
+const emViagemTransf=t=>t.conta==='fob'||t.conta==='cif';
 function transferencias(i,campo){return registrosReais().flatMap(r=>campo==='transferenciasEntrada'?(entradasTransfPorDia(r)[day(i)]||[]):(r.bi?.days?.[day(i)]?.[campo]||[]));}
 function marcarTransferencias(){
  for(const [row,campo] of [['transferIn','transferenciasEntrada'],['transferOut','transferenciasSaida']])
@@ -217,7 +220,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?' · <span style="color:#C4B5FD">em viagem</span>':' · <span style="color:#F9A8D4">programada</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -394,7 +397,12 @@ const movSeries=[
  ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   const naoProg=$('entrada')?.value==='auto+naoprog'?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
   return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
- ['transferIn','Transferência entrada','#C4B5FD',i=>i>=0?state.movements.transferIn[i]:null],
+ // Transferencia de entrada em dois pedacos: em viagem (roxo) e programada (rosa). A soma e' sempre o valor
+ // da linha da tabela (que pode ter sido editado); o que passar do em viagem conta como programada.
+ ['transferInViagem','Transferência entrada · em viagem','#C4B5FD',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
+  return Math.min(total,transferencias(i,'transferenciasEntrada').filter(emViagemTransf).reduce((s,t)=>s+(t.volume||0),0));}],
+ ['transferInProg','Transferência entrada · programada','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
+  return Math.max(0,total-valorMov('transferInViagem',i));}],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
@@ -404,7 +412,7 @@ const movSeries=[
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
-const ENTRADAS_BLOCO=['received','pump','progRoad','transferIn','planned','fob','cif'];
+const ENTRADAS_BLOCO=['received','pump','progRoad','transferInViagem','transferInProg','planned','fob','cif'];
 const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
