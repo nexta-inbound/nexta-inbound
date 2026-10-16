@@ -359,3 +359,5 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .ab-historico ul{margin:0;padding-left:18px}
 .ab-historico li{padding:2px 0}
 @media (max-width:640px){.ab-view{margin:0 8px 12px}.ab-tabela table{min-width:520px}}
+.ab-tabela td.ab-total{font-weight:700;color:#EEFE7A;font-variant-numeric:tabular-nums;white-space:nowrap;background:#EEFE7A0d}
+.ab-tabela tr.ab-cab th.ab-col-total{color:#EEFE7A}
