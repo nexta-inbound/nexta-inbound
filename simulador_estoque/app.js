@@ -389,7 +389,8 @@ const movSeries=[
  // (2026-10-15), senao a mesma carga aparece duas vezes na barra.
  // Idem com o FOB sem placa (2026-10-16): o Rodoviario ja' inclui essas viagens; na origem "Programado + Nao
  // programado" elas entram no FOB e a barra mostrava 60 + 60 com so' 60 na conta.
- ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0)return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
+ // Em "Cadencia MIS" o FOB/CIF da tabela ja' e' a propria cadencia (rodoviaria inclusa): o bloco nao aparece.
+ ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   const naoProg=$('entrada')?.value==='auto+naoprog'?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
   return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
  ['transferIn','Transferência entrada','#C4B5FD',i=>i>=0?state.movements.transferIn[i]:null],
