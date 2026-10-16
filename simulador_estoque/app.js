@@ -397,7 +397,7 @@ const movSeries=[
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
- ['vmd','Média Vendas','#FFFFFF',i=>i>=0?(record.bi?.days[day(i)]?.vmd??null):null],
+ ['vmd','VMD reprojetada','#FFFFFF',i=>i>=0?(record.bi?.days[day(i)]?.vmd??null):null],
  ['plannedSales','Vendas Planejadas','#D9F99D',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.LE?.plannedSales??null):null],
  ['actualSales','Vendas Real','#C8C8C8',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
