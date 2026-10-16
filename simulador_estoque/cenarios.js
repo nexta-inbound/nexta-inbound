@@ -4,6 +4,8 @@
  // debita (unica editavel); Disp MIS mantido a pedido dela ("deixa disp mis tbm"). O usuario sempre
  // pode digitar por cima do valor puxado (customizar), igual ja funcionava antes.
  const modes=['VMD','LE','Pedidos em tela','Real','Disp MIS'];
+ // So' o texto do botao muda (2026-10-16); o valor interno continua 'VMD' (regras do Firebase e cenarios salvos).
+ const rotuloCenario={VMD:'VMD reprojetada'};
  const today=simulationToday;
  const dateLabel=value=>new Date(value+'T12:00:00').toLocaleDateString('pt-BR');
  const popup=$('sales-popover');
@@ -52,7 +54,7 @@
  const controls=document.createElement('div');
  controls.className='scenario-controls';
  controls.title='Puxar vendas de';
- controls.innerHTML='<span>Vendas</span><div class="scenario-buttons" role="group" aria-label="Cenário de venda">'+modes.map(mode=>`<button type="button" data-scenario="${mode}" aria-pressed="false">${mode}</button>`).join('')+'</div>';
+ controls.innerHTML='<span>Vendas</span><div class="scenario-buttons" role="group" aria-label="Cenário de venda">'+modes.map(mode=>`<button type="button" data-scenario="${mode}" aria-pressed="false">${rotuloCenario[mode]||mode}</button>`).join('')+'</div>';
  function syncButtons(){
   controls.querySelectorAll('button').forEach(button=>{button.setAttribute('aria-pressed',String(Boolean(state)&&button.dataset.scenario===state.scenario));});
  }
@@ -120,7 +122,7 @@
   // (diferente de loaded.vmd, que ja' e' o valor reprojetado) e 'real' e' o faturamento MySQL do dia
   // (diferente de loaded.billing, que e' volume de PEDIDO do VA05, nao faturamento).
   const semanaDia=record.bi?.semana?.porDia?.[day(index)];
-  const values=[['VMD',loaded?.vmd],['LE vigente',semanaDia?.le],['Pedidos em tela',loaded?.billing],['Vendas reais',semanaDia?.real]];
+  const values=[['VMD',loaded?.vmd],['LE vigente',loaded?.le??semanaDia?.le],['Pedidos em tela',loaded?.billing],['Vendas reais',semanaDia?.real]];
   return `<strong>Vendas · ${dateLabel(day(index))}</strong><dl>${values.map(([name,value])=>`<div><dt>${name}</dt><dd>${value==null?'Sem dado':fmt(value)+' m³'}</dd></div>`).join('')}</dl><p>${day(index)<today()?'Anterior à simulação':`Cenário: <strong>${esc(state.scenario)}</strong>`}</p><p>Aplicado: <strong>${fmt(state.movements.sale[index])} m³</strong>${state.movements.sale[index]!==baseline.movements.sale[index]?' · editado':''}</p>${state.scenario==='Real'&&day(index)>D.bi.extractedAt.slice(0,10)?'<p>Valor aplicado com projeção futura.</p>':''}`;
  }
  // Popup "quem esta' trazendo esse volume" no Transito FOB — pedido da usuaria, 2026-10-02: "no popup

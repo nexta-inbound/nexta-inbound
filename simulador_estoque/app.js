@@ -97,7 +97,8 @@ function fresh(r,cenarioForcado,entradaForcada){
   // (disponibilidade, inalterado). semana.porDia so' existe pros produtos cobertos pela reprojecao.
   const semanaDia=r.bi?.semana?.porDia?.[day(i)];
   if(scenario==='VMD')movements.sale[i]=loaded.vmd??0;
-  else if(scenario==='LE')movements.sale[i]=semanaDia?.le??0;
+  // LE do deposito, dia a dia, em toda a janela (loaded.le, 2026-10-16); snapshot antigo sem o campo cai no da semana.
+  else if(scenario==='LE')movements.sale[i]=loaded.le??semanaDia?.le??0;
   else if(scenario==='Pedidos em tela')movements.sale[i]=loaded.billing??0;
   else if(scenario==='Real'){if(day(i)<=D.bi.extractedAt.slice(0,10))movements.sale[i]=semanaDia?.real??0;}
   else if(['Disp MIS','Inbound + MIS'].includes(scenario))movements.sale[i]=loaded.scenarios?.[scenario]?.availability??0;
@@ -109,7 +110,7 @@ function sourceNote(k,i){const loaded=record.bi?.days[day(i)],mode=state.scenari
  if(k==='sale'){
   const semanaDia=record.bi?.semana?.porDia?.[day(i)];
   if(mode==='VMD')return `VMD reprojetada · ${loaded?.vmd==null?'sem valor na fonte':fmt(loaded.vmd)+' m³'} · ${day(i)}`;
-  if(mode==='LE')return `LE vigente, sem reprojeção · ${semanaDia?.le==null?'sem valor na fonte':fmt(semanaDia.le)+' m³'} · ${day(i)}`;
+  if(mode==='LE'){const le=loaded?.le??semanaDia?.le;return `LE vigente, sem reprojeção · ${le==null?'sem valor na fonte':fmt(le)+' m³'} · ${day(i)}`;}
   if(mode==='Pedidos em tela')return `Pedidos em tela (VA05, todos os status) · ${loaded?.billing==null?'sem valor na fonte':fmt(loaded.billing)+' m³'} · ${day(i)}`;
   if(mode==='Real')return `Faturado real até agora · ${semanaDia?.real==null?'sem valor na fonte':fmt(semanaDia.real)+' m³'} · ${day(i)}`;
   if(['Disp MIS','Inbound + MIS'].includes(mode))return `Disponibilidade MIS · ${fmt(loaded?.scenarios?.[mode]?.availability)} m³ · ${day(i)}`;
@@ -336,7 +337,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
   if(k===entradaKeys[0])html+=infoRow('Recebimentos reais (SAP)',i=>i<0?recebidoPassado(i):null,false,'recebimentos');
   if(k==='sale'){
    html+=infoRow('VMD reprojetada',i=>record.bi?.days[day(i)]?.vmd,false,'vmd');
-   html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.semana?.porDia?.[day(i)]?.le,false,'le');
+   html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.days?.[day(i)]?.le??record.bi?.semana?.porDia?.[day(i)]?.le,false,'le');
    html+=infoRow('Pedidos em tela',i=>record.bi?.days[day(i)]?.billing,false,'va05');
    html+=infoRow('Vendas reais (faturamento)',i=>record.bi?.semana?.porDia?.[day(i)]?.real,false,'faturamento');
   }
