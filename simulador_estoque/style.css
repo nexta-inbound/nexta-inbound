@@ -62,6 +62,9 @@ main{max-width:none;padding-inline:16px}
 .cloud-bar-ghost:hover{border-color:transparent;color:var(--dim);text-decoration:underline}
 .cloud-bar small{flex:1 1 100%;color:var(--dim)}
 #sales-popover,#chart-popover{position:fixed;z-index:100;width:max-content;min-width:min(280px,calc(100vw - 16px));max-width:min(560px,calc(100vw - 16px));max-height:calc(100dvh - 16px);overflow:hidden;padding:14px 16px;background:#272a2d;color:#fff;border:1px solid #92999f;border-radius:12px;box-shadow:0 6px 24px #0006;pointer-events:none;font-size:13px;letter-spacing:0}
+/* Popup do grafico fixado por clique: aceita mouse pra selecionar/copiar (placa, ID da viagem) e rolar. */
+#chart-popover.fixado{pointer-events:auto;user-select:text;overflow:auto;border-color:#EEFE7A}
+#chart-popover .aviso-fixado{margin:0 0 6px;color:#EEFE7A;font-size:11px}
 #sales-popover dl,#chart-popover dl{margin:12px 0;border-block:1px solid #52575b;padding:8px 0}
 #sales-popover dl div,#chart-popover dl div{display:flex;justify-content:space-between;gap:16px;padding:4px 0}
 #sales-popover dd,#chart-popover dd{margin:0;font-variant-numeric:tabular-nums}

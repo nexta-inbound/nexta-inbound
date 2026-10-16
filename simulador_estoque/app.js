@@ -519,7 +519,9 @@ function popupGrafico(i){
 }
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');
- popup.innerHTML=popupGrafico(i);popup.hidden=false;
+ const fixado=diaFixadoGrafico===i;
+ popup.innerHTML=(fixado?'<p class="aviso-fixado">Fixado · selecione o texto para copiar · Esc ou clique fora para fechar</p>':'')+popupGrafico(i);
+ popup.classList.toggle('fixado',fixado);popup.hidden=false;
  const rect=el.getBoundingClientRect(),width=popup.offsetWidth,height=popup.offsetHeight;
  // Abre AO LADO da coluna do dia (direita, ou esquerda se nao couber) e sempre inteiro dentro da tela —
  // abrindo embaixo, o popup passava do fim da janela e cortava as viagens (2026-10-09).
@@ -527,11 +529,20 @@ function mostrarPopupGrafico(el){
  popup.style.left=(direita+width<=innerWidth-8?direita:Math.max(8,esquerda))+'px';
  popup.style.top=Math.max(8,Math.min(rect.top,innerHeight-height-8))+'px';
 }
-function fecharPopupGrafico(){$('chart-popover').hidden=true;}
-document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-chart-day]');if(el)mostrarPopupGrafico(el);});
-document.addEventListener('focusin',e=>{const el=e.target.closest('[data-chart-day]');if(el)mostrarPopupGrafico(el);});
-document.addEventListener('pointerdown',e=>{const el=e.target.closest('[data-chart-day]');if(el)mostrarPopupGrafico(el);else if(!$('chart-popover').contains(e.target))fecharPopupGrafico();});
-document.addEventListener('pointerout',e=>{if(e.target.closest('[data-chart-day]')&&document.activeElement!==e.target)fecharPopupGrafico();});
+// Popup FIXO ao clicar (pedido da usuaria, 2026-10-16): passar o mouse so' mostra; clicar num dia fixa o popup
+// (nao some ao tirar o mouse nem troca ao passar por outro dia). Clicar no mesmo dia, fora do grafico/popup ou
+// apertar Esc solta. Clicar em outro dia fixa o outro.
+let diaFixadoGrafico=null;
+function fecharPopupGrafico(){diaFixadoGrafico=null;$('chart-popover').classList.remove('fixado');$('chart-popover').hidden=true;}
+document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-chart-day]');if(el&&diaFixadoGrafico===null)mostrarPopupGrafico(el);});
+document.addEventListener('focusin',e=>{const el=e.target.closest('[data-chart-day]');if(el&&diaFixadoGrafico===null)mostrarPopupGrafico(el);});
+document.addEventListener('pointerdown',e=>{
+ const el=e.target.closest('[data-chart-day]');
+ if(el){const i=+el.dataset.chartDay;if(diaFixadoGrafico===i){fecharPopupGrafico();return;}diaFixadoGrafico=i;mostrarPopupGrafico(el);}
+ else if(!$('chart-popover').contains(e.target))fecharPopupGrafico();
+});
+document.addEventListener('pointerout',e=>{if(diaFixadoGrafico===null&&e.target.closest('[data-chart-day]')&&document.activeElement!==e.target)fecharPopupGrafico();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&diaFixadoGrafico!==null)fecharPopupGrafico();});
 function alerts(result){const items=['O histórico de vendas realizadas não é carregado nesta versão; as vendas futuras usam o LE vigente e, hoje, o maior entre o LE e os pedidos do SAP.',`Valores futuros carregados das fontes (${D.bi.extractedAt.replace('T',' ')}). Portal carregado até ${D.bi.coverage.portal_max.slice(0,10)}; cadências MIS até ${D.bi.coverage.cadencia_max.slice(0,10)}.`];if(parameters.slice(1).some(([k])=>state[k]===null))items.push('A planilha de política tem campos vazios neste recorte; os alertas correspondentes estão indisponíveis.');result.forEach((r,i)=>{const low=Math.min(r.opening,r.close),high=Math.max(r.opening,r.close),a=[];if(low<0)a.push(`déficit físico de ${fmt(-low)} m³`);if(state.lastro!==null&&low<state.lastro)a.push('estoque abaixo do lastro');if(state.min!==null&&low<=state.min)a.push(`no mínimo ou abaixo em ${fmt(state.min-low)} m³`);if(state.capacity>0&&high>state.capacity)a.push(`capacidade excedida em ${fmt(high-state.capacity)} m³`);else if(state.max!==null&&high>state.max)a.push('acima do estoque máximo');if(a.length)items.push(label(i)+': '+a.join(' • '));});$('alerts').innerHTML=items.map(s=>`<div class="alert">${esc(s)}</div>`).join('');}
 // Selecionar pelo <select> nativo sempre colapsa pra 1 so' (troca o Set inteiro) — e' a ferramenta de
 // "escolher so' esse"; os chips (abaixo) sao quem permite ligar varios ao mesmo tempo sem perder os
