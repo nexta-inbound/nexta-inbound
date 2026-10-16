@@ -3499,7 +3499,7 @@
   <div class="section-header">
     <div>
       <div class="section-title">Cadastro de Bases</div>
-      <div class="section-sub">Referência de Empresa, Depósito, CNPJ, SAP, MIS e Herrlog por base</div>
+      <div class="section-sub">Referência de Empresa, Depósito, CNPJ, SAP, MIS, Herrlog e fila de descarga por base</div>
     </div>
     <button class="btn btn-primary" onclick="abrirModalBase(null)">＋ Nova Base</button>
   </div>
@@ -3542,6 +3542,7 @@
               <th style="white-space:normal">CNPJ</th>
               <th style="white-space:normal;min-width:120px">Cidade CNPJ</th>
               <th style="white-space:normal;min-width:150px">Razão Social</th>
+              <th style="white-space:normal;min-width:160px">Grupo WhatsApp fila</th>
               <th class="col-acao" style="text-align:center">Ações</th>
             </tr>
           </thead>
@@ -4575,6 +4576,15 @@
     <div class="modal-field">
       <div class="modal-label">Nome MIS *</div>
       <input type="text" class="config-input" id="base-nomeMis" placeholder="BETIM - NEXTA RBZ">
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-label">Grupo WhatsApp da fila de descarga</div>
+      <input type="text" class="config-input" id="base-grupoWhatsappFilaDescarga"
+        placeholder="Nome exato do grupo no WhatsApp">
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+        Bases com o mesmo grupo formam uma única fila, identificada por cidade e depósito. Deixe em branco para não automatizar.
+      </div>
     </div>
 
     <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -9032,6 +9042,7 @@ function renderBasesTable() {
       <td style="font-family:monospace;white-space:normal">${esc(b.cnpj)}</td>
       <td style="white-space:normal;min-width:120px">${esc(b.cidadeCnpj)}</td>
       <td style="white-space:normal;min-width:150px">${esc(b.razaoSocial)}</td>
+      <td style="white-space:normal;min-width:160px">${esc(b.grupoWhatsappFilaDescarga || '—')}</td>
       <td class="col-acao">
         <div style="display:flex;gap:4px;justify-content:center">
           <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalBase(${realIdx})">✏️</button>
@@ -9055,6 +9066,7 @@ function abrirModalBase(idx) {
   document.getElementById('base-deposito').value = b.deposito || '';
   document.getElementById('base-regional').value = b.regional || '';
   document.getElementById('base-nomeMis').value = b.nomeMis || '';
+  document.getElementById('base-grupoWhatsappFilaDescarga').value = b.grupoWhatsappFilaDescarga || '';
   document.getElementById('base-empresaSap').value = b.empresaSap || '';
   document.getElementById('base-localExpedicao').value = b.localExpedicao || '';
   document.getElementById('base-idHerrlog').value = b.idHerrlog || '';
@@ -9095,6 +9107,7 @@ async function salvarBase() {
     cnpj:           document.getElementById('base-cnpj').value.trim(),
     cidadeCnpj:     document.getElementById('base-cidadeCnpj').value.trim(),
     razaoSocial:    document.getElementById('base-razaoSocial').value.trim(),
+    grupoWhatsappFilaDescarga: document.getElementById('base-grupoWhatsappFilaDescarga').value.trim(),
   };
 
   const isNovo = editingBaseIdx === null || editingBaseIdx === undefined;
