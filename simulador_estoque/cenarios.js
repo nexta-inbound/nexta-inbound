@@ -142,7 +142,11 @@
    atual.has(chave)?atual.delete(chave):atual.add(chave);
    trocarFiltroStatus(atual.size?[...atual]:STATUS_VIAGEM.map(([k])=>k));
   }
-  persist();select();syncStatusViagem();
+  persist();select();
+  // As linhas de transito sempre seguem o filtro (2026-10-19, "a tabela tem que obedecer ao filtro"): sem isto,
+  // um cenario salvo no navegador segurava os valores antigos de FOB/CIF/Transferencia (mergeSource).
+  for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=today())state.movements[k][i]=baseline.movements[k][i];
+  persist();render(true);syncStatusViagem();
  }
  opcoesGrafico.addEventListener('click',event=>{
   const e=event.target.closest('[data-entrada]');if(e){chooseEntrada(e.dataset.entrada);return;}

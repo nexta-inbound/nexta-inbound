@@ -211,7 +211,9 @@ function select(){
  if(!registros.length){for(const id of ['grid','cards','alerts','chart','semana-progresso'])$(id).innerHTML='';if($('bi-measures'))$('bi-measures').innerHTML='';message(registrosAtuais().length?'Nenhuma base disponível para este filtro. Ajuste a região ou escolha outra base.':'Escolha cidade, depósito(s), empresa(s) e produto acima para começar.');return;}
  if(modoCombinado){const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}
  else baseline=fresh(record);
- state=structuredClone(baseline);try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturado (Real)',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
+ state=structuredClone(baseline);try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}
+ // Com filtro de Status da viagem ligado, FOB/CIF/Transferencia de hoje em diante vem sempre do filtro (2026-10-19).
+ if(filtroStatusAtivo())for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturado (Real)',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
 // Politica de estoque (abertura/lastro/minimo/medio/maximo/capacidade): fixa, vem da planilha e nao
 // e' editavel pela simulacao (pedido da usuaria, 2026-09-28) — so os movimentos (entradas/saidas)
 // continuam editaveis, na tabela e no editor por dia.
@@ -451,9 +453,10 @@ const movSeries=[
  // informativa como o Rodoviario — e sai do Rodoviario pra nao aparecer duas vezes.
  ['transferInProg','Transferência entrada · sem status de viagem','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
   // So' em "Fontes automaticas": em "Cadencia MIS" a entrada ja' e' a cadencia inteira (nao repete aqui).
-  // Em automaticas, toda transferencia sem Status Viagem fica de fora da conta e aparece so' aqui (rosa).
-  const naoContada=$('entrada')?.value==='auto'?transferencias(i,'transferenciasEntrada').filter(t=>!emViagemTransf(t)).reduce((s,t)=>s+(t.volume||0),0):0;
-  return Math.max(0,total-valorMov('transferInViagem',i))+naoContada;}],
+  // So' o que entra na conta (2026-10-19, usuaria: "por que em fontes automaticas soma o que ta com a borda
+  // rosa? nao faz sentido"): a transferencia que nao conta nao vai mais pra barra — fica na borda rosa da
+  // celula e no popup da tabela.
+  return Math.max(0,total-valorMov('transferInViagem',i));}],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
