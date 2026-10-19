@@ -54,6 +54,14 @@ try{const salvo=JSON.parse(localStorage.getItem('simulador.filtroStatusViagem')|
 const filtroStatusAtivo=()=>filtroStatusViagem.size<STATUS_VIAGEM.length;
 // Categoria do carro: sem placa (grupo 'programado' no detalhe) = backlog; com placa, pelo T1..T5 da Herrlog.
 function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/^T([1-5])/.exec(String(v.statusViagem||''));return m?'T'+m[1]:'sem';}
+// Botao de entrada "Tudo" (usuaria, 2026-10-19; igual ao LE do BI): "Programado + Nao programado" e mais a
+// cadencia rodoviaria do MIS que ainda nao virou viagem no portal (entra no FOB).
+const incluiNaoProg=e=>e==='auto+naoprog'||e==='auto+tudo';
+function cadenciaMisSemViagem(r,iso){
+ const v=r.bi?.days?.[iso]?.progRoad;if(!v)return 0;
+ const planejadas=(entradasTransfPorDia(r)[iso]||[]).filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);
+ return Math.max(0,v-planejadas-(fobNaoProgramado(r,iso)||0));
+}
 function trocarFiltroStatus(chaves){filtroStatusViagem=new Set(chaves);try{localStorage.setItem('simulador.filtroStatusViagem',JSON.stringify([...filtroStatusViagem]));}catch{}}
 function fresh(r,cenarioForcado,entradaForcada){
  // Padrao VMD reprojetada (2026-10-19: LE e Disp MIS sairam dos botoes).
@@ -70,7 +78,7 @@ function fresh(r,cenarioForcado,entradaForcada){
  const switchIndex=Math.max(startIndex,Math.round((new Date(D.bi.inbound.switchDate+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const movements=Object.fromEntries(E.rows.map(([k])=>[k,Array(30).fill(0)]));
  const transfEntrada=entradasTransfPorDia(r);
- for(let i=0;i<15;i++){
+ for(let i=0;i<Math.min(n,30);i++){
   const loaded=r.bi?.days[day(i)];if(!loaded)continue;
   const future=day(i)>=today;
   for(const k of ['sale','fob','cif','pump','transferIn','transferOut']){
@@ -89,7 +97,7 @@ function fresh(r,cenarioForcado,entradaForcada){
    const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)];
    if(vivo&&(vivo.fob!=null||vivo.cif!=null)){movements.fob[i]=vivo.fob??0;movements.cif[i]=vivo.cif??0;}
    // "Programado + Não programado" (pedido da usuaria, 2026-10-08): soma no FOB as viagens ainda sem placa.
-   if(entrada==='auto+naoprog')movements.fob[i]+=fobNaoProgramado(r,day(i))??0;
+   if(incluiNaoProg(entrada))movements.fob[i]+=fobNaoProgramado(r,day(i))??0;
    // Transferencia de entrada em linha propria (pedido da usuaria, 2026-10-15): a viagem que vem de outra base
    // nossa sai do FOB/CIF (se ja' estava la') e entra em "Transferencia · entrada"; a que nao estava em linha
    // nenhuma (programada no portal ou na cadencia) passa a contar aqui, fechando com a saida da origem.
@@ -99,13 +107,15 @@ function fresh(r,cenarioForcado,entradaForcada){
    for(const t of transfEntrada[day(i)]||[]){
     // 'naoprog' (sem placa) nunca esta' no FOB: fobNaoProgramado ja' deixa as transferencias de fora.
     const conta=t.conta==='naoprog'?null:t.conta;
-    if(!conta&&entrada!=='auto+naoprog')continue;
+    if(!conta&&!incluiNaoProg(entrada))continue;
     if(conta)movements[conta][i]-=Math.min(movements[conta][i],t.volume);
     // Em "Fontes automaticas" so' conta a transferencia COM Status Viagem (T1-T5); sem status (ex.: Placa
     // Enviada ainda sem rastreio) fica igual ao Backlog: so' entra no "Programado + Nao programado" (2026-10-19).
-    if(entrada!=='auto+naoprog'&&!emViagemTransf(t))continue;
+    if(!incluiNaoProg(entrada)&&!emViagemTransf(t))continue;
     movements.transferIn[i]+=t.volume;
    }
+   const misDia=entrada==='auto+tudo'?cadenciaMisSemViagem(r,day(i)):0;
+   movements.fob[i]+=misDia;
    // Filtro de Status da viagem: refaz FOB/CIF/transferencia so' com os carros das categorias marcadas. A
    // Visao do dia (entradaForcada) ignora o filtro.
    if(filtroStatusAtivo()&&!entradaForcada){
@@ -118,6 +128,8 @@ function fresh(r,cenarioForcado,entradaForcada){
     }
     // Transferencia que so' existe na cadencia (sem carro): conta como Backlog.
     if(filtroStatusViagem.has('backlog'))for(const t of transfEntrada[day(i)]||[])if(!t.viagem)movements.transferIn[i]+=t.volume;
+    // No "Tudo", a cadencia MIS sem viagem tambem conta como Backlog.
+    if(filtroStatusViagem.has('backlog'))movements.fob[i]+=misDia;
    }
   }
   // Datas anteriores usam a mesma base em todos os cenarios.
@@ -201,6 +213,30 @@ function construirRegistroCombinado(registros,openingSomado){const cidade=cidade
 // venda/origem da entrada/transito ao vivo corretamente pro seu proprio emp_dep, so' depois os
 // resultados sao somados. Isso evita reimplementar essa logica toda pro caso combinado.
 function freshCombinado(registros){const partes=registros.map(r=>fresh(r));const somarCampo=campo=>somaOuNula(partes.map(p=>p[campo]));const movements={};for(const [k] of E.rows)movements[k]=Array.from({length:30},(_,i)=>partes.reduce((total,p)=>total+(p.movements[k][i]||0),0));const openingSomado=partes.reduce((total,p)=>total+p.opening,0);return{baseline:{version:1,id:'combinado:'+registros.map(r=>r.id).sort().join(','),date:D.date,sourceRevision:D.revision,name:'Minha simulação (combinada)',opening:openingSomado,lastro:somarCampo('lastro'),min:somarCampo('min'),mid:somarCampo('mid'),max:somarCampo('max'),capacity:somarCampo('capacity'),clamp:false,scenario:partes[0]?.scenario||'LE',switchIndex:partes[0]?.switchIndex??0,movements},openingSomado};}
+// Botao "+ fim do LE" (usuaria, 2026-10-19): estende a tabela/grafico ate' o ultimo dia com LE (max 30 dias).
+// Os dias extras vem de fontes/extensao/<regiao>, baixados so' no 1o clique (a carga normal fica com 15 dias).
+let extensaoAtiva=false,extensaoCarregada=false;
+function horizonteRecorte(registros){
+ if(!extensaoAtiva||!registros?.length)return 15;
+ const ultimo=registros.flatMap(r=>Object.keys(r.bi?.days||{})).sort().at(-1);
+ const dias=ultimo?Math.round((new Date(ultimo+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000)+1:15;
+ return Math.max(15,Math.min(30,dias));
+}
+async function alternarExtensao(){
+ if(!extensaoAtiva&&!extensaoCarregada){
+  if(!window.SIM_CLOUD?.carregarExtensao){message('Dias extras disponíveis só no portal online.');return;}
+  message('Carregando os dias até o fim do LE…');
+  try{
+   const ext=await window.SIM_CLOUD.carregarExtensao();
+   if(!Object.keys(ext).length){message('Os dias até o fim do LE ainda não estão disponíveis (aguarde a próxima atualização das fontes).');return;}
+   for(const r of D.records)if(ext[r.id])Object.assign(r.bi.days,ext[r.id]);
+   extensaoCarregada=true;
+  }catch(e){console.error(e);message('Não foi possível carregar os dias extras. Tente de novo.');return;}
+ }
+ extensaoAtiva=!extensaoAtiva;
+ select();
+ message(extensaoAtiva?`Mostrando até ${label(n-1)} (fim do LE deste recorte).`:'De volta aos 15 dias.');
+}
 function select(){
  const registros=registrosAtuais().filter(r=>r.product===$('product').value);
  avisosSugestao={};
@@ -210,6 +246,7 @@ function select(){
  // Filtro de regiao pode deixar a lista de bases vazia (ex.: nao ha base dessa regiao pra este login);
  // sem guarda, fresh(undefined) quebra o resto do render e trava a tela com os chips desatualizados.
  if(!registros.length){for(const id of ['grid','cards','alerts','chart','semana-progresso'])$(id).innerHTML='';if($('bi-measures'))$('bi-measures').innerHTML='';message(registrosAtuais().length?'Nenhuma base disponível para este filtro. Ajuste a região ou escolha outra base.':'Escolha cidade, depósito(s), empresa(s) e produto acima para começar.');return;}
+ n=horizonteRecorte(registros);
  if(modoCombinado){const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}
  else baseline=fresh(record);
  state=structuredClone(baseline);try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}
@@ -266,7 +303,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&$('entrada')?.value!=='auto+naoprog'?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado"</em>':''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado" e "Tudo"</em>':''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -356,7 +393,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  const first=result.findIndex(x=>['danger','warn'].includes(status(x.opening))||['danger','warn'].includes(status(x.close)));
  $('cards').innerHTML=[['Abertura de referência',fmt(state.opening),'m³ · início do dia'],['Fechamento ao fim de 14 dias',fmt(last),`m³ · diferença de ${fmt(last-original.at(-1).close)} vs. original`],['Menor estoque no período',fmt(low),'m³ · abertura e fechamento'],['Primeira atenção',first<0?'Sem alerta de limite':label(first),first<0?'Verifique os limites e campos não preenchidos':'Confira os pontos de atenção abaixo']].map(([title,value,sub],i)=>`<article class="card"><small>${title}</small><strong class="${i===2?status(low):''}">${value}</strong><em>${sub}</em></article>`).join('');
  const passado=mostrarHistoricoGrade?5:0;const offsets=Array.from({length:passado+n},(_,i)=>i-passado);
- if(rebuild){let html=`<thead><tr><th class="row-controls"><button type="button" id="toggle-historico" title="Mostrar ou ocultar o histórico dos 5 dias anteriores">${mostrarHistoricoGrade?'−':'+'} dias</button> <button type="button" id="toggle-info" title="Mostrar ou ocultar as linhas de referência (em itálico)">${mostrarInfoGrade?'−':'+'} linhas</button></th><th class="row-label">Movimento / m³</th>`+offsets.map(i=>`<th class="${i<0?'history':i===0?'today':''}" data-col-day="${i}">${label(i)}<br><span class="dia-semana">${diaSemana(i)}</span><br><small>${i<0?'Histórico':i===0?'Referência':'Simulação'}</small></th>`).join('')+'</tr></thead><tbody>';
+ if(rebuild){let html=`<thead><tr><th class="row-controls"><button type="button" id="toggle-historico" title="Mostrar ou ocultar o histórico dos 5 dias anteriores">${mostrarHistoricoGrade?'−':'+'} dias</button> <button type="button" id="toggle-info" title="Mostrar ou ocultar as linhas de referência (em itálico)">${mostrarInfoGrade?'−':'+'} linhas</button> <button type="button" id="toggle-extensao" title="Estender a tabela e o gráfico até o último dia do LE vigente (até 30 dias). Os dias extras só são baixados quando você clica.">${extensaoAtiva?'−':'+'} fim do LE</button></th><th class="row-label">Movimento / m³</th>`+offsets.map(i=>`<th class="${i<0?'history':i===0?'today':''}" data-col-day="${i}">${label(i)}<br><span class="dia-semana">${diaSemana(i)}</span><br><small>${i<0?'Histórico':i===0?'Referência':'Simulação'}</small></th>`).join('')+'</tr></thead><tbody>';
  const outputRow=(key,name,fonte)=>`<tr class="total"><th class="row-controls"></th><th class="row-label">${name}${horaFonte(fonte)}</th>${offsets.map(i=>`<td data-result="${key}" data-day="${i}"></td>`).join('')}</tr>`;
  html+=outputRow('opening','Estoque inicial · abertura','abertura');html+=outputRow('lastro','Lastro mínimo','politica');html+=outputRow('openingNet','Abertura menos lastro');
  // 4 linhas informativas (so' leitura, nao entram no calculo) mostrando as referencias da venda antes
@@ -382,21 +419,20 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  const entradaKeys=linhasVisiveis.filter(([,,sign])=>sign>0).map(([k])=>k);
  const saidaKeys=linhasVisiveis.filter(([,,sign])=>sign<0).map(([k])=>k);
  for(const [k,l,sign] of linhasVisiveis){
-  // So' tem valor nos dias de historico (botao "+" da grade); referencia, nao entra no calculo.
-  if(k===entradaKeys[0])html+=infoRow('Recebimentos reais (SAP)',i=>i<0?recebidoPassado(i):null,false,'recebimentos');
-  if(k==='sale'){
-   html+=infoRow('VMD reprojetada',i=>record.bi?.days[day(i)]?.vmd,false,'vmd');
-   html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.days?.[day(i)]?.le??record.bi?.semana?.porDia?.[day(i)]?.le,false,'le');
-   html+=infoRow('Pedidos em tela',i=>record.bi?.days[day(i)]?.billing,false,'va05');
-   html+=infoRow('Vendas reais (faturamento)',i=>record.bi?.semana?.porDia?.[day(i)]?.real,false,'faturamento');
-  }
-  const controlCell=k===entradaKeys[0]?`<th rowspan="${entradaKeys.length+(mostrarInfoGrade&&entradaKeys.includes('fob')?1:0)}" class="row-controls" id="entrada-controls-cell"></th>`
-   :k===saidaKeys[0]?`<th rowspan="${saidaKeys.length}" class="row-controls" id="scenario-controls-cell"></th>`:'';
+  // "+ linhas" so' com as referencias de VENDA, dentro do bloco de Vendas, logo abaixo da linha que debita
+  // (usuaria, 2026-10-19: "as entradas nao precisa trazer"). As 4 linhas entram no rowspan dos botoes de venda.
+  const INFO_VENDAS=4;
+  const controlCell=k===entradaKeys[0]?`<th rowspan="${entradaKeys.length}" class="row-controls" id="entrada-controls-cell"></th>`
+   :k===saidaKeys[0]?`<th rowspan="${saidaKeys.length+(mostrarInfoGrade&&saidaKeys[0]==='sale'?INFO_VENDAS:0)}" class="row-controls" id="scenario-controls-cell"></th>`:'';
   const rotulo=(k==='fob'?'Trânsito FOB · programado (com placa)':k==='planned'?'Cadência sugerida':l)+horaFonte({fob:'transito',cif:'transito',pump:'cadencia',sale:fonteDaVenda()}[k]);
   html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Faturamento pendente de integração':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:history(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
-  // Linha logo abaixo do FOB (pedido da usuaria, 2026-10-08) — so' referencia; entra na conta apenas
-  // com a origem de entrada "Programado + Não programado".
-  if(k==='fob')html+=infoRow('Trânsito FOB · não programado (sem placa)',i=>somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i)))),true,'transito'); }
+  if(k==='sale'){
+   html+=infoRow('VMD reprojetada',i=>record.bi?.days[day(i)]?.vmd,true,'vmd');
+   html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.days?.[day(i)]?.le??record.bi?.semana?.porDia?.[day(i)]?.le,true,'le');
+   html+=infoRow('Pedidos em tela',i=>record.bi?.days[day(i)]?.billing,true,'va05');
+   // Mesma venda real do botao "Real" (deposito; passado = faturamento, hoje = VA05 do dia).
+   html+=infoRow('Real',i=>{const d=record.bi?.days?.[day(i)];return d&&'vendaReal' in d?d.vendaReal:record.bi?.semana?.porDia?.[day(i)]?.real;},true,'faturamento');
+  } }
  for(const [k,l] of [['incoming','Total de entradas'],['outgoing','Total de saídas']])html+=outputRow(k,l);
  $('grid').innerHTML=html+'</tbody>';}
  // Celula de abertura (dia 0) ganha um aviso visual quando a leitura nao e' de hoje — pedido da
@@ -442,8 +478,15 @@ const movSeries=[
  // Em "Cadencia MIS" o FOB/CIF da tabela ja' e' a propria cadencia (rodoviaria inclusa): o bloco nao aparece.
  ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   // Transferencia planejada sempre sai do Rodoviario: ela tem bloco proprio (rosa), contando ou nao.
-  const tudo=$('entrada')?.value==='auto+naoprog';
+  const tudo=incluiNaoProg($('entrada')?.value);
   const naoProg=tudo?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
+  const total=Math.max(0,v-transfPlanejadaDia(i)-naoProg);
+  // So' a parte que ja' tem viagem no portal (sem placa); o resto e' cadencia MIS sem viagem (bloco abaixo).
+  return tudo?0:Math.min(total,somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0);}],
+ // Cadencia rodoviaria do MIS que ainda nao virou viagem no portal (usuaria, 2026-10-19: "deixa uma borda com
+ // uma cor diferente, tipo cadencia nao programada ainda"). Informativo: nao entra na conta em nenhum botao.
+ ['progRoadMis','Cadência MIS · sem viagem no portal','#7FC4BA',i=>{if(i<0||['cadencia','auto+tudo'].includes($('entrada')?.value))return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
+  const naoProg=somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0;
   return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
  // Transferencia de entrada em dois pedacos: com Status Viagem T1-T5 (roxo) e sem status (rosa). A soma e'
  // sempre o valor da linha da tabela (que pode ter sido editado); o que passar do em viagem fica no rosa.
@@ -467,14 +510,14 @@ const movSeries=[
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
-const ENTRADAS_BLOCO=['received','pump','progRoad','transferInViagem','transferInProg','planned','fob','cif'];
+const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','transferInViagem','transferInProg','planned','fob','cif'];
 const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
 let chartContext=null;
 let mostrarHistoricoGrade=false;
 let mostrarInfoGrade=false;
-document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){mostrarHistoricoGrade=!mostrarHistoricoGrade;render(true);}if(e.target.closest('#toggle-info')){mostrarInfoGrade=!mostrarInfoGrade;render(true);}});
+document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){mostrarHistoricoGrade=!mostrarHistoricoGrade;render(true);}if(e.target.closest('#toggle-info')){mostrarInfoGrade=!mostrarInfoGrade;render(true);}if(e.target.closest('#toggle-extensao'))alternarExtensao();});
 // Grafico no formato do Power BI (pedido da usuaria, 2026-10-09: "deixar + parecido o grafico de barras"):
 // barra larga empilhada = Lastro (faixa laranja na base) + Abertura − Lastro + entradas do dia (Recebimentos,
 // Bombeio, Rodoviario, FOB, CIF), rotulo dentro de cada pedaco, mesma cor em todos os dias; linhas de venda,
@@ -528,11 +571,11 @@ function chart(result,original,offsets){
    const d1=k==='fob'?Math.min(fobAposCorte(i)||0,v):0;
    // Transferencia: fundo cinza igual ao FOB e a cor (roxo em viagem / rosa sem status) so' na borda
    // (usuaria, 2026-10-17: "coloca o fundo cinza mesmo da barrinha, so coloca a borda de outra cor").
-   pedacos.push([nome,v-d1,cor,true,k.startsWith('transferIn')]);
+   pedacos.push([nome,v-d1,cor,true,k.startsWith('transferIn'),k==='progRoadMis']);
    if(d1>0)pedacos.push(['Trânsito FOB · ETA após 15h do dia anterior (D+1)',d1,COR_FOB_D1,true]);
   }
   let cum=0;
-  for(const [nome,v,cor,comRotulo,borda] of pedacos){
+  for(const [nome,v,cor,comRotulo,borda,tracejado] of pedacos){
    if(v<=0)continue;
    const topo=y(cum+v),alt=Math.max(1,y(cum)-topo);
    // Borda por dentro do pedaco (recuo de meio traco) pra nao invadir o bloco vizinho.
@@ -540,6 +583,8 @@ function chart(result,original,offsets){
    // Fecha o <rect> nos dois casos (2026-10-19: o da borda ficava aberto e "engolia" o resto do grafico —
    // barras dos dias seguintes, rotulos e linhas da politica sumiam a partir da 1a transferencia).
    const dica=`<title>${label(i)} · ${nome}: ${fmt(v)} m³${nome==='Abertura − lastro'?` (abertura ${fmt(ab)} m³)`:''}</title>`;
+   // Cadencia MIS sem viagem no portal: mesma cor do Rodoviario, com borda ambar tracejada.
+   if(tracejado&&alt>=4){barras+=`<rect x="${x(i)-bw/2+1}" y="${topo+1}" width="${bw-2}" height="${alt-2}" fill="${cor}" stroke="#FBBF24" stroke-width="2" stroke-dasharray="5 3">${dica}</rect>`;if(comRotulo&&alt>=18)rot+=rotulo(x(i),topo+alt/2,v);cum+=v;continue;}
    barras+=sw?`<rect x="${x(i)-bw/2+sw/2}" y="${topo+sw/2}" width="${bw-sw}" height="${alt-sw}" fill="${COR_FUNDO_TRANSF}" stroke="${cor}" stroke-width="${sw}">${dica}</rect>`
     :`<rect x="${x(i)-bw/2}" y="${topo}" width="${bw}" height="${alt}" fill="${borda?COR_FUNDO_TRANSF:cor}">${dica}</rect>`;
    if(comRotulo&&alt>=18)rot+=rotulo(x(i),topo+alt/2,v);
@@ -630,7 +675,7 @@ $('clamp').onchange=()=>{state.clamp=$('clamp').checked;persist();render();};$('
 // Restaurar, junto da tabela) — mesma acao, so' que exposta num unico lugar agora. Exportar CSV/Salvar
 // JSON/Abrir cenario (arquivo local) nao tem mais botao na tela; o Firebase ("Salvar na equipe") segue
 // disponivel pra compartilhar cenarios com a equipe.
-function restaurarDaFonte(){avisosSugestao={};$('entrada').value='auto';if(modoCombinado){const registros=registrosAtuais().filter(r=>r.product===$('product').value);const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}else baseline=fresh(record);state=structuredClone(baseline);persist();premises();render(true);message('Recorte restaurado aos dados da fonte (origem da entrada voltou para Fontes automáticas).');}
+function restaurarDaFonte(){avisosSugestao={};$('entrada').value='auto';if(modoCombinado){const registros=registrosAtuais().filter(r=>r.product===$('product').value);const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}else baseline=fresh(record);state=structuredClone(baseline);persist();premises();render(true);message('Recorte restaurado aos dados da fonte (origem da entrada voltou para Trânsito real).');}
 $('entrada').onchange=()=>{persist();select();};
 $('reset-tabela').onclick=restaurarDaFonte;
 // Sugestao de cadencia (pedido da usuaria, 2026-10-12, a partir de uma planilha dela): preenche a linha
@@ -666,8 +711,9 @@ function planejadoDoDia(i){
  if(entrada==='cadencia')return {pump:m.pump[i],fob:m.fob[i],cif:m.cif[i]};
  const out={pump:m.pump[i]};
  // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16).
- if(entrada==='auto+naoprog')out.transferIn=Math.min(m.transferIn[i],transfPlanejadaDia(i));
- if(entrada==='auto+naoprog')out.fob=Math.min(m.fob[i],somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0);
+ if(incluiNaoProg(entrada))out.transferIn=Math.min(m.transferIn[i],transfPlanejadaDia(i));
+ if(incluiNaoProg(entrada))out.fob=Math.min(m.fob[i],(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0)
+  +(entrada==='auto+tudo'?registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0):0));
  return out;
 }
 function sugerirCadencia(objetivo='tanque'){

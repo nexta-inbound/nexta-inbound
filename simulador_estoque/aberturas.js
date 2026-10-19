@@ -140,6 +140,17 @@
     if (linhas.some(l => Object.values(l.valores).some(v => Number.isNaN(v)))) { status('Há valores inválidos: use apenas números inteiros, sem sinal negativo.', true); return; }
     if (!linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura > 0)
         && !confirm(`Nenhuma abertura de combustível foi preenchida em ${t.nome}. Salvar assim mesmo?`)) return;
+    // Diferenca acima de 10% da referencia (usuaria, 2026-10-19): so' no Salvar, um resumo de todas as linhas
+    // fora da faixa; a pessoa confirma ou volta pra corrigir. O e-mail pra gestao sai da maquina logistica.
+    const fora = linhas.filter(l => l.unidade !== 'frascos').map(l => {
+      const ref = referencia[empDep]?.[l.produto], ab = l.valores.abertura;
+      return ref > 0 && ab > 0 && Math.abs(ab - ref) / ref > 0.10 ? {produto: l.produto, ab, ref, pct: Math.round((ab - ref) / ref * 100)} : null;
+    }).filter(Boolean);
+    if (fora.length) {
+      const texto = fora.map(f => `• ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
+      if (!confirm(`${t.nome}\n\nA abertura ficou mais de 10% diferente da referência do sistema:\n\n${texto}\n\n`
+          + 'Tem certeza de que essa é a abertura? Se confirmar, um e-mail será enviado à gestão informando a diferença.')) return;
+    }
     const botao = bloco.querySelector('.ab-salvar'); botao.disabled = true; botao.textContent = 'Salvando…';
     try {
       await cloud.salvarAberturaTerminal(campoDia.value, empDep, t.nome, linhas);

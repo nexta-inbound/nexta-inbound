@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '048e7d5b80';
+const VERSAO_SITE = '0f7931451c';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -359,6 +359,13 @@ onAuthStateChanged(auth, async user => {
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
       ...aberturasApi,
+      // Dias 15..29 sob demanda (botao "+ fim do LE", 2026-10-19): {record_id: {iso: dia}} das 3 regioes.
+      async carregarExtensao() {
+        const partes = await Promise.all(visibleRegions.map(r => get(ref(db, `fontes/extensao/${r}`)).then(s => s.val()).catch(() => null)));
+        const saida = {};
+        for (const p of partes) if (p?.conteudo && p.data === data.date) Object.assign(saida, JSON.parse(p.conteudo));
+        return saida;
+      },
       // Varias datas em paralelo (visao semanal) — cada dia falho vira {} em vez de derrubar a semana toda.
       async listRange(dias) {
         const arvores = await Promise.all(dias.map(dia => get(ref(db, `cenariosDia/${dia}`)).then(s => s.val() || {}).catch(() => ({}))));

@@ -65,12 +65,19 @@
  // Bombeio + Transferencia-entrada. O <select id="entrada"> continua existindo (escondido) so' como
  // estado — os botoes espelham ele, igual o #scenario acima.
  const entradaSelector=$('entrada');
- const entradaModes=[['auto','Fontes automáticas'],['cadencia','Cadência MIS'],['auto+naoprog','Programado + Não programado']];
+ // 'auto' aparece como "Real" (usuaria, 2026-10-19): so' o que ja' esta' no transito.
+ // Resumo da regra de cada botao (aparece ao passar o mouse; usuaria, 2026-10-19).
+ const entradaModes=[
+  ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
+  ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
+  ['auto+naoprog','Programado + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
+  ['auto+tudo','Tudo','Programado + Não programado + a cadência rodoviária do MIS que ainda não virou viagem no portal (entra no FOB). Igual ao LE do BI.'],
+ ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');
  entradaControls.className='scenario-controls';
  entradaControls.title='Puxar entrada de';
- entradaControls.innerHTML='<span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada">'+entradaModes.map(([valor,rotulo])=>`<button type="button" data-entrada="${valor}" aria-pressed="false">${rotulo}</button>`).join('')+'</div>';
+ entradaControls.innerHTML='<span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada">'+entradaModes.map(([valor,rotulo,regra])=>`<button type="button" data-entrada="${valor}" aria-pressed="false" title="${regra}">${rotulo}</button>`).join('')+'</div>';
  function syncEntradaButtons(){
   entradaControls.querySelectorAll('button').forEach(button=>{button.setAttribute('aria-pressed',String(Boolean(state)&&button.dataset.entrada===entradaSelector.value));});
  }
@@ -122,11 +129,10 @@
  // intuitivo"). Sao copias dos botoes da tabela: chamam as mesmas funcoes e o destaque anda junto.
  const opcoesGrafico=document.createElement('div');
  opcoesGrafico.className='graf-opcoes';
+ // 2026-10-19 (usuaria): Entrada/Vendas sairam do grafico (ficam so' na tabela); so' o filtro de Status, ao lado.
  opcoesGrafico.innerHTML=
-  `<div class="graf-grupo"><span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada (gráfico)">${entradaModes.map(([valor,rotulo])=>`<button type="button" data-entrada="${valor}" aria-pressed="false">${rotulo}</button>`).join('')}</div></div>`
-  +`<div class="graf-grupo"><span>Vendas</span><div class="scenario-buttons" role="group" aria-label="Cenário de venda (gráfico)">${modes.map(mode=>`<button type="button" data-scenario="${mode}" aria-pressed="false">${rotuloCenario[mode]||mode}</button>`).join('')}</div></div>`
   // Filtro por Status da viagem (2026-10-19): marca 1 ou mais; "Todos" volta a regra normal.
-  +`<div class="graf-grupo graf-status"><span>Status da viagem</span><div class="scenario-buttons" role="group" aria-label="Status da viagem nas entradas">`
+  `<div class="graf-grupo graf-status"><span>Status da viagem</span><div class="scenario-buttons" role="group" aria-label="Status da viagem nas entradas">`
   +`<button type="button" data-status-todos aria-pressed="false">Todos</button>${STATUS_VIAGEM.map(([k,r])=>`<button type="button" data-status-viagem="${k}" aria-pressed="false">${r}</button>`).join('')}</div></div>`;
  function syncStatusViagem(){
   const ativo=filtroStatusAtivo(),cadencia=entradaSelector.value==='cadencia';
@@ -157,10 +163,23 @@
   const st=event.target.closest('[data-status-viagem]');if(st)chooseStatusViagem(st.dataset.statusViagem);
  });
  const painelGrafico=$('chart')?.closest('section');
- painelGrafico?.querySelector('.section-title')?.after(opcoesGrafico);
+ $('chart')?.before(opcoesGrafico);
+ // Coloca o filtro no espaco vazio a esquerda do grafico (a mesma largura da coluna de rotulos da tabela,
+ // menos o eixo dos numeros). Sem espaco (tela estreita), fica em cima do grafico.
+ function posicionarOpcoesGrafico(){
+  const chart=$('chart'),rotulos=document.querySelector('#grid thead th.row-label');
+  if(!chart||!painelGrafico)return;
+  const caixa=chart.getBoundingClientRect(),livre=rotulos?rotulos.getBoundingClientRect().right-caixa.left-70:0;
+  const lado=livre>=150;
+  opcoesGrafico.classList.toggle('graf-lado',lado);
+  if(lado){painelGrafico.style.position='relative';opcoesGrafico.style.left=(caixa.left-painelGrafico.getBoundingClientRect().left)+'px';
+   opcoesGrafico.style.top=(caixa.top-painelGrafico.getBoundingClientRect().top+8)+'px';opcoesGrafico.style.width=livre+'px';}
+  else{opcoesGrafico.style.left=opcoesGrafico.style.top=opcoesGrafico.style.width='';}
+ }
+ window.addEventListener('resize',posicionarOpcoesGrafico);
  const syncTabela=syncButtons,syncTabelaEntrada=syncEntradaButtons;
  syncButtons=function(){syncTabela();opcoesGrafico.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(Boolean(state)&&b.dataset.scenario===state.scenario)));};
- syncEntradaButtons=function(){syncTabelaEntrada();opcoesGrafico.querySelectorAll('[data-entrada]').forEach(b=>b.setAttribute('aria-pressed',String(Boolean(state)&&b.dataset.entrada===entradaSelector.value)));syncStatusViagem();};
+ syncEntradaButtons=function(){syncTabelaEntrada();opcoesGrafico.querySelectorAll('[data-entrada]').forEach(b=>b.setAttribute('aria-pressed',String(Boolean(state)&&b.dataset.entrada===entradaSelector.value)));syncStatusViagem();requestAnimationFrame(posicionarOpcoesGrafico);};
 
  function conteudoPopupVendas(index){
   const loaded=record.bi?.days[day(index)];
