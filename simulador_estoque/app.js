@@ -100,6 +100,9 @@ function fresh(r,cenarioForcado,entradaForcada){
     const conta=t.conta==='naoprog'?null:t.conta;
     if(!conta&&entrada!=='auto+naoprog')continue;
     if(conta)movements[conta][i]-=Math.min(movements[conta][i],t.volume);
+    // Em "Fontes automaticas" so' conta a transferencia COM Status Viagem (T1-T5); sem status (ex.: Placa
+    // Enviada ainda sem rastreio) fica igual ao Backlog: so' entra no "Programado + Nao programado" (2026-10-19).
+    if(entrada!=='auto+naoprog'&&!emViagemTransf(t))continue;
     movements.transferIn[i]+=t.volume;
    }
    // Filtro de Status da viagem: refaz FOB/CIF/transferencia so' com os carros das categorias marcadas. A
@@ -260,7 +263,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&(!t.conta||t.conta==='naoprog')&&$('entrada')?.value!=='auto+naoprog'?' · <em>ainda não está no trânsito: só entra na conta em "Programado + Não programado"</em>':''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&$('entrada')?.value!=='auto+naoprog'?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado"</em>':''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -448,7 +451,8 @@ const movSeries=[
  // informativa como o Rodoviario — e sai do Rodoviario pra nao aparecer duas vezes.
  ['transferInProg','Transferência entrada · sem status de viagem','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
   // So' em "Fontes automaticas": em "Cadencia MIS" a entrada ja' e' a cadencia inteira (nao repete aqui).
-  const naoContada=$('entrada')?.value==='auto'?transfPlanejadaDia(i):0;
+  // Em automaticas, toda transferencia sem Status Viagem fica de fora da conta e aparece so' aqui (rosa).
+  const naoContada=$('entrada')?.value==='auto'?transferencias(i,'transferenciasEntrada').filter(t=>!emViagemTransf(t)).reduce((s,t)=>s+(t.volume||0),0):0;
   return Math.max(0,total-valorMov('transferInViagem',i))+naoContada;}],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
