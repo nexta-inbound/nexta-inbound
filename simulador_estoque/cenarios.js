@@ -71,7 +71,7 @@
   ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
   ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
   ['auto+naoprog','Programado + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
-  ['auto+tudo','Tudo','Programado + Não programado + a cadência rodoviária do MIS que ainda não virou viagem no portal (entra no FOB). Igual ao LE do BI.'],
+  ['auto+tudo','Tudo','Programado + Não programado + a cadência rodoviária do MIS que ainda não virou viagem no portal (entra no FOB, com borda tracejada no gráfico).'],
  ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');

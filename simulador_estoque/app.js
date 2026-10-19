@@ -476,7 +476,10 @@ const movSeries=[
  // Idem com o FOB sem placa (2026-10-16): o Rodoviario ja' inclui essas viagens; na origem "Programado + Nao
  // programado" elas entram no FOB e a barra mostrava 60 + 60 com so' 60 na conta.
  // Em "Cadencia MIS" o FOB/CIF da tabela ja' e' a propria cadencia (rodoviaria inclusa): o bloco nao aparece.
- ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
+ // 2026-10-19 (usuaria: "se esta em transito real, por que colocou esse em amarelo? nao tem logica"): o grafico
+ // mostra so' o que entra na conta. Rodoviario e cadencia MIS sem viagem nao contam em nenhum botao exceto
+ // "Tudo" — e no "Tudo" a cadencia entra dentro do FOB (pedaco com borda ambar tracejada, ver chart()).
+ ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(true)return null;if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   // Transferencia planejada sempre sai do Rodoviario: ela tem bloco proprio (rosa), contando ou nao.
   const tudo=incluiNaoProg($('entrada')?.value);
   const naoProg=tudo?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
@@ -485,7 +488,7 @@ const movSeries=[
   return tudo?0:Math.min(total,somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0);}],
  // Cadencia rodoviaria do MIS que ainda nao virou viagem no portal (usuaria, 2026-10-19: "deixa uma borda com
  // uma cor diferente, tipo cadencia nao programada ainda"). Informativo: nao entra na conta em nenhum botao.
- ['progRoadMis','Cadência MIS · sem viagem no portal','#7FC4BA',i=>{if(i<0||['cadencia','auto+tudo'].includes($('entrada')?.value))return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
+ ['progRoadMis','Cadência MIS · sem viagem no portal','#7FC4BA',i=>{if(true)return null;if(i<0||['cadencia','auto+tudo'].includes($('entrada')?.value))return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   const naoProg=somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0;
   return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
  // Transferencia de entrada em dois pedacos: com Status Viagem T1-T5 (roxo) e sem status (rosa). A soma e'
@@ -571,7 +574,11 @@ function chart(result,original,offsets){
    const d1=k==='fob'?Math.min(fobAposCorte(i)||0,v):0;
    // Transferencia: fundo cinza igual ao FOB e a cor (roxo em viagem / rosa sem status) so' na borda
    // (usuaria, 2026-10-17: "coloca o fundo cinza mesmo da barrinha, so coloca a borda de outra cor").
-   pedacos.push([nome,v-d1,cor,true,k.startsWith('transferIn'),k==='progRoadMis']);
+   // No "Tudo", a parte do FOB que e' cadencia MIS sem viagem no portal fica num pedaco proprio (cinza, borda
+   // ambar tracejada): conta, mas ainda e' so' planejamento.
+   const misFob=k==='fob'&&i>=0&&$('entrada')?.value==='auto+tudo'?Math.min(v-d1,registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0)):0;
+   pedacos.push([nome,v-d1-misFob,cor,true,k.startsWith('transferIn'),false]);
+   if(misFob>0)pedacos.push(['Trânsito FOB · cadência MIS sem viagem no portal',misFob,cor,true,false,true]);
    if(d1>0)pedacos.push(['Trânsito FOB · ETA após 15h do dia anterior (D+1)',d1,COR_FOB_D1,true]);
   }
   let cum=0;
