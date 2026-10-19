@@ -381,3 +381,5 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .graf-opcoes.graf-lado .graf-grupo{flex-direction:column;align-items:stretch;gap:6px}
 .graf-opcoes.graf-lado .scenario-buttons{flex-direction:column;gap:4px}
 .graf-opcoes.graf-lado .scenario-buttons button{width:100%;text-align:left;min-height:26px;padding:4px 10px}
+/* FOB com cadencia MIS sem viagem no portal (botao Tudo, 2026-10-19). */
+#grid td.fob-cadencia input{border:2px dashed #FBBF24;box-shadow:none}
