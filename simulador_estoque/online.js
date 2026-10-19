@@ -15,10 +15,13 @@ function errorText(error) {
     'PERMISSION_DENIED': 'Seu acesso aos dados ainda não foi liberado.'})[error.code]
     || error.message || 'Não foi possível concluir a operação.';
 }
+// Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
+// alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
+const VERSAO_SITE = '9d1bc233c4';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
-    tag.src = name; tag.onload = resolve;
+    tag.src = VERSAO_SITE === 'dev' ? name : `${name}?v=${VERSAO_SITE}`; tag.onload = resolve;
     tag.onerror = () => reject(new Error(`Não foi possível carregar ${name}. Recarregue a página.`));
     document.body.append(tag);
   });
