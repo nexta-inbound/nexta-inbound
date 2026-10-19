@@ -163,7 +163,7 @@
     if (fora.length) {
       const texto = fora.map(f => `• ${f.terminal} · ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
       if (!confirm(`A abertura ficou mais de 10% diferente da referência do SAP:\n\n${texto}\n\n`
-          + 'Tem certeza de que essa é a abertura? Se confirmar, uma mensagem será enviada pelo WhatsApp à gestão (grupo Status RPA Nexta) informando a diferença.')) return;
+          + 'Tem certeza de que essa é a abertura? Se confirmar, ela vai para o grupo Status RPA Nexta no WhatsApp marcada em vermelho.')) return;
     }
     const botao = $('ab-salvar-cidade'); if (botao) { botao.disabled = true; botao.textContent = 'Salvando…'; }
     const falhas = [];

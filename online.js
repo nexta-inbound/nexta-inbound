@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '1ffcaf97cf';
+const VERSAO_SITE = '95ec4f4ad5';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
