@@ -116,6 +116,46 @@
  controls.addEventListener('click',event=>{const button=event.target.closest('[data-scenario]');if(button)choose(button.dataset.scenario);});
  selector.onchange=()=>choose(selector.value);
 
+ // Mesmas opcoes de Entrada e Vendas tambem ao lado do grafico (usuaria, 2026-10-19: "acho que fica mais
+ // intuitivo"). Sao copias dos botoes da tabela: chamam as mesmas funcoes e o destaque anda junto.
+ const opcoesGrafico=document.createElement('div');
+ opcoesGrafico.className='graf-opcoes';
+ opcoesGrafico.innerHTML=
+  `<div class="graf-grupo"><span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada (gráfico)">${entradaModes.map(([valor,rotulo])=>`<button type="button" data-entrada="${valor}" aria-pressed="false">${rotulo}</button>`).join('')}</div></div>`
+  +`<div class="graf-grupo"><span>Vendas</span><div class="scenario-buttons" role="group" aria-label="Cenário de venda (gráfico)">${modes.map(mode=>`<button type="button" data-scenario="${mode}" aria-pressed="false">${rotuloCenario[mode]||mode}</button>`).join('')}</div></div>`
+  // Filtro por Status da viagem (2026-10-19): marca 1 ou mais; "Todos" volta a regra normal.
+  +`<div class="graf-grupo graf-status"><span>Status da viagem</span><div class="scenario-buttons" role="group" aria-label="Status da viagem nas entradas">`
+  +`<button type="button" data-status-todos aria-pressed="false">Todos</button>${STATUS_VIAGEM.map(([k,r])=>`<button type="button" data-status-viagem="${k}" aria-pressed="false">${r}</button>`).join('')}</div></div>`;
+ function syncStatusViagem(){
+  const ativo=filtroStatusAtivo(),cadencia=entradaSelector.value==='cadencia';
+  opcoesGrafico.querySelector('.graf-status').classList.toggle('graf-status-off',cadencia);
+  opcoesGrafico.querySelector('.graf-status').title=cadencia?'Em "Cadência MIS" não há carros: o filtro não se aplica.':'';
+  opcoesGrafico.querySelector('[data-status-todos]').setAttribute('aria-pressed',String(!ativo));
+  opcoesGrafico.querySelectorAll('[data-status-viagem]').forEach(b=>b.setAttribute('aria-pressed',String(ativo&&filtroStatusViagem.has(b.dataset.statusViagem))));
+ }
+ function chooseStatusViagem(chave){
+  if(!record){message('Escolha cidade, depósito e produto antes de filtrar o status da viagem.');return;}
+  if(chave===null)trocarFiltroStatus(STATUS_VIAGEM.map(([k])=>k));
+  else{
+   // Com "Todos" ativo, o 1o clique escolhe so' aquele status; depois cada clique liga/desliga.
+   const atual=filtroStatusAtivo()?new Set(filtroStatusViagem):new Set();
+   atual.has(chave)?atual.delete(chave):atual.add(chave);
+   trocarFiltroStatus(atual.size?[...atual]:STATUS_VIAGEM.map(([k])=>k));
+  }
+  persist();select();syncStatusViagem();
+ }
+ opcoesGrafico.addEventListener('click',event=>{
+  const e=event.target.closest('[data-entrada]');if(e){chooseEntrada(e.dataset.entrada);return;}
+  const s=event.target.closest('[data-scenario]');if(s){choose(s.dataset.scenario);return;}
+  if(event.target.closest('[data-status-todos]')){chooseStatusViagem(null);return;}
+  const st=event.target.closest('[data-status-viagem]');if(st)chooseStatusViagem(st.dataset.statusViagem);
+ });
+ const painelGrafico=$('chart')?.closest('section');
+ painelGrafico?.querySelector('.section-title')?.after(opcoesGrafico);
+ const syncTabela=syncButtons,syncTabelaEntrada=syncEntradaButtons;
+ syncButtons=function(){syncTabela();opcoesGrafico.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(Boolean(state)&&b.dataset.scenario===state.scenario)));};
+ syncEntradaButtons=function(){syncTabelaEntrada();opcoesGrafico.querySelectorAll('[data-entrada]').forEach(b=>b.setAttribute('aria-pressed',String(Boolean(state)&&b.dataset.entrada===entradaSelector.value)));syncStatusViagem();};
+
  function conteudoPopupVendas(index){
   const loaded=record.bi?.days[day(index)];
   // semana.porDia vem da reprojecao (reprojecao_vmd.py): 'le' e' a meta ORIGINAL antes de reprojetar

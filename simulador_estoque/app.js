@@ -44,6 +44,17 @@ function entradasTransfPorDia(r){
  }
  return porDia;
 }
+// Filtro por Status da viagem (usuaria, 2026-10-19: "quando selecione so' T1, considere so' T1 pras entradas;
+// T1 e T2, os 2; se tiver em backlog, so' backlog; deixe eu selecionar mais de 1"). Vale pros carros do transito
+// (FOB/CIF/transferencia) em "Fontes automaticas" e "Programado + Nao programado"; com todos marcados = regra normal.
+const STATUS_VIAGEM=[['T1','T1 · Programado'],['T2','T2 · Na origem'],['T3','T3 · Em deslocamento'],['T4','T4 · No destino'],
+ ['T5','T5 · Finalizada'],['sem','Sem status'],['backlog','Backlog (sem placa)']];
+let filtroStatusViagem=new Set(STATUS_VIAGEM.map(([k])=>k));
+try{const salvo=JSON.parse(localStorage.getItem('simulador.filtroStatusViagem')||'null');if(Array.isArray(salvo))filtroStatusViagem=new Set(salvo);}catch{}
+const filtroStatusAtivo=()=>filtroStatusViagem.size<STATUS_VIAGEM.length;
+// Categoria do carro: sem placa (grupo 'programado' no detalhe) = backlog; com placa, pelo T1..T5 da Herrlog.
+function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/^T([1-5])/.exec(String(v.statusViagem||''));return m?'T'+m[1]:'sem';}
+function trocarFiltroStatus(chaves){filtroStatusViagem=new Set(chaves);try{localStorage.setItem('simulador.filtroStatusViagem',JSON.stringify([...filtroStatusViagem]));}catch{}}
 function fresh(r,cenarioForcado,entradaForcada){
  const scenario=cenarioForcado||$('scenario')?.value||'LE',today=simulationToday();
  // Origem da entrada (pedido da usuaria, 2026-10-01): 'auto' = fontes de sempre (FOB/CIF do portal +
@@ -91,6 +102,19 @@ function fresh(r,cenarioForcado,entradaForcada){
     if(conta)movements[conta][i]-=Math.min(movements[conta][i],t.volume);
     movements.transferIn[i]+=t.volume;
    }
+   // Filtro de Status da viagem: refaz FOB/CIF/transferencia so' com os carros das categorias marcadas. A
+   // Visao do dia (entradaForcada) ignora o filtro.
+   if(filtroStatusAtivo()&&!entradaForcada){
+    const idsTransf=idsTransfEntrada(r);
+    movements.fob[i]=0;movements.cif[i]=0;movements.transferIn[i]=0;
+    for(const v of vivo?.viagens||[]){
+     if(!filtroStatusViagem.has(categoriaViagem(v)))continue;
+     const destino=v.idViagem&&idsTransf.has(v.idViagem)?'transferIn':v.modal==='cif'?'cif':'fob';
+     movements[destino][i]+=v.volume||0;
+    }
+    // Transferencia que so' existe na cadencia (sem carro): conta como Backlog.
+    if(filtroStatusViagem.has('backlog'))for(const t of transfEntrada[day(i)]||[])if(!t.viagem)movements.transferIn[i]+=t.volume;
+   }
   }
   // Datas anteriores usam a mesma base em todos os cenarios.
   if(!future)continue;
@@ -104,7 +128,10 @@ function fresh(r,cenarioForcado,entradaForcada){
   // LE do deposito, dia a dia, em toda a janela (loaded.le, 2026-10-16); snapshot antigo sem o campo cai no da semana.
   else if(scenario==='LE')movements.sale[i]=loaded.le??semanaDia?.le??0;
   else if(scenario==='Pedidos em tela')movements.sale[i]=loaded.billing??0;
-  else if(scenario==='Real'){if(day(i)<=D.bi.extractedAt.slice(0,10))movements.sale[i]=semanaDia?.real??0;}
+  // Real igual ao BI (vendas_projecao_real, 2026-10-19): ate' hoje a venda real do deposito (passado =
+  // faturamento, hoje = VA05 do dia, a qualquer hora); de amanha em diante fica a VMD reprojetada (loaded.sale).
+  // Snapshot antigo sem vendaReal: regra anterior (real da cidade, hoje so' depois das 13h).
+  else if(scenario==='Real'){if(day(i)<=today)movements.sale[i]=loaded.vendaReal!==undefined?(loaded.vendaReal??0):(day(i)<=D.bi.extractedAt.slice(0,10)?semanaDia?.real??0:movements.sale[i]);}
   else if(['Disp MIS','Inbound + MIS'].includes(scenario))movements.sale[i]=loaded.scenarios?.[scenario]?.availability??0;
  }
  return {version:1,id:r.id,date:D.date,sourceRevision:D.revision,name:'Minha simulação',opening:r.opening,lastro:r.bi?.days[day(0)]?.scenarios?.[scenario]?.lastro??r.policy?.lastro??null,min:r.policy?.min??null,mid:r.policy?.mid??null,max:r.policy?.max??null,capacity:r.capacidadeFisica??r.policy?.capacity??null,clamp:false,scenario,switchIndex,movements};
@@ -116,7 +143,10 @@ function sourceNote(k,i){const loaded=record.bi?.days[day(i)],mode=state.scenari
   if(mode==='VMD')return `VMD reprojetada · ${loaded?.vmd==null?'sem valor na fonte':fmt(loaded.vmd)+' m³'} · ${day(i)}`;
   if(mode==='LE'){const le=loaded?.le??semanaDia?.le;return `LE vigente, sem reprojeção · ${le==null?'sem valor na fonte':fmt(le)+' m³'} · ${day(i)}`;}
   if(mode==='Pedidos em tela')return `Pedidos em tela (VA05, todos os status) · ${loaded?.billing==null?'sem valor na fonte':fmt(loaded.billing)+' m³'} · ${day(i)}`;
-  if(mode==='Real')return `Faturado real até agora · ${semanaDia?.real==null?'sem valor na fonte':fmt(semanaDia.real)+' m³'} · ${day(i)}`;
+  if(mode==='Real'){
+   if(day(i)>simulationToday())return `Real: de amanhã em diante vale a VMD reprojetada · ${fmt(loaded?.vmd??0)} m³ · ${day(i)}`;
+   const real=loaded?.vendaReal!==undefined?loaded.vendaReal:semanaDia?.real;
+   return `${day(i)<simulationToday()?'Faturado (venda real)':'Pedidos do VA05 de hoje (venda real até o momento)'} · ${real==null?'sem valor na fonte':fmt(real)+' m³'} · ${day(i)}`;}
   if(['Disp MIS','Inbound + MIS'].includes(mode))return `Disponibilidade MIS · ${fmt(loaded?.scenarios?.[mode]?.availability)} m³ · ${day(i)}`;
  }
  const field=k==='sale'?'vmd':k;if(loaded?.missingModelRow)return 'Sem linha de dados para este recorte nas fontes; valor inicial zero.';return `${D.bi?.formulas[field]??D.bi?.formulas[k]??k} · ${loaded?.[field]==null?'sem valor na fonte, considerado zero na simulação':fmt(loaded[field])+' m³ importados'} · ${day(i)}`;}
@@ -417,7 +447,8 @@ const movSeries=[
  // continua desenhada em rosa (usuaria, 2026-10-16: "ja que e' uma transferencia, por que nao ta rosa?"),
  // informativa como o Rodoviario — e sai do Rodoviario pra nao aparecer duas vezes.
  ['transferInProg','Transferência entrada · sem status de viagem','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
-  const naoContada=$('entrada')?.value==='auto+naoprog'?0:transfPlanejadaDia(i);
+  // So' em "Fontes automaticas": em "Cadencia MIS" a entrada ja' e' a cadencia inteira (nao repete aqui).
+  const naoContada=$('entrada')?.value==='auto'?transfPlanejadaDia(i):0;
   return Math.max(0,total-valorMov('transferInViagem',i))+naoContada;}],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
@@ -498,8 +529,11 @@ function chart(result,original,offsets){
    const topo=y(cum+v),alt=Math.max(1,y(cum)-topo);
    // Borda por dentro do pedaco (recuo de meio traco) pra nao invadir o bloco vizinho.
    const sw=borda&&alt>=4?2.5:0;
-   barras+=sw?`<rect x="${x(i)-bw/2+sw/2}" y="${topo+sw/2}" width="${bw-sw}" height="${alt-sw}" fill="${COR_FUNDO_TRANSF}" stroke="${cor}" stroke-width="${sw}">`
-    :`<rect x="${x(i)-bw/2}" y="${topo}" width="${bw}" height="${alt}" fill="${borda?COR_FUNDO_TRANSF:cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³${nome==='Abertura − lastro'?` (abertura ${fmt(ab)} m³)`:''}</title></rect>`;
+   // Fecha o <rect> nos dois casos (2026-10-19: o da borda ficava aberto e "engolia" o resto do grafico —
+   // barras dos dias seguintes, rotulos e linhas da politica sumiam a partir da 1a transferencia).
+   const dica=`<title>${label(i)} · ${nome}: ${fmt(v)} m³${nome==='Abertura − lastro'?` (abertura ${fmt(ab)} m³)`:''}</title>`;
+   barras+=sw?`<rect x="${x(i)-bw/2+sw/2}" y="${topo+sw/2}" width="${bw-sw}" height="${alt-sw}" fill="${COR_FUNDO_TRANSF}" stroke="${cor}" stroke-width="${sw}">${dica}</rect>`
+    :`<rect x="${x(i)-bw/2}" y="${topo}" width="${bw}" height="${alt}" fill="${borda?COR_FUNDO_TRANSF:cor}">${dica}</rect>`;
    if(comRotulo&&alt>=18)rot+=rotulo(x(i),topo+alt/2,v);
    cum+=v;
   }
