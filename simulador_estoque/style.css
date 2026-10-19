@@ -374,3 +374,5 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .graf-opcoes .scenario-buttons button{min-height:30px;padding:5px 11px;font-size:12px}
 .graf-opcoes .graf-status-off{opacity:.45}
 .graf-opcoes .graf-status-off button{pointer-events:none}
+/* Referencia do MIS embaixo da Abertura Dia (aba Aberturas, 2026-10-19). */
+.ab-tabela small.ab-ref{display:block;margin-top:3px;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}

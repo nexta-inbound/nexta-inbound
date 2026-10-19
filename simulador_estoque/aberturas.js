@@ -36,7 +36,7 @@
     <div id="ab-cidade" class="ab-cidade" hidden></div>`;
   document.querySelector('main').append(view);
 
-  let layout = null, dados = {}, cidadeAberta = null, carregando = false;
+  let layout = null, dados = {}, referencia = {}, cidadeAberta = null, carregando = false;
   const pendentes = new Set();   // empDep com alteracao nao salva
   const campoDia = $('ab-dia');
   campoDia.value = hojeIso();
@@ -58,7 +58,7 @@
     try {
       if (!layout) layout = await cloud.aberturasLayout();
       if (!layout?.cidades?.length) { status('O cadastro das aberturas ainda não foi publicado. Fale com o administrador.', true); return; }
-      dados = await cloud.aberturasDoDia(campoDia.value);
+      [dados, referencia] = await Promise.all([cloud.aberturasDoDia(campoDia.value), cloud.referenciaAberturas?.(campoDia.value) ?? {}]);
       pendentes.clear();
       status('');
       render();
@@ -99,17 +99,18 @@
           // Mesmos titulos da planilha: litros nos combustiveis; nos aditivos, "Recebimentos/Programado Dia (frascos)".
           const titulos = p.unidade === 'frascos' ? ['Abertura Dia (frascos)', 'Recebimentos Dia (frascos)', 'Programado Dia (frascos)']
             : ['Abertura Dia (litros)', 'Receb. Efetuado / Disponível (litros)', 'Receb. Programado Dia (litros)'];
-          // "Abertura da base" = Abertura Dia + Receb. Efetuado/Disponivel (usuaria, 2026-10-16), calculada na hora.
-          // Fica entre as colunas somadas e o programado (o programado e' o que ainda falta receber).
-          linhas += `<tr class="ab-cab"><th>Produto</th><th>${titulos[0]}</th><th>${titulos[1]}</th>
-            <th class="ab-col-total">Abertura da base (${p.unidade === 'frascos' ? 'frascos' : 'litros'})</th><th>${titulos[2]}</th></tr>`;
+          // A coluna "Abertura da base" (soma) saiu em 2026-10-19 a pedido da usuaria: a abertura que vale e' a 1a coluna.
+          linhas += `<tr class="ab-cab"><th>Produto</th>${titulos.map(r => `<th>${r}</th>`).join('')}</tr>`;
         }
         const salvo = valorSalvo(t, p) || {};
         // Padrao 0 em tudo (usuaria, 2026-10-16): a pessoa so' troca o que tiver valor.
         const campo = k => `<td><input type="number" min="0" step="1" inputmode="numeric" data-ab-campo="${k}" data-ab-produto="${esc(p.nome)}"
             value="${salvo[k] ?? 0}" ${pode ? '' : 'readonly'} aria-label="${esc(p.nome)} · ${esc(ROTULO_CAMPO[k])}"></td>`;
-        linhas += `<tr><th scope="row">${esc(p.nome)}</th>${campo('abertura')}${campo('recebEfetuado')}
-          <td class="ab-total" data-ab-total="${esc(p.nome)}">${num((salvo.abertura || 0) + (salvo.recebEfetuado || 0))}</td>${campo('recebProgramado')}</tr>`;
+        // Referencia do MIS do dia (2026-10-19): so' indicativo pra quem preenche, embaixo da Abertura Dia.
+        const mis = referencia[t.empDep]?.[p.nome];
+        const abertura = campo('abertura').replace('</td>', mis != null
+          ? `<small class="ab-ref" title="Abertura do dia no MIS (referência, não é preenchida automaticamente)">MIS: ${num(mis)} L</small></td>` : '</td>');
+        linhas += `<tr><th scope="row">${esc(p.nome)}</th>${abertura}${campo('recebEfetuado')}${campo('recebProgramado')}</tr>`;
       }
       return `<article class="ab-terminal ${enviado(t) ? 'ab-enviado' : 'ab-pendente'}" data-ab-terminal="${esc(t.empDep)}">
         <div class="ab-topo"><div><h4>${esc(t.nome)}</h4>
@@ -139,13 +140,6 @@
     if (linhas.some(l => Object.values(l.valores).some(v => Number.isNaN(v)))) { status('Há valores inválidos: use apenas números inteiros, sem sinal negativo.', true); return; }
     if (!linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura > 0)
         && !confirm(`Nenhuma abertura de combustível foi preenchida em ${t.nome}. Salvar assim mesmo?`)) return;
-    // Confirmacao da soma (usuaria, 2026-10-16): mostra a abertura da base = Abertura Dia + Receb. Efetuado.
-    const comSoma = linhas.filter(l => l.valores.recebEfetuado > 0);
-    if (comSoma.length) {
-      const un = l => l.unidade === 'frascos' ? 'frascos' : 'L';
-      const texto = comSoma.map(l => `• ${l.produto}: ${num(l.valores.abertura)} + ${num(l.valores.recebEfetuado)} = ${num(l.valores.abertura + l.valores.recebEfetuado)} ${un(l)}`).join('\n');
-      if (!confirm(`${t.nome}\n\nA abertura da base é a soma da Abertura Dia com o Receb. Efetuado / Disponível:\n\n${texto}\n\nEstá correto?`)) return;
-    }
     const botao = bloco.querySelector('.ab-salvar'); botao.disabled = true; botao.textContent = 'Salvando…';
     try {
       await cloud.salvarAberturaTerminal(campoDia.value, empDep, t.nome, linhas);
@@ -177,12 +171,6 @@
     const campo = e.target.closest('input[data-ab-campo]'); if (!campo || campo.readOnly) return;
     const bloco = campo.closest('[data-ab-terminal]'), empDep = bloco.dataset.abTerminal;
     pendentes.add(empDep); campo.classList.add('ab-alterado');
-    // Atualiza a "Abertura da base" da linha na hora.
-    if (campo.dataset.abCampo !== 'recebProgramado') {
-      const prod = CSS.escape(campo.dataset.abProduto), v = k => Number(bloco.querySelector(`input[data-ab-campo="${k}"][data-ab-produto="${prod}"]`)?.value) || 0;
-      const total = bloco.querySelector(`[data-ab-total="${prod}"]`);
-      if (total) total.textContent = num(v('abertura') + v('recebEfetuado'));
-    }
     const botao = bloco.querySelector('.ab-salvar'); if (botao) botao.disabled = false;
   });
   view.addEventListener('click', e => {
