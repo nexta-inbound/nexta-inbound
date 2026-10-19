@@ -352,7 +352,11 @@ function recebidoPassado(i){return somaOuNula(registrosReais().map(r=>r.bi?.days
 // Viagens do portal (detalhe de D.transitoAoVivo) que entram no dia, com o destino = cidade/deposito/
 // empresa do registro — pedido da usuaria, 2026-10-09: ver id da viagem, origem e destino tambem nos
 // dias passados (o que chegou) e no grafico. Usado pelos popups da grade (cenarios.js) e do grafico.
-function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=idsTransfEntrada(r);return (D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)]?.viagens||[]).filter(v=>(!modal||v.modal===modal)&&!ids.has(v.idViagem)).map(v=>({...v,destino:[cidadeDe(r),depositoDe(r),empresaDe(r)].filter(Boolean).join(' · ')}));});}
+function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=idsTransfEntrada(r);return (D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)]?.viagens||[]).filter(v=>(!modal||v.modal===modal)&&!ids.has(v.idViagem))
+  // Com filtro de Status da viagem, o popup lista so' as viagens do status marcado (usuaria, 2026-10-19) e
+  // cada viagem mostra o Status Viagem da Herrlog junto do status do portal.
+  .filter(v=>!filtroStatusAtivo()||filtroStatusViagem.has(categoriaViagem(v)))
+  .map(v=>({...v,status:v.statusViagem?`${v.status} · ${v.statusViagem}`:v.status,destino:[cidadeDe(r),depositoDe(r),empresaDe(r)].filter(Boolean).join(' · ')}));});}
 // Volume FOB do dia que so' esta' nele pela regra das 15h (ETA Herrlog >= 15h -> D+1, inbound.py:
 // HORA_CORTE_DESCARGA) — pintado de roxo no grafico e na grade (pedido da usuaria, 2026-10-09).
 const COR_FOB_D1='#C084FC';

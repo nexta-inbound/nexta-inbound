@@ -109,7 +109,7 @@
         // Referencia do MIS do dia (2026-10-19): so' indicativo pra quem preenche, embaixo da Abertura Dia.
         const mis = referencia[t.empDep]?.[p.nome];
         const abertura = campo('abertura').replace('</td>', mis != null
-          ? `<small class="ab-ref" title="Abertura do dia no MIS (referência, não é preenchida automaticamente)">MIS: ${num(mis)} L</small></td>` : '</td>');
+          ? `<small class="ab-ref" title="Abertura do dia no SAP (referência, não é preenchida automaticamente)">SAP: ${num(mis)} L</small></td>` : '</td>');
         linhas += `<tr><th scope="row">${esc(p.nome)}</th>${abertura}${campo('recebEfetuado')}${campo('recebProgramado')}</tr>`;
       }
       return `<article class="ab-terminal ${enviado(t) ? 'ab-enviado' : 'ab-pendente'}" data-ab-terminal="${esc(t.empDep)}">
@@ -148,7 +148,7 @@
     }).filter(Boolean);
     if (fora.length) {
       const texto = fora.map(f => `• ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
-      if (!confirm(`${t.nome}\n\nA abertura ficou mais de 10% diferente da referência do sistema:\n\n${texto}\n\n`
+      if (!confirm(`${t.nome}\n\nA abertura ficou mais de 10% diferente da referência do SAP:\n\n${texto}\n\n`
           + 'Tem certeza de que essa é a abertura? Se confirmar, um e-mail será enviado à gestão informando a diferença.')) return;
     }
     const botao = bloco.querySelector('.ab-salvar'); botao.disabled = true; botao.textContent = 'Salvando…';
