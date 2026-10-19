@@ -218,7 +218,12 @@ function transferencias(i,campo){return registrosReais().flatMap(r=>campo==='tra
 function marcarTransferencias(){
  for(const [row,campo] of [['transferIn','transferenciasEntrada'],['transferOut','transferenciasSaida']])
   document.querySelectorAll(`#grid input[data-row="${row}"]`).forEach(input=>{const i=+input.dataset.day,td=input.parentElement;
-   if(transferencias(i,campo).length){td.dataset.transf=campo;td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
+   const itens=transferencias(i,campo);
+   if(itens.length){td.dataset.transf=campo;td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');
+    // Borda na mesma cor do grafico (usuaria, 2026-10-19): roxa = com Status Viagem (T1-T5), rosa = sem status;
+    // as duas juntas = rosa com faixa roxa a esquerda.
+    if(campo==='transferenciasEntrada'){const comStatus=itens.some(emViagemTransf),semStatus=itens.some(t=>!emViagemTransf(t));
+     td.classList.toggle('transf-viagem',comStatus&&!semStatus);td.classList.toggle('transf-sem-status',semStatus&&!comStatus);td.classList.toggle('transf-misto',comStatus&&semStatus);}}});
 }
 const dataTransf=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
 function popupTransferencia(campo,i){
@@ -400,17 +405,20 @@ const movSeries=[
  // programado" elas entram no FOB e a barra mostrava 60 + 60 com so' 60 na conta.
  // Em "Cadencia MIS" o FOB/CIF da tabela ja' e' a propria cadencia (rodoviaria inclusa): o bloco nao aparece.
  ['progRoad','Prog. Rodoviário','#7FC4BA',i=>{if(i<0||$('entrada')?.value==='cadencia')return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
-  // Transferencia planejada so' sai do Rodoviario quando conta (botao "Programado + Nao programado"); em
-  // "Fontes automaticas" ela nao conta e fica so' aqui, informativa, igual ao FOB sem placa.
+  // Transferencia planejada sempre sai do Rodoviario: ela tem bloco proprio (rosa), contando ou nao.
   const tudo=$('entrada')?.value==='auto+naoprog';
   const naoProg=tudo?(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0):0;
-  return Math.max(0,v-(tudo?transfPlanejadaDia(i):0)-naoProg);}],
+  return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
  // Transferencia de entrada em dois pedacos: com Status Viagem T1-T5 (roxo) e sem status (rosa). A soma e'
  // sempre o valor da linha da tabela (que pode ter sido editado); o que passar do em viagem fica no rosa.
  ['transferInViagem','Transferência entrada · em viagem (T1–T5)','#C4B5FD',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
   return Math.min(total,transferencias(i,'transferenciasEntrada').filter(emViagemTransf).reduce((s,t)=>s+(t.volume||0),0));}],
+ // Em "Fontes automaticas" a transferencia ainda nao no transito (Backlog/cadencia) nao entra na conta, mas
+ // continua desenhada em rosa (usuaria, 2026-10-16: "ja que e' uma transferencia, por que nao ta rosa?"),
+ // informativa como o Rodoviario — e sai do Rodoviario pra nao aparecer duas vezes.
  ['transferInProg','Transferência entrada · sem status de viagem','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
-  return Math.max(0,total-valorMov('transferInViagem',i));}],
+  const naoContada=$('entrada')?.value==='auto+naoprog'?0:transfPlanejadaDia(i);
+  return Math.max(0,total-valorMov('transferInViagem',i))+naoContada;}],
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
@@ -433,7 +441,7 @@ document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){
 // Bombeio, Rodoviario, FOB, CIF), rotulo dentro de cada pedaco, mesma cor em todos os dias; linhas de venda,
 // Disp. MIS por cima; eixo com dia da semana em cima e data embaixo.
 // Escala comeca no zero: estoque negativo nao aparece no grafico (2026-10-09); o valor continua na tabela.
-const COR_LASTRO='#F9B96B',COR_ABERTURA='#3AAE9C';
+const COR_LASTRO='#F9B96B',COR_ABERTURA='#3AAE9C',COR_FUNDO_TRANSF='#B0B0B0';
 // Eixo x da grade (pedido da usuaria, 2026-10-14: "a tabela com o dia abaixo do grafico, no mesmo eixo x"):
 // cada barra fica em cima da coluna do mesmo dia na tabela logo abaixo. Mede as colunas de verdade (a
 // largura muda com a tela e com a rolagem horizontal) e converte pra unidade do viewBox; sem grade
@@ -479,14 +487,19 @@ function chart(result,original,offsets){
    const [,nome,cor,valorEm]=movSeries.find(m=>m[0]===k),v=Math.max(valorEm(i)||0,0);
    // FOB empurrado pra D+1 pela regra das 15h vira um pedaco roxo separado (so' ate' o FOB aplicado no dia).
    const d1=k==='fob'?Math.min(fobAposCorte(i)||0,v):0;
-   pedacos.push([nome,v-d1,cor,true]);
+   // Transferencia: fundo cinza igual ao FOB e a cor (roxo em viagem / rosa sem status) so' na borda
+   // (usuaria, 2026-10-17: "coloca o fundo cinza mesmo da barrinha, so coloca a borda de outra cor").
+   pedacos.push([nome,v-d1,cor,true,k.startsWith('transferIn')]);
    if(d1>0)pedacos.push(['Trânsito FOB · ETA após 15h do dia anterior (D+1)',d1,COR_FOB_D1,true]);
   }
   let cum=0;
-  for(const [nome,v,cor,comRotulo] of pedacos){
+  for(const [nome,v,cor,comRotulo,borda] of pedacos){
    if(v<=0)continue;
    const topo=y(cum+v),alt=Math.max(1,y(cum)-topo);
-   barras+=`<rect x="${x(i)-bw/2}" y="${topo}" width="${bw}" height="${alt}" fill="${cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³${nome==='Abertura − lastro'?` (abertura ${fmt(ab)} m³)`:''}</title></rect>`;
+   // Borda por dentro do pedaco (recuo de meio traco) pra nao invadir o bloco vizinho.
+   const sw=borda&&alt>=4?2.5:0;
+   barras+=sw?`<rect x="${x(i)-bw/2+sw/2}" y="${topo+sw/2}" width="${bw-sw}" height="${alt-sw}" fill="${COR_FUNDO_TRANSF}" stroke="${cor}" stroke-width="${sw}">`
+    :`<rect x="${x(i)-bw/2}" y="${topo}" width="${bw}" height="${alt}" fill="${borda?COR_FUNDO_TRANSF:cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³${nome==='Abertura − lastro'?` (abertura ${fmt(ab)} m³)`:''}</title></rect>`;
    if(comRotulo&&alt>=18)rot+=rotulo(x(i),topo+alt/2,v);
    cum+=v;
   }
