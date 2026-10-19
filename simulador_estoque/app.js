@@ -56,7 +56,8 @@ const filtroStatusAtivo=()=>filtroStatusViagem.size<STATUS_VIAGEM.length;
 function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/^T([1-5])/.exec(String(v.statusViagem||''));return m?'T'+m[1]:'sem';}
 function trocarFiltroStatus(chaves){filtroStatusViagem=new Set(chaves);try{localStorage.setItem('simulador.filtroStatusViagem',JSON.stringify([...filtroStatusViagem]));}catch{}}
 function fresh(r,cenarioForcado,entradaForcada){
- const scenario=cenarioForcado||$('scenario')?.value||'LE',today=simulationToday();
+ // Padrao VMD reprojetada (2026-10-19: LE e Disp MIS sairam dos botoes).
+ const scenario=cenarioForcado||$('scenario')?.value||'VMD',today=simulationToday();
  // Origem da entrada (pedido da usuaria, 2026-10-01): 'auto' = fontes de sempre (FOB/CIF do portal +
  // Bombeio da cadencia DAP); 'cadencia' = substitui FOB+CIF+Bombeio inteiros pelos valores PLANEJADOS
  // da cadencia MIS (ja' separados por frete em loaded.cadencia). Nao ha equivalente de cadencia pra
@@ -139,7 +140,7 @@ function fresh(r,cenarioForcado,entradaForcada){
  }
  return {version:1,id:r.id,date:D.date,sourceRevision:D.revision,name:'Minha simulação',opening:r.opening,lastro:r.bi?.days[day(0)]?.scenarios?.[scenario]?.lastro??r.policy?.lastro??null,min:r.policy?.min??null,mid:r.policy?.mid??null,max:r.policy?.max??null,capacity:r.capacidadeFisica??r.policy?.capacity??null,clamp:false,scenario,switchIndex,movements};
 }
-function key(){return 'nexta-stock-auto-v2:'+D.date+':'+record.id+':'+($('scenario')?.value||'LE')+':'+($('entrada')?.value||'auto');}
+function key(){return 'nexta-stock-auto-v2:'+D.date+':'+record.id+':'+($('scenario')?.value||'VMD')+':'+($('entrada')?.value||'auto');}
 function sourceNote(k,i){const loaded=record.bi?.days[day(i)],mode=state.scenario;if(k==='planned')return 'Cadência sugerida pelo simulador (cargas de '+CARGA_SUGESTAO+' m³) ou digitada. Não altera a cadência do MIS.';if(['received','planned','purchase','loanIn','loanOut'].includes(k))return 'Ajuste adicional manual; não repetir um volume já importado.';if(['fob','cif'].includes(k)){const mis=mode==='Inbound + MIS'&&i>=state.switchIndex;return `${mis?'Cadências MIS ('+k.toUpperCase()+')':'CSV do portal, com filtro de status e data de descarga'} · ${fmt((mis?loaded?.inboundMis[k]:loaded?.[k])??0)} m³ · ${day(i)}`;}
  if(k==='sale'){
   const semanaDia=record.bi?.semana?.porDia?.[day(i)];

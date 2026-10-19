@@ -3,7 +3,9 @@
  // 5 cenarios (pedido da usuaria, 2026-09-30): VMD/LE/Pedidos em tela/Real puxam dado pra linha que
  // debita (unica editavel); Disp MIS mantido a pedido dela ("deixa disp mis tbm"). O usuario sempre
  // pode digitar por cima do valor puxado (customizar), igual ja funcionava antes.
- const modes=['VMD','LE','Pedidos em tela','Real','Disp MIS'];
+ // So' 3 opcoes de venda (usuaria, 2026-10-19: "tira o LE e o Disp MIS"). O calculo do LE/Disp MIS continua
+ // no app.js (cenarios salvos antigos ainda abrem), so' sem botao.
+ const modes=['VMD','Pedidos em tela','Real'];
  // So' o texto do botao muda (2026-10-16); o valor interno continua 'VMD' (regras do Firebase e cenarios salvos).
  const rotuloCenario={VMD:'VMD reprojetada'};
  const today=simulationToday;
@@ -16,7 +18,7 @@
  // Pedido da usuaria, 2026-10-01: a tela agora abre sem nada selecionado (antes vinha com uma base
  // padrao fixa), entao "state" pode nao existir ainda nesse ponto — sem a guarda, isso quebrava TODO
  // o resto do script (botoes de cenario, popup, render/renderEditor sobrescritos) silenciosamente.
- if(state)selector.value=state.scenario;
+ if(state)selector.value=modes.includes(state.scenario)?state.scenario:'VMD';
  if(D.validationStart){
   $('history-grid').closest('section').hidden=true;
   const period=document.querySelector('.filters input[value]');

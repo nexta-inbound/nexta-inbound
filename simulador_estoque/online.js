@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'fe24e5fafa';
+const VERSAO_SITE = '048e7d5b80';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -243,7 +243,7 @@ onAuthStateChanged(auth, async user => {
       async aberturasLayout() { return (await get(ref(db, 'cadastros/aberturas'))).val(); },
       async aberturasDoDia(dia) { return (await get(ref(db, `aberturas/${dia}`))).val() || {}; },
       // Referencia do MIS do dia (litros), so' indicativo na tela (2026-10-19). Sem permissao/sem dado = {}.
-      async referenciaAberturas(dia) { try { return (await get(ref(db, `aberturasReferencia/${dia}`))).val() || {}; } catch { return {}; } },
+      async referenciaAberturas(dia) { try { return (await get(ref(db, `aberturas/${dia}/_mis`))).val() || {}; } catch { return {}; } },
       async historicoAberturas(dia, empDep) { return (await get(ref(db, `aberturasHistorico/${dia}/${empDep}`))).val() || {}; },
       // Grava o terminal inteiro numa operacao so' (valores + historico das mudancas). `linhas`:
       // [{produto, unidade, valores:{abertura, recebEfetuado, recebProgramado}, anteriores:{...}|null}].
