@@ -265,6 +265,22 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 #trocar-senha .aba-icone{width:16px;height:16px;opacity:.85}
 .senha-dialogo{width:min(420px,calc(100vw - 32px));padding:24px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px #000a}
 .senha-dialogo::backdrop{background:#0009}
+.hist-dialogo{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:20px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px #000a}
+.hist-dialogo::backdrop{background:#0009}
+.hist-dialogo header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.hist-dialogo h2{margin:0 0 4px}.hist-dialogo p{margin:2px 0}
+.hist-dialogo [data-fechar]{background:none;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer}
+.hist-congelado{color:#FCD34D;font-size:.85em}
+.hist-premissas{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.hist-premissas div{display:flex;flex-direction:column;padding:8px 12px;border:1px solid var(--border);border-radius:10px;min-width:110px}
+.hist-premissas small{opacity:.7}
+.hist-tabela{overflow-x:auto}
+.hist-tabela table{border-collapse:collapse;width:100%;font-size:.85em}
+.hist-tabela th,.hist-tabela td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+.hist-tabela th[scope=row],.hist-tabela thead th:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+.hist-tabela .hist-abertura,.hist-tabela .hist-final{font-weight:700}
+.hist-tabela .hist-critico{background:#7f1d1d;color:#fff}.hist-tabela .hist-atencao{background:#78350f;color:#fff}
+.hist-tabela .hist-ok{background:#14532d;color:#fff}.hist-tabela .hist-alto{background:#1e3a8a;color:#fff}
 .senha-dialogo h2{margin:0 0 6px}
 .senha-dialogo form{display:flex;flex-direction:column;gap:12px}
 .senha-dialogo p{margin:0}
