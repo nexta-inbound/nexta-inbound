@@ -90,7 +90,12 @@
   function renderCidade() {
     const cidade = layout.cidades.find(c => c.aba === cidadeAberta);
     if (!cidade) { cidadeAberta = null; render(); return; }
-    $('ab-cidade').innerHTML = `<h3>${esc(cidade.cidade)}</h3>` + cidade.terminais.filter(terminalVisivel).map(t => {
+    // Um botao so' por cidade (usuaria, 2026-10-19: "nao quero que cliquem em 500 botoes por deposito"): grava
+    // de uma vez todos os terminais alterados. Fica fixo no topo ao rolar.
+    const algumEditavel = cidade.terminais.some(t => terminalVisivel(t) && cloud.canEditAbertura(t.empDep));
+    $('ab-cidade').innerHTML = `<div class="ab-cidade-topo"><h3>${esc(cidade.cidade)}</h3>${algumEditavel
+      ? `<button type="button" class="ab-salvar" id="ab-salvar-cidade" ${pendentes.size ? '' : 'disabled'}>Salvar ${esc(cidade.cidade)}</button>` : ''}</div>`
+      + cidade.terminais.filter(terminalVisivel).map(t => {
       const pode = cloud.canEditAbertura(t.empDep), ult = ultimaAtualizacao(t);
       let unidadeAtual = null, linhas = '';
       for (const p of t.produtos) {
@@ -116,17 +121,17 @@
         <div class="ab-topo"><div><h4>${esc(t.nome)}</h4>
           <span class="ab-situacao">${enviado(t) ? 'Enviado' : 'Pendente'}</span>
           ${ult ? `<small>Última alteração: ${esc(ult.atualizadoPorNome || '')} · ${quando(ult.atualizadoEm)}</small>` : ''}</div>
-          <div class="ab-acoes">${pode ? `<button type="button" class="ab-salvar" data-ab-salvar="${esc(t.empDep)}" disabled>Salvar</button>` : '<small>Somente leitura</small>'}
+          <div class="ab-acoes">${pode ? '' : '<small>Somente leitura</small>'}
           <button type="button" class="ab-hist-botao" data-ab-hist="${esc(t.empDep)}">Histórico</button></div></div>
         <div class="ab-tabela"><table>${linhas}</table></div>
         <div class="ab-historico" hidden></div></article>`;
     }).join('');
   }
 
-  async function salvar(empDep) {
-    const cidade = layout.cidades.find(c => c.aba === cidadeAberta), t = cidade?.terminais.find(x => x.empDep === empDep);
-    const bloco = document.querySelector(`[data-ab-terminal="${CSS.escape(empDep)}"]`);
-    if (!t || !bloco || !cloud.canEditAbertura(empDep)) return;
+  // Le os campos de um terminal na tela: {t, linhas} ou null se houver valor invalido.
+  function coletar(t) {
+    const bloco = document.querySelector(`[data-ab-terminal="${CSS.escape(t.empDep)}"]`);
+    if (!bloco) return null;
     const linhas = t.produtos.map(p => {
       const valores = {};
       for (const [k] of CAMPOS) {
@@ -137,31 +142,39 @@
       const salvo = valorSalvo(t, p);
       return {produto: p.nome, unidade: p.unidade, valores, anteriores: salvo ? Object.fromEntries(CAMPOS.map(([k]) => [k, salvo[k] ?? null])) : null};
     });
-    if (linhas.some(l => Object.values(l.valores).some(v => Number.isNaN(v)))) { status('Há valores inválidos: use apenas números inteiros, sem sinal negativo.', true); return; }
-    if (!linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura > 0)
-        && !confirm(`Nenhuma abertura de combustível foi preenchida em ${t.nome}. Salvar assim mesmo?`)) return;
-    // Diferenca acima de 10% da referencia (usuaria, 2026-10-19): so' no Salvar, um resumo de todas as linhas
-    // fora da faixa; a pessoa confirma ou volta pra corrigir. A mensagem pra gestao (WhatsApp) sai da maquina logistica.
-    const fora = linhas.filter(l => l.unidade !== 'frascos').map(l => {
-      const ref = referencia[empDep]?.[l.produto], ab = l.valores.abertura;
-      return ref > 0 && ab > 0 && Math.abs(ab - ref) / ref > 0.10 ? {produto: l.produto, ab, ref, pct: Math.round((ab - ref) / ref * 100)} : null;
-    }).filter(Boolean);
+    return linhas.some(l => Object.values(l.valores).some(v => Number.isNaN(v))) ? null : {t, linhas};
+  }
+
+  // Salva de uma vez todos os terminais alterados da cidade aberta, com UM aviso so' (vazios + diferencas >10%).
+  async function salvarCidade() {
+    const cidade = layout.cidades.find(c => c.aba === cidadeAberta);
+    const alvos = (cidade?.terminais || []).filter(t => terminalVisivel(t) && cloud.canEditAbertura(t.empDep) && pendentes.has(t.empDep));
+    if (!alvos.length) { status('Nenhuma alteração para salvar.'); return; }
+    const lotes = alvos.map(coletar);
+    if (lotes.some(l => !l)) { status('Há valores inválidos: use apenas números inteiros, sem sinal negativo.', true); return; }
+    const vazios = lotes.filter(({linhas}) => !linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura > 0)).map(({t}) => t.nome);
+    if (vazios.length && !confirm(`Nenhuma abertura de combustível foi preenchida em:\n${vazios.map(n => '• ' + n).join('\n')}\n\nSalvar assim mesmo?`)) return;
+    // Diferenca acima de 10% da referencia (usuaria, 2026-10-19): um resumo so', de todos os terminais; a pessoa
+    // confirma ou volta pra corrigir. A mensagem pra gestao (WhatsApp) sai da maquina logistica.
+    const fora = lotes.flatMap(({t, linhas}) => linhas.filter(l => l.unidade !== 'frascos').map(l => {
+      const ref = referencia[t.empDep]?.[l.produto], ab = l.valores.abertura;
+      return ref > 0 && ab > 0 && Math.abs(ab - ref) / ref > 0.10 ? {terminal: t.nome, produto: l.produto, ab, ref, pct: Math.round((ab - ref) / ref * 100)} : null;
+    }).filter(Boolean));
     if (fora.length) {
-      const texto = fora.map(f => `• ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
-      if (!confirm(`${t.nome}\n\nA abertura ficou mais de 10% diferente da referência do SAP:\n\n${texto}\n\n`
-          + 'Tem certeza de que essa é a abertura? Se confirmar, uma mensagem será enviada pelo WhatsApp à gestão (grupo Status RPA Nexta) informando a diferença.')) return;
+      const texto = fora.map(f => `• ${f.terminal} · ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
+      if (!confirm(`A abertura ficou mais de 10% diferente da referência do SAP:\n\n${texto}\n\n`
+          + 'Tem certeza de que essa é a abertura? Se confirmar, ela vai para o grupo Status RPA Nexta no WhatsApp marcada em vermelho.')) return;
     }
-    const botao = bloco.querySelector('.ab-salvar'); botao.disabled = true; botao.textContent = 'Salvando…';
-    try {
-      await cloud.salvarAberturaTerminal(campoDia.value, empDep, t.nome, linhas);
-      pendentes.delete(empDep);
-      dados = await cloud.aberturasDoDia(campoDia.value);
-      renderCidade();
-      status(`${t.nome}: abertura salva.`);
-    } catch (erro) {
-      console.error(erro); botao.disabled = false; botao.textContent = 'Salvar';
-      status(`Não foi possível salvar ${t.nome}. Verifique a conexão e tente de novo.`, true);
+    const botao = $('ab-salvar-cidade'); if (botao) { botao.disabled = true; botao.textContent = 'Salvando…'; }
+    const falhas = [];
+    for (const {t, linhas} of lotes) {
+      try { await cloud.salvarAberturaTerminal(campoDia.value, t.empDep, t.nome, linhas); pendentes.delete(t.empDep); }
+      catch (erro) { console.error(erro); falhas.push(t.nome); }
     }
+    dados = await cloud.aberturasDoDia(campoDia.value).catch(() => dados);
+    renderCidade();
+    status(falhas.length ? `Não foi possível salvar: ${falhas.join(', ')}. Verifique a conexão e tente de novo.`
+      : `${lotes.length} terminal(is) salvo(s).`, falhas.length > 0);
   }
 
   async function mostrarHistorico(empDep) {
@@ -182,12 +195,12 @@
     const campo = e.target.closest('input[data-ab-campo]'); if (!campo || campo.readOnly) return;
     const bloco = campo.closest('[data-ab-terminal]'), empDep = bloco.dataset.abTerminal;
     pendentes.add(empDep); campo.classList.add('ab-alterado');
-    const botao = bloco.querySelector('.ab-salvar'); if (botao) botao.disabled = false;
+    const botao = $('ab-salvar-cidade'); if (botao) botao.disabled = false;
   });
   view.addEventListener('click', e => {
     const cartao = e.target.closest('[data-ab-cidade]');
     if (cartao) { cidadeAberta = cartao.dataset.abCidade; render(); scrollTo({top: 0}); return; }
-    const sv = e.target.closest('[data-ab-salvar]'); if (sv) { salvar(sv.dataset.abSalvar); return; }
+    if (e.target.closest('#ab-salvar-cidade')) { salvarCidade(); return; }
     const hi = e.target.closest('[data-ab-hist]'); if (hi) mostrarHistorico(hi.dataset.abHist);
   });
   $('ab-voltar').onclick = () => { if (!podeSair()) return; cidadeAberta = null; pendentes.clear(); render(); };

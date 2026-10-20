@@ -297,7 +297,17 @@ function marcarTransferencias(){
     // as duas juntas = rosa com faixa roxa a esquerda.
     if(campo==='transferenciasEntrada'){const comStatus=itens.some(emViagemTransf),semStatus=itens.some(t=>!emViagemTransf(t));
      td.classList.toggle('transf-viagem',comStatus&&!semStatus);td.classList.toggle('transf-sem-status',semStatus&&!comStatus);td.classList.toggle('transf-misto',comStatus&&semStatus);}}});
+ // Bombeio de hoje vindo da aba Aberturas (Receb. Efetuado + Receb. Programado): mesmo popup, com o que ja'
+ // aconteceu e o que ainda vai acontecer (usuaria, 2026-10-20).
+ document.querySelectorAll('#grid input[data-row="pump"]').forEach(input=>{const i=+input.dataset.day,td=input.parentElement;
+  if(bombeioPortalDia(i)){td.dataset.transf='bombeioPortal';td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
 }
+function bombeioPortalDia(i){const itens=registrosReais().map(r=>r.bi?.days?.[day(i)]?.bombeioPortal).filter(Boolean);
+ return itens.length?{efetuado:itens.reduce((s,b)=>s+(b.efetuado||0),0),programado:itens.reduce((s,b)=>s+(b.programado||0),0)}:null;}
+function popupBombeioPortal(i){const b=bombeioPortalDia(i);if(!b)return '';
+ return `<strong>Bombeio · ${esc(label(i))} · aba Aberturas</strong><p>${fmt(b.efetuado+b.programado)} m³ informados pela base (soma das colunas 2 e 3)</p>`
+  +`<dl class="viagens"><div><dt>✓ Já recebido · ${fmt(b.efetuado)} m³</dt><dd>Receb. Efetuado / Disponível — o que já aconteceu</dd></div>`
+  +`<div><dt>⏳ Ainda vai chegar · ${fmt(b.programado)} m³</dt><dd>Receb. Programado Dia — o que vai acontecer</dd></div></dl>`;}
 const dataTransf=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
 function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
@@ -305,7 +315,7 @@ function popupTransferencia(campo,i){
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
   +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado" e "Tudo"</em>':''}</dd></div>`).join('')}</dl>`;
 }
-function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
+function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=el.dataset.transf==='bombeioPortal'?popupBombeioPortal(+el.dataset.day):popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
 document.addEventListener('pointerover',e=>{const el=e.target.closest?.('#grid [data-transf]');if(el)mostrarPopupTransf(el);});
 document.addEventListener('pointerout',e=>{if(e.target.closest?.('#grid [data-transf]')&&$('transf-popover'))$('transf-popover').hidden=true;});
