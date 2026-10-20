@@ -1,0 +1,1911 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Nexta Autoatendimento</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Mesma paleta e tipografia do portal de agendamento (testes/portal_agendamento/agendamento.html),
+   em escala de tablet: campos, botões e textos grandes para usar com o dedo no guichê da base */
+:root {
+  color-scheme: light;
+  --bg: #F2F4F3;
+  --surface: #FCFDFC;
+  --panel-soft: #E9EEEF;
+  --border: #D5DCDF;
+  --border-dk: #B4C0C6;
+  --text: #10283A;
+  --text-dim: #46586A;
+  --text-muted: #6E7F8C;
+  --accent: #1F6F95;
+  --accent-ink: #F5F8F9;
+  --accent-dim: #DDEBF2;
+  --accent2: #9A6212; --accent2-dim: #F7EBD6;
+  --success: #2B7352; --success-dim: #DDEFE5;
+  --danger: #B8412F;  --danger-dim: #F7E4E0;
+  --navy: #10283A; --navy-ink: #F2F5F6;
+  --scrim: rgba(8, 20, 30, .55);
+  --shadow-lg: 0 12px 40px rgba(16, 40, 58, .18);
+  --font: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
+  /* Uma cor por produto (pedido + produto) no desenho do tanque e nos botões da alocação */
+  --prod-0-bg: #DDEBF2; --prod-0-fg: #1F5F80;
+  --prod-1-bg: #F7EBD6; --prod-1-fg: #8A5710;
+  --prod-2-bg: #DDEFE5; --prod-2-fg: #24623F;
+  --prod-3-bg: #ECE3F4; --prod-3-fg: #5E3C80;
+  --prod-4-bg: #F7E4E0; --prod-4-fg: #9C3626;
+  --prod-5-bg: #DFECEE; --prod-5-fg: #2F5D63;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0D1820; --surface: #13222D; --panel-soft: #1A2D3A; --border: #2A3F4D; --border-dk: #3B5566;
+    --text: #E6EDF1; --text-dim: #B3C2CC; --text-muted: #8599A6;
+    --accent: #5BA8CF; --accent-ink: #0D1820; --accent-dim: #16303F;
+    --accent2: #E3B266; --accent2-dim: #362A17; --success: #7CCBA2; --success-dim: #173228; --danger: #EE8A78; --danger-dim: #3A1F1B;
+    --navy: #1D3A50; --navy-ink: #E6EDF1; --scrim: rgba(0, 0, 0, .65); --shadow-lg: 0 12px 40px rgba(0, 0, 0, .5);
+    --prod-0-bg: #16303F; --prod-0-fg: #8CC4E0; --prod-1-bg: #362A17; --prod-1-fg: #E3B266; --prod-2-bg: #173228; --prod-2-fg: #7CCBA2;
+    --prod-3-bg: #2C2238; --prod-3-fg: #C6A6E3; --prod-4-bg: #3A1F1B; --prod-4-fg: #EE8A78; --prod-5-bg: #1B3134; --prod-5-fg: #8FC7CC;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0D1820; --surface: #13222D; --panel-soft: #1A2D3A; --border: #2A3F4D; --border-dk: #3B5566;
+  --text: #E6EDF1; --text-dim: #B3C2CC; --text-muted: #8599A6;
+  --accent: #5BA8CF; --accent-ink: #0D1820; --accent-dim: #16303F;
+  --accent2: #E3B266; --accent2-dim: #362A17; --success: #7CCBA2; --success-dim: #173228; --danger: #EE8A78; --danger-dim: #3A1F1B;
+  --navy: #1D3A50; --navy-ink: #E6EDF1; --scrim: rgba(0, 0, 0, .65); --shadow-lg: 0 12px 40px rgba(0, 0, 0, .5);
+    --prod-0-bg: #16303F; --prod-0-fg: #8CC4E0; --prod-1-bg: #362A17; --prod-1-fg: #E3B266; --prod-2-bg: #173228; --prod-2-fg: #7CCBA2;
+    --prod-3-bg: #2C2238; --prod-3-fg: #C6A6E3; --prod-4-bg: #3A1F1B; --prod-4-fg: #EE8A78; --prod-5-bg: #1B3134; --prod-5-fg: #8FC7CC;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; font-size: 17px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.hidden { display: none !important; }
+.mono { font-family: var(--mono); font-weight: 500; }
+
+/* ── TOPO ── */
+.topbar { background: var(--navy); color: var(--navy-ink); }
+.topbar-in { display: flex; align-items: center; gap: 16px; padding: 14px 24px; }
+.brand { display: flex; align-items: center; gap: 18px; margin-right: auto; min-width: 0; }
+.brand-txt { padding-left: 18px; border-left: 1px solid rgba(255,255,255,.2); font-size: 20px; font-weight: 600; white-space: nowrap; }
+.nexta-logo-svg { height: 26px; width: auto; display: block; flex-shrink: 0; color: #EEFE7A; }
+.topo-info { display: flex; align-items: center; gap: 10px; text-align: right; min-width: 0; }
+/* Nome do terminal: tocar abre o menu da equipe (trocar terminal / sair, com a senha do quiosque) */
+.topo-base { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: 10px; background: none; font-size: 15px; line-height: 1.3; cursor: pointer; touch-action: manipulation; }
+.topo-base span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
+.topo-base svg { flex-shrink: 0; opacity: .6; }
+.topo-base:hover, .topo-base:active { border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.06); }
+.relogio { font-family: var(--mono); font-size: 24px; font-weight: 500; }
+@media (max-width: 640px) { .topbar-in { padding: 12px 16px; } .brand-txt { display: none; } .topo-base { padding: 0 8px; } }
+
+/* ── ETAPAS ── */
+.passos { display: flex; gap: 8px; width: 100%; max-width: 960px; margin: 20px auto 0; padding: 0 24px; }
+.passo { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 3px solid var(--border); font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.passo .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--panel-soft); font-family: var(--mono); font-size: 14px; }
+.passo .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.passo.feito { border-color: var(--accent); color: var(--text-dim); }
+.passo.atual { border-color: var(--accent); color: var(--accent); }
+.passo.feito .n, .passo.atual .n { background: var(--accent); color: var(--accent-ink); }
+/* Sem espaço para os 6 nomes (tablet em pé, celular): só o da etapa atual */
+@media (max-width: 900px) { .passo .txt { display: none; } .passo.atual .txt { display: inline; } .passo.atual { flex: 3; } }
+@media (max-width: 640px) { .passos { padding: 0 16px; } }
+
+/* ── CONTEÚDO ── */
+.conteudo { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 28px 24px 32px; }
+@media (max-width: 640px) { .conteudo { padding: 20px 16px 28px; } }
+.tela { display: none; }
+.tela.ativa { display: block; }
+.titulo { font-size: 30px; font-weight: 600; line-height: 1.2; }
+.sub { font-size: 18px; color: var(--text-dim); margin: 8px 0 24px; }
+.nota { font-size: 15px; color: var(--text-muted); }
+
+.cartao { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; }
+.cartao-titulo { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; margin-bottom: 12px; }
+.dados { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+@media (max-width: 560px) { .dados { grid-template-columns: 1fr; } }
+.dado .rot { font-size: 14px; color: var(--text-muted); }
+.dado .val { font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+
+.produto-linha { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); }
+.produto-linha:first-child { border-top: none; padding-top: 0; }
+.produto-linha:last-child { padding-bottom: 0; }
+.produto-nome { font-size: 19px; font-weight: 600; }
+.produto-meta { font-size: 15px; color: var(--text-muted); }
+.produto-vol { font-family: var(--mono); font-size: 20px; font-weight: 500; white-space: nowrap; text-align: right; }
+
+/* ── CAMPOS ── */
+.campos { display: grid; gap: 22px; }
+.campo label { display: block; font-size: 16px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; }
+.campo input { width: 100%; height: 64px; border: 2px solid var(--border-dk); border-radius: 12px; background: var(--surface); color: var(--text); padding: 0 18px; font-family: var(--mono); font-size: 26px; letter-spacing: 1px; outline: none; min-width: 0; }
+.campo input.txt { font-family: var(--font); font-size: 19px; letter-spacing: 0; height: 56px; }
+.campo input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.campo input::placeholder { color: var(--text-muted); opacity: .55; }
+.campo .dica { font-size: 15px; color: var(--text-muted); margin-top: 6px; }
+.campo .msg-erro { display: none; color: var(--danger); font-size: 15px; font-weight: 600; margin-top: 6px; }
+.campo.erro input, .campo.erro .com-prefixo span { border-color: var(--danger); }
+.campo.erro .msg-erro { display: block; }
+.com-prefixo { display: flex; }
+.com-prefixo span { display: grid; place-items: center; padding: 0 16px; background: var(--panel-soft); border: 2px solid var(--border-dk); border-right: none; border-radius: 12px 0 0 12px; font-family: var(--mono); font-size: 26px; color: var(--text-dim); }
+.com-prefixo input { border-radius: 0 12px 12px 0; }
+
+/* ── BOTÕES ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 64px; padding: 0 28px; border: 2px solid transparent; border-radius: 12px; background: var(--panel-soft); color: var(--text); font-size: 19px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.btn-primario { background: var(--accent); color: var(--accent-ink); }
+.btn-secundario { background: transparent; border-color: var(--border-dk); }
+.btn:active:not(:disabled) { transform: translateY(1px); filter: brightness(.96); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.acoes { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.acoes .btn-primario { margin-left: auto; min-width: 260px; }
+@media (max-width: 640px) { .acoes .btn { flex: 1 1 100%; } .acoes .btn-primario { order: -1; margin-left: 0; min-width: 0; } }
+
+.alerta { padding: 14px 18px; border: 1px solid var(--danger); border-radius: 12px; background: var(--danger-dim); color: var(--danger); font-size: 17px; font-weight: 600; margin-bottom: 20px; }
+.alerta ul { margin: 6px 0 0 22px; font-weight: 500; }
+
+.btn-link { background: none; border: none; min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 16px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
+
+/* ── CONFIGURAÇÃO DO CAMINHÃO (quantidade e capacidade dos compartimentos) ── */
+.qtd-opcoes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .qtd-opcoes { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.qtd-opcao { height: 64px; border: 2px solid var(--border-dk); border-radius: 12px; background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 26px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
+.qtd-opcao.sel { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.capacidades-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.capacidades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .capacidades { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.capacidades .campo label { font-size: 15px; margin-bottom: 6px; }
+.capacidades .campo input { height: 58px; padding: 0 12px; font-size: 22px; letter-spacing: 0; }
+.com-sufixo { display: flex; }
+.com-sufixo input { border-radius: 12px 0 0 12px; }
+.com-sufixo span { display: grid; place-items: center; padding: 0 12px; background: var(--panel-soft); border: 2px solid var(--border-dk); border-left: none; border-radius: 0 12px 12px 0; font-size: 17px; color: var(--text-dim); }
+.campo.erro .com-sufixo span { border-color: var(--danger); }
+.total-cap { margin-top: 16px; font-size: 17px; color: var(--text-dim); }
+.total-cap strong { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.total-cap .aviso { display: block; margin-top: 4px; color: var(--accent2); font-weight: 600; }
+.capacidades-salvas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cap-chip { padding: 8px 14px; border-radius: 10px; background: var(--panel-soft); font-size: 17px; }
+.cap-chip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── ALOCAÇÃO DOS PEDIDOS ── */
+.linha-aloc { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 16px; padding: 12px 0; border-top: 1px solid var(--border); }
+.linha-aloc:first-child { border-top: none; padding-top: 0; }
+.linha-aloc:last-child { padding-bottom: 0; }
+.situacao { font-size: 16px; font-weight: 600; text-align: right; }
+.situacao small { display: block; font-size: 14px; font-weight: 500; color: var(--text-muted); }
+.situacao.ok { color: var(--success); }
+.situacao.falta { color: var(--danger); }
+.situacao.sobra { color: var(--accent2); }
+.nota-sugestao { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 10px 16px; margin-bottom: 16px; border-radius: 12px; background: var(--accent-dim); color: var(--text-dim); font-size: 16px; }
+.comp-cap { font-weight: 500; color: var(--text-muted); }
+/* Alocação: chips dos compartimentos (respondido / atual / sem resposta) e a pergunta de um compartimento */
+.tudo-certo { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--success); border-radius: 12px; background: var(--success-dim); color: var(--success); font-size: 17px; font-weight: 600; }
+.pergunta-topo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.pergunta-titulo { font-size: 28px; font-weight: 600; }
+.pergunta-titulo .de { font-size: 18px; font-weight: 500; color: var(--text-muted); }
+.pergunta-cap { font-size: 28px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.opcoes-lista { display: grid; gap: 12px; margin-top: 16px; }
+.opcao-grande { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding: 12px 20px; border: 2px solid var(--border-dk); border-radius: 14px; background: var(--surface); color: var(--text); font-size: 20px; font-weight: 600; text-align: left; cursor: pointer; touch-action: manipulation; }
+.opcao-grande small { display: block; margin-top: 2px; font-size: 15px; font-weight: 500; color: var(--text-muted); }
+.opcao-grande.sel { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.opcao-grande.sel small { color: var(--accent); }
+.opcao-grande.opcao-vazio { border-style: dashed; }
+.opcao-grande:disabled { opacity: .5; cursor: not-allowed; }
+.opcao-grande .tag { flex-shrink: 0; padding: 4px 12px; border-radius: 999px; background: var(--success-dim); color: var(--success); font-size: 14px; font-weight: 600; }
+/* Tanque: um segmento por compartimento, largura proporcional à capacidade (respondido = cor do produto) */
+.tanque { display: flex; gap: 6px; margin-bottom: 14px; }
+.tanque-seg { flex: var(--peso, 1) 1 0; min-width: 48px; min-height: 66px; padding: 6px 10px; border: 2px dashed var(--border-dk); border-radius: 10px; background: var(--surface); color: var(--text-muted); display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; overflow: hidden; }
+.tanque-seg .n { font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--text); }
+.tanque-seg .p { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.tanque-seg.cheio { border: 2px solid var(--cor-fg); background: var(--cor-bg); color: var(--cor-fg); }
+.tanque-seg.cheio .n { color: var(--cor-fg); }
+.tanque-seg.vazio { border-style: solid; background: var(--panel-soft); }
+.tanque-seg.atual { border: 3px solid var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.tanque-seg.atual .n { color: var(--accent); }
+.cor-0 { --cor-bg: var(--prod-0-bg); --cor-fg: var(--prod-0-fg); }
+.cor-1 { --cor-bg: var(--prod-1-bg); --cor-fg: var(--prod-1-fg); }
+.cor-2 { --cor-bg: var(--prod-2-bg); --cor-fg: var(--prod-2-fg); }
+.cor-3 { --cor-bg: var(--prod-3-bg); --cor-fg: var(--prod-3-fg); }
+.cor-4 { --cor-bg: var(--prod-4-bg); --cor-fg: var(--prod-4-fg); }
+.cor-5 { --cor-bg: var(--prod-5-bg); --cor-fg: var(--prod-5-fg); }
+.marca { display: inline-block; width: 16px; height: 16px; margin-right: 10px; border-radius: 50%; background: var(--cor-fg); vertical-align: -1px; flex-shrink: 0; }
+/* Resposta registrada: confirmação verde e o próximo compartimento entrando */
+.confirmado { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 14px; border-radius: 12px; background: var(--success-dim); color: var(--success); font-size: 18px; font-weight: 600; animation: aparecer .3s ease-out; }
+.opcao-grande .ok { flex-shrink: 0; font-size: 26px; font-weight: 700; }
+@keyframes entrar { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+@keyframes aparecer { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.pergunta-card.entrando { animation: entrar .3s ease-out; }
+@media (prefers-reduced-motion: reduce) { .pergunta-card.entrando, .confirmado { animation: none; } }
+.resumo-comp { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.resumo-comp:first-child, .cartao-titulo + .linha-aloc { border-top: none; padding-top: 0; }
+.resumo-comp:last-child { padding-bottom: 0; }
+.acoes-direita { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; }
+.acoes-direita .btn-primario { margin-left: 0; }
+@media (max-width: 640px) { .acoes-direita { flex: 1 1 100%; } }
+/* Lacres: tabela (uma linha por compartimento) para preencher com o leitor de código de barras */
+.lacres-progresso { margin: -8px 0 14px; font-size: 17px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.lacres-progresso.completo { color: var(--success); }
+.tabela-lacres { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px 10px; }
+.tl-linha { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, minmax(0, 1fr)); gap: 10px; align-items: start; padding: 10px; border-top: 1px solid var(--border); border-radius: 10px; }
+.tl-linha:first-child, .tl-cab + .tl-linha { border-top: none; }
+.tl-linha:focus-within { background: var(--accent-dim); }
+.tl-cab { padding-top: 8px; padding-bottom: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; }
+.tl-comp { display: flex; gap: 10px; align-items: center; min-height: 52px; min-width: 0; }
+.tl-n { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-soft); font-family: var(--mono); font-size: 17px; font-weight: 500; }
+.tl-linha:focus-within .tl-n { background: var(--accent); color: var(--accent-ink); }
+.tl-prod { font-size: 16px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.tl-prod .marca { width: 12px; height: 12px; margin-right: 6px; vertical-align: 0; }
+.tl-vol { font-size: 14px; color: var(--text-muted); }
+.tl-campo { min-width: 0; }
+.tl-campo .tl-rot { display: none; }
+.tl-campo input { height: 52px; padding: 0 8px; font-size: 18px; letter-spacing: 0; }
+.tl-campo.lido:not(.erro) input:not(:focus) { border-color: var(--success); background: var(--success-dim); }
+.tl-campo.erro input, .tl-campo.erro input:focus { border-color: var(--danger); background: var(--danger-dim); }
+.tl-campo .msg-erro { font-size: 13px; line-height: 1.3; margin-top: 4px; }
+/* Tela estreita: cada compartimento vira um bloco com os 4 campos em 2 colunas */
+@media (max-width: 700px) {
+  .tl-cab { display: none; }
+  .tl-linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tl-comp { grid-column: 1 / -1; min-height: 0; }
+  .tl-campo .tl-rot { display: block; font-size: 14px; margin-bottom: 4px; }
+}
+
+/* ── REVISÃO ── */
+.rev-comp { padding: 12px 0; border-top: 1px solid var(--border); }
+.rev-comp:first-child { border-top: none; padding-top: 0; }
+.rev-comp:last-child { padding-bottom: 0; }
+.rev-comp-topo { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 18px; }
+.rev-comp-topo span { color: var(--text-dim); }
+.rev-comp-codigos { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-top: 4px; font-size: 16px; color: var(--text-muted); }
+.rev-comp-codigos b { color: var(--text); font-size: 19px; }
+
+/* ── RESULTADO (fim, avisos) ── */
+.resultado { text-align: center; padding: 28px 0 8px; }
+.selo { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 22px; }
+.selo.ok { background: var(--success-dim); color: var(--success); }
+.selo.atencao { background: var(--accent2-dim); color: var(--accent2); }
+.resultado .sub { max-width: 600px; margin-left: auto; margin-right: auto; }
+.protocolo-grande { font-family: var(--mono); font-size: 36px; font-weight: 500; margin-top: 10px; }
+.resultado .acoes { justify-content: center; }
+.resultado .acoes .btn-primario { margin-left: 0; }
+.contagem { font-size: 15px; color: var(--text-muted); margin-top: 16px; min-height: 22px; }
+
+/* ── PROCESSAMENTO DO FATURAMENTO ── */
+.processamento { max-width: 720px; margin: 0 auto; }
+.processamento-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.processamento-percentual { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--accent); }
+.barra-progresso { height: 18px; overflow: hidden; border-radius: 999px; background: var(--panel-soft); border: 1px solid var(--border); }
+.barra-progresso > div { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
+.processamento-msg { min-height: 30px; margin-top: 14px; font-size: 19px; font-weight: 600; color: var(--text); }
+.processamento-msg.erro { color: var(--danger); }
+.historico-progresso { list-style: none; margin-top: 18px; text-align: left; }
+.historico-progresso li { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 15px; }
+.historico-progresso li:first-child { border-top: none; }
+.historico-progresso .marcador { width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; display: grid; place-items: center; background: var(--success-dim); color: var(--success); font-size: 13px; font-weight: 700; }
+.historico-progresso li.atual .marcador { background: var(--accent-dim); color: var(--accent); }
+.historico-progresso li.erro .marcador { background: var(--danger-dim); color: var(--danger); }
+.historico-progresso .hora { font-family: var(--mono); font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .barra-progresso > div { transition: none; } }
+
+.rodape { text-align: center; font-size: 13px; color: var(--text-muted); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); user-select: none; }
+
+.sobreposicao { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; background: var(--scrim); }
+.sobreposicao.aberta { display: flex; }
+.caixa { width: min(460px, 100%); background: var(--surface); border-radius: 16px; padding: 28px 24px; text-align: center; box-shadow: var(--shadow-lg); }
+.caixa .btn { width: 100%; }
+.caixa-acoes { display: grid; gap: 12px; }
+
+#toastContainer { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100% - 32px); }
+.toast { background: var(--navy); color: var(--navy-ink); padding: 14px 20px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 16px; }
+.toast-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <svg class="nexta-logo-svg" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+      <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+    </svg>
+      <div class="brand-txt">Autoatendimento</div>
+    </div>
+    <div class="topo-info">
+      <button class="topo-base hidden" id="topo-base" type="button" aria-haspopup="dialog" title="Trocar terminal ou sair" onclick="abrirMenuQuiosque()">
+        <span id="topo-base-nome"></span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="relogio" id="relogio"></div>
+    </div>
+  </div>
+</header>
+
+<nav class="passos hidden" id="passos" aria-label="Etapas do check-in">
+  <div class="passo"><span class="n">1</span><span class="txt">Identificação</span></div>
+  <div class="passo"><span class="n">2</span><span class="txt">Agendamento</span></div>
+  <div class="passo"><span class="n">3</span><span class="txt">Caminhão</span></div>
+  <div class="passo"><span class="n">4</span><span class="txt">Alocação</span></div>
+  <div class="passo"><span class="n">5</span><span class="txt">Lacres</span></div>
+  <div class="passo"><span class="n">6</span><span class="txt">Confirmação</span></div>
+</nav>
+
+<main class="conteudo">
+
+  <section class="tela ativa" id="tela-carregando">
+    <div class="resultado"><div class="sub">Conectando ao sistema…</div></div>
+  </section>
+
+  <!-- Configuração do aparelho: login do quiosque (feito uma vez pela equipe Nexta) -->
+  <section class="tela" id="tela-login">
+    <div class="cartao" style="max-width:480px;margin:12px auto 0">
+      <div class="titulo" style="font-size:24px">Configurar quiosque</div>
+      <div class="sub" style="font-size:16px;margin-bottom:20px">Feito uma vez pela equipe Nexta: entre com o login de quiosque cadastrado no portal de agendamento (Usuários → tipo Quiosque) e depois escolha o terminal. Este aparelho fica conectado até alguém sair.</div>
+      <div class="campos">
+        <div class="campo"><label for="login-email">E-mail</label><input class="txt" id="login-email" type="email" autocomplete="username"></div>
+        <div class="campo"><label for="login-senha">Senha</label><input class="txt" id="login-senha" type="password" autocomplete="current-password" enterkeyhint="go"></div>
+      </div>
+      <div class="alerta hidden" id="login-erro" role="alert" style="margin:18px 0 0"></div>
+      <button class="btn btn-primario" id="btn-login" type="button" onclick="fazerLogin()" style="width:100%;margin-top:22px">Entrar</button>
+    </div>
+  </section>
+
+  <!-- Configuração do aparelho: terminal (base) onde o tablet fica; a escolha fica salva no aparelho -->
+  <section class="tela" id="tela-terminal">
+    <div class="titulo">Qual terminal?</div>
+    <div class="sub">Escolha o terminal onde este tablet fica. A escolha fica salva neste aparelho.</div>
+    <div class="alerta hidden" id="alerta-terminal" role="alert"></div>
+    <div class="opcoes-lista" id="lista-terminais"></div>
+    <div class="acoes">
+      <button class="btn btn-secundario hidden" id="btn-terminal-voltar" type="button" onclick="reiniciar()">Manter o terminal atual</button>
+      <button class="btn btn-primario hidden" id="btn-terminais-recarregar" type="button" onclick="recarregarTerminais()">Tentar de novo</button>
+    </div>
+  </section>
+
+  <!-- Etapa 1: identificação -->
+  <section class="tela" id="tela-inicio">
+    <div class="titulo">Bem-vindo! Faça seu check-in</div>
+    <div class="sub">Informe o protocolo do agendamento, o seu CPF e a placa do caminhão.</div>
+    <div class="alerta hidden" id="alerta-inicio" role="alert"></div>
+    <div class="campos">
+      <div class="campo" id="c-protocolo">
+        <label for="in-protocolo">Protocolo do agendamento</label>
+        <div class="com-prefixo"><span>AG-</span><input id="in-protocolo" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="000123" enterkeyhint="next" oninput="this.value = soDigitos(this.value)"></div>
+        <div class="dica">Está no comprovante do agendamento (ex.: AG-000123).</div>
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campo" id="c-cpf">
+        <label for="in-cpf">CPF do motorista</label>
+        <input id="in-cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" enterkeyhint="next" oninput="mascararCpf(this)">
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campo" id="c-placa">
+        <label for="in-placa">Placa do caminhão</label>
+        <input id="in-placa" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="ABC1D23" enterkeyhint="go" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g, '')">
+        <div class="dica">Pode ser a placa do cavalo ou de uma das carretas.</div>
+        <div class="msg-erro"></div>
+      </div>
+    </div>
+    <div class="acoes"><button class="btn btn-primario" id="btn-buscar" type="button" onclick="buscarAgendamento()">Continuar</button></div>
+  </section>
+
+  <!-- Etapa 2: confere os dados do agendamento -->
+  <section class="tela" id="tela-agendamento">
+    <div class="titulo">Confira o seu agendamento</div>
+    <div class="sub">Se algum dado estiver errado, não continue: procure o guichê.</div>
+    <div class="cartao"><div class="dados" id="agendamento-dados"></div></div>
+    <div class="cartao"><div class="cartao-titulo">Produtos deste carregamento</div><div id="agendamento-produtos"></div></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="reiniciar()">Dados errados</button>
+      <button class="btn btn-primario" type="button" onclick="irParaConfiguracao()">Está tudo certo</button>
+    </div>
+  </section>
+
+  <!-- Etapa 3: configuração do caminhão (quantos compartimentos e a capacidade de cada um) -->
+  <section class="tela" id="tela-configuracao">
+    <div class="titulo">Compartimentos do caminhão</div>
+    <div class="sub">Quantos compartimentos o tanque tem e quantos litros cabem em cada um.</div>
+    <!-- Caminhão que já fez check-in: mostra a configuração salva e só pergunta se mudou -->
+    <div class="cartao hidden" id="cartao-config-salva">
+      <div class="cartao-titulo">Configuração salva deste caminhão</div>
+      <div class="produto-nome" id="config-salva-resumo"></div>
+      <div class="nota" id="config-salva-meta"></div>
+      <div class="capacidades-salvas" id="config-salva-lista"></div>
+      <div class="produto-nome" style="margin-top:22px">Houve alguma mudança nos compartimentos?</div>
+      <div class="acoes" style="margin-top:12px">
+        <button class="btn btn-secundario" type="button" onclick="alterarConfiguracao()">Sim, alterar</button>
+        <button class="btn btn-primario" type="button" onclick="confirmarConfiguracaoSalva()">Não, está igual</button>
+      </div>
+    </div>
+    <div class="nota-sugestao hidden" id="config-nota"></div>
+    <div class="cartao" id="cartao-qtd">
+      <div class="produto-nome" style="margin-bottom:12px">Quantos compartimentos?</div>
+      <div class="qtd-opcoes" id="qtd-opcoes" role="group" aria-label="Quantidade de compartimentos"></div>
+    </div>
+    <div class="cartao hidden" id="cartao-capacidades">
+      <div class="capacidades-topo">
+        <div class="produto-nome">Capacidade de cada compartimento</div>
+        <button class="btn-link hidden" id="btn-copiar-cap" type="button" onclick="copiarCapacidade()"></button>
+      </div>
+      <div class="capacidades" id="capacidades"></div>
+      <div class="total-cap" id="total-cap"></div>
+    </div>
+    <div class="alerta hidden" id="alerta-config" role="alert"></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="mostrarTela('agendamento')">Voltar</button>
+      <button class="btn btn-primario" id="btn-config-continuar" type="button" onclick="avancarParaAlocacao()">Continuar</button>
+    </div>
+  </section>
+
+  <!-- Etapa 4: alocação dos pedidos, um compartimento por vez (o pedido vai inteiro); no fim, resumo -->
+  <section class="tela" id="tela-alocacao">
+    <div class="titulo">Onde vai cada produto</div>
+    <div class="sub" id="alocacao-sub"></div>
+    <div id="alocacao-conteudo"></div>
+  </section>
+
+  <!-- Etapa 5: lacres e envelope de amostra de cada compartimento carregado -->
+  <section class="tela" id="tela-lacres">
+    <div class="titulo">Lacres e envelopes</div>
+    <div class="sub">Passe o leitor nos 3 lacres e no envelope de amostra de cada compartimento. Depois de cada leitura, o próximo campo já fica pronto.</div>
+    <div class="lacres-progresso" id="lacres-progresso" aria-live="polite"></div>
+    <div class="alerta hidden" id="alerta-lacres" role="alert"></div>
+    <div class="tabela-lacres" id="lista-lacres"></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="voltarParaAlocacao()">Voltar</button>
+      <button class="btn btn-primario" type="button" onclick="avancarParaRevisao()">Continuar</button>
+    </div>
+  </section>
+
+  <!-- Etapa 6: revisão e envio -->
+  <section class="tela" id="tela-revisao">
+    <div class="titulo">Revise e confirme</div>
+    <div class="sub">Confira os lacres e os envelopes com o veículo antes de confirmar.</div>
+    <div class="cartao"><div class="dados" id="revisao-dados"></div></div>
+    <div class="cartao"><div class="cartao-titulo">Produtos</div><div id="revisao-produtos"></div></div>
+    <div class="cartao"><div class="cartao-titulo">Lacres e envelopes</div><div id="revisao-comp"></div></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="mostrarTela('lacres')">Corrigir</button>
+      <button class="btn btn-primario" id="btn-confirmar" type="button" onclick="processarFaturamento()">Processar faturamento</button>
+    </div>
+  </section>
+
+  <section class="tela" id="tela-processamento">
+    <div class="processamento">
+      <div class="titulo">Processando faturamento</div>
+      <div class="sub">Não feche esta tela. O andamento do Cockpit de Transporte aparecerá abaixo.</div>
+      <div class="cartao">
+        <div class="processamento-topo">
+          <div><div class="cartao-titulo" style="margin:0">Protocolo</div><div class="mono" id="processamento-protocolo"></div></div>
+          <div class="processamento-percentual" id="processamento-percentual">1%</div>
+        </div>
+        <div class="barra-progresso" id="processamento-barra" role="progressbar" aria-label="Progresso do faturamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="1"><div></div></div>
+        <div class="processamento-msg" id="processamento-msg" aria-live="polite">Solicitação enviada. Aguardando o runner…</div>
+        <ol class="historico-progresso" id="processamento-historico"></ol>
+      </div>
+      <div class="alerta hidden" id="processamento-erro" role="alert"></div>
+      <div class="acoes hidden" id="processamento-acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Voltar ao início</button></div>
+      <div class="contagem" id="processamento-contagem"></div>
+    </div>
+  </section>
+
+  <section class="tela" id="tela-fim">
+    <div class="resultado">
+      <div class="selo ok"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <div class="titulo">Faturamento concluído!</div>
+      <div class="protocolo-grande" id="fim-protocolo"></div>
+      <div class="sub" id="fim-texto">Aguarde ser chamado para o carregamento.</div>
+      <div class="acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button></div>
+      <div class="contagem" id="fim-contagem"></div>
+    </div>
+  </section>
+
+  <!-- Agendamento encontrado, mas sem check-in pelo quiosque (cancelado, outro dia, pendência…) -->
+  <section class="tela" id="tela-aviso">
+    <div class="resultado">
+      <div class="selo atencao" id="aviso-selo"></div>
+      <div class="titulo" id="aviso-titulo"></div>
+      <div class="sub" id="aviso-texto"></div>
+      <div class="acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Voltar ao início</button></div>
+      <div class="contagem" id="aviso-contagem"></div>
+    </div>
+  </section>
+
+  <!-- Pedido não cabe inteiro nos compartimentos informados: inconsistência registrada para o faturamento -->
+  <section class="tela" id="tela-inconsistencia">
+    <div class="resultado">
+      <div class="selo atencao"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 6.5v7"/><path d="M12 17.5h.01"/></svg></div>
+      <div class="titulo">O pedido não cabe no caminhão</div>
+      <div class="sub" id="inconsistencia-texto"></div>
+      <div class="cartao" style="max-width:600px;margin:0 auto;text-align:left"><div class="dados" id="inconsistencia-dados"></div></div>
+      <div class="nota" id="inconsistencia-registro" style="margin-top:12px"></div>
+      <div class="acoes">
+        <button class="btn btn-secundario" type="button" onclick="mostrarTela('configuracao')">Corrigir compartimentos</button>
+        <button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="rodape" id="rodape"></footer>
+
+<!-- Menu da equipe Nexta (toque no nome do terminal, no topo): trocar terminal ou sair, com a senha do quiosque -->
+<div class="sobreposicao" id="menu-quiosque" role="dialog" aria-modal="true" aria-labelledby="menu-quiosque-titulo">
+  <div class="caixa">
+    <div class="titulo" id="menu-quiosque-titulo" style="font-size:26px">Configuração do quiosque</div>
+    <div class="sub" id="menu-quiosque-texto"></div>
+    <div class="campo" style="text-align:left;margin-bottom:16px">
+      <label for="menu-senha">Senha do login do quiosque</label>
+      <!-- new-password: o navegador não preenche sozinho a senha salva (o motorista também abre este menu) -->
+      <input class="txt" id="menu-senha" type="password" autocomplete="new-password" enterkeyhint="done">
+    </div>
+    <div class="alerta hidden" id="menu-erro" role="alert" style="text-align:left"></div>
+    <div class="caixa-acoes">
+      <button class="btn btn-primario" id="btn-trocar-terminal" type="button" onclick="acaoMenuQuiosque('trocar')">Trocar terminal</button>
+      <button class="btn btn-secundario" type="button" onclick="acaoMenuQuiosque('sair')">Sair do login do quiosque</button>
+      <button class="btn" type="button" onclick="fecharMenuQuiosque()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="sobreposicao" id="inatividade" role="dialog" aria-modal="true" aria-labelledby="inatividade-titulo">
+  <div class="caixa">
+    <div class="titulo" id="inatividade-titulo" style="font-size:26px">Ainda está aí?</div>
+    <div class="sub" id="inatividade-texto"></div>
+    <button class="btn btn-primario" type="button" onclick="continuarAtendimento()">Continuar o check-in</button>
+  </div>
+</div>
+<div id="toastContainer"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Quiosque de autoatendimento (tablet no guichê da base).
+   O motorista se identifica com protocolo + CPF + placa; se os três batem com um agendamento
+   de hoje desta base, ele confere os dados, informa a configuração do caminhão (quantos
+   compartimentos e quantos litros cada um; fica salva em compartimentosVeiculo/<placas do tanque>
+   e nos próximos check-ins só é confirmada), aloca os pedidos (cada pedido inteiro; se não
+   cabe, registra inconsistência para o faturamento) e informa 3 lacres e o envelope de amostra
+   de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
+   (status "aguardando") com o que o cockpit_transporte.py (nexta_automation/automation/
+   autoatendimento) precisa para a Ordem de Frete:
+     placa → --placa · tipoFrete → --tipo-frete · motoristaBp → --motorista
+     alocacoes[] → --alocacao ORDEM:PRODUTO:COMP[,COMP…]
+     compartimentos[] → --dados-compartimento INDICE:LACRE1:LACRE2:LACRE3:ENVELOPE
+   Configuração do tablet (uma vez, pela equipe Nexta): login de tipo "quiosque" (portal de agendamento →
+   Usuários; a sessão fica salva) e o terminal = base onde o tablet fica. Login preso a uma base (baseId)
+   usa ela; sem base, o terminal é escolhido no tablet e fica salvo no aparelho (localStorage). O motorista
+   não vê nada disso; tocar no nome do terminal (topo) abre o menu para trocar o terminal ou sair, que pede
+   a senha do login do quiosque (conferida no Firebase). As regras do banco
+   exigem o login (sem ele, qualquer um com a URL leria agendamentos por CPF e dispararia faturamento).
+   Mesmo Firebase do portal de agendamento (projeto nexta-agendamento);
+   regras em testes/portal_agendamento/firebase_database.rules.json.
+   ════════════════════════════════════════════════════════════════════ */
+
+const MAX_COMPARTIMENTOS = 12;
+// Tudo no autoatendimento é em litros. Limites por compartimento: barram erro de digitação ("5" pensando em metro
+// cúbico, um zero a mais)
+const CAPACIDADE_MIN_LITROS = 500;
+const CAPACIDADE_MAX_LITROS = 50000;
+const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
+const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
+const TEMPO_TELA_FIM = 20;           // s mostrando o "check-in concluído"
+const TEMPO_TELA_AVISO = 30;
+const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
+const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
+// Limites de cockpit_transporte.py (normalizar_*): lacre até 15 dígitos, envelope até 20, motorista até 10,
+// ordem de venda até 20 e produto até 18
+const LIMITES = { lacre: 15, envelope: 20, motorista: 10, ordem: 20, produto: 18 };
+const CAMPOS_COMP = [['lacre1', 'Lacre 1', LIMITES.lacre], ['lacre2', 'Lacre 2', LIMITES.lacre], ['lacre3', 'Lacre 3', LIMITES.lacre], ['envelope', 'Envelope de amostra', LIMITES.envelope, 'Envelope']];
+const TIPO_CODIGO = (campo) => (campo === 'envelope' ? 'envelope' : 'lacre'); // repetição é conferida dentro do mesmo tipo
+const TIPOS_FRETE = ['CIF', 'FOB'];
+// Situação do pedido (gravada no agendamento pelo robô do datalake) que o portal marca como "Revisar"
+const SITUACOES_REVISAR = { CANCELADO: 'cancelado', BLOQUEADO: 'bloqueado' };
+const TURNO_LABEL = { madrugada: 'Madrugada', manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
+const ETAPA_DA_TELA = { inicio: 1, agendamento: 2, configuracao: 3, alocacao: 4, lacres: 5, revisao: 6 };
+
+// terminal = baseId que o tablet atende (do cadastro do quiosque ou escolhido no aparelho)
+const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBusca: 0, msgLogin: '' };
+// Check-in em andamento: agendamento (id, a) e o que veio dele (tipoFrete, motoristaBp, recursoSap, linhas);
+// configuração do caminhão (chaveTanque, configSalva, qtd, caps = litros digitados, errosCap); alocação e lacres por
+// compartimento (comps[i] = { linha, lacre1, lacre2, lacre3, envelope }, erros); alocadoCom = capacidades com que a
+// alocação atual foi respondida; alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 4
+let atd = null;
+let _cancelarAcompanhamento = null;
+
+/* ── UTILITÁRIOS (mesmos do portal de agendamento) ── */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function jsArg(v) { return esc(JSON.stringify(String(v ?? ''))); }
+function pad2(n) { return String(n).padStart(2, '0'); }
+// Data local do aparelho — toISOString() é UTC e, depois das 21h em Brasília, já devolve o dia seguinte
+function dataLocalISO(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function hoje() { return dataLocalISO(new Date()); }
+function formatDataBR(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function horaBR(iso) { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+function formatVolume(v) { return v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR') + ' L'; }
+function soDigitos(v) { return String(v || '').replace(/\D/g, ''); }
+function normalizarPlaca(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
+// Placa antiga (ABC1234) e Mercosul (ABC1C34) são o mesmo veículo: o 5º caractere vira letra (0 = A … 9 = J)
+function placaMercosul(p) { return /^[A-Z]{3}[0-9]{4}$/.test(p) ? p.slice(0, 4) + 'ABCDEFGHIJ'[p[4]] + p.slice(5) : p; }
+function cpfValido(cpf) {
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
+  const dv = (n) => { let s = 0; for (let i = 0; i < n; i++) s += Number(cpf[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  return dv(9) === Number(cpf[9]) && dv(10) === Number(cpf[10]);
+}
+function mascararCpf(el) {
+  const d = soDigitos(el.value).slice(0, 11);
+  el.value = [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9)].filter(Boolean).join('.') + (d.length > 9 ? '-' + d.slice(9) : '');
+}
+// Na tela do quiosque o CPF aparece só em parte (outras pessoas podem estar olhando)
+function cpfParcial(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.***.***-${d.slice(9)}` : '—'; }
+function placasDe(a) { return [a.placaCavalo, a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean); }
+// Chave da configuração dos compartimentos: placa(s) de quem leva o tanque — carreta(s), na ordem do agendamento;
+// sem carreta (truck/toco), o próprio caminhão. Trocar o cavalo não muda a configuração
+function chaveTanque(a) {
+  const carretas = [a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean);
+  return (carretas.length ? carretas : [normalizarPlaca(a.placaCavalo)]).map(placaMercosul).join('+');
+}
+// Configuração salva só vale se estiver inteira (1 a 12 compartimentos com capacidade válida)
+function configValida(cfg) {
+  const caps = cfg?.capacidadesLitros;
+  return Array.isArray(caps) && caps.length >= 1 && caps.length <= MAX_COMPARTIMENTOS
+    && caps.every((c) => Number.isInteger(c) && c > 0 && c <= CAPACIDADE_MAX_LITROS) ? cfg : null;
+}
+function ehErroPermissao(e) { return e?.code === 'PERMISSION_DENIED' || /permission/i.test(e?.message || ''); }
+function toast(msg, tipo = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + tipo;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+function dado(rotulo, valor, mono = false) {
+  return `<div class="dado"><div class="rot">${esc(rotulo)}</div><div class="val${mono ? ' mono' : ''}">${esc(valor || '—')}</div></div>`;
+}
+
+/* ── TELAS ── */
+let _contagem = null;
+function pararContagem() { clearInterval(_contagem); _contagem = null; }
+// Telas de fim e de aviso voltam sozinhas ao início: o próximo motorista não vê os dados do anterior
+function iniciarContagem(elId, segundos) {
+  pararContagem();
+  const el = document.getElementById(elId);
+  let resta = segundos;
+  const tick = () => {
+    if (resta <= 0) { reiniciar(); return; }
+    el.textContent = `Voltando ao início em ${resta} s`;
+    resta--;
+  };
+  tick();
+  _contagem = setInterval(tick, 1000);
+}
+function mostrarTela(nome) {
+  Q.tela = nome;
+  pararContagem();
+  document.querySelectorAll('.tela').forEach((el) => el.classList.toggle('ativa', el.id === 'tela-' + nome));
+  const etapa = ETAPA_DA_TELA[nome];
+  document.getElementById('passos').classList.toggle('hidden', !etapa);
+  document.querySelectorAll('.passo').forEach((el, i) => {
+    el.classList.toggle('atual', i + 1 === etapa);
+    el.classList.toggle('feito', i + 1 < etapa);
+  });
+  window.scrollTo(0, 0);
+}
+function mostrarAviso({ titulo, texto, tipo = 'atencao' }) {
+  const selo = document.getElementById('aviso-selo');
+  selo.className = 'selo ' + tipo;
+  selo.innerHTML = tipo === 'ok'
+    ? '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+    : '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 6.5v7"/><path d="M12 17.5h.01"/></svg>';
+  document.getElementById('aviso-titulo').textContent = titulo;
+  document.getElementById('aviso-texto').textContent = texto;
+  mostrarTela('aviso');
+  iniciarContagem('aviso-contagem', TEMPO_TELA_AVISO);
+}
+function reiniciar() {
+  if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
+  atd = null;
+  Q.falhasBusca = 0;
+  for (const id of ['in-protocolo', 'in-cpf', 'in-placa']) document.getElementById(id).value = '';
+  for (const id of ['c-protocolo', 'c-cpf', 'c-placa']) marcarErro(id, '');
+  mostrarAlerta('alerta-inicio', '');
+  fecharInatividade();
+  fecharMenuQuiosque();
+  if (document.activeElement) document.activeElement.blur(); // fecha o teclado do tablet
+  mostrarTela('inicio');
+}
+function mostrarAlerta(id, html) {
+  const el = document.getElementById(id);
+  el.innerHTML = html;
+  el.classList.toggle('hidden', !html);
+}
+function marcarErro(campoId, msg) {
+  const el = document.getElementById(campoId);
+  el.classList.toggle('erro', !!msg);
+  el.querySelector('.msg-erro').textContent = msg || '';
+}
+
+/* ── TOPO E RODAPÉ ── */
+function atualizarRelogio() {
+  const d = new Date();
+  document.getElementById('relogio').textContent = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function atualizarTopo() {
+  const base = Q.bases[Q.terminal];
+  // Sem o nome (bases não carregaram ou terminal ainda não escolhido) o botão do menu continua no topo
+  document.getElementById('topo-base-nome').textContent = base ? base.nome : 'Quiosque';
+  document.getElementById('topo-base').classList.toggle('hidden', !Q.usuario);
+  document.getElementById('rodape').textContent = Q.usuario
+    ? `Quiosque ${Q.usuario.nome}${base ? ' · ' + base.nome : ''}`
+    : '';
+}
+
+/* ── MENU DA EQUIPE NEXTA (toque no nome do terminal, no topo) ── */
+// O motorista também pode tocar no topo: trocar terminal e sair só com a senha do login do quiosque
+function menuAberto() { return document.getElementById('menu-quiosque').classList.contains('aberta'); }
+function abrirMenuQuiosque() {
+  if (!Q.usuario) return;
+  const base = Q.bases[Q.terminal];
+  const nome = base ? base.nome : 'não escolhido';
+  // Login preso a uma base: o terminal vem do cadastro do quiosque e não se troca aqui
+  document.getElementById('menu-quiosque-texto').textContent = Q.usuario.baseId
+    ? `Terminal atual: ${nome} (fixo no cadastro deste quiosque no portal de agendamento). Login: ${Q.usuario.email}.`
+    : `Terminal atual: ${nome}. Login: ${Q.usuario.email}.`;
+  document.getElementById('btn-trocar-terminal').classList.toggle('hidden', !!Q.usuario.baseId);
+  document.getElementById('menu-senha').value = '';
+  mostrarAlerta('menu-erro', '');
+  document.getElementById('menu-quiosque').classList.add('aberta');
+  document.getElementById('menu-senha').focus();
+}
+function fecharMenuQuiosque() {
+  document.getElementById('menu-quiosque').classList.remove('aberta');
+  document.getElementById('menu-senha').value = ''; // a senha não fica na tela
+  mostrarAlerta('menu-erro', '');
+}
+const MSGS_SENHA_MENU = { 'auth/wrong-password': 'Senha incorreta.', 'auth/invalid-credential': 'Senha incorreta.' };
+let _conferindoSenha = false;
+async function acaoMenuQuiosque(acao) {
+  if (_conferindoSenha) return;
+  const campo = document.getElementById('menu-senha');
+  if (!campo.value) { mostrarAlerta('menu-erro', 'Digite a senha do login do quiosque.'); campo.focus(); return; }
+  _conferindoSenha = true;
+  const botoes = document.querySelectorAll('#menu-quiosque .btn');
+  botoes.forEach((b) => { b.disabled = true; });
+  try {
+    await window._fb.confirmarSenha(campo.value);
+  } catch (e) {
+    mostrarAlerta('menu-erro', esc(MSGS_SENHA_MENU[e.code] || MSGS_AUTH[e.code] || 'Não foi possível conferir a senha: ' + (e.message || e.code)));
+    campo.focus();
+    campo.select();
+    return;
+  } finally {
+    _conferindoSenha = false;
+    botoes.forEach((b) => { b.disabled = false; });
+  }
+  if (acao === 'trocar') trocarTerminal(); else sairDoQuiosque();
+}
+function trocarTerminal() {
+  reiniciar(); // descarta o check-in em andamento
+  mostrarEscolhaTerminal();
+}
+function sairDoQuiosque() {
+  fecharMenuQuiosque();
+  salvarTerminal(''); // o próximo login escolhe o terminal de novo
+  Q.terminal = '';
+  window._fb.logout();
+}
+
+/* ── TERMINAL (base onde o tablet fica) ── */
+// localStorage pode estar bloqueado ou vir vazio: sem ele, o tablet só pergunta o terminal de novo ao recarregar
+function terminalSalvo() { try { return localStorage.getItem(CHAVE_TERMINAL) || ''; } catch (e) { return ''; } }
+function salvarTerminal(id) {
+  try { if (id) localStorage.setItem(CHAVE_TERMINAL, id); else localStorage.removeItem(CHAVE_TERMINAL); } catch (e) { /* idem */ }
+}
+function terminalAtivo(id) { return !!Q.bases[id] && Q.bases[id].ativo !== false; }
+function mostrarEscolhaTerminal() {
+  const lista = Object.entries(Q.bases).filter(([id]) => terminalAtivo(id))
+    .sort(([, a], [, b]) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  document.getElementById('lista-terminais').innerHTML = lista.map(([id, b]) => `
+    <button type="button" class="opcao-grande${id === Q.terminal ? ' sel' : ''}" aria-pressed="${id === Q.terminal}" onclick="escolherTerminal(${jsArg(id)})">
+      <span>${esc(b.nome)}<small>${b.centro && b.deposito ? `Centro ${esc(b.centro)} · depósito ${esc(b.deposito)}` : ''}</small></span>
+      ${id === Q.terminal ? '<span class="tag">Atual</span>' : ''}
+    </button>`).join('');
+  mostrarAlerta('alerta-terminal', lista.length ? '' : 'Nenhum terminal encontrado. Confira a conexão do tablet e o cadastro de bases no portal de agendamento.');
+  document.getElementById('btn-terminais-recarregar').classList.toggle('hidden', lista.length > 0);
+  document.getElementById('btn-terminal-voltar').classList.toggle('hidden', !Q.terminal);
+  mostrarTela('terminal');
+}
+async function recarregarTerminais() {
+  const btn = document.getElementById('btn-terminais-recarregar');
+  btn.disabled = true; btn.textContent = 'Carregando…';
+  try { Q.bases = await window._fb.carregarBases(); } catch (e) { console.error(e); }
+  btn.disabled = false; btn.textContent = 'Tentar de novo';
+  atualizarTopo();
+  mostrarEscolhaTerminal();
+}
+function escolherTerminal(id) {
+  Q.terminal = id;
+  salvarTerminal(id);
+  atualizarTopo();
+  reiniciar();
+}
+
+/* ── LOGIN DO QUIOSQUE ── */
+const MSGS_AUTH = {
+  'auth/user-not-found': 'E-mail ou senha incorretos.',
+  'auth/wrong-password': 'E-mail ou senha incorretos.',
+  'auth/invalid-credential': 'E-mail ou senha incorretos.',
+  'auth/invalid-email': 'E-mail inválido.',
+  'auth/user-disabled': 'Este usuário foi desativado.',
+  'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
+  'auth/network-request-failed': 'Sem conexão com o servidor.',
+};
+function mostrarLogin() {
+  mostrarAlerta('login-erro', esc(Q.msgLogin));
+  Q.msgLogin = '';
+  const btn = document.getElementById('btn-login');
+  btn.disabled = false; btn.textContent = 'Entrar';
+  mostrarTela('login');
+}
+async function fazerLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  if (!email || !senha) { mostrarAlerta('login-erro', 'Informe e-mail e senha.'); return; }
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    await window._fb.login(email, senha);
+    document.getElementById('login-senha').value = '';
+  } catch (e) {
+    mostrarAlerta('login-erro', esc(MSGS_AUTH[e.code] || 'Erro ao autenticar: ' + e.message));
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+async function onSessaoFirebase(user) {
+  if (!user) { Q.usuario = null; atualizarTopo(); mostrarLogin(); return; }
+  mostrarTela('carregando');
+  let perfil = null, erro = null;
+  try { perfil = await window._fb.carregarPerfil(user.uid); } catch (e) { erro = e; console.error(e); }
+  if (perfil?.tipo !== 'quiosque') {
+    Q.msgLogin = erro ? `O banco recusou a leitura do perfil (${erro.code || erro.message}). Confira se as regras do Realtime Database foram publicadas.`
+      : perfil ? 'Este login não é de quiosque. No portal de agendamento, cadastre um usuário do tipo "Quiosque (autoatendimento)".'
+      : `O login ${user.email} não tem acesso. Cadastre-o no portal de agendamento como Quiosque (UID: ${user.uid}).`;
+    await window._fb.logout().catch(() => {});
+    mostrarLogin();
+    return;
+  }
+  Q.usuario = { uid: user.uid, email: user.email, nome: perfil.nome || user.email, baseId: perfil.baseId || '' };
+  let basesLidas = true;
+  try { Q.bases = await window._fb.carregarBases(); } catch (e) { console.error(e); Q.bases = {}; basesLidas = false; }
+  // Terminal: a base do cadastro do quiosque; sem ela, a escolhida neste tablet (de novo se a base foi desativada;
+  // se a leitura das bases falhou, mantém a escolha salva em vez de prender o tablet na tela de configuração)
+  const salvo = terminalSalvo();
+  Q.terminal = Q.usuario.baseId || (salvo && (!basesLidas || terminalAtivo(salvo)) ? salvo : '');
+  atualizarTopo();
+  if (Q.terminal) reiniciar(); else mostrarEscolhaTerminal();
+}
+
+/* ── ETAPA 1: IDENTIFICAÇÃO ── */
+function lerIdentificacao() {
+  const digitos = soDigitos(document.getElementById('in-protocolo').value);
+  return {
+    protocolo: digitos ? 'AG-' + digitos.padStart(6, '0') : '',
+    cpf: soDigitos(document.getElementById('in-cpf').value),
+    placa: normalizarPlaca(document.getElementById('in-placa').value),
+  };
+}
+async function buscarAgendamento() {
+  const { protocolo, cpf, placa } = lerIdentificacao();
+  const erros = {
+    'c-protocolo': protocolo ? '' : 'Digite o número do protocolo.',
+    'c-cpf': cpfValido(cpf) ? '' : cpf.length < 11 ? 'Digite os 11 números do CPF.' : 'CPF inválido. Confira os números.',
+    'c-placa': placaValida(placa) ? '' : 'Placa inválida. Use o formato ABC1D23 ou ABC1234.',
+  };
+  for (const [id, msg] of Object.entries(erros)) marcarErro(id, msg);
+  mostrarAlerta('alerta-inicio', '');
+  if (Object.values(erros).some(Boolean)) return;
+
+  const btn = document.getElementById('btn-buscar');
+  btn.disabled = true; btn.textContent = 'Consultando…';
+  try {
+    // Os agendamentos do CPF digitado (a regra não libera outra consulta ao quiosque); protocolo e placa conferem aqui
+    const agendamentos = await window._fb.agendamentosDoMotorista(cpf);
+    const placaM = placaMercosul(placa);
+    const achado = Object.entries(agendamentos)
+      .find(([, a]) => a.protocolo === protocolo && placasDe(a).map(placaMercosul).includes(placaM));
+    if (!achado) {
+      Q.falhasBusca++;
+      // Não diz qual dos três está errado: o quiosque não confirma protocolo, CPF ou placa de ninguém
+      mostrarAlerta('alerta-inicio', 'Não encontramos um agendamento com esse protocolo, CPF e placa. Confira os três dados e tente de novo.'
+        + (Q.falhasBusca >= 2 ? ' Se não conseguir, procure o guichê.' : ''));
+      return;
+    }
+    const r = await prepararAtendimento(achado[0], achado[1]);
+    if (r.acompanhar) { acompanharFaturamento(r.acompanhar); return; }
+    if (r.aviso) { mostrarAviso(r.aviso); return; }
+    atd = r.atd;
+    if (document.activeElement) document.activeElement.blur();
+    renderAgendamento();
+    mostrarTela('agendamento');
+  } catch (e) {
+    console.error(e);
+    mostrarAlerta('alerta-inicio', ehErroPermissao(e)
+      ? 'O quiosque não tem permissão para consultar os agendamentos. Chame a equipe Nexta (regras do Firebase).'
+      : 'Sem conexão com o sistema. Tente de novo em instantes.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Continuar';
+  }
+}
+
+// Só segue para os compartimentos o agendamento que o cockpit consegue faturar sem ajuda do guichê.
+// Devolve { aviso } (o motorista procura o guichê) ou { atd } (dados do check-in)
+async function prepararAtendimento(id, a) {
+  const prot = a.protocolo;
+  const guiche = (titulo, texto) => ({ aviso: { titulo, texto, tipo: 'atencao' } });
+  if (a.status === 'cancelado') return guiche('Agendamento cancelado', `O agendamento ${prot} foi cancelado. Procure o guichê para mais informações.`);
+  if (a.status === 'faturado') return guiche('Carregamento já faturado', `O carregamento do agendamento ${prot} já foi faturado. Procure o guichê se precisar de ajuda.`);
+  if (a.status !== 'agendado') return guiche('Atendimento no guichê', `O agendamento ${prot} precisa ser conferido no guichê.`);
+  if (a.baseId !== Q.terminal) {
+    return guiche('Agendamento de outra base', `O agendamento ${prot} é para a base ${a.baseNome || 'de outro local'}. Confira o local do carregamento com a transportadora.`);
+  }
+  if (a.dataCarregamento !== hoje()) {
+    return guiche('Agendamento para outro dia', `O carregamento do agendamento ${prot} está marcado para ${formatDataBR(a.dataCarregamento)}. Procure o guichê se precisar de ajuda.`);
+  }
+  const pendentes = Object.entries(a.situacaoPedidos || {}).filter(([nr, s]) => SITUACOES_REVISAR[s] && a.pedidos?.[nr]);
+  if (pendentes.length) {
+    return guiche('Pedido com pendência', pendentes.map(([nr, s]) => `O pedido ${nr} está ${SITUACOES_REVISAR[s]}`).join('. ') + '. Procure o guichê antes de carregar.');
+  }
+
+  // Motorista e veículo provisórios no agendamento podem já ter entrado no SAP: consulta o cadastro atual
+  const tanque = chaveTanque(a);
+  const [checkin, cadMotorista, recurso, configSalva] = await Promise.all([
+    window._fb.carregarCheckin(a.protocolo),
+    a.motoristaBp ? null : window._fb.carregarMotorista(a.motoristaCpf).catch(() => null),
+    a.recursoSap || !a.recursoChave ? null : window._fb.carregarRecurso(a.recursoChave).catch(() => null),
+    window._fb.carregarConfigVeiculo(tanque).catch(() => null), // sem ela, o motorista informa (como na 1ª vez)
+  ]);
+  // Inconsistência registrada antes (pedido não cabia) não impede tentar de novo: o check-in grava por cima
+  if (checkin && ['aguardando', 'processando'].includes(checkin.status)) {
+    return { acompanhar: prot };
+  }
+  if (checkin?.status === 'concluido') {
+    const ordem = checkin.resultado?.ordemFrete;
+    return { aviso: { tipo: 'ok', titulo: 'Faturamento já concluído', texto: `O faturamento do agendamento ${prot} já foi concluído${ordem ? ` (OF ${ordem})` : ''}. Aguarde ser chamado para o carregamento.` } };
+  }
+  if (checkin?.status === 'erro') {
+    return guiche('Faturamento precisa de conferência', checkin.processamento?.mensagem || `O faturamento do agendamento ${prot} precisa ser conferido no guichê.`);
+  }
+  if (checkin && checkin.status !== 'inconsistente') {
+    return { aviso: { tipo: 'ok', titulo: 'Check-in já realizado', texto: `Você já fez o check-in do agendamento ${prot}${checkin.criadoEm ? ' às ' + horaBR(checkin.criadoEm) : ''}. Aguarde ser chamado para o carregamento.` } };
+  }
+  const fretes = [...new Set(Object.values(a.pedidos || {}).map((p) => String(p.tipoFrete || '').toUpperCase()))];
+  if (fretes.length !== 1 || !TIPOS_FRETE.includes(fretes[0])) {
+    return guiche('Atendimento no guichê', `O carregamento do agendamento ${prot} precisa ser conferido no guichê (tipo de frete).`);
+  }
+  const motoristaBp = String(a.motoristaBp || cadMotorista?.bp || '').trim();
+  if (!new RegExp(`^\\d{1,${LIMITES.motorista}}$`).test(motoristaBp)) {
+    return guiche('Cadastro do motorista em validação', 'Seu cadastro de motorista ainda não foi liberado no sistema. Procure o guichê.');
+  }
+  const recursoSap = String(a.recursoSap || recurso?.id || '');
+  if (!recursoSap) return guiche('Cadastro do veículo em validação', 'O cadastro deste veículo ainda não foi liberado no sistema. Procure o guichê.');
+
+  // Uma linha por pedido + produto: é a "Ordem original" + "Produto" que o cockpit aloca nos compartimentos
+  const linhas = Object.values(a.pedidos || {}).flatMap((p) => Object.values(p.itens || {})
+    .filter((i) => Number(i.volume) > 0)
+    .map((i) => ({
+      chave: `${p.nrPedido}|${i.codigo}`, ordemVenda: String(p.nrPedido), produto: String(i.codigo),
+      descricao: i.descricao || `Produto ${i.codigo}`, volume: Number(i.volume),
+      clienteCodigo: p.clienteCodigo || '', clienteNome: p.clienteNome || '',
+    })));
+  const foraDoPadrao = (l) => !new RegExp(`^\\d{1,${LIMITES.ordem}}$`).test(l.ordemVenda) || !new RegExp(`^\\d{1,${LIMITES.produto}}$`).test(l.produto);
+  if (!linhas.length || linhas.some(foraDoPadrao)) {
+    return guiche('Atendimento no guichê', `Os pedidos do agendamento ${prot} precisam ser conferidos no guichê.`);
+  }
+  return { atd: {
+    id, a, tipoFrete: fretes[0], motoristaBp, recursoSap, linhas,
+    chaveTanque: tanque, configSalva: configValida(configSalva), editandoConfig: false,
+    qtd: 0, caps: Array(MAX_COMPARTIMENTOS).fill(''), errosCap: {}, alocadoCom: '',
+    // linha: null = compartimento ainda sem resposta, '' = vazio, "<pedido>|<produto>" = linha alocada nele
+    comps: Array.from({ length: MAX_COMPARTIMENTOS }, () => ({ linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' })),
+    alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false,
+    erros: {}, // lacres: "<índice>.<campo>" → mensagem
+  } };
+}
+
+/* ── ETAPA 2: CONFERÊNCIA ── */
+function quandoCarrega(a) {
+  const horario = a.baseTipo === 'agendamento' ? a.slotHorario : TURNO_LABEL[a.turno] || a.turno;
+  return formatDataBR(a.dataCarregamento) + (horario ? ' · ' + horario : '');
+}
+function renderAgendamento() {
+  const { a } = atd;
+  document.getElementById('agendamento-dados').innerHTML = [
+    dado('Protocolo', a.protocolo, true),
+    dado('Carregamento', quandoCarrega(a)),
+    dado('Base', a.baseNome),
+    dado('Tipo de frete', atd.tipoFrete),
+    dado('Motorista', a.motorista),
+    dado('CPF', cpfParcial(a.motoristaCpf), true),
+    dado('Placas', placasDe(a).join(' + '), true),
+    dado('Volume total', formatVolume(somar(atd.linhas.map((l) => l.volume)))),
+  ].join('');
+  document.getElementById('agendamento-produtos').innerHTML = atd.linhas.map((l) => `
+    <div class="produto-linha">
+      <div><div class="produto-nome">${esc(l.descricao)}</div><div class="produto-meta">Pedido ${esc(l.ordemVenda)}${l.clienteNome ? ' · ' + esc(l.clienteNome) : ''}</div></div>
+      <div class="produto-vol">${formatVolume(l.volume)}</div>
+    </div>`).join('');
+}
+// Caminhão com configuração salva: só confirma se mudou; sem ela (1º check-in do tanque), informa
+function irParaConfiguracao() {
+  atd.editandoConfig = !atd.configSalva;
+  mostrarAlerta('alerta-config', '');
+  renderConfiguracao();
+  mostrarTela('configuracao');
+}
+
+/* ── ETAPA 3: CONFIGURAÇÃO DO CAMINHÃO ── */
+function somar(valores) { return valores.reduce((s, v) => s + v, 0); }
+// Litros digitados ("5000" ou "5.000") → número; null se vazio ou fora dos limites
+function litrosDoTexto(txt) {
+  const n = Number(soDigitos(txt));
+  return n >= CAPACIDADE_MIN_LITROS && n <= CAPACIDADE_MAX_LITROS ? n : null;
+}
+// Capacidade do compartimento com o que vai nele: "5.000 L" se enche, "3.000 L de 5.000 L" se sobra espaço
+function textoOcupacao(previsto, capacidade) {
+  return previsto === capacidade ? formatVolume(capacidade) : `${formatVolume(previsto)} de ${formatVolume(capacidade)}`;
+}
+function capacidades() { return atd.caps.slice(0, atd.qtd).map(litrosDoTexto); }
+function configIgualSalva(caps) {
+  const salva = atd.configSalva?.capacidadesLitros;
+  return !!salva && salva.length === caps.length && salva.every((c, i) => c === caps[i]);
+}
+function renderConfiguracao() {
+  const salva = atd.configSalva;
+  const confirmando = !!salva && !atd.editandoConfig;
+  document.getElementById('cartao-config-salva').classList.toggle('hidden', !confirmando);
+  document.getElementById('cartao-qtd').classList.toggle('hidden', confirmando);
+  document.getElementById('btn-config-continuar').classList.toggle('hidden', confirmando);
+  const nota = confirmando ? '' : salva ? 'Altere o que mudou: a nova configuração fica salva para os próximos carregamentos.'
+    : 'Primeiro check-in deste caminhão: a configuração fica salva para os próximos carregamentos.';
+  const elNota = document.getElementById('config-nota');
+  elNota.textContent = nota;
+  elNota.classList.toggle('hidden', !nota);
+  if (confirmando) {
+    const caps = salva.capacidadesLitros;
+    document.getElementById('config-salva-resumo').textContent = `${caps.length} compartimento${caps.length > 1 ? 's' : ''} · ${formatVolume(somar(caps))}`;
+    document.getElementById('config-salva-meta').textContent = salva.atualizadoEm ? `Informada em ${formatDataBR(dataLocalISO(new Date(salva.atualizadoEm)))}` : '';
+    document.getElementById('config-salva-lista').innerHTML = caps.map((c, i) => `<span class="cap-chip">Comp. ${i + 1} · <b>${formatVolume(c)}</b></span>`).join('');
+    document.getElementById('cartao-capacidades').classList.add('hidden');
+    return;
+  }
+  document.getElementById('qtd-opcoes').innerHTML = Array.from({ length: MAX_COMPARTIMENTOS }, (_, k) => k + 1).map((n) =>
+    `<button type="button" class="qtd-opcao${atd.qtd === n ? ' sel' : ''}" aria-pressed="${atd.qtd === n}" onclick="escolherQtd(${n})">${n}</button>`).join('');
+  document.getElementById('cartao-capacidades').classList.toggle('hidden', !atd.qtd);
+  document.getElementById('capacidades').innerHTML = Array.from({ length: atd.qtd }, (_, i) => campoCapacidade(i)).join('');
+  atualizarTotalCapacidade();
+}
+function alterarConfiguracao() {
+  const caps = atd.configSalva.capacidadesLitros;
+  atd.qtd = caps.length;
+  caps.forEach((c, i) => { atd.caps[i] = String(c); });
+  atd.editandoConfig = true;
+  renderConfiguracao();
+}
+function confirmarConfiguracaoSalva() {
+  const caps = atd.configSalva.capacidadesLitros;
+  atd.qtd = caps.length;
+  caps.forEach((c, i) => { atd.caps[i] = String(c); });
+  avancarParaAlocacao();
+}
+function escolherQtd(n) {
+  atd.qtd = n;
+  mostrarAlerta('alerta-config', '');
+  renderConfiguracao();
+  [...document.querySelectorAll('#capacidades input')].find((el) => !el.value)?.focus();
+}
+function campoCapacidade(i) {
+  const erro = atd.errosCap[i] || '';
+  return `<div class="campo${erro ? ' erro' : ''}" id="cap-${i}">
+    <label for="in-cap-${i}">Compartimento ${i + 1}</label>
+    <div class="com-sufixo"><input id="in-cap-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(atd.caps[i])}" oninput="digitarCapacidade(${i}, this)"><span>L</span></div>
+    <div class="msg-erro">${esc(erro)}</div>
+  </div>`;
+}
+// Só números (o ponto de milhar digitado some); digitar não redesenha a lista, só o total
+function digitarCapacidade(i, el) {
+  const v = soDigitos(el.value).slice(0, 5);
+  el.value = v;
+  atd.caps[i] = v;
+  if (atd.errosCap[i]) {
+    delete atd.errosCap[i];
+    document.getElementById('cap-' + i).classList.remove('erro');
+    if (!Object.keys(atd.errosCap).length) mostrarAlerta('alerta-config', '');
+  }
+  atualizarTotalCapacidade();
+}
+function copiarCapacidade() {
+  for (let i = 1; i < atd.qtd; i++) { atd.caps[i] = atd.caps[0]; delete atd.errosCap[i]; }
+  renderConfiguracao();
+}
+function atualizarTotalCapacidade() {
+  const caps = capacidades();
+  const total = somar(caps.filter(Boolean));
+  const cadastrada = Number(atd.a.capacidadeVeiculo) || 0;
+  const completa = caps.length > 0 && caps.every(Boolean);
+  document.getElementById('total-cap').innerHTML = `Total: <strong>${formatVolume(total)}</strong>`
+    + (cadastrada ? ` · capacidade cadastrada do veículo: <strong>${formatVolume(cadastrada)}</strong>` : '')
+    + (completa && cadastrada && total !== cadastrada ? '<span class="aviso">A soma é diferente da capacidade cadastrada. Confira os valores.</span>' : '');
+  const primeira = litrosDoTexto(atd.caps[0]);
+  const btn = document.getElementById('btn-copiar-cap');
+  btn.classList.toggle('hidden', !(atd.qtd > 1 && primeira));
+  if (primeira) btn.textContent = `Usar ${formatVolume(primeira)} em todos`;
+}
+function avancarParaAlocacao() {
+  if (!atd.qtd) { mostrarAlerta('alerta-config', 'Escolha quantos compartimentos o caminhão tem.'); return; }
+  const caps = capacidades();
+  atd.errosCap = {};
+  caps.forEach((c, i) => {
+    if (c) return;
+    const n = Number(soDigitos(atd.caps[i]));
+    atd.errosCap[i] = !n ? 'Obrigatório' : n > CAPACIDADE_MAX_LITROS ? `Até ${formatVolume(CAPACIDADE_MAX_LITROS)}` : `Mínimo ${formatVolume(CAPACIDADE_MIN_LITROS)}`;
+  });
+  const invalidas = Object.keys(atd.errosCap).length;
+  if (invalidas) {
+    atd.editandoConfig = true;
+    renderConfiguracao();
+    mostrarAlerta('alerta-config', invalidas === 1 ? 'Informe a capacidade do compartimento marcado em vermelho.' : `Informe a capacidade dos ${invalidas} compartimentos marcados em vermelho.`);
+    return;
+  }
+  mostrarAlerta('alerta-config', '');
+  // O pedido vai inteiro: se nenhuma divisão cabe, é inconsistência (o faturamento resolve)
+  const vols = atd.linhas.map((l) => l.volume);
+  const totalPedidos = somar(vols), totalCaps = somar(caps);
+  let motivo = '';
+  if (totalCaps < totalPedidos) {
+    motivo = `Os pedidos somam ${formatVolume(totalPedidos)}, mas os ${caps.length} compartimentos informados somam ${formatVolume(totalCaps)}.`;
+  } else if (!planejarAlocacao(caps, vols)) {
+    motivo = `Os pedidos somam ${formatVolume(totalPedidos)} e não há como dividi-los inteiros nos ${caps.length} compartimentos informados (cada compartimento leva um só produto).`;
+  }
+  if (motivo) { registrarInconsistencia(motivo, caps); return; }
+  // Configuração mudou desde a última alocação: as respostas antigas não valem mais, pergunta tudo de novo
+  const assinatura = caps.join(',');
+  if (atd.alocadoCom !== assinatura) {
+    atd.comps.forEach((c) => { c.linha = null; });
+    atd.alocadoCom = assinatura;
+    atd.alocNota = '';
+  }
+  if (document.activeElement) document.activeElement.blur();
+  const pendentes = semResposta();
+  atd.alocModo = pendentes.length ? 'pergunta' : 'resumo';
+  atd.alocAtual = pendentes.length ? pendentes[0] : 0;
+  atd.alocUltima = null;
+  renderAlocacao();
+  mostrarTela('alocacao');
+}
+
+/* ── ETAPA 4: ALOCAÇÃO DOS PEDIDOS — um compartimento por vez, depois o resumo ── */
+// Divisão em que cada linha (pedido + produto) cabe inteira, cada compartimento leva uma linha só e nenhum
+// compartimento sobra (tirar qualquer um deixaria a linha sem caber). Entre as possíveis, a de menos espaço
+// vazio e, empatado, menos compartimentos. Programação dinâmica sobre os subconjuntos de compartimentos
+// (até 12 = 4096). Devolve, por linha, os índices (0…) dos compartimentos, ou null se não há divisão.
+// Usada na configuração para saber se os pedidos cabem (senão, inconsistência)
+function planejarAlocacao(caps, vols) {
+  const n = caps.length, todos = (1 << n) - 1;
+  const soma = new Array(todos + 1).fill(0), menor = new Array(todos + 1).fill(Infinity), qtd = new Array(todos + 1).fill(0);
+  for (let m = 1; m <= todos; m++) {
+    const bit = 31 - Math.clz32(m & -m), resto = m & (m - 1);
+    soma[m] = soma[resto] + caps[bit];
+    menor[m] = Math.min(menor[resto], caps[bit]);
+    qtd[m] = qtd[resto] + 1;
+  }
+  const ordem = vols.map((_, j) => j).sort((a, b) => vols[b] - vols[a]); // maiores primeiro: corta mais cedo
+  const memo = new Map();
+  const melhor = (p, livres) => {
+    if (p === ordem.length) return { folga: 0, usados: 0, masks: [] };
+    const chave = p * (todos + 1) + livres;
+    if (memo.has(chave)) return memo.get(chave);
+    const v = vols[ordem[p]];
+    let best = null;
+    for (let s = livres; s > 0; s = (s - 1) & livres) {
+      if (soma[s] < v || soma[s] - menor[s] >= v) continue; // não cabe, ou tem compartimento sobrando
+      const resto = melhor(p + 1, livres & ~s);
+      if (!resto) continue;
+      const folga = soma[s] - v + resto.folga, usados = qtd[s] + resto.usados;
+      if (!best || folga < best.folga || (folga === best.folga && (usados < best.usados || (usados === best.usados && s < best.masks[0])))) {
+        best = { folga, usados, masks: [s, ...resto.masks] };
+      }
+    }
+    memo.set(chave, best);
+    return best;
+  };
+  const r = melhor(0, todos);
+  if (!r) return null;
+  const plano = vols.map(() => []);
+  r.masks.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
+  return plano;
+}
+function linhaDaChave(chave) { return atd.linhas.find((l) => l.chave === chave); }
+// Índice 1, 2, 3… é o compartimento na hierarquia do equipamento no cockpit
+function compartimentosUsados() {
+  return atd.comps.slice(0, atd.qtd).map((c, i) => ({ indice: i + 1, i, c })).filter((u) => u.c.linha);
+}
+function semResposta() {
+  const pendentes = [];
+  for (let i = 0; i < atd.qtd; i++) if (atd.comps[i].linha === null) pendentes.push(i);
+  return pendentes;
+}
+// O produto enche os compartimentos dele em ordem (1, 2, 3…): o último pode ficar com espaço; compartimento
+// que já não recebe nada (o pedido coube nos anteriores) está sobrando
+function situacaoDasLinhas() {
+  const caps = capacidades();
+  return atd.linhas.map((l) => {
+    const idx = [];
+    for (let i = 0; i < atd.qtd; i++) if (atd.comps[i].linha === l.chave) idx.push(i);
+    let acumulado = 0, sobrando = -1;
+    for (const i of idx) {
+      if (acumulado >= l.volume) { sobrando = i; break; }
+      acumulado += caps[i];
+    }
+    const cap = somar(idx.map((i) => caps[i]));
+    return { l, idx, cap, falta: Math.max(l.volume - cap, 0), sobrando };
+  });
+}
+function textoSituacao(s) {
+  if (!s.idx.length) return { cls: 'falta', txt: 'Sem compartimento', det: '' };
+  const det = `Compartimento${s.idx.length > 1 ? 's' : ''} ${s.idx.map((i) => i + 1).join(', ')} · ${formatVolume(s.cap)}`;
+  if (s.falta) return { cls: 'falta', txt: `Faltam ${formatVolume(s.falta)}`, det };
+  if (s.sobrando >= 0) return { cls: 'sobra', txt: `Compartimento ${s.sobrando + 1} ficaria sem produto: deixe vazio`, det };
+  return { cls: 'ok', txt: 'Cabe inteiro', det: det + (s.cap > s.l.volume ? ` · livre ${formatVolume(s.cap - s.l.volume)}` : '') };
+}
+// Volume previsto em cada compartimento: a linha enche os seus em ordem até acabar
+function volumesPrevistos() {
+  const caps = capacidades(), vol = {};
+  for (const s of situacaoDasLinhas()) {
+    let resta = s.l.volume;
+    for (const i of s.idx) { vol[i] = Math.max(Math.min(caps[i], resta), 0); resta -= vol[i]; }
+  }
+  return vol;
+}
+// Quanto falta de cada linha sem contar o compartimento `exceto` (a pergunta dele pode estar mudando a resposta)
+function faltaPorLinha(exceto = -1) {
+  const caps = capacidades();
+  const falta = Object.fromEntries(atd.linhas.map((l) => [l.chave, l.volume]));
+  for (let i = 0; i < atd.qtd; i++) if (i !== exceto && atd.comps[i].linha) falta[atd.comps[i].linha] -= caps[i];
+  return falta;
+}
+// Nome do produto para o motorista; o número do pedido só entra quando o mesmo produto vem em mais de um pedido
+function nomeLinha(l) {
+  return atd.linhas.filter((o) => o.descricao === l.descricao).length > 1 ? `${l.descricao} (pedido ${l.ordemVenda})` : l.descricao;
+}
+// O que impede seguir para os lacres, em frases para o motorista (vazio = tudo certo)
+function problemasAlocacao() {
+  return situacaoDasLinhas().flatMap((s) => {
+    if (s.falta) return [`Falta lugar para ${nomeLinha(s.l)}: faltam ${formatVolume(s.falta)}.`];
+    if (s.sobrando >= 0) return [`O compartimento ${s.sobrando + 1} ficou sem produto (${nomeLinha(s.l)} já coube antes).`];
+    return [];
+  });
+}
+
+// Cor do produto no tanque e nos botões (uma por linha, na ordem dos pedidos)
+function corDaLinha(chave) { return 'cor-' + (atd.linhas.findIndex((l) => l.chave === chave) % 6); }
+// Nome curto para o desenho do tanque: sem as palavras iniciais que todos os produtos repetem (ex.: a marca)
+function nomeCurto(l) {
+  const palavras = atd.linhas.map((o) => o.descricao.split(/\s+/));
+  let comuns = 0;
+  while (atd.linhas.length > 1 && palavras.every((p) => p.length > comuns + 1 && p[comuns] === palavras[0][comuns])) comuns++;
+  return l.descricao.split(/\s+/).slice(comuns).join(' ');
+}
+
+// Pergunta (um compartimento por vez) ou resumo (todos respondidos)
+function renderAlocacao() {
+  const resumo = atd.alocModo === 'resumo';
+  document.getElementById('alocacao-sub').textContent = resumo
+    ? 'Confira. Se algo estiver errado, toque em "Começar alocação de novo".'
+    : 'Toque no produto que vai em cada compartimento.';
+  document.getElementById('alocacao-conteudo').innerHTML = resumo ? htmlResumoAlocacao() : htmlPerguntaAlocacao();
+  atd.alocAnimar = false;
+}
+// Desenho do tanque: o compartimento da vez em destaque, os respondidos na cor do produto
+function htmlTanque() {
+  const caps = capacidades();
+  return `<div class="tanque" aria-hidden="true">${atd.comps.slice(0, atd.qtd).map((c, i) => {
+    const l = c.linha ? linhaDaChave(c.linha) : null;
+    const [classe, rotulo] = i === atd.alocAtual ? ['atual', 'agora']
+      : c.linha === null ? ['', '—'] : l ? ['cheio ' + corDaLinha(c.linha), nomeCurto(l)] : ['vazio', 'vazio'];
+    return `<div class="tanque-seg ${classe}" style="--peso:${caps[i] / 1000}"><span class="n">${i + 1}</span><span class="p">${esc(rotulo)}</span></div>`;
+  }).join('')}</div>`;
+}
+function htmlPerguntaAlocacao() {
+  const i = atd.alocAtual, caps = capacidades(), atual = atd.comps[i].linha;
+  const falta = faltaPorLinha(i);
+  const opcao = (chave, titulo, detalhe) => `
+    <button type="button" class="opcao-grande${atual === chave ? ' sel' : ''}${chave ? ' ' + corDaLinha(chave) : ' opcao-vazio'}" aria-pressed="${atual === chave}" onclick="escolherProduto(${i}, ${jsArg(chave)}, this)">
+      <span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}<small>${esc(detalhe)}</small></span>
+    </button>`;
+  // Só os produtos que ainda faltam: o que já coube inteiro nos outros compartimentos sai da lista
+  const opcoes = atd.linhas.filter((l) => falta[l.chave] > 0)
+    .map((l) => opcao(l.chave, l.descricao, `Pedido ${l.ordemVenda} · faltam ${formatVolume(falta[l.chave])}`));
+  // Confirma a resposta que acabou de ser dada (a tela muda pouco de um compartimento para o outro)
+  let confirmado = '';
+  const u = atd.alocUltima;
+  if (u !== null && u !== i && atd.comps[u].linha !== null) {
+    const l = atd.comps[u].linha ? linhaDaChave(atd.comps[u].linha) : null;
+    confirmado = `<div class="confirmado" role="status">✓ Compartimento ${u + 1}: ${l ? `${esc(nomeLinha(l))} · ${formatVolume(volumesPrevistos()[u])}` : 'vazio'}</div>`;
+  }
+  const algumaResposta = atd.comps.slice(0, atd.qtd).some((c) => c.linha !== null);
+  return `
+    ${htmlTanque()}
+    ${confirmado}
+    <div class="cartao pergunta-card${atd.alocAnimar ? ' entrando' : ''}">
+      <div class="pergunta-topo">
+        <div class="pergunta-titulo">Compartimento ${i + 1} <span class="de">de ${atd.qtd}</span></div>
+        <div class="pergunta-cap">${formatVolume(caps[i])}</div>
+      </div>
+      <div class="produto-nome" style="margin-top:8px">Qual produto vai neste compartimento?</div>
+      <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', 'Não vai carregar')}</div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="voltarAlocacao()">Voltar</button>
+      ${algumaResposta ? '<button class="btn btn-secundario" type="button" onclick="limparAlocacao()">Começar alocação de novo</button>' : ''}
+    </div>`;
+}
+function htmlResumoAlocacao() {
+  const caps = capacidades(), previstos = volumesPrevistos(), problemas = problemasAlocacao();
+  const situacao = problemas.length
+    ? `<div class="alerta" id="alerta-alocacao" role="alert">Assim não dá para continuar:<ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>Toque em "Começar alocação de novo".</div>`
+    : `<div class="tudo-certo" id="alerta-alocacao">✓ Tudo certo: todos os produtos couberam.</div>`;
+  const comps = atd.comps.slice(0, atd.qtd).map((c, i) => {
+    const l = c.linha ? linhaDaChave(c.linha) : null;
+    return `<div class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}">
+      <div>
+        <div class="produto-nome">Compartimento ${i + 1} <span class="comp-cap">· ${formatVolume(caps[i])}</span></div>
+        <div class="produto-meta">${l ? `<span class="marca"></span>${esc(nomeLinha(l))} · ${formatVolume(previstos[i])}` : 'Vazio'}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `${atd.alocNota ? `<div class="nota-sugestao">${esc(atd.alocNota)}</div>` : ''}
+    ${situacao}
+    <div class="cartao">${comps}</div>
+    <div class="acoes">
+      <div class="acoes-direita">
+        <button class="btn btn-secundario" type="button" onclick="limparAlocacao()">Começar alocação de novo</button>
+        <button class="btn btn-primario" type="button" onclick="avancarParaLacres()">Continuar</button>
+      </div>
+    </div>`;
+}
+// Toque no produto: marca o botão com ✓ por um instante e só então passa para o próximo compartimento
+let _escolhendo = false;
+function escolherProduto(i, chave, botao) {
+  if (!botao) { registrarEscolha(i, chave); return; }
+  if (_escolhendo) return;
+  _escolhendo = true;
+  document.querySelectorAll('.opcao-grande').forEach((b) => b.classList.toggle('sel', b === botao));
+  botao.insertAdjacentHTML('beforeend', '<span class="ok" aria-hidden="true">✓</span>');
+  setTimeout(() => {
+    _escolhendo = false;
+    if (atd && Q.tela === 'alocacao') registrarEscolha(i, chave); // a tela pode ter voltado ao início nesse meio-tempo
+  }, 350);
+}
+// Responde o compartimento e vai para o próximo sem resposta; com todos respondidos, resumo
+function registrarEscolha(i, chave) {
+  atd.comps[i].linha = chave;
+  atd.alocNota = '';
+  // Todos os produtos já couberam: os compartimentos sem resposta ficam vazios
+  const falta = faltaPorLinha(), pendentes = semResposta();
+  if (pendentes.length && atd.linhas.every((l) => falta[l.chave] <= 0)) {
+    pendentes.forEach((k) => { atd.comps[k].linha = ''; });
+    const n = pendentes.map((k) => k + 1).join(', ');
+    atd.alocNota = pendentes.length > 1
+      ? `Todos os produtos já couberam: os compartimentos ${n} ficam vazios.`
+      : `Todos os produtos já couberam: o compartimento ${n} fica vazio.`;
+  }
+  const restantes = semResposta();
+  if (!restantes.length) atd.alocModo = 'resumo';
+  else { atd.alocAtual = restantes.find((k) => k > i) ?? restantes[0]; atd.alocAnimar = true; }
+  atd.alocUltima = i;
+  renderAlocacao();
+  window.scrollTo(0, 0);
+}
+function irParaCompartimento(i) {
+  atd.alocModo = 'pergunta';
+  atd.alocAtual = i;
+  atd.alocUltima = null;
+  renderAlocacao();
+  window.scrollTo(0, 0);
+}
+// Voltar (só na pergunta): o compartimento anterior; no 1º, a configuração do caminhão
+function voltarAlocacao() {
+  if (atd.alocAtual > 0) { irParaCompartimento(atd.alocAtual - 1); return; }
+  mostrarTela('configuracao');
+}
+function limparAlocacao() {
+  atd.comps.forEach((c) => { c.linha = null; });
+  atd.alocNota = '';
+  irParaCompartimento(0);
+}
+function voltarParaAlocacao() {
+  atd.alocModo = semResposta().length ? 'pergunta' : 'resumo';
+  renderAlocacao();
+  mostrarTela('alocacao');
+}
+function avancarParaLacres() {
+  if (problemasAlocacao().length) {
+    document.getElementById('alerta-alocacao').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+  atd.erros = {};
+  mostrarAlerta('alerta-lacres', '');
+  renderLacres();
+  mostrarTela('lacres');
+  proximoLacreVazio()?.focus(); // o leitor já pode começar pelo lacre 1 do primeiro compartimento
+}
+
+/* ── ETAPA 5: LACRES E ENVELOPES ── */
+// Tabela com uma linha por compartimento carregado; a ordem dos campos (lacre 1, 2, 3, envelope, próximo
+// compartimento) é a ordem em que o leitor de código de barras preenche
+function renderLacres() {
+  const caps = capacidades(), previstos = volumesPrevistos();
+  const cabecalho = `<div class="tl-linha tl-cab" aria-hidden="true"><span>Compartimento</span>${CAMPOS_COMP.map(([, rotulo, , curto]) => `<span>${esc(curto || rotulo)}</span>`).join('')}</div>`;
+  document.getElementById('lista-lacres').innerHTML = cabecalho + compartimentosUsados().map(({ indice, i, c }) => `
+    <div class="tl-linha">
+      <div class="tl-comp">
+        <span class="tl-n">${indice}</span>
+        <div><div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(nomeCurto(linhaDaChave(c.linha)))}</div><div class="tl-vol">${textoOcupacao(previstos[i], caps[i])}</div></div>
+      </div>
+      ${CAMPOS_COMP.map(([campo, rotulo]) => campoLacre(i, indice, campo, rotulo)).join('')}
+    </div>`).join('');
+  atualizarProgressoLacres();
+}
+function campoLacre(i, indice, campo, rotulo) {
+  const erro = atd.erros[`${i}.${campo}`] || '', valor = atd.comps[i][campo];
+  return `<div class="campo tl-campo${erro ? ' erro' : ''}${valor ? ' lido' : ''}" id="cc-${i}-${campo}">
+    <label class="tl-rot" for="in-${i}-${campo}">${esc(rotulo)}</label>
+    <input id="in-${i}-${campo}" data-i="${i}" data-campo="${campo}" aria-label="Compartimento ${indice}, ${esc(rotulo.toLowerCase())}" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="40" enterkeyhint="next" value="${esc(valor)}" onfocus="this.select()" onclick="this.select()" oninput="digitarLacre(this)" onchange="conferirLacre(this)">
+    <div class="msg-erro">${esc(erro)}</div>
+  </div>`;
+}
+// Digitar não redesenha a tabela (o teclado do tablet continuaria aberto no campo certo). Ao tocar num campo
+// preenchido, o código fica selecionado: a próxima leitura substitui em vez de emendar
+function digitarLacre(el) {
+  const i = Number(el.dataset.i), campo = el.dataset.campo;
+  const valor = el.value.replace(/\s/g, '');
+  if (el.value !== valor) el.value = valor;
+  atd.comps[i][campo] = valor;
+  marcarErroLacre(i, campo, '');
+  atualizarProgressoLacres();
+}
+function marcarErroLacre(i, campo, msg) {
+  if (msg) atd.erros[`${i}.${campo}`] = msg; else delete atd.erros[`${i}.${campo}`];
+  marcarErro(`cc-${i}-${campo}`, msg);
+  document.getElementById(`cc-${i}-${campo}`).classList.toggle('lido', !!atd.comps[i][campo]);
+}
+// Problema de um código já lido, comparado com todos os outros campos (vazio só é cobrado ao continuar)
+function erroDoLacre(i, campo) {
+  const v = atd.comps[i][campo], max = CAMPOS_COMP.find(([c]) => c === campo)[2];
+  if (!v) return '';
+  if (!/^\d+$/.test(v)) return 'Só números';
+  if (v.length > max) return `Até ${max} números`;
+  for (const u of compartimentosUsados()) {
+    for (const [outro, rotulo] of CAMPOS_COMP) {
+      if ((u.i !== i || outro !== campo) && TIPO_CODIGO(outro) === TIPO_CODIGO(campo) && u.c[outro] === v) {
+        return `Repetido (comp. ${u.indice}, ${rotulo.toLowerCase()})`;
+      }
+    }
+  }
+  return '';
+}
+// Confere o campo lido; os marcados como repetidos podem ter deixado de ser (o outro campo foi corrigido)
+function conferirLacre(el) {
+  const i = Number(el.dataset.i), campo = el.dataset.campo;
+  const erro = erroDoLacre(i, campo);
+  marcarErroLacre(i, campo, erro);
+  for (const [chave, msg] of Object.entries(atd.erros)) {
+    const [j, outro] = chave.split('.');
+    if (msg.startsWith('Repetido') && !erroDoLacre(Number(j), outro)) marcarErroLacre(Number(j), outro, '');
+  }
+  if (!document.getElementById('alerta-lacres').classList.contains('hidden')) atualizarAlertaLacres();
+  return !erro;
+}
+// Aviso acima da tabela (só depois de tocar em Continuar): quantos campos ainda estão em vermelho
+function atualizarAlertaLacres() {
+  const marcados = Object.keys(atd.erros).length;
+  mostrarAlerta('alerta-lacres', marcados ? (marcados === 1 ? 'Confira o campo marcado em vermelho.' : `Confira os ${marcados} campos marcados em vermelho.`) : '');
+  return marcados;
+}
+// O leitor de código de barras "digita" o código e manda Enter. Código certo: vai para o próximo campo vazio
+// (sem nenhum, segue para a revisão). Com problema: fica no campo, com o código selecionado para a nova leitura
+function enterNoLacre(el) {
+  if (!el.value) return;
+  if (!conferirLacre(el)) { el.select(); sinalDeErro(); return; }
+  const proximo = proximoLacreVazio(el);
+  if (proximo) proximo.focus(); else avancarParaRevisao();
+}
+// Próximo campo vazio depois de `atual`, voltando ao começo da tabela se preciso
+function proximoLacreVazio(atual = null) {
+  const campos = [...document.querySelectorAll('#lista-lacres input')];
+  const k = campos.indexOf(atual);
+  return [...campos.slice(k + 1), ...campos.slice(0, Math.max(k, 0))].find((c) => !c.value) || null;
+}
+function atualizarProgressoLacres() {
+  const usados = compartimentosUsados();
+  const total = usados.length * CAMPOS_COMP.length;
+  const lidos = usados.reduce((n, { c }) => n + CAMPOS_COMP.filter(([campo]) => c[campo]).length, 0);
+  const el = document.getElementById('lacres-progresso');
+  el.textContent = lidos === total ? `✓ Todos os ${total} códigos lidos` : `${lidos} de ${total} códigos lidos`;
+  el.classList.toggle('completo', lidos === total);
+}
+// Bipe grave e vibração quando uma leitura é recusada: com o leitor na mão, nem sempre se olha a tela
+let _somErro = null;
+function sinalDeErro() {
+  try {
+    _somErro = _somErro || new (window.AudioContext || window.webkitAudioContext)();
+    const osc = _somErro.createOscillator(), volume = _somErro.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 220;
+    volume.gain.value = 0.12;
+    osc.connect(volume).connect(_somErro.destination);
+    osc.start();
+    osc.stop(_somErro.currentTime + 0.3);
+  } catch (e) { /* aparelho sem som: o campo em vermelho já avisa */ }
+  navigator.vibrate?.(200);
+}
+// Mesmas regras do cockpit: todo compartimento carregado tem os 3 lacres e o envelope, e lacres e envelopes
+// não se repetem no carregamento (validar_unicidade_dados_compartimentos)
+function validarLacres() {
+  const erros = {};
+  const vistos = { lacre: new Map(), envelope: new Map() };
+  for (const { indice, i, c } of compartimentosUsados()) {
+    for (const [campo, rotulo, max] of CAMPOS_COMP) {
+      const v = c[campo];
+      const tipo = TIPO_CODIGO(campo);
+      if (!v) erros[`${i}.${campo}`] = 'Obrigatório';
+      else if (!/^\d+$/.test(v)) erros[`${i}.${campo}`] = 'Só números';
+      else if (v.length > max) erros[`${i}.${campo}`] = `Até ${max} números`;
+      else if (vistos[tipo].has(v)) erros[`${i}.${campo}`] = `Repetido (${vistos[tipo].get(v)})`;
+      else vistos[tipo].set(v, `comp. ${indice}, ${rotulo.toLowerCase()}`);
+    }
+  }
+  return erros;
+}
+function avancarParaRevisao() {
+  atd.erros = validarLacres();
+  renderLacres();
+  if (atualizarAlertaLacres()) {
+    const el = document.querySelector('#lista-lacres .campo.erro input');
+    el.focus(); // selecionado (onfocus): a próxima leitura já substitui
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+  if (document.activeElement) document.activeElement.blur();
+  renderRevisao();
+  mostrarTela('revisao');
+}
+
+/* ── ETAPA 6: REVISÃO E ENVIO ── */
+function renderRevisao() {
+  const { a } = atd;
+  const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
+  document.getElementById('revisao-dados').innerHTML = [
+    dado('Protocolo', a.protocolo, true),
+    dado('Motorista', a.motorista),
+    dado('Placas', placasDe(a).join(' + '), true),
+    dado('Tipo de frete', atd.tipoFrete),
+    dado('Compartimentos', `${caps.length} · ${formatVolume(somar(caps))}`),
+  ].join('');
+  document.getElementById('revisao-produtos').innerHTML = situacaoDasLinhas().map((s) => `
+    <div class="produto-linha">
+      <div><div class="produto-nome">${esc(s.l.descricao)}</div><div class="produto-meta">Pedido ${esc(s.l.ordemVenda)} · ${formatVolume(s.l.volume)}</div></div>
+      <div class="produto-vol">${s.idx.length > 1 ? 'Comps.' : 'Comp.'} ${s.idx.map((i) => i + 1).join(', ')}</div>
+    </div>`).join('');
+  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : i + 1)).filter(Boolean);
+  document.getElementById('revisao-comp').innerHTML = usados.map(({ indice, i, c }) => `
+    <div class="rev-comp">
+      <div class="rev-comp-topo"><strong>Compartimento ${indice}</strong><span>${esc(linhaDaChave(c.linha).descricao)} · ${textoOcupacao(previstos[i], caps[i])}</span></div>
+      <div class="rev-comp-codigos">
+        <span>Lacres <b class="mono">${esc(c.lacre1)}</b> · <b class="mono">${esc(c.lacre2)}</b> · <b class="mono">${esc(c.lacre3)}</b></span>
+        <span>Envelope <b class="mono">${esc(c.envelope)}</b></span>
+      </div>
+    </div>`).join('')
+    + (vazios.length ? `<div class="nota" style="margin-top:12px">Vazio${vazios.length > 1 ? 's' : ''}: compartimento${vazios.length > 1 ? 's' : ''} ${vazios.join(', ')}.</div>` : '');
+}
+// Campos comuns ao check-in e à inconsistência (autoatendimento/<protocolo>)
+function dadosBaseCheckin() {
+  const { a } = atd;
+  return {
+    agendamentoId: atd.id,
+    protocolo: a.protocolo,
+    baseId: a.baseId,
+    baseNome: a.baseNome || '',
+    dataCarregamento: a.dataCarregamento,
+    ...(a.baseTipo === 'agendamento' ? { slotHorario: a.slotHorario || '' } : { turno: a.turno || '' }),
+    // cockpit_transporte.py --placa ("Recurso de caminhão" do SAP TM): o próprio recurso quando ele é uma placa só;
+    // recurso de conjunto ("AAA0A00+BBB0B00") fica em recursoSap e a placa vai a do cavalo
+    placa: placaValida(normalizarPlaca(atd.recursoSap)) ? normalizarPlaca(atd.recursoSap) : normalizarPlaca(a.placaCavalo),
+    placas: placasDe(a),
+    recursoSap: atd.recursoSap,
+    tipoFrete: atd.tipoFrete,
+    motoristaCpf: a.motoristaCpf,
+    motoristaNome: a.motorista || '',
+    motoristaBp: atd.motoristaBp,
+    criadoEm: new Date().toISOString(),
+    quiosqueUid: Q.usuario.uid,
+    quiosqueNome: Q.usuario.nome,
+  };
+}
+// Configuração informada (todos os compartimentos do tanque, inclusive os vazios) e de onde veio
+function dadosConfiguracao(caps) {
+  return {
+    chaveTanque: atd.chaveTanque,
+    configuracaoCompartimentos: !atd.configSalva ? 'informada' : configIgualSalva(caps) ? 'salva' : 'alterada',
+    compartimentosVeiculo: caps.map((c, i) => ({ indice: i + 1, capacidadeLitros: c })),
+  };
+}
+function dadosLinha(l) {
+  return { ordemVenda: l.ordemVenda, produto: l.produto, descricao: l.descricao, volume: l.volume, clienteCodigo: l.clienteCodigo, clienteNome: l.clienteNome };
+}
+function montarCheckin() {
+  const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
+  return {
+    ...dadosBaseCheckin(),
+    ...dadosConfiguracao(caps),
+    // --alocacao ORDEM:PRODUTO:COMPARTIMENTOS, na ordem dos pedidos do agendamento
+    alocacoes: atd.linhas.map((l) => ({ ...dadosLinha(l), compartimentos: usados.filter((u) => u.c.linha === l.chave).map((u) => u.indice) })),
+    // --dados-compartimento INDICE:LACRE1:LACRE2:LACRE3:ENVELOPE (texto: zeros à esquerda contam)
+    compartimentos: usados.map(({ indice, i, c }) => {
+      const l = linhaDaChave(c.linha);
+      return {
+        indice, ordemVenda: l.ordemVenda, produto: l.produto, capacidadeLitros: caps[i], volumePrevistoLitros: previstos[i],
+        lacre1: c.lacre1, lacre2: c.lacre2, lacre3: c.lacre3, envelopeAmostra: c.envelope,
+      };
+    }),
+    status: 'aguardando',
+  };
+}
+// Pedido não cabe inteiro: registra para o faturamento (status "inconsistente"). Um check-in completo depois
+// (motorista corrigiu os compartimentos ou o faturamento ajustou o pedido) grava por cima
+async function registrarInconsistencia(motivo, caps) {
+  const { a } = atd;
+  if (document.activeElement) document.activeElement.blur();
+  document.getElementById('inconsistencia-texto').textContent = `${motivo} Procure o faturamento com o protocolo ${a.protocolo}.`;
+  document.getElementById('inconsistencia-dados').innerHTML = [
+    dado('Protocolo', a.protocolo, true),
+    dado('Pedidos', formatVolume(somar(atd.linhas.map((l) => l.volume)))),
+    dado('Compartimentos', `${caps.length} · ${formatVolume(somar(caps))}`),
+    dado('Capacidades', caps.map(formatVolume).join(' + ')),
+  ].join('');
+  const aviso = document.getElementById('inconsistencia-registro');
+  aviso.textContent = 'Registrando a inconsistência para o faturamento…';
+  mostrarTela('inconsistencia');
+  try {
+    await window._fb.salvarCheckin(atd.a.protocolo, {
+      ...dadosBaseCheckin(),
+      ...dadosConfiguracao(caps),
+      alocacoes: atd.linhas.map(dadosLinha),
+      status: 'inconsistente',
+      inconsistencia: motivo,
+    });
+    aviso.textContent = 'A inconsistência ficou registrada para o faturamento.';
+  } catch (e) {
+    console.error(e);
+    aviso.textContent = '';
+  }
+}
+function listaHistorico(valor) {
+  if (Array.isArray(valor)) return valor.filter(Boolean);
+  return valor && typeof valor === 'object' ? Object.values(valor).filter(Boolean) : [];
+}
+function renderHistoricoProcessamento(historico, status) {
+  const eventos = listaHistorico(historico);
+  document.getElementById('processamento-historico').innerHTML = eventos.map((evento, i) => {
+    const erro = evento.etapa === 'erro';
+    const atual = i === eventos.length - 1 && status !== 'concluido';
+    const classe = erro ? 'erro' : atual ? 'atual' : '';
+    const marcador = erro ? '!' : atual ? '•' : '✓';
+    return `<li class="${classe}"><span class="marcador">${marcador}</span><span>${esc(evento.mensagem || evento.etapa || 'Etapa concluída')}</span><span class="hora">${evento.em ? horaBR(evento.em) : ''}</span></li>`;
+  }).join('');
+}
+function atualizarProcessamento(registro) {
+  if (!registro) return;
+  const status = registro.status || 'aguardando';
+  const p = registro.processamento || {};
+  const percentual = Math.max(1, Math.min(100, Number(p.percentual) || (status === 'concluido' ? 100 : 1)));
+  const barra = document.getElementById('processamento-barra');
+  const preenchimento = barra.firstElementChild;
+  document.getElementById('processamento-percentual').textContent = `${percentual}%`;
+  barra.setAttribute('aria-valuenow', percentual);
+  preenchimento.style.width = `${percentual}%`;
+  preenchimento.style.background = status === 'erro' ? 'var(--danger)' : '';
+  const msg = document.getElementById('processamento-msg');
+  msg.textContent = p.mensagem || (status === 'aguardando' ? 'Na fila. Aguardando o runner de faturamento…' : 'Processando…');
+  msg.classList.toggle('erro', status === 'erro');
+  renderHistoricoProcessamento(p.historico, status);
+
+  if (status === 'concluido') {
+    if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
+    const ordem = registro.resultado?.ordemFrete || '';
+    document.getElementById('fim-protocolo').textContent = ordem ? `OF ${ordem}` : registro.protocolo;
+    document.getElementById('fim-texto').textContent = ordem
+      ? `Protocolo ${registro.protocolo}. A ordem de frete foi processada; aguarde ser chamado para o carregamento.`
+      : `Protocolo ${registro.protocolo}. Aguarde ser chamado para o carregamento.`;
+    mostrarTela('fim');
+    iniciarContagem('fim-contagem', TEMPO_TELA_FIM);
+  } else if (status === 'erro') {
+    document.getElementById('processamento-erro').textContent = p.mensagem || `Não foi possível concluir. Procure o faturamento com o protocolo ${registro.protocolo}.`;
+    document.getElementById('processamento-erro').classList.remove('hidden');
+    document.getElementById('processamento-acoes').classList.remove('hidden');
+    if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
+    iniciarContagem('processamento-contagem', TEMPO_TELA_AVISO);
+  }
+}
+function acompanharFaturamento(protocolo) {
+  if (_cancelarAcompanhamento) _cancelarAcompanhamento();
+  document.getElementById('processamento-protocolo').textContent = protocolo;
+  document.getElementById('processamento-percentual').textContent = '1%';
+  document.getElementById('processamento-barra').setAttribute('aria-valuenow', '1');
+  document.getElementById('processamento-barra').firstElementChild.style.width = '1%';
+  document.getElementById('processamento-barra').firstElementChild.style.background = '';
+  document.getElementById('processamento-msg').textContent = 'Solicitação enviada. Aguardando o runner…';
+  document.getElementById('processamento-msg').classList.remove('erro');
+  document.getElementById('processamento-historico').innerHTML = '';
+  document.getElementById('processamento-erro').classList.add('hidden');
+  document.getElementById('processamento-acoes').classList.add('hidden');
+  document.getElementById('processamento-contagem').textContent = '';
+  mostrarTela('processamento');
+  _cancelarAcompanhamento = window._fb.acompanharCheckin(
+    protocolo,
+    atualizarProcessamento,
+    (e) => {
+      console.error(e);
+      document.getElementById('processamento-msg').textContent = 'Conexão instável. Tentando atualizar o andamento…';
+    },
+  );
+}
+async function processarFaturamento() {
+  const btn = document.getElementById('btn-confirmar');
+  if (btn.disabled || !atd) return;
+  const atendimento = atd;
+  btn.disabled = true; btn.textContent = 'Enviando solicitação…';
+  try {
+    const registro = montarCheckin();
+    const protocolo = registro.protocolo;
+    await window._fb.salvarCheckin(protocolo, registro);
+    // Configuração nova ou alterada fica salva para o próximo check-in do mesmo tanque (falha aqui não desfaz o check-in)
+    if (registro.configuracaoCompartimentos !== 'salva') {
+      window._fb.salvarConfigVeiculo(atendimento.chaveTanque, {
+        placas: atendimento.chaveTanque.split('+'),
+        capacidadesLitros: registro.compartimentosVeiculo.map((c) => c.capacidadeLitros),
+        atualizadoEm: registro.criadoEm,
+        protocolo: registro.protocolo,
+        quiosqueUid: registro.quiosqueUid,
+        quiosqueNome: registro.quiosqueNome,
+      }).catch((e) => console.warn('Configuração do caminhão não foi salva', e));
+    }
+    atd = null;
+    acompanharFaturamento(protocolo);
+  } catch (e) {
+    console.error(e);
+    if (!ehErroPermissao(e)) { toast('Sem conexão com o sistema. Tente de novo.', 'error'); return; }
+    // Recusa da regra: check-in já feito (outro toque, outro tablet) ou o agendamento mudou enquanto preenchia
+    const id = atendimento.id;
+    const [checkin, agendamentos] = await Promise.all([
+      window._fb.carregarCheckin(atendimento.a.protocolo).catch(() => null),
+      window._fb.agendamentosDoMotorista(atendimento.a.motoristaCpf).catch(() => null),
+    ]);
+    const feito = checkin && checkin.status !== 'inconsistente';
+    const r = feito ? null : agendamentos?.[id] ? await prepararAtendimento(id, agendamentos[id]).catch(() => null) : null;
+    mostrarAviso(feito
+      ? { tipo: 'ok', titulo: 'Check-in já realizado', texto: `O check-in do agendamento ${checkin.protocolo || ''} já foi feito. Aguarde ser chamado para o carregamento.` }
+      : r?.aviso || { titulo: 'Não foi possível registrar', texto: 'O sistema recusou o check-in. Procure o guichê.' });
+  } finally {
+    btn.disabled = false; btn.textContent = 'Processar faturamento';
+  }
+}
+
+/* ── INATIVIDADE: motorista foi embora no meio do check-in → apaga e volta ao início ── */
+let _ultimoToque = Date.now();
+function emAtendimento() {
+  if (['agendamento', 'configuracao', 'alocacao', 'lacres', 'revisao', 'inconsistencia'].includes(Q.tela)) return true;
+  return Q.tela === 'inicio' && ['in-protocolo', 'in-cpf', 'in-placa'].some((id) => document.getElementById(id).value);
+}
+function fecharInatividade() { document.getElementById('inatividade').classList.remove('aberta'); }
+function continuarAtendimento() { _ultimoToque = Date.now(); fecharInatividade(); }
+function verificarInatividade() {
+  const caixa = document.getElementById('inatividade');
+  const parado = (Date.now() - _ultimoToque) / 1000;
+  // Menu da equipe ou troca de terminal esquecidos abertos: o motorista não pode mexer na configuração
+  if (parado >= TEMPO_MENU) {
+    if (menuAberto()) fecharMenuQuiosque();
+    if (Q.tela === 'terminal' && Q.terminal) reiniciar();
+  }
+  if (!emAtendimento()) { fecharInatividade(); return; }
+  if (parado >= TEMPO_INATIVIDADE + TEMPO_RESPOSTA_INATIVIDADE) { reiniciar(); return; }
+  if (parado < TEMPO_INATIVIDADE) { fecharInatividade(); return; } // qualquer toque responde à pergunta
+  const resta = Math.ceil(TEMPO_INATIVIDADE + TEMPO_RESPOSTA_INATIVIDADE - parado);
+  document.getElementById('inatividade-texto').textContent = `Sem resposta, o check-in é cancelado e a tela volta ao início em ${resta} s.`;
+  caixa.classList.add('aberta');
+}
+for (const ev of ['pointerdown', 'keydown', 'input']) document.addEventListener(ev, () => { _ultimoToque = Date.now(); }, true);
+
+// Enter no teclado do tablet: vai para o próximo campo da tela (no último da identificação, consulta)
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' || ev.target.tagName !== 'INPUT') return;
+  ev.preventDefault();
+  if (ev.target.id === 'login-email') { document.getElementById('login-senha').focus(); return; }
+  if (ev.target.id === 'login-senha') { fazerLogin(); return; }
+  if (ev.target.id === 'menu-senha') { ev.target.blur(); return; } // duas ações no menu: a equipe toca na que quer
+  if (ev.target.id === 'in-placa') { buscarAgendamento(); return; }
+  if (ev.target.closest('#lista-lacres')) { enterNoLacre(ev.target); return; }
+  const campos = [...document.querySelectorAll('.tela.ativa input')];
+  const proximo = campos[campos.indexOf(ev.target) + 1];
+  if (proximo) proximo.focus(); else ev.target.blur();
+});
+
+atualizarRelogio();
+setInterval(atualizarRelogio, 15000);
+setInterval(verificarInatividade, 1000);
+// O módulo do Firebase (fim da página) chama onSessaoFirebase; sem ele em 15 s, avisa na tela
+setTimeout(() => {
+  if (!window._fb) {
+    Q.msgLogin = 'Não foi possível carregar o sistema. Verifique a conexão do tablet e recarregue a página.';
+    mostrarLogin();
+  }
+}, 15000);
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, get, set, query, orderByChild, equalTo, onValue }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  // Mesmo projeto do portal de agendamento. Config pública (não é segredo): o acesso é protegido pelas regras
+  const firebaseConfig = {
+    apiKey:            "AIzaSyCYwhCHiTr2zdEB31yraW-DJRzOQJ3tJAY",
+    authDomain:        "nexta-agendamento.firebaseapp.com",
+    databaseURL:       "https://nexta-agendamento-default-rtdb.firebaseio.com",
+    projectId:         "nexta-agendamento",
+    storageBucket:     "nexta-agendamento.firebasestorage.app",
+    messagingSenderId: "806131011718",
+    appId:             "1:806131011718:web:2c439446fbd62c2fb18107",
+  };
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app); // sessão persistente: o tablet continua logado depois de recarregar
+  const ler = async (caminho) => (await get(ref(db, caminho))).val();
+
+  window._fb = {
+    login: (email, senha) => signInWithEmailAndPassword(auth, email, senha),
+    logout: () => signOut(auth),
+    // Menu da equipe: confere a senha do login atual sem trocar a sessão (senha errada: auth/invalid-credential)
+    confirmarSenha: (senha) => reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, senha)),
+    carregarPerfil: (uid) => ler('usuarios/' + uid),
+    carregarBases: async () => (await ler('bases')) || {},
+    // Única leitura de agendamentos liberada ao quiosque: os do CPF digitado (agendamentos/ inteiro é negado)
+    agendamentosDoMotorista: async (cpf) =>
+      (await get(query(ref(db, 'agendamentos'), orderByChild('motoristaCpf'), equalTo(cpf)))).val() || {},
+    carregarMotorista: (cpf) => ler('motoristas/' + cpf),
+    carregarRecurso: (chave) => ler('recursos/' + chave),
+    // autoatendimento/<protocolo do agendamento>: check-in (ou inconsistência) do motorista
+    carregarCheckin: (protocolo) => ler('autoatendimento/' + protocolo),
+    salvarCheckin: (protocolo, dados) => set(ref(db, 'autoatendimento/' + protocolo), dados),
+    acompanharCheckin: (protocolo, aoMudar, aoErro) =>
+      onValue(ref(db, 'autoatendimento/' + protocolo), (snapshot) => aoMudar(snapshot.val()), aoErro),
+    // compartimentosVeiculo/<placas do tanque>: configuração confirmada no último check-in daquele tanque
+    carregarConfigVeiculo: (chave) => ler('compartimentosVeiculo/' + chave),
+    salvarConfigVeiculo: (chave, dados) => set(ref(db, 'compartimentosVeiculo/' + chave), dados),
+  };
+
+  onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
+</script>
+</body>
+</html>
