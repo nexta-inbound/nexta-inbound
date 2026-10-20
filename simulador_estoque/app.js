@@ -132,6 +132,9 @@ function fresh(r,cenarioForcado,entradaForcada){
     if(filtroStatusViagem.has('backlog'))movements.fob[i]+=misDia;
    }
   }
+  // Transferencia de entrada consolidada no FOB (usuaria, 2026-10-20: "tira a linha de transferencia (entradas) e
+  // consolida tudo no FOB entrada; so' mostra uma cor diferente no popup"). A regra de quando conta continua a mesma.
+  if(future){movements.fob[i]+=movements.transferIn[i];movements.transferIn[i]=0;}
   // Datas anteriores usam a mesma base em todos os cenarios.
   if(!future)continue;
   // 5 cenarios de venda (pedido da usuaria, 2026-09-30): VMD (reprojetada), LE (vigente, SEM
@@ -251,7 +254,9 @@ function select(){
  else baseline=fresh(record);
  state=structuredClone(baseline);try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}
  // Com filtro de Status da viagem ligado, FOB/CIF/Transferencia de hoje em diante vem sempre do filtro (2026-10-19).
- if(filtroStatusAtivo())for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturado (Real)',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
+ if(filtroStatusAtivo())for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];
+ // Rascunho salvo antes da linha de transferencia sair (2026-10-20): o que estava nela vai pro FOB.
+ for(let i=0;i<30;i++)if(state.movements.transferIn[i]){state.movements.fob[i]+=state.movements.transferIn[i];state.movements.transferIn[i]=0;}E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturado (Real)',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
 // Politica de estoque (abertura/lastro/minimo/medio/maximo/capacidade): fixa, vem da planilha e nao
 // e' editavel pela simulacao (pedido da usuaria, 2026-09-28) — so os movimentos (entradas/saidas)
 // continuam editaveis, na tabela e no editor por dia.
@@ -308,6 +313,15 @@ function popupBombeioPortal(i){const b=bombeioPortalDia(i);if(!b)return '';
  return `<strong>Bombeio · ${esc(label(i))} · aba Aberturas</strong><p>${fmt(b.efetuado+b.programado)} m³ informados pela base (soma das colunas 2 e 3)</p>`
   +`<dl class="viagens"><div><dt>✓ Já recebido · ${fmt(b.efetuado)} m³</dt><dd>Receb. Efetuado / Disponível — o que já aconteceu</dd></div>`
   +`<div><dt>⏳ Ainda vai chegar · ${fmt(b.programado)} m³</dt><dd>Receb. Programado Dia — o que vai acontecer</dd></div></dl>`;}
+// Transferencias de entrada que ENTRAM na conta do dia (mesma regra do fresh()): pro popup do dia, ja' que desde
+// 2026-10-20 elas somam no Trânsito FOB sem linha nem barra propria.
+function transfEntradaContadas(i){
+ const entrada=$('entrada')?.value||'auto';if(entrada==='cadencia')return [];
+ const itens=transferencias(i,'transferenciasEntrada');
+ if(filtroStatusAtivo())return itens.filter(t=>{const m=/^T([1-5])/.exec(String(t.statusViagem||''));
+  return filtroStatusViagem.has(m?'T'+m[1]:(!t.viagem||t.conta==='naoprog')?'backlog':'sem');});
+ return itens.filter(t=>incluiNaoProg(entrada)||(t.conta&&t.conta!=='naoprog'&&emViagemTransf(t)));
+}
 const dataTransf=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
 function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
@@ -345,7 +359,9 @@ function avisoCapacidade(result){
     +` Chega mais produto do que o tanque comporta para a venda prevista: reveja as entradas de ${causas.map(d=>esc(label(d.i))).join(', ')} (FOB, CIF, bombeio ou cadência sugerida).`
    :`A abertura (${fmt(dias[0].r.opening)} m³) já está acima da capacidade: confira a abertura ou a capacidade cadastrada do tanque.`)
   +(dias.length>causas.length&&causas.length?` Nos outros dias o excesso só continua no tanque, até as vendas trazerem o estoque de volta para baixo da capacidade.`:'');
- el.hidden=false;
+ // Faixa de texto desligada (usuaria, 2026-10-20: "essas mensagens pode desativar"); ficam so' as celulas
+ // marcadas, com a mesma explicacao no passar do mouse.
+ el.hidden=true;
  // Cinza listrado (usuaria: "um cinza, alguma coisa com aspecto ruim"), pra nao confundir com o vermelho de
  // falta: as entradas do dia que estoura e a abertura do dia seguinte, onde o volume que nao cabe aparece.
  for(const d of dias){const dica=`${label(d.i)}: ${detalhe(d)}. Capacidade do tanque: ${fmt(cap)} m³ (passa ${fmt(d.r.close-cap)} m³).`;
@@ -426,7 +442,8 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  // transferIn; saida: sale/transferOut) recebe um <th rowspan> vazio que o cenarios.js preenche depois
  // (ver #entrada-controls-cell/#scenario-controls-cell); as demais linhas do mesmo grupo nao emitem
  // celula nenhuma nessa coluna, porque o rowspan da 1a linha ja' a ocupa.
- const linhasVisiveis=E.rows.filter(([k])=>!['received'].includes(k));
+ // Sem a linha "Transferência · entrada" (2026-10-20): ela soma no Trânsito FOB.
+ const linhasVisiveis=E.rows.filter(([k])=>!['received','transferIn'].includes(k));
  // "Cadência sugerida" (movimento 'planned', voltou a aparecer em 2026-10-12 com outro papel) logo depois
  // do Bombeio, como a linha "Cadencia" da planilha da usuaria; preenchida pelo botao #sugerir-cadencia.
  {const [p]=linhasVisiveis.splice(linhasVisiveis.findIndex(r=>r[0]==='planned'),1);linhasVisiveis.splice(linhasVisiveis.findIndex(r=>r[0]==='pump')+1,0,p);}
@@ -510,19 +527,8 @@ const movSeries=[
  ['progRoadMis','Cadência MIS · sem viagem no portal','#7FC4BA',i=>{if(true)return null;if(i<0||['cadencia','auto+tudo'].includes($('entrada')?.value))return null;const v=record.bi?.days[day(i)]?.progRoad;if(v==null)return null;
   const naoProg=somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0;
   return Math.max(0,v-transfPlanejadaDia(i)-naoProg);}],
- // Transferencia de entrada em dois pedacos: com Status Viagem T1-T5 (roxo) e sem status (rosa). A soma e'
- // sempre o valor da linha da tabela (que pode ter sido editado); o que passar do em viagem fica no rosa.
- ['transferInViagem','Transferência entrada · em viagem (T1–T5)','#C4B5FD',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
-  return Math.min(total,transferencias(i,'transferenciasEntrada').filter(emViagemTransf).reduce((s,t)=>s+(t.volume||0),0));}],
- // Em "Fontes automaticas" a transferencia ainda nao no transito (Backlog/cadencia) nao entra na conta, mas
- // continua desenhada em rosa (usuaria, 2026-10-16: "ja que e' uma transferencia, por que nao ta rosa?"),
- // informativa como o Rodoviario — e sai do Rodoviario pra nao aparecer duas vezes.
- ['transferInProg','Transferência entrada · sem status de viagem','#F9A8D4',i=>{if(i<0)return null;const total=state.movements.transferIn[i]||0;
-  // So' em "Fontes automaticas": em "Cadencia MIS" a entrada ja' e' a cadencia inteira (nao repete aqui).
-  // So' o que entra na conta (2026-10-19, usuaria: "por que em fontes automaticas soma o que ta com a borda
-  // rosa? nao faz sentido"): a transferencia que nao conta nao vai mais pra barra — fica na borda rosa da
-  // celula e no popup da tabela.
-  return Math.max(0,total-valorMov('transferInViagem',i));}],
+ // Transferencia de entrada nao tem mais barra propria (roxo/rosa ate' 2026-10-20): soma no Trânsito FOB (cinza)
+ // e aparece destacada no popup do dia.
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
@@ -532,7 +538,7 @@ const movSeries=[
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
-const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','transferInViagem','transferInProg','planned','fob','cif'];
+const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','planned','fob','cif'];
 const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
@@ -657,7 +663,9 @@ function popupGrafico(i){
  const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³</dd></div>`).join('')}</dl>`:'';
  const viagens=viagensDoDia(i).filter(v=>v.grupo!=='programado');
  const viagensHtml=viagens.length?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${viagens.length})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}</dl>`:'';
- return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${semanaHtml}`;
+ const transf=futuro?transfEntradaContadas(i):[];
+ const transfHtml=transf.length?`<p><strong style="color:#C4B5FD">⇄ Transferências entre bases · já somadas no Trânsito FOB (${fmt(transf.reduce((s,t)=>s+(t.volume||0),0))} m³)</strong></p><dl class="viagens">${transf.map(t=>`<div><dt><span style="color:#C4B5FD">← ${esc(t.de||'—')}</span> · ${fmt(t.volume)} m³${t.statusViagem?` · ${esc(t.statusViagem)}`:' · sem status de viagem'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}</dd></div>`).join('')}</dl>`:'';
+ return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${transfHtml}${semanaHtml}`;
 }
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');
@@ -736,9 +744,10 @@ function planejadoDoDia(i){
  const m=state.movements,entrada=$('entrada')?.value||'auto';
  if(entrada==='cadencia')return {pump:m.pump[i],fob:m.fob[i],cif:m.cif[i]};
  const out={pump:m.pump[i]};
- // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16).
- if(incluiNaoProg(entrada))out.transferIn=Math.min(m.transferIn[i],transfPlanejadaDia(i));
+ // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16); desde 2026-10-20
+ // ela soma no FOB, entao entra na parte planejada do FOB.
  if(incluiNaoProg(entrada))out.fob=Math.min(m.fob[i],(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0)
+  +transfPlanejadaDia(i)
   +(entrada==='auto+tudo'?registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0):0));
  return out;
 }
