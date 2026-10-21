@@ -63,6 +63,12 @@ const incluiNaoProg=e=>e==='auto+naoprog'||e==='auto+tudo';
 // dia (FOB/CIF) — o BI nao troca o portal pela cadencia, soma (26/10: 167,5 do portal + 65 da cadencia = 233).
 const entradaNoDia=(e,iso)=>e==='le-bi'?'auto+naoprog':e;
 const somaCadenciaS1=(e,iso)=>e==='le-bi'&&iso>=(D.bi?.inbound?.switchDate||'9999');
+// Parte do FOB do dia que e' so' planejamento da cadencia MIS (borda ambar tracejada na tabela e no grafico):
+// no botao "LE" (2026-10-21, usuaria: "deixa o ambar"), a cadencia MIS somada da S+1 em diante.
+function cadenciaAmbar(i){const e=$('entrada')?.value,iso=day(i);if(i<0)return 0;
+ if(e==='le-bi')return somaCadenciaS1(e,iso)?registrosReais().reduce((s,r)=>s+(r.bi?.days?.[iso]?.cadencia?.fob||0),0):0;
+ if(e==='auto+tudo')return registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,iso),0);
+ return 0;}
 function cadenciaMisSemViagem(r,iso){
  const v=r.bi?.days?.[iso]?.progRoad;if(!v)return 0;
  const planejadas=(entradasTransfPorDia(r)[iso]||[]).filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);
@@ -336,7 +342,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado" e "Inbound + Cadência pendente"</em>':''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Trânsito real + Não programado" e "LE"</em>':''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=el.dataset.transf==='bombeioPortal'?popupBombeioPortal(+el.dataset.day):popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -395,9 +401,17 @@ function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=ids
 // Volume FOB do dia que so' esta' nele pela regra das 15h (ETA Herrlog >= 15h -> D+1, inbound.py:
 // HORA_CORTE_DESCARGA) — pintado de roxo no grafico e na grade (pedido da usuaria, 2026-10-09).
 const COR_FOB_D1='#C084FC';
+const COR_NAO_PROG='#7DB9E8';
+// FOB nao programado (sem placa) que esta' na conta do dia: so' nos botoes que incluem o nao programado e, com
+// filtro de Status da viagem, so' se "Backlog (sem placa)" estiver marcado.
+function fobNaoProgramadoDia(i){
+ if(i<0||!incluiNaoProg(entradaNoDia($('entrada')?.value||'auto',day(i))))return 0;
+ if(filtroStatusAtivo()&&!filtroStatusViagem.has('backlog'))return 0;
+ return registrosReais().reduce((s,r)=>s+(fobNaoProgramado(r,day(i))||0),0);
+}
 function fobAposCorte(i){return somaOuNula(viagensDoDia(i,'fob').filter(v=>v.aposCorte&&v.grupo!=='programado').map(v=>v.volume||0));}
 function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaReal?'chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?'ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
- return `<div style="color:${prog?'#F97316':'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
+ return `<div style="color:${prog?COR_NAO_PROG:'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
 function vendaRealPassado(i){return history(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
 function valorPassado(k,i,result){
  if(k==='opening')return history(i)?.opening??null;
@@ -480,12 +494,13 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  // a do dia". O detalhe de qual base exatamente (no combinado) fica no popup, ao passar o mouse/clicar.
  document.querySelectorAll('[data-result]').forEach(td=>{const i=+td.dataset.day,k=td.dataset.result;const v=i<0?valorPassado(k,i,result):result[i][k];const ehAbertura=k==='opening'&&i===0,dias=ehAbertura?diasAtrasoAbertura():0;td.textContent=(dias>0?'⚠ ':'')+fmt(v);td.className=(i<0?'history ': '')+(i===0?'today ':'')+(dias>0?(dias>=DIAS_ABERTURA_GRAVE?'atrasada-grave ':'atrasada '):'')+(k==='opening'?capBand(v):(['close','available'].includes(k)?(v==null?'':status(v)):''));});
  // Borda roxa no FOB que tem volume empurrado pra D+1 pela regra das 15h (detalhe no popup da celula).
- document.querySelectorAll('[data-row="fob"]').forEach(input=>{const i=+input.dataset.day,d1=fobAposCorte(i);input.parentElement.classList.toggle('fob-d1',d1>0&&state.movements.fob[i]>=d1);
+ // Borda roxa do D+1 na celula saiu em 2026-10-21 (so' o aviso no popup).
+ document.querySelectorAll('[data-row="fob"]').forEach(input=>{const i=+input.dataset.day;input.parentElement.classList.remove('fob-d1');
   // No "Tudo": borda amarela tracejada no FOB do dia que tem cadencia MIS que ainda nao virou viagem (usuaria,
   // 2026-10-19: "so' pra realmente o analista saber").
-  const mis=$('entrada')?.value==='auto+tudo'&&i>=0?registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0):0;
+  const mis=cadenciaAmbar(i);
   input.parentElement.classList.toggle('fob-cadencia',mis>0);
-  if(mis>0)input.title=`Inclui ${fmt(mis)} m³ de cadência do MIS que ainda não virou viagem no portal (só planejamento).`;});
+  if(mis>0)input.title=`Inclui ${fmt(mis)} m³ de cadência do MIS (só planejamento, ainda sem viagem no portal).`;});
  document.querySelectorAll('[data-row]').forEach(input=>input.parentElement.classList.toggle('edited',state.movements[input.dataset.row][+input.dataset.day]!==baseline.movements[input.dataset.row][+input.dataset.day]));
  document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo ${aviso.motivo||`de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque`} neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.limite?' '+aviso.limite:''}${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
  // Grafico com os MESMOS dias da tabela (o botao "+ dias" vale pros dois), pra ficar no mesmo eixo x.
@@ -604,15 +619,20 @@ function chart(result,original,offsets){
   if(ab!=null){const pos=Math.max(ab,0),l=Math.min(lastro,pos);pedacos.push(['Lastro mínimo',l,COR_LASTRO,false],['Abertura − lastro',pos-l,COR_ABERTURA,true]);}
   for(const k of ENTRADAS_BLOCO){
    const [,nome,cor,valorEm]=movSeries.find(m=>m[0]===k),v=Math.max(valorEm(i)||0,0);
-   // FOB empurrado pra D+1 pela regra das 15h vira um pedaco roxo separado (so' ate' o FOB aplicado no dia).
-   const d1=k==='fob'?Math.min(fobAposCorte(i)||0,v):0;
+   // FOB empurrado pra D+1 pela regra das 15h: sem pedaco roxo desde 2026-10-21 (usuaria: "a corzinha em roxo
+   // pode tirar, deixa so' o indicativo no popup") — o aviso continua na lista de viagens do popup.
+   const d1=0;
    // Transferencia: fundo cinza igual ao FOB e a cor (roxo em viagem / rosa sem status) so' na borda
    // (usuaria, 2026-10-17: "coloca o fundo cinza mesmo da barrinha, so coloca a borda de outra cor").
    // No "Tudo", a parte do FOB que e' cadencia MIS sem viagem no portal fica num pedaco proprio (cinza, borda
    // ambar tracejada): conta, mas ainda e' so' planejamento.
-   const misFob=k==='fob'&&i>=0&&$('entrada')?.value==='auto+tudo'?Math.min(v-d1,registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0)):0;
-   pedacos.push([nome,v-d1-misFob,cor,true,k.startsWith('transferIn'),false]);
-   if(misFob>0)pedacos.push(['Trânsito FOB · cadência MIS sem viagem no portal',misFob,cor,true,false,true]);
+   const misFob=k==='fob'?Math.min(Math.max(v-d1,0),cadenciaAmbar(i)):0;
+   // Nao programado (viagens do portal sem placa) em azul claro, separado do FOB com placa (usuaria, 2026-10-21:
+   // "na visao LE / programado e nao programado, coloca essa outra cor + azul pra falar que nao ta programado").
+   const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),fobNaoProgramadoDia(i)):0;
+   pedacos.push([nome,v-d1-misFob-npFob,cor,true,k.startsWith('transferIn'),false]);
+   if(npFob>0)pedacos.push(['Trânsito FOB · não programado (sem placa)',npFob,COR_NAO_PROG,true,false,false]);
+   if(misFob>0)pedacos.push(['Trânsito FOB · cadência MIS (planejamento)',misFob,cor,true,false,true]);
    if(d1>0)pedacos.push(['Trânsito FOB · ETA após 15h do dia anterior (D+1)',d1,COR_FOB_D1,true]);
   }
   let cum=0;
@@ -672,9 +692,13 @@ function popupGrafico(i){
  const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³</dd></div>`).join('')}</dl>`:'';
  const viagens=viagensDoDia(i).filter(v=>v.grupo!=='programado');
  const viagensHtml=viagens.length?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${viagens.length})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}</dl>`:'';
+ // Viagens nao programadas (sem placa) do dia, quando entram na conta (2026-10-21: "o popup do nao programado
+ // aparecer aqui pra mim tbm").
+ const naoProg=futuro&&fobNaoProgramadoDia(i)>0?viagensDoDia(i,'fob').filter(v=>v.grupo==='programado'):[];
+ const naoProgHtml=naoProg.length?`<p><strong style="color:${COR_NAO_PROG}">Não programado · sem placa (${naoProg.length} · ${fmt(naoProg.reduce((s,v)=>s+(v.volume||0),0))} m³)</strong></p><dl class="viagens">${naoProg.map(linhaViagemHtml).join('')}</dl>`:'';
  const transf=futuro?transfEntradaContadas(i):[];
  const transfHtml=transf.length?`<p><strong style="color:#C4B5FD">⇄ Transferências entre bases · já somadas no Trânsito FOB (${fmt(transf.reduce((s,t)=>s+(t.volume||0),0))} m³)</strong></p><dl class="viagens">${transf.map(t=>`<div><dt><span style="color:#C4B5FD">← ${esc(t.de||'—')}</span> · ${fmt(t.volume)} m³${t.statusViagem?` · ${esc(t.statusViagem)}`:' · sem status de viagem'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}</dd></div>`).join('')}</dl>`:'';
- return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${transfHtml}${semanaHtml}`;
+ return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${naoProgHtml}${transfHtml}${semanaHtml}`;
 }
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');

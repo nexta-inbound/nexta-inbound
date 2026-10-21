@@ -5,9 +5,10 @@
  // pode digitar por cima do valor puxado (customizar), igual ja funcionava antes.
  // So' 3 opcoes de venda (usuaria, 2026-10-19: "tira o LE e o Disp MIS"). O calculo do LE/Disp MIS continua
  // no app.js (cenarios salvos antigos ainda abrem), so' sem botao.
- const modes=['VMD','Pedidos em tela','Real'];
+ // Disp. MIS voltou (usuaria, 2026-10-21: "na saida coloca a opcao de disponibilidade MIS, igual estava antes").
+ const modes=['VMD','Pedidos em tela','Real','Disp MIS'];
  // So' o texto do botao muda (2026-10-16); o valor interno continua 'VMD' (regras do Firebase e cenarios salvos).
- const rotuloCenario={VMD:'VMD reprojetada'};
+ const rotuloCenario={VMD:'VMD reprojetada','Disp MIS':'Disp. MIS'};
  const today=simulationToday;
  const dateLabel=value=>new Date(value+'T12:00:00').toLocaleDateString('pt-BR');
  const popup=$('sales-popover');
@@ -68,11 +69,11 @@
  // 'auto' aparece como "Real" (usuaria, 2026-10-19): so' o que ja' esta' no transito.
  // Resumo da regra de cada botao (aparece ao passar o mouse; usuaria, 2026-10-19).
  const entradaModes=[
+  // So' 3 botoes (usuaria, 2026-10-21): saem "Cadencia MIS" e "Inbound + Cadencia pendente"; o calculo deles
+  // continua no app.js (rascunhos antigos ainda abrem).
   ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
-  ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
-  ['auto+naoprog','Programado + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
-  ['auto+tudo','Inbound + Cadência pendente','Todas as viagens do portal (programado + não programado) + a cadência rodoviária do MIS que ainda não virou viagem no portal, em todos os dias (entra no FOB, com borda tracejada no gráfico).'],
-  ['le-bi','Inbound S · MIS S+1','Viagens do portal (programado e não programado, inclui transferências) em todos os dias; da segunda da S+1 em diante soma também a cadência MIS do dia (FOB e CIF).'],
+  ['auto+naoprog','Trânsito real + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
+  ['le-bi','LE','Viagens do portal (programado e não programado, inclui transferências) em todos os dias; da segunda da S+1 em diante soma também a cadência MIS do dia (FOB e CIF) — essa parte fica com borda âmbar tracejada.'],
  ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');
