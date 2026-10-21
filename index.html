@@ -751,6 +751,8 @@
   #modalImportFrete .tf-historico-wrap { max-height: 52vh; }
   #modalImportFrete td.tf-detalhe { white-space: normal; min-width: 220px; color: var(--text-dim); }
   .tf-erro { color: var(--danger); font-weight: 600; }
+  /* UF do trecho diferente da do cadastro de Fornecedores/Bases (ver divergenciasUfTrechoFrete) */
+  .tf-uf-divergente { color: var(--accent2); font-weight: 600; cursor: help; }
 
   /* ── REVISÃO DA QUEBRA EM VIAGENS (ver revisarQuebraViagens) ── */
   .rq-resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
@@ -4037,6 +4039,7 @@
   <input type="file" id="fileInputTabelaFrete" accept=".xlsx,.xls" style="display:none">
 
   <div id="tabelaFreteAviso" class="alert alert-warn" style="display:none"></div>
+  <div id="tabelaFreteUfAviso" class="alert alert-warn" style="display:none;align-items:center;justify-content:space-between;gap:12px"></div>
 
   <div id="fretePendentesWrap" style="display:none;margin-bottom:20px">
     <div class="table-wrap">
@@ -10172,6 +10175,51 @@ function buscarTrechoFretePorChave(dados, ignorarId = null) {
   return listaTrechosFrete().find(t => t.id !== ignorarId && chaveTrechoFrete(t) === chave) || null;
 }
 
+// ── UF DIFERENTE DO CADASTRO ──
+// A viagem casa com o trecho pela cidade/UF do Fornecedor (origem) e da Base (destino) — ver
+// trechoFreteDaViagem. Cidade que está nesse cadastro com OUTRA UF (ex.: BRASILIA/SP vindo de
+// planilha, sendo a Base BRASILIA/DF) deixa o frete sem uso: avisa ao cadastrar, importar e
+// editar o trecho, e marca na tabela (pedido do usuário 21/10/2026). Cidade fora do cadastro
+// não é aviso — pode ser fornecedor/base que ainda vai ser cadastrado.
+function ufsCadastroCidadeFrete() {
+  const mapa = (pares) => {
+    const m = new Map();
+    pares.forEach(([cidade, uf]) => {
+      const c = normTrechoFrete(cidade), u = String(uf || '').trim().toUpperCase();
+      if (!c || !u) return;
+      if (!m.has(c)) m.set(c, new Set());
+      m.get(c).add(u);
+    });
+    return m;
+  };
+  return {
+    origem: mapa(fornecedores.map(f => [f.cidade, f.uf])),
+    destino: mapa(bases.map(b => [b.cidade, b.estado])),
+  };
+}
+
+// [{ lado, cidade, uf, ufsCadastro }] — vazio quando bate ou quando a cidade não está no cadastro.
+function divergenciasUfTrechoFrete(dados, ufs = ufsCadastroCidadeFrete()) {
+  return ['origem', 'destino'].flatMap(lado => {
+    const cidade = dados[`${lado}Cidade`];
+    const uf = String(dados[`${lado}Uf`] || '').trim().toUpperCase();
+    const doCadastro = ufs[lado].get(normTrechoFrete(cidade));
+    return doCadastro && uf && !doCadastro.has(uf) ? [{ lado, cidade, uf, ufsCadastro: [...doCadastro].sort() }] : [];
+  });
+}
+
+function textoDivergenciaUfFrete(d) {
+  return `${d.lado === 'origem' ? 'Origem' : 'Destino'} ${d.cidade}/${d.uf}: no cadastro de ${d.lado === 'origem' ? 'Fornecedores' : 'Bases'}, ${d.cidade} está em ${d.ufsCadastro.join(' ou ')}`;
+}
+
+// true = pode seguir (UF bate com o cadastro, ou o usuário confirmou mesmo assim)
+function confirmarDivergenciaUfFrete(dados) {
+  const div = divergenciasUfTrechoFrete(dados);
+  return !div.length || confirm(`⚠️ UF diferente do cadastro:\n\n${div.map(d => '• ' + textoDivergenciaUfFrete(d)).join('\n')}`
+    + '\n\nCom essa UF nenhuma viagem usa este frete (a viagem casa pela cidade/UF do Fornecedor e da Base).'
+    + '\n\nOK = salvar mesmo assim · Cancelar = voltar e corrigir');
+}
+
 function leadtimeDoTrechoFrete(t) {
   const reg = leadtimes.find(l => chaveTrechoFrete(l) === chaveTrechoFrete(t));
   return reg ? reg.leadtimeHoras : null;
@@ -10182,9 +10230,11 @@ function leadtimeDoTrechoFrete(t) {
 // Frete do mesmo trecho.
 function linhasTabelaFrete() {
   const hoje = isoHojeReal();
+  const ufs = ufsCadastroCidadeFrete();
   const linhas = [];
   listaTrechosFrete().forEach(t => {
     const vinculos = listaVinculosFrete(t);
+    const divergenciasUf = divergenciasUfTrechoFrete(t, ufs);
     const temporariaVigenteDe = (v) => vinculos.find(s => situacaoTemporariaFrete(s, hoje) === 'vigente'
       && normTrechoFrete(s.transportador) === normTrechoFrete(v.transportador)) || null;
     // O que vale HOJE de cada transportador: temporária vigente, senão a permanente. "menor"
@@ -10203,6 +10253,7 @@ function linhasTabelaFrete() {
       situacaoTemporaria: situacaoTemporariaFrete(v, hoje),
       temporariaPrevalece: v.temporaria ? null : temporariaVigenteDe(v), // permanente que hoje está coberta por uma temporária
       ehMenor: menor !== null && valendo.includes(v) && Number(v.valor) === menor,
+      divergenciasUf,
     }));
   });
   return linhas;
@@ -10222,7 +10273,26 @@ function limparFiltrosTabelaFrete() {
   ['fTabelaFreteBusca', 'fTabelaFreteOrigem', 'fTabelaFreteDestino', 'fTabelaFreteTransp', 'fTabelaFreteTipo', 'fTabelaFreteValidade'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  _soUfDivergenteFrete = false;
   renderTabelaFrete();
+}
+
+// Botão do aviso de UF diferente do cadastro: mostra só esses fretes / volta pra todos
+let _soUfDivergenteFrete = false;
+function alternarFiltroUfDivergenteFrete() {
+  _soUfDivergenteFrete = !_soUfDivergenteFrete;
+  renderTabelaFrete();
+}
+
+function renderAvisoUfDivergenteFrete(todas) {
+  const aviso = document.getElementById('tabelaFreteUfAviso');
+  const comDivergencia = todas.filter(l => l.divergenciasUf.length);
+  if (!comDivergencia.length) _soUfDivergenteFrete = false;
+  aviso.style.display = comDivergencia.length ? 'flex' : 'none';
+  if (!comDivergencia.length) return;
+  const trechos = new Set(comDivergencia.map(l => l.t.id)).size;
+  aviso.innerHTML = `<span>⚠️ ${trechos} trecho${trechos !== 1 ? 's' : ''} (${comDivergencia.length} frete${comDivergencia.length !== 1 ? 's' : ''}) com UF diferente do cadastro de Fornecedores/Bases — nenhuma viagem usa esses fretes. Corrija no ✏️ → Editar trecho.</span>`
+    + `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;font-size:11px;white-space:nowrap" onclick="alternarFiltroUfDivergenteFrete()">${_soUfDivergenteFrete ? 'Mostrar todos' : 'Mostrar só esses'}</button>`;
 }
 
 function ordenarColunaFrete(coluna) {
@@ -10269,6 +10339,7 @@ function renderTabelaFrete() {
   renderFretesPendentes();
 
   const todas = linhasTabelaFrete();
+  renderAvisoUfDivergenteFrete(todas);
   const isEmpty = todas.length === 0;
   document.getElementById('tabelaFreteEmpty').style.display = isEmpty ? 'block' : 'none';
   document.getElementById('tabelaFreteContent').style.display = isEmpty ? 'none' : 'block';
@@ -10299,7 +10370,8 @@ function renderTabelaFrete() {
     (!fTransp || l.transportador === fTransp) &&
     (!fTipo || l.tipoTabela === fTipo) &&
     (fValidade !== 'permanente' || !l.temporaria) &&
-    (fValidade !== 'temporaria' || l.temporaria)
+    (fValidade !== 'temporaria' || l.temporaria) &&
+    (!_soUfDivergenteFrete || l.divergenciasUf.length > 0)
   ).sort(compararLinhasFrete);
 
   const s = base.length !== 1 ? 's' : '';
@@ -10325,10 +10397,14 @@ function linhaTabelaFreteHtml(l) {
   const { t, v } = l;
   const ant = v.anterior || null;
   const noCadastro = transportadores.some(x => x.nomeFantasia === v.transportador);
+  const ufHtml = (lado) => {
+    const d = l.divergenciasUf.find(x => x.lado === lado);
+    return d ? ` <span class="tf-uf-divergente" title="${esc(textoDivergenciaUfFrete(d) + ' — nenhuma viagem usa este frete. Corrija no ✏️ → Editar trecho.')}">⚠</span>` : '';
+  };
   return `
     <tr${l.situacaoTemporaria === 'encerrado' ? ' class="tf-linha-encerrada"' : ''}>
-      <td>${esc(l.origem)}</td>
-      <td>${esc(l.destino)}</td>
+      <td>${esc(l.origem)}${ufHtml('origem')}</td>
+      <td>${esc(l.destino)}${ufHtml('destino')}</td>
       <td><span class="tf-transp">${esc(v.transportador)}</span>${noCadastro ? '' : ' <span style="color:var(--accent2)" title="Não consta mais no cadastro de Transportadores">⚠</span>'}</td>
       <td class="tf-num">
         ${l.ehMenor ? '<span class="badge badge-success tf-badge-menor" title="Menor frete deste trecho">menor</span>' : ''}
@@ -11297,6 +11373,7 @@ async function salvarNovoFrete() {
     alert(`${transportador} já tem frete cadastrado no trecho ${rotulo}.\n\nUse o ✏️ na linha dele para atualizar o valor — ou marque "Tabela temporária" para um valor que vale só por um período.`);
     return;
   }
+  if (!confirmarDivergenciaUfFrete(trecho || dados)) return;
 
   const trechoId = trecho ? trecho.id : window._fb.novoIdTabelaFrete();
   const vinculoId = window._fb.novoIdTabelaFrete();
@@ -11357,11 +11434,11 @@ async function salvarTrechoFrete() {
   const dados = lerCamposTrechoFrete('tf');
   const erro = validarCamposTrechoFrete(dados);
   if (erro) { alert(erro); return; }
-  const duplicado = buscarTrechoFretePorChave(dados, trechoId);
-  if (duplicado) { alert(`Já existe o trecho "${rotuloTrechoFrete(duplicado)}" na tabela de frete.`); return; }
-
   const rotuloAntes = rotuloTrechoFrete(antes), rotuloDepois = rotuloTrechoFrete(dados);
   if (rotuloAntes === rotuloDepois) { fecharModalTrechoFrete(); return; }
+  if (!confirmarDivergenciaUfFrete(dados)) return;
+  const duplicado = buscarTrechoFretePorChave(dados, trechoId);
+  if (duplicado) { await juntarTrechoFrete(trechoId, duplicado); return; }
 
   const agora = new Date().toISOString();
   const { por } = usuarioLogFrete();
@@ -11376,6 +11453,76 @@ async function salvarTrechoFrete() {
   fecharModalTrechoFrete();
   mostrarStatus('saved', 'Trecho atualizado');
   if (_freteVinculoAberto?.trechoId === trechoId) carregarHistoricoFreteModal(trechoId, _freteVinculoAberto.vinculoId);
+  // Trecho novo casa com outras viagens — as em oferta podem ficar sem frete ou com o errado
+  revisarFretesOfertados(listaVinculosFrete(antes).map(v => ({ dados, transportador: v.transportador })));
+}
+
+// Trecho corrigido que já existe (ex.: BRASILIA/SP → BRASILIA/DF, e o DF já tem frete de outros
+// transportadores): muda os fretes deste trecho pro existente, com o mesmo id de vínculo, e
+// apaga este. Bloqueia se algum transportador já tem lá um frete que conflite (permanente com
+// permanente; temporária com período cruzado) — um dos dois precisa ser removido antes.
+// O histórico é só de inclusão nas regras (não dá pra mover nem apagar): as entradas são
+// copiadas pro trecho de destino com as mesmas chaves e as antigas ficam órfãs em historico/<id antigo>.
+async function juntarTrechoFrete(origemId, destino) {
+  const origem = trechosFrete[origemId];
+  const rotuloAntes = rotuloTrechoFrete(origem), rotuloDepois = rotuloTrechoFrete(destino);
+  const movidos = listaVinculosFrete(origem);
+  const conflitos = movidos.map(v => {
+    const outro = v.temporaria
+      ? temporariaSobrepostaFrete(destino, v.transportador, v.vigenciaInicio, v.vigenciaFim)
+      : listaVinculosFrete(destino).find(x => !x.temporaria && normTrechoFrete(x.transportador) === normTrechoFrete(v.transportador));
+    return outro && `• ${v.transportador} já tem ${outro.temporaria ? `tabela temporária (${periodoTemporariaFrete(outro)})` : 'frete'} de ${formatarValorFrete(outro.valor)}/m³ lá`;
+  }).filter(Boolean);
+  if (conflitos.length) {
+    alert(`Já existe o trecho "${rotuloDepois}" na tabela de frete, mas não dá para juntar os dois:\n\n${conflitos.join('\n')}`
+      + '\n\nRemova um dos fretes repetidos (✕ na tabela) e tente de novo.');
+    return;
+  }
+  const qtdDestino = new Set(listaVinculosFrete(destino).map(x => normTrechoFrete(x.transportador))).size;
+  const lista = movidos.map(v => `• ${v.transportador} — ${formatarValorFrete(v.valor)}/m³${v.temporaria ? ` (temporária ${periodoTemporariaFrete(v)})` : ''}`);
+  if (!confirm(`Já existe o trecho "${rotuloDepois}" na tabela de frete (${qtdDestino} transportador${qtdDestino !== 1 ? 'es' : ''}).`
+    + `\n\nMover para ele ${movidos.length === 1 ? 'o frete' : `os ${movidos.length} fretes`} deste trecho?\n${lista.join('\n')}`
+    + `\n\nO trecho "${rotuloAntes}" deixa de existir. O histórico de cada frete vai junto.`)) return;
+
+  const btn = document.getElementById('btnSalvarTrechoFrete');
+  btn.disabled = true;
+  let historicos;
+  try {
+    historicos = await Promise.all(movidos.map(v => window._fb.carregarHistoricoFrete(origemId, v.id)));
+  } catch (e) {
+    alert('Não foi possível ler o histórico dos fretes: ' + (e?.message || e));
+    return;
+  } finally {
+    btn.disabled = false;
+  }
+  if (!trechosFrete[origemId] || !trechosFrete[destino.id]) { alert('A tabela mudou enquanto lia o histórico (outro usuário?) — tente de novo.'); return; }
+
+  const agora = new Date().toISOString();
+  const updates = { [`trechos/${origemId}`]: null };
+  movidos.forEach(({ id, ...v }, i) => {
+    updates[`trechos/${destino.id}/vinculos/${id}`] = v;
+    Object.entries(historicos[i] || {}).forEach(([logId, h]) => {
+      if (h?.acao && h.em && h.por) updates[`historico/${destino.id}/${id}/${logId}`] = h;
+    });
+  });
+  const logs = logsMudancaTrechoFrete({ ...destino, vinculos: origem.vinculos },
+    `Trecho corrigido de ${rotuloAntes} para ${rotuloDepois} (juntado ao trecho que já existia)`, agora);
+  // Detalhe aberto passa a apontar pro trecho de destino ANTES de gravar: o listener dispara
+  // com a escrita local e, apontando pro trecho apagado, mostraria "frete removido"
+  const abertoAntes = _freteVinculoAberto;
+  if (abertoAntes?.trechoId === origemId) _freteVinculoAberto = { ...abertoAntes, trechoId: destino.id };
+  const ok = await executarGravacaoTabelaFrete(updates, logs, 'btnSalvarTrechoFrete');
+  if (!ok) {
+    if (_freteVinculoAberto?.trechoId === destino.id && abertoAntes?.trechoId === origemId) _freteVinculoAberto = abertoAntes;
+    return;
+  }
+  fecharModalTrechoFrete();
+  mostrarStatus('saved', `Frete${movidos.length !== 1 ? 's' : ''} movido${movidos.length !== 1 ? 's' : ''} para ${rotuloDepois}`);
+  if (_freteVinculoAberto?.trechoId === destino.id) {
+    renderDetalheFreteVinculo();
+    carregarHistoricoFreteModal(destino.id, _freteVinculoAberto.vinculoId);
+  }
+  revisarFretesOfertados(movidos.map(v => ({ dados: destino, transportador: v.transportador })));
 }
 
 // ── Modal: detalhe do frete (atual × anterior + histórico + atualização) ──
@@ -11425,11 +11572,13 @@ function renderDetalheFreteVinculo() {
   }
   document.getElementById('fv-titulo').textContent = v.transportador || 'Frete';
   const lt = leadtimeDoTrechoFrete(t);
+  const divergenciasUf = divergenciasUfTrechoFrete(t);
   document.getElementById('fv-sub').innerHTML = `
     <span>📍 ${esc(rotuloTrechoFrete(t))}</span>
     ${v.temporaria ? `<span>${rotuloTemporariaFreteHtml(v)}</span>` : ''}
     ${lt !== null && lt !== undefined ? `<span>⏱️ leadtime ${esc(Number(lt).toLocaleString('pt-BR', { maximumFractionDigits: 1 }))}h</span>` : ''}
-    <button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px" onclick="abrirModalTrechoFrete('${aberto.trechoId}')">✏️ Editar trecho</button>`;
+    <button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px" onclick="abrirModalTrechoFrete('${aberto.trechoId}')">✏️ Editar trecho</button>
+    ${divergenciasUf.length ? `<span class="tf-uf-divergente" style="flex-basis:100%;font-size:12px">⚠ ${divergenciasUf.map(d => esc(textoDivergenciaUfFrete(d))).join(' · ')} — nenhuma viagem usa este frete. Corrija no ✏️ Editar trecho.</span>` : ''}`;
   const ant = v.anterior || null;
   // Temporária mostra o período (início a fim); permanente, só o início
   const vigenciaTxt = (x) => x.vigenciaFim ? periodoTemporariaFrete(x) : fmtDataFrete(x.vigenciaInicio);
@@ -11820,6 +11969,7 @@ function analisarImportacaoFrete(linhasPlanilha, base) {
   const hoje = isoHojeReal();
   const trechosPorChave = new Map(listaTrechosFrete(base).map(t => [chaveTrechoFrete(t), t]));
   const cadastro = new Map(transportadores.filter(x => x.nomeFantasia).map(x => [normTrechoFrete(x.nomeFantasia), x.nomeFantasia]));
+  const ufs = ufsCadastroCidadeFrete();
 
   const linhas = linhasPlanilha.map(p => {
     const l = { ...p, erros: [], notas: [], status: 'erro' };
@@ -11863,6 +12013,8 @@ function analisarImportacaoFrete(linhasPlanilha, base) {
   });
   grupos.forEach(g => {
     g.linhas.forEach(l => {
+      // Só aviso (não erro): a linha entra, mas a prévia e o Confirmar chamam atenção
+      l.avisosUf = divergenciasUfTrechoFrete(l.dados, ufs).map(textoDivergenciaUfFrete);
       if (!g.trecho) l.notas.push('Trecho novo');
       l.valorNovo = l.valor.n;
       if (!l.vinculo) {
@@ -11889,6 +12041,7 @@ function analisarImportacaoFrete(linhasPlanilha, base) {
   linhas.forEach(l => resumo[l.status]++);
   const gruposValidos = [...grupos.values()];
   resumo.trechosNovos = gruposValidos.filter(g => !g.trecho).length;
+  resumo.ufDivergente = linhas.filter(l => l.avisosUf?.length && ['inclusao', 'alteracao', 'tipo'].includes(l.status)).length;
   return { linhas, grupos: gruposValidos, resumo };
 }
 
@@ -11983,6 +12136,7 @@ function renderPreviaImportFrete() {
     chip(resumo.trechosNovos, 'badge-success', pl(resumo.trechosNovos, 'trecho novo', 'trechos novos')),
     chip(resumo.alteracao, 'badge-accent', '✎ ' + pl(resumo.alteracao, 'frete atualizado', 'fretes atualizados')),
     chip(resumo.tipo, 'badge-warn', '🏷 ' + pl(resumo.tipo, 'tipo de tabela alterado', 'tipos de tabela alterados')),
+    chip(resumo.ufDivergente, 'badge-warn', '⚠ ' + pl(resumo.ufDivergente, 'linha com UF diferente do cadastro', 'linhas com UF diferente do cadastro')),
     chip(resumo.igual, 'badge-neutro', '= ' + pl(resumo.igual, 'sem mudança', 'sem mudança')),
     chip(resumo.erro, 'badge-danger', '✕ ' + pl(resumo.erro, 'linha com erro (será ignorada)', 'linhas com erro (serão ignoradas)')),
   ].join('');
@@ -12008,9 +12162,11 @@ function linhaPreviaImportFrete(l) {
     ? (l.valor.n !== null ? formatarValorFrete(l.valor.n) : (l.valorTexto || '—'))
     : formatarValorFrete(l.valorNovo);
   const vigencia = erro ? l.vigencia.iso : l.vigenciaNova;
+  const avisosUf = (l.avisosUf || []).map(a => `<span class="tf-uf-divergente">⚠ ${esc(a)}</span>`).join('<br>');
+  const notas = [...l.notas, l.observacao ? `Motivo: ${l.observacao}` : ''].filter(Boolean).join(' · ');
   const detalhe = erro
     ? `<span class="tf-erro">${l.erros.map(esc).join('<br>')}</span>`
-    : esc([...l.notas, l.observacao ? `Motivo: ${l.observacao}` : ''].filter(Boolean).join(' · ') || '—');
+    : [avisosUf, esc(notas)].filter(Boolean).join('<br>') || '—';
   return `
     <tr>
       <td class="tf-num">${l.linha}</td>
@@ -12033,6 +12189,9 @@ function fecharModalImportFrete() {
 async function confirmarImportacaoFrete() {
   const imp = _importFrete;
   if (!imp || _salvandoTabelaFrete) return;
+  const nUf = imp.analise.resumo.ufDivergente;
+  if (nUf && !confirm(`⚠️ ${nUf} ${nUf === 1 ? 'linha' : 'linhas'} com UF diferente do cadastro de Fornecedores/Bases (marcadas na prévia) — nenhuma viagem vai usar ${nUf === 1 ? 'esse frete' : 'esses fretes'}.`
+    + '\n\nOK = importar mesmo assim · Cancelar = voltar e corrigir a planilha')) return;
   const btn = document.getElementById('btnConfirmarImportFrete');
   btn.disabled = true;
   let base;
