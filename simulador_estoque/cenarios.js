@@ -72,6 +72,7 @@
   ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
   ['auto+naoprog','Programado + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
   ['auto+tudo','Tudo','Programado + Não programado + a cadência rodoviária do MIS que ainda não virou viagem no portal (entra no FOB, com borda tracejada no gráfico).'],
+  ['le-bi','Inbound S · MIS S+1','Igual ao cenário LE do BI: semana atual (até domingo) pelo inbound, com programado e não programado (inclui transferências); da segunda da S+1 em diante, só a cadência MIS (FOB, CIF e bombeio).'],
  ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');

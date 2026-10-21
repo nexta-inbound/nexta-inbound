@@ -57,6 +57,10 @@ function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/
 // Botao de entrada "Tudo" (usuaria, 2026-10-19; igual ao LE do BI): "Programado + Nao programado" e mais a
 // cadencia rodoviaria do MIS que ainda nao virou viagem no portal (entra no FOB).
 const incluiNaoProg=e=>e==='auto+naoprog'||e==='auto+tudo';
+// Botao "LE do BI" (usuaria, 2026-10-20: "semana atual pega do inbound e S+1 cadencia MIS, considera todos os
+// volumes prog e nao programados"): ate' o domingo da semana atual = "Programado + Nao programado"; da segunda
+// da S+1 (D.bi.inbound.switchDate, o mesmo corte do BI) em diante = "Cadencia MIS" inteira.
+const entradaNoDia=(e,iso)=>e!=='le-bi'?e:iso<(D.bi?.inbound?.switchDate||'9999')?'auto+naoprog':'cadencia';
 function cadenciaMisSemViagem(r,iso){
  const v=r.bi?.days?.[iso]?.progRoad;if(!v)return 0;
  const planejadas=(entradasTransfPorDia(r)[iso]||[]).filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);
@@ -73,14 +77,14 @@ function fresh(r,cenarioForcado,entradaForcada){
  // $('entrada').value quando nao vem cenarioForcado — e o botao restaurar chama fresh(record) puro,
  // que relê o select; o select em si so' muda quando o usuario mexe, entao o reset preserva a escolha
  // atual do select — por isso o botao "Restaurar" tambem reseta o select pra 'auto' (ver mais abaixo).
- const entrada=entradaForcada||$('entrada')?.value||'auto';
+ const entradaTela=entradaForcada||$('entrada')?.value||'auto';
  const startIndex=Math.max(0,Math.round((new Date(today+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const switchIndex=Math.max(startIndex,Math.round((new Date(D.bi.inbound.switchDate+'T12:00:00')-new Date(D.date+'T12:00:00'))/86400000));
  const movements=Object.fromEntries(E.rows.map(([k])=>[k,Array(30).fill(0)]));
  const transfEntrada=entradasTransfPorDia(r);
  for(let i=0;i<Math.min(n,30);i++){
   const loaded=r.bi?.days[day(i)];if(!loaded)continue;
-  const future=day(i)>=today;
+  const future=day(i)>=today,entrada=entradaNoDia(entradaTela,day(i));
   for(const k of ['sale','fob','cif','pump','transferIn','transferOut']){
    const mis=future&&scenario==='Inbound + MIS'&&i>=switchIndex&&['fob','cif','pump'].includes(k);
    movements[k][i]=(mis?loaded.inboundMis?.[k]:loaded[k])??0;
@@ -316,7 +320,7 @@ function popupBombeioPortal(i){const b=bombeioPortalDia(i);if(!b)return '';
 // Transferencias de entrada que ENTRAM na conta do dia (mesma regra do fresh()): pro popup do dia, ja' que desde
 // 2026-10-20 elas somam no Trânsito FOB sem linha nem barra propria.
 function transfEntradaContadas(i){
- const entrada=$('entrada')?.value||'auto';if(entrada==='cadencia')return [];
+ const entrada=entradaNoDia($('entrada')?.value||'auto',day(i));if(entrada==='cadencia')return [];
  const itens=transferencias(i,'transferenciasEntrada');
  if(filtroStatusAtivo())return itens.filter(t=>{const m=/^T([1-5])/.exec(String(t.statusViagem||''));
   return filtroStatusViagem.has(m?'T'+m[1]:(!t.viagem||t.conta==='naoprog')?'backlog':'sem');});
@@ -670,7 +674,7 @@ function popupGrafico(i){
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');
  const fixado=diaFixadoGrafico===i;
- popup.innerHTML=(fixado?'<p class="aviso-fixado">Fixado · selecione o texto para copiar · Esc ou clique fora para fechar</p>':'')+popupGrafico(i);
+ popup.innerHTML=(fixado?'<p class="aviso-fixado">Selecione o texto para copiar · clique no mesmo dia, fora do gráfico ou Esc para fechar</p>':'')+popupGrafico(i);
  popup.classList.toggle('fixado',fixado);popup.hidden=false;
  const rect=el.getBoundingClientRect(),width=popup.offsetWidth,height=popup.offsetHeight;
  // Abre AO LADO da coluna do dia (direita, ou esquerda se nao couber) e sempre inteiro dentro da tela —
@@ -684,14 +688,15 @@ function mostrarPopupGrafico(el){
 // apertar Esc solta. Clicar em outro dia fixa o outro.
 let diaFixadoGrafico=null;
 function fecharPopupGrafico(){diaFixadoGrafico=null;$('chart-popover').classList.remove('fixado');$('chart-popover').hidden=true;}
-document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-chart-day]');if(el&&diaFixadoGrafico===null)mostrarPopupGrafico(el);});
-document.addEventListener('focusin',e=>{const el=e.target.closest('[data-chart-day]');if(el&&diaFixadoGrafico===null)mostrarPopupGrafico(el);});
+// So' abre ao CLICAR (usuaria, 2026-10-20: "so' aparecer quando clica, ao inves de quando passa o mouse"); pelo
+// teclado, Enter/Espaco no dia focado faz o mesmo.
+document.addEventListener('keydown',e=>{const el=e.target.closest?.('[data-chart-day]');if(!el||!['Enter',' '].includes(e.key))return;e.preventDefault();
+ const i=+el.dataset.chartDay;if(diaFixadoGrafico===i){fecharPopupGrafico();return;}diaFixadoGrafico=i;mostrarPopupGrafico(el);});
 document.addEventListener('pointerdown',e=>{
  const el=e.target.closest('[data-chart-day]');
  if(el){const i=+el.dataset.chartDay;if(diaFixadoGrafico===i){fecharPopupGrafico();return;}diaFixadoGrafico=i;mostrarPopupGrafico(el);}
  else if(!$('chart-popover').contains(e.target))fecharPopupGrafico();
 });
-document.addEventListener('pointerout',e=>{if(diaFixadoGrafico===null&&e.target.closest('[data-chart-day]')&&document.activeElement!==e.target)fecharPopupGrafico();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&diaFixadoGrafico!==null)fecharPopupGrafico();});
 function alerts(result){const items=['O histórico de vendas realizadas não é carregado nesta versão; as vendas futuras usam o LE vigente e, hoje, o maior entre o LE e os pedidos do SAP.',`Valores futuros carregados das fontes (${D.bi.extractedAt.replace('T',' ')}). Portal carregado até ${D.bi.coverage.portal_max.slice(0,10)}; cadências MIS até ${D.bi.coverage.cadencia_max.slice(0,10)}.`];if(parameters.slice(1).some(([k])=>state[k]===null))items.push('A planilha de política tem campos vazios neste recorte; os alertas correspondentes estão indisponíveis.');result.forEach((r,i)=>{const low=Math.min(r.opening,r.close),high=Math.max(r.opening,r.close),a=[];if(low<0)a.push(`déficit físico de ${fmt(-low)} m³`);if(state.lastro!==null&&low<state.lastro)a.push('estoque abaixo do lastro');if(state.min!==null&&low<=state.min)a.push(`no mínimo ou abaixo em ${fmt(state.min-low)} m³`);if(state.capacity>0&&high>state.capacity)a.push(`capacidade excedida em ${fmt(high-state.capacity)} m³`);else if(state.max!==null&&high>state.max)a.push('acima do estoque máximo');if(a.length)items.push(label(i)+': '+a.join(' • '));});$('alerts').innerHTML=items.map(s=>`<div class="alert">${esc(s)}</div>`).join('');}
 // Selecionar pelo <select> nativo sempre colapsa pra 1 so' (troca o Set inteiro) — e' a ferramenta de
@@ -741,7 +746,7 @@ const OBJETIVOS_CADENCIA={
 // programadas e, na origem "Programado + Nao programado", as viagens FOB sem placa. Em "Cadencia MIS" tudo e'
 // planejado. Transito real (com placa/em viagem) e transferencia ja' em viagem ficam.
 function planejadoDoDia(i){
- const m=state.movements,entrada=$('entrada')?.value||'auto';
+ const m=state.movements,entrada=entradaNoDia($('entrada')?.value||'auto',day(i));
  if(entrada==='cadencia')return {pump:m.pump[i],fob:m.fob[i],cif:m.cif[i]};
  const out={pump:m.pump[i]};
  // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16); desde 2026-10-20

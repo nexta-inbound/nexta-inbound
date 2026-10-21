@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'f974981868';
+const VERSAO_SITE = '3ad7da0bc2';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -235,9 +235,11 @@ onAuthStateChanged(auth, async user => {
       // Quem enxerga a aba: perfil 'base' (so' ela) e quem tiver perfis/<uid>/verAberturas = true. Enquanto
       // o processo e' implantado (usuaria, 2026-10-16: "deixa so eu ver a aba de abertura por enquanto"),
       // so' a conta dela tem a marca; liberar outras pessoas e' so' marcar o perfil.
-      veAberturas() { return profile.perfil === 'base' || profile.verAberturas === true; },
+      // 2026-10-20 (usuaria): a aba fica liberada pra todos os perfis, so' pra ver; edita so' o perfil 'base' (nos
+      // terminais dele) e quem tiver perfis/<uid>/editaAberturas = true. Mesma regra do gerar_regras_acesso.py.
+      veAberturas() { return true; },
       canEditAbertura(empDep) {
-        return profile.admin === true || profile.perfil === 'regional' || (profile.perfil === 'base' && profile.bases?.[empDep] === true);
+        return profile.editaAberturas === true || (profile.perfil === 'base' && profile.bases?.[empDep] === true);
       },
       produtoKey(produto) { return hex(produto); },
       async aberturasLayout() { return (await get(ref(db, 'cadastros/aberturas'))).val(); },
