@@ -24,6 +24,8 @@
     ['Diesel S500 A', 'S500'], ['Etanol Anidro', 'Anidro'], ['Etanol Hidratado', 'Hidratado'], ['Biodiesel', 'B100']];
 
   function abrirCenario(base, produto, cenario = CENARIO) {
+    // Perfil 'base' nao ve a aba Simulacao de estoques (usuaria, 2026-10-21): o clique nos Alertas nao leva pra la'.
+    if (window.SIM_AUTH?.profile?.perfil === 'base') return;
     trocarAba('simulacao');
     // Mesmo caminho de quem escolhe na mao (onchange), pra marcar os chips de deposito/empresa —
     // so' trocar o .value dos selects deixava a tela sem base selecionada.

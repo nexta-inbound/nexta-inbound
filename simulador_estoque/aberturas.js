@@ -219,5 +219,12 @@
   let carregouUmaVez = false;
   const aoMostrar = () => { if (document.body.dataset.aba === 'aberturas') { carregouUmaVez = true; carregar(); } };
   botaoAba?.addEventListener('click', aoMostrar);
+  // Perfil 'base' sempre entra na aba Aberturas (e' o que ele preenche); ve Alertas, Cenario e Historico, mas NAO a
+  // aba "Simulacao de estoques" (usuaria, 2026-10-21).
+  if (perfil.perfil === 'base') {
+    const abaSimulacao = document.querySelector('#abas-bar [data-aba-alvo="simulacao"]');
+    if (abaSimulacao) abaSimulacao.hidden = true;
+    if (document.body.dataset.aba !== 'aberturas') botaoAba?.click();
+  }
   if (document.body.dataset.aba === 'aberturas' && !carregouUmaVez) aoMostrar();
 })();

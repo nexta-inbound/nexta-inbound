@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '3ad7da0bc2';
+const VERSAO_SITE = 'e782c33f36';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -283,16 +283,9 @@ onAuthStateChanged(auth, async user => {
         } else abrirTrocaObrigatoria('inicial');
       }
     };
-    // Perfil 'base' (decisao da usuaria, 2026-10-16: "so a aba de abertura"): nao baixa os estoques nem
-    // carrega o simulador — so' a aba Aberturas. As regras do banco tambem negam fontes/cenarios pra ele.
-    if (profile.perfil === 'base') {
-      if (version !== generation || auth.currentUser?.uid !== user.uid) return;
-      window.SIM_AUTH = {uid: user.uid, email: user.email, profile, soAberturas: true};
-      window.SIM_CLOUD = {...aberturasApi};
-      await script('aberturas.js');
-      await concluirEntrada();
-      return;
-    }
+    // Perfil 'base': ate' 2026-10-21 so' via a aba Aberturas; agora ve todas as abas do simulador como consulta
+    // (usuaria: "deixa as outras abas pra eles verem tambem, como Alertas, Cenario") — edita so' as aberturas
+    // dos terminais dele; nao salva cenario (canEdit e' so' administrador/regional).
     // A carga continua publicada por região, mas todo perfil baixa todas (sem segregação, 2026-10-09).
     const visibleRegions = ['SP', 'MG_RJ', 'CO'];
     const [metaSnapshot, regions, transitoSnapshot, ...regionSnapshots] = await Promise.all([

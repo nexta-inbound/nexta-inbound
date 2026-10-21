@@ -57,10 +57,12 @@ function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/
 // Botao de entrada "Tudo" (usuaria, 2026-10-19; igual ao LE do BI): "Programado + Nao programado" e mais a
 // cadencia rodoviaria do MIS que ainda nao virou viagem no portal (entra no FOB).
 const incluiNaoProg=e=>e==='auto+naoprog'||e==='auto+tudo';
-// Botao "LE do BI" (usuaria, 2026-10-20: "semana atual pega do inbound e S+1 cadencia MIS, considera todos os
-// volumes prog e nao programados"): ate' o domingo da semana atual = "Programado + Nao programado"; da segunda
-// da S+1 (D.bi.inbound.switchDate, o mesmo corte do BI) em diante = "Cadencia MIS" inteira.
-const entradaNoDia=(e,iso)=>e!=='le-bi'?e:iso<(D.bi?.inbound?.switchDate||'9999')?'auto+naoprog':'cadencia';
+// Botao "Inbound S · MIS S+1" = cenario LE do BI (usuaria, 2026-10-20/21: "quero que bata"). Conferido com o print
+// do BI (Betim POTENCIAL+RBZ, Biodiesel): em TODOS os dias entram as viagens do portal (programado + nao programado,
+// = "Programado + Nao programado"); da segunda da S+1 (D.bi.inbound.switchDate) em diante SOMA-SE a cadencia MIS do
+// dia (FOB/CIF) — o BI nao troca o portal pela cadencia, soma (26/10: 167,5 do portal + 65 da cadencia = 233).
+const entradaNoDia=(e,iso)=>e==='le-bi'?'auto+naoprog':e;
+const somaCadenciaS1=(e,iso)=>e==='le-bi'&&iso>=(D.bi?.inbound?.switchDate||'9999');
 function cadenciaMisSemViagem(r,iso){
  const v=r.bi?.days?.[iso]?.progRoad;if(!v)return 0;
  const planejadas=(entradasTransfPorDia(r)[iso]||[]).filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);
@@ -136,6 +138,9 @@ function fresh(r,cenarioForcado,entradaForcada){
     if(filtroStatusViagem.has('backlog'))movements.fob[i]+=misDia;
    }
   }
+  // LE do BI: cadencia MIS do dia somada ao portal na S+1 (com filtro de status, entra como Backlog).
+  if(future&&somaCadenciaS1(entradaTela,day(i))&&(!filtroStatusAtivo()||entradaForcada||filtroStatusViagem.has('backlog'))){
+   movements.fob[i]+=loaded.cadencia?.fob??0;movements.cif[i]+=loaded.cadencia?.cif??0;}
   // Transferencia de entrada consolidada no FOB (usuaria, 2026-10-20: "tira a linha de transferencia (entradas) e
   // consolida tudo no FOB entrada; so' mostra uma cor diferente no popup"). A regra de quando conta continua a mesma.
   if(future){movements.fob[i]+=movements.transferIn[i];movements.transferIn[i]=0;}
@@ -331,7 +336,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado" e "Tudo"</em>':''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Programado + Não programado" e "Inbound + Cadência pendente"</em>':''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=el.dataset.transf==='bombeioPortal'?popupBombeioPortal(+el.dataset.day):popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -751,9 +756,11 @@ function planejadoDoDia(i){
  const out={pump:m.pump[i]};
  // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16); desde 2026-10-20
  // ela soma no FOB, entao entra na parte planejada do FOB.
+ const s1=somaCadenciaS1($('entrada')?.value,day(i)),cad=k=>s1?registrosReais().reduce((s,r)=>s+(r.bi?.days?.[day(i)]?.cadencia?.[k]||0),0):0;
  if(incluiNaoProg(entrada))out.fob=Math.min(m.fob[i],(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0)
-  +transfPlanejadaDia(i)
+  +transfPlanejadaDia(i)+cad('fob')
   +(entrada==='auto+tudo'?registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0):0));
+ if(s1)out.cif=Math.min(m.cif[i],cad('cif'));
  return out;
 }
 function sugerirCadencia(objetivo='tanque'){

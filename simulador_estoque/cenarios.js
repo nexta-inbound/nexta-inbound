@@ -71,8 +71,8 @@
   ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
   ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
   ['auto+naoprog','Programado + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
-  ['auto+tudo','Tudo','Programado + Não programado + a cadência rodoviária do MIS que ainda não virou viagem no portal (entra no FOB, com borda tracejada no gráfico).'],
-  ['le-bi','Inbound S · MIS S+1','Igual ao cenário LE do BI: semana atual (até domingo) pelo inbound, com programado e não programado (inclui transferências); da segunda da S+1 em diante, só a cadência MIS (FOB, CIF e bombeio).'],
+  ['auto+tudo','Inbound + Cadência pendente','Todas as viagens do portal (programado + não programado) + a cadência rodoviária do MIS que ainda não virou viagem no portal, em todos os dias (entra no FOB, com borda tracejada no gráfico).'],
+  ['le-bi','Inbound S · MIS S+1','Igual ao cenário LE do BI: viagens do portal (programado e não programado, inclui transferências) em todos os dias; da segunda da S+1 em diante soma também a cadência MIS do dia (FOB e CIF).'],
  ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');
