@@ -66,7 +66,7 @@ const somaCadenciaS1=(e,iso)=>e==='le-bi'&&iso>=(D.bi?.inbound?.switchDate||'999
 // Parte do FOB do dia que e' so' planejamento da cadencia MIS (borda ambar tracejada na tabela e no grafico):
 // no botao "LE" (2026-10-21, usuaria: "deixa o ambar"), a cadencia MIS somada da S+1 em diante.
 function cadenciaAmbar(i){const e=$('entrada')?.value,iso=day(i);if(i<0)return 0;
- if(e==='le-bi')return somaCadenciaS1(e,iso)?registrosReais().reduce((s,r)=>s+(r.bi?.days?.[iso]?.cadencia?.fob||0),0):0;
+ if(e==='le-bi')return somaCadenciaS1(e,iso)?registrosReais().reduce((s,r)=>{const c=r.bi?.days?.[iso]?.cadencia;return s+(c?.fobPendente??c?.fob??0);},0):0;
  if(e==='auto+tudo')return registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,iso),0);
  return 0;}
 function cadenciaMisSemViagem(r,iso){
@@ -146,7 +146,7 @@ function fresh(r,cenarioForcado,entradaForcada){
   }
   // LE do BI: cadencia MIS do dia somada ao portal na S+1 (com filtro de status, entra como Backlog).
   if(future&&somaCadenciaS1(entradaTela,day(i))&&(!filtroStatusAtivo()||entradaForcada||filtroStatusViagem.has('backlog'))){
-   movements.fob[i]+=loaded.cadencia?.fob??0;movements.cif[i]+=loaded.cadencia?.cif??0;}
+   movements.fob[i]+=loaded.cadencia?.fobPendente??loaded.cadencia?.fob??0;movements.cif[i]+=loaded.cadencia?.cifPendente??loaded.cadencia?.cif??0;}
   // Transferencia de entrada consolidada no FOB (usuaria, 2026-10-20: "tira a linha de transferencia (entradas) e
   // consolida tudo no FOB entrada; so' mostra uma cor diferente no popup"). A regra de quando conta continua a mesma.
   if(future){movements.fob[i]+=movements.transferIn[i];movements.transferIn[i]=0;}
@@ -780,7 +780,7 @@ function planejadoDoDia(i){
  const out={pump:m.pump[i]};
  // Transferencia planejada so' esta' na conta no "Programado + Nao programado" (2026-10-16); desde 2026-10-20
  // ela soma no FOB, entao entra na parte planejada do FOB.
- const s1=somaCadenciaS1($('entrada')?.value,day(i)),cad=k=>s1?registrosReais().reduce((s,r)=>s+(r.bi?.days?.[day(i)]?.cadencia?.[k]||0),0):0;
+ const s1=somaCadenciaS1($('entrada')?.value,day(i)),cad=k=>s1?registrosReais().reduce((s,r)=>{const c=r.bi?.days?.[day(i)]?.cadencia;return s+(c?.[k+'Pendente']??c?.[k]??0);},0):0;
  if(incluiNaoProg(entrada))out.fob=Math.min(m.fob[i],(somaOuNula(registrosReais().map(r=>fobNaoProgramado(r,day(i))))||0)
   +transfPlanejadaDia(i)+cad('fob')
   +(entrada==='auto+tudo'?registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,day(i)),0):0));

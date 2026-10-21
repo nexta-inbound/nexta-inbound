@@ -203,11 +203,16 @@
   // deposito+empresa cada viagem e' — senao some tudo igual aconteceria no modo normal (1 emp_dep so').
   // viagensDoDia (app.js) ja' junta os registros do combinado e marca o destino de cada viagem.
   const viagens=viagensDoDia(index,modal);
-  if(!viagens.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong><p>Sem detalhe de viagem ao vivo pra este dia.</p>`;
+  // Parte da cadencia MIS que esta' no FOB do dia (borda ambar no botao LE): aparece aqui tambem (usuaria,
+  // 2026-10-21: "pq ta pontilhado?" — o popup so' mostrava a viagem, nao a cadencia somada).
+  const cad=modal==='fob'?cadenciaAmbar(index):0;
+  const cadHtml=cad>0?`<p style="color:#FBBF24">+ ${fmt(cad)} m³ de cadência MIS do dia (planejamento, ainda sem viagem) · borda âmbar pontilhada</p>`:'';
+  if(!viagens.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||'<p>Sem detalhe de viagem ao vivo pra este dia.</p>'}`;
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
    +(realizadas.length?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}</dl><p style="color:#60A5FA">${realizadas.length} viagem(ns) · total ${fmt(realizadas.reduce((s,v)=>s+v.volume,0))} m³</p>`:'')
-   +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma com "Programado + Não programado"</p>`:'');
+   +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma em "Trânsito real + Não programado" e "LE"</p>`:'')
+   +cadHtml;
  }
  // Popup "de qual deposito/empresa vem essa abertura" no modo combinado — pedido da usuaria,
  // 2026-10-05: "na abertura, quando selecionar + de 1, eu preciso saber qual deposito e empresa".
