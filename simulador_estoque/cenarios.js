@@ -204,7 +204,7 @@
   // viagensDoDia (app.js) ja' junta os registros do combinado e marca o destino de cada viagem.
   const viagens=viagensDoDia(index,modal);
   // Botao LE: transferencias no mesmo bloco das viagens (2026-10-21).
-  const transfJunto=modal==='fob'&&entradaSelector.value==='le-bi'&&day(index)>=today()?transfEntradaContadas(index):[];
+  const transfJunto=modal==='fob'&&day(index)>=today()?transfEntradaContadas(index):[];
   // Parte da cadencia MIS que esta' no FOB do dia (borda ambar no botao LE): aparece aqui tambem (usuaria,
   // 2026-10-21: "pq ta pontilhado?" — o popup so' mostrava a viagem, nao a cadencia somada).
   const cad=modal==='fob'?cadenciaAmbar(index):0;
@@ -213,7 +213,7 @@
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
   const nReal=realizadas.length+transfJunto.length,volReal=realizadas.reduce((s,v)=>s+v.volume,0)+transfJunto.reduce((s,t)=>s+(t.volume||0),0);
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
-   +(nReal?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}${transfJunto.map(linhaTransfHtml).join('')}</dl><p style="color:#60A5FA">${nReal} viagem(ns) · total ${fmt(volReal)} m³${transfJunto.length?` (inclui ${transfJunto.length} transferência(s))`:''}</p>`:'')
+   +(nReal?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}${transfJunto.map(t=>linhaTransfHtml(t,index)).join('')}</dl><p style="color:#60A5FA">${nReal} viagem(ns) · total ${fmt(volReal)} m³${transfJunto.length?` (inclui ${transfJunto.length} transferência(s))`:''}</p>`:'')
    +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma em "Trânsito real + Não programado" e "LE"</p>`:'')
    +cadHtml;
  }

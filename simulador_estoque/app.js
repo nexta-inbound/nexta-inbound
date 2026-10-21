@@ -403,8 +403,29 @@ function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=ids
 const COR_FOB_D1='#C084FC';
 const COR_NAO_PROG='#7DB9E8';
 // Transferencia entre bases no formato de uma linha de viagem (popup unificado do botao LE, 2026-10-21).
-function linhaTransfHtml(t){
- return `<div style="color:#C4B5FD"><dt>⇄ Transferência · ${t.viagem?`Viagem ${esc(t.viagem)}`:'sem viagem no portal'}</dt><dd>Origem: ${esc(t.de||'—')} → esta base<br>${fmt(t.volume)} m³${t.statusViagem?' · '+esc(t.statusViagem):' · sem status de viagem'}${t.status?' · '+esc(t.status):''} · carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte||'')}</dd></div>`;
+// Com viagem no portal, usa a MESMA linha das viagens (origem → destino, transportador, placa, status, km, ETA) com a
+// etiqueta "⇄ Transferência" (usuaria, 2026-10-21: "coloca no mesmo bloco, com origem, destino, ETA, as mesmas info").
+function viagemDaTransf(t,i){
+ if(!t.viagem)return null;
+ for(const r of registrosReais()){const porDia=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]||{};
+  for(const iso of [day(i),...Object.keys(porDia)]){const v=(porDia[iso]?.viagens||[]).find(x=>x.idViagem===t.viagem);if(v)return v;}}
+ return null;
+}
+// Cor (usuaria, 2026-10-21): AZUL se a transferencia ja' tem tempos (ETA, chegada ou Status Viagem da Herrlog),
+// LARANJA se ainda nao tem. A etiqueta "⇄ Transferencia de..." vai na mesma cor da linha.
+// Origem da transferencia = CIDADE + base que esta' transferindo (usuaria, 2026-10-21: "quero saber a cidade de origem,
+// qual base esta' transferindo"), no lugar do nome do fornecedor do portal (que pra transferencia e' so' "NEXTA"/"SIM").
+function origemTransf(t){
+ const r=D.records.find(x=>x.base===t.de);if(!r)return t.de||'—';
+ const cidade=cidadeDe(r),resto=t.de.startsWith(cidade+' ')?t.de.slice(cidade.length+1):t.de;
+ return `${cidade} · ${resto}`;
+}
+function linhaTransfHtml(t,i){
+ const v=viagemDaTransf(t,i),temTempos=Boolean(v?.eta||v?.chegadaReal||v?.statusViagem||t.statusViagem),cor=temTempos?'#60A5FA':'#F97316';
+ const origem=origemTransf(t),destino=record?.base||t.para||'—';
+ if(v)return linhaViagemHtml({...v,volume:t.volume??v.volume,fornecedor:origem,destino:v.destino||destino})
+  .replace(/^<div style="color:[^"]*">/,`<div style="color:${cor}">`).replace('<dt>',`<dt>⇄ Transferência de ${esc(origem)} · `);
+ return `<div style="color:${cor}"><dt>⇄ Transferência de ${esc(origem)} · ${t.viagem?`Viagem ${esc(t.viagem)}`:'sem viagem no portal'}</dt><dd>Origem: ${esc(origem)} → Destino: ${esc(destino)}<br>${fmt(t.volume)} m³${t.statusViagem?' · '+esc(t.statusViagem):' · sem status de viagem'}${t.status?' · '+esc(t.status):''} · carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte||'')}</dd></div>`;
 }
 // FOB nao programado (sem placa) que esta' na conta do dia: so' nos botoes que incluem o nao programado e, com
 // filtro de Status da viagem, so' se "Backlog (sem placa)" estiver marcado.
@@ -697,9 +718,10 @@ function popupGrafico(i){
  const viagens=viagensDoDia(i).filter(v=>v.grupo!=='programado');
  // No botao LE as transferencias entram no MESMO bloco das viagens (usuaria, 2026-10-21: "unificar as
  // transferencias junto, no mesmo bloco, nao separe"); nos outros botoes continuam na secao propria.
- const unificaTransf=$('entrada')?.value==='le-bi'&&futuro,transfJunto=unificaTransf?transfEntradaContadas(i):[];
+ // Transferencias no MESMO bloco das viagens em todos os botoes (2026-10-21).
+ const unificaTransf=futuro,transfJunto=unificaTransf?transfEntradaContadas(i):[];
  const nViagens=viagens.length+transfJunto.length;
- const viagensHtml=nViagens?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${nViagens})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}${transfJunto.map(linhaTransfHtml).join('')}</dl>`:'';
+ const viagensHtml=nViagens?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${nViagens})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}${transfJunto.map(t=>linhaTransfHtml(t,i)).join('')}</dl>`:'';
  // Viagens nao programadas (sem placa) do dia, quando entram na conta (2026-10-21: "o popup do nao programado
  // aparecer aqui pra mim tbm").
  const naoProg=futuro&&fobNaoProgramadoDia(i)>0?viagensDoDia(i,'fob').filter(v=>v.grupo==='programado'):[];
