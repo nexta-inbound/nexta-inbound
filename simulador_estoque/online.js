@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '14a188f01d';
+const VERSAO_SITE = 'a23eb03d86';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -369,7 +369,7 @@ onAuthStateChanged(auth, async user => {
     };
     for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js']) await script(name);
     await concluirEntrada();
-    el('auto-status').textContent = `Fontes de ${data.date}. Recarregue a página para buscar uma nova carga.`;
+    el('auto-status').textContent = `Fontes de ${data.date}. A tela atualiza sozinha quando sai uma carga nova.`;
     const sync = el('sync-status');
     const textoSync = () => {
       if (!sync || !data.bi?.extractedAt) return;
@@ -409,6 +409,45 @@ onAuthStateChanged(auth, async user => {
         else document.querySelectorAll('.fonte-hora[data-fonte="transito"]').forEach(n => { n.outerHTML = window.horaFonte?.('transito') || ''; });
       } catch (e) { console.warn('Falha ao baixar o trânsito atualizado', e); }
     });
+    // Carga principal AO VIVO (usuaria, 2026-10-21: "delays de um usuario pra outro ... de puxar os dados"): antes a
+    // carga so' era lida ao abrir a pagina, entao quem abriu antes da ultima publicacao ficava com numeros velhos
+    // ate' dar F5. Agora escuta fontes/atual/meta; quando muda a revisao, baixa as 3 regioes de novo, troca no
+    // proprio objeto D (mesma referencia do app.js) e refaz a tela com select() — preserva o que a pessoa editou.
+    // Carga de OUTRO dia muda o eixo de datas inteiro: ai' so' avisa no topo pra recarregar a pagina.
+    // So' baixa com a aba do navegador VISIVEL (2026-10-21: cada carga tem ~5 MB e o plano gratuito do Firebase da'
+    // 10 GB/mes de download): aba em segundo plano guarda a revisao nova e baixa uma vez so' quando voltar.
+    let revisaoAtual = envelope.revision, baixandoCarga = false, metaPendente = null;
+    const aoMudarMeta = async meta => {
+      if (!meta?.revision || meta.revision === revisaoAtual || baixandoCarga) return;
+      if (document.hidden) { metaPendente = meta; return; }
+      metaPendente = null;
+      baixandoCarga = true;
+      try {
+        const nova = JSON.parse(meta.conteudo);
+        if (nova.date !== data.date) {
+          if (sync) { sync.textContent = '⟳ Carga de um novo dia publicada · clique para atualizar'; sync.style.cursor = 'pointer'; sync.onclick = () => location.reload(); }
+          return;
+        }
+        const partes = await Promise.all(visibleRegions.map(name => get(ref(db, `fontes/atual/regioes/${name}`))));
+        const records = [], history = {};
+        for (const s of partes) {
+          const part = s.val();
+          if (!part) continue;
+          if (part.revision !== meta.revision) return;  // publicacao em andamento: a proxima mudanca do meta traz tudo
+          const content = JSON.parse(part.conteudo);
+          records.push(...content.records);
+          for (const [day, items] of Object.entries(content.history || {})) history[day] = {...(history[day] || {}), ...items};
+        }
+        const transitoAtual = data.transitoAoVivo;
+        Object.assign(data, nova, {records, history, transitoAoVivo: transitoAtual});
+        revisaoAtual = meta.revision;
+        textoSync();
+        refazer();
+      } catch (e) { console.warn('Falha ao baixar a carga atualizada', e); }
+      finally { baixandoCarga = false; }
+    };
+    onValue(ref(db, 'fontes/atual/meta'), snap => aoMudarMeta(snap.val()));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && metaPendente) aoMudarMeta(metaPendente); });
     textoSync();
   } catch (error) { status(errorText(error)); el('login-switch').hidden = false; }
 });

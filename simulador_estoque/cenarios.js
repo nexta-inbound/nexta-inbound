@@ -69,17 +69,17 @@
  // 'auto' aparece como "Real" (usuaria, 2026-10-19): so' o que ja' esta' no transito.
  // Resumo da regra de cada botao (aparece ao passar o mouse; usuaria, 2026-10-19).
  const entradaModes=[
-  // So' 3 botoes (usuaria, 2026-10-21): saem "Cadencia MIS" e "Inbound + Cadencia pendente"; o calculo deles
-  // continua no app.js (rascunhos antigos ainda abrem).
   ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
   ['auto+naoprog','Trânsito real + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
-  ['le-bi','LE','Viagens do portal (programado e não programado, inclui transferências) em todos os dias; da segunda da S+1 em diante soma também a cadência MIS do dia (FOB e CIF) — essa parte fica com borda âmbar tracejada.'],
+  // 3 botoes (usuaria, 2026-10-21): Transito real, Transito real + Nao programado e Cadencia MIS ("deixa da cadencia do
+  // MIS tbm"). O LE saiu da tela; o calculo dele continua no app.js.
+  ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],
  ];
  entradaSelector.parentElement.hidden=true;
  const entradaControls=document.createElement('div');
  entradaControls.className='scenario-controls';
  entradaControls.title='Puxar entrada de';
- entradaControls.innerHTML='<span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada">'+entradaModes.map(([valor,rotulo,regra])=>`<button type="button" data-entrada="${valor}" aria-pressed="false" title="${regra}">${rotulo}</button>`).join('')+'</div>';
+ entradaControls.innerHTML='<span>Entrada</span><div class="scenario-buttons" role="group" aria-label="Origem da entrada">'+entradaModes.map(([valor,rotulo,regra,desabilitado])=>`<button type="button" data-entrada="${valor}" aria-pressed="false" title="${regra}"${desabilitado?' disabled':''}>${rotulo}</button>`).join('')+'</div>';
  function syncEntradaButtons(){
   entradaControls.querySelectorAll('button').forEach(button=>{button.setAttribute('aria-pressed',String(Boolean(state)&&button.dataset.entrada===entradaSelector.value));});
  }
@@ -203,14 +203,17 @@
   // deposito+empresa cada viagem e' — senao some tudo igual aconteceria no modo normal (1 emp_dep so').
   // viagensDoDia (app.js) ja' junta os registros do combinado e marca o destino de cada viagem.
   const viagens=viagensDoDia(index,modal);
+  // Botao LE: transferencias no mesmo bloco das viagens (2026-10-21).
+  const transfJunto=modal==='fob'&&entradaSelector.value==='le-bi'&&day(index)>=today()?transfEntradaContadas(index):[];
   // Parte da cadencia MIS que esta' no FOB do dia (borda ambar no botao LE): aparece aqui tambem (usuaria,
   // 2026-10-21: "pq ta pontilhado?" — o popup so' mostrava a viagem, nao a cadencia somada).
   const cad=modal==='fob'?cadenciaAmbar(index):0;
   const cadHtml=cad>0?`<p style="color:#FBBF24">+ ${fmt(cad)} m³ de cadência MIS do dia (planejamento, ainda sem viagem) · borda âmbar pontilhada</p>`:'';
-  if(!viagens.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||'<p>Sem detalhe de viagem ao vivo pra este dia.</p>'}`;
+  if(!viagens.length&&!transfJunto.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||'<p>Sem detalhe de viagem ao vivo pra este dia.</p>'}`;
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
+  const nReal=realizadas.length+transfJunto.length,volReal=realizadas.reduce((s,v)=>s+v.volume,0)+transfJunto.reduce((s,t)=>s+(t.volume||0),0);
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
-   +(realizadas.length?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}</dl><p style="color:#60A5FA">${realizadas.length} viagem(ns) · total ${fmt(realizadas.reduce((s,v)=>s+v.volume,0))} m³</p>`:'')
+   +(nReal?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}${transfJunto.map(linhaTransfHtml).join('')}</dl><p style="color:#60A5FA">${nReal} viagem(ns) · total ${fmt(volReal)} m³${transfJunto.length?` (inclui ${transfJunto.length} transferência(s))`:''}</p>`:'')
    +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma em "Trânsito real + Não programado" e "LE"</p>`:'')
    +cadHtml;
  }

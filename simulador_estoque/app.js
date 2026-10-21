@@ -402,6 +402,10 @@ function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=ids
 // HORA_CORTE_DESCARGA) — pintado de roxo no grafico e na grade (pedido da usuaria, 2026-10-09).
 const COR_FOB_D1='#C084FC';
 const COR_NAO_PROG='#7DB9E8';
+// Transferencia entre bases no formato de uma linha de viagem (popup unificado do botao LE, 2026-10-21).
+function linhaTransfHtml(t){
+ return `<div style="color:#C4B5FD"><dt>⇄ Transferência · ${t.viagem?`Viagem ${esc(t.viagem)}`:'sem viagem no portal'}</dt><dd>Origem: ${esc(t.de||'—')} → esta base<br>${fmt(t.volume)} m³${t.statusViagem?' · '+esc(t.statusViagem):' · sem status de viagem'}${t.status?' · '+esc(t.status):''} · carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte||'')}</dd></div>`;
+}
 // FOB nao programado (sem placa) que esta' na conta do dia: so' nos botoes que incluem o nao programado e, com
 // filtro de Status da viagem, so' se "Backlog (sem placa)" estiver marcado.
 function fobNaoProgramadoDia(i){
@@ -411,7 +415,7 @@ function fobNaoProgramadoDia(i){
 }
 function fobAposCorte(i){return somaOuNula(viagensDoDia(i,'fob').filter(v=>v.aposCorte&&v.grupo!=='programado').map(v=>v.volume||0));}
 function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaReal?'chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?'ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
- return `<div style="color:${prog?'#F97316':'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
+ return `<div style="color:${prog?'#F97316':v.aposCorte?COR_FOB_D1:'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
 function vendaRealPassado(i){return history(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
 function valorPassado(k,i,result){
  if(k==='opening')return history(i)?.opening??null;
@@ -691,12 +695,16 @@ function popupGrafico(i){
  const politicaPopup=[['Lastro mínimo','lastro'],['Estoque mínimo','min'],['Estoque médio','mid'],['Estoque máximo','max'],['Capacidade','capacity']].filter(([,k])=>state[k]!=null);
  const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³</dd></div>`).join('')}</dl>`:'';
  const viagens=viagensDoDia(i).filter(v=>v.grupo!=='programado');
- const viagensHtml=viagens.length?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${viagens.length})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}</dl>`:'';
+ // No botao LE as transferencias entram no MESMO bloco das viagens (usuaria, 2026-10-21: "unificar as
+ // transferencias junto, no mesmo bloco, nao separe"); nos outros botoes continuam na secao propria.
+ const unificaTransf=$('entrada')?.value==='le-bi'&&futuro,transfJunto=unificaTransf?transfEntradaContadas(i):[];
+ const nViagens=viagens.length+transfJunto.length;
+ const viagensHtml=nViagens?`<p><strong>Viagens ${day(i)>=simulationToday()?'previstas':'que chegaram'} (${nViagens})</strong></p><dl class="viagens">${viagens.map(linhaViagemHtml).join('')}${transfJunto.map(linhaTransfHtml).join('')}</dl>`:'';
  // Viagens nao programadas (sem placa) do dia, quando entram na conta (2026-10-21: "o popup do nao programado
  // aparecer aqui pra mim tbm").
  const naoProg=futuro&&fobNaoProgramadoDia(i)>0?viagensDoDia(i,'fob').filter(v=>v.grupo==='programado'):[];
  const naoProgHtml=naoProg.length?`<p><strong style="color:#F97316">Não programado · sem placa (${naoProg.length} · ${fmt(naoProg.reduce((s,v)=>s+(v.volume||0),0))} m³)</strong></p><dl class="viagens">${naoProg.map(linhaViagemHtml).join('')}</dl>`:'';
- const transf=futuro?transfEntradaContadas(i):[];
+ const transf=futuro&&!unificaTransf?transfEntradaContadas(i):[];
  const transfHtml=transf.length?`<p><strong style="color:#C4B5FD">⇄ Transferências entre bases · já somadas no Trânsito FOB (${fmt(transf.reduce((s,t)=>s+(t.volume||0),0))} m³)</strong></p><dl class="viagens">${transf.map(t=>`<div><dt><span style="color:#C4B5FD">← ${esc(t.de||'—')}</span> · ${fmt(t.volume)} m³${t.statusViagem?` · ${esc(t.statusViagem)}`:' · sem status de viagem'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}</dd></div>`).join('')}</dl>`:'';
  return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${naoProgHtml}${transfHtml}${semanaHtml}`;
 }
