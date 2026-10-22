@@ -169,6 +169,16 @@ button, input { font: inherit; color: inherit; }
 .capacidades-salvas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .cap-chip { padding: 8px 14px; border-radius: 10px; background: var(--panel-soft); font-size: 17px; }
 .cap-chip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.configuracoes-placas { display: grid; gap: 18px; }
+.config-placa-topo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; margin-bottom: 16px; }
+.config-placa-id { font-family: var(--mono); font-size: 22px; font-weight: 600; color: var(--accent); }
+.config-placa-meta { font-size: 14px; color: var(--text-muted); }
+.config-bloco + .config-bloco { margin-top: 20px; }
+.config-total-conjunto { margin-top: 18px; padding: 14px 18px; border-radius: 12px; background: var(--panel-soft); font-size: 18px; }
+.config-total-conjunto strong { font-variant-numeric: tabular-nums; }
+.config-total-conjunto .aviso { display: block; margin-top: 4px; color: var(--accent2); font-weight: 600; }
+.tanque-grupo + .tanque-grupo { margin-top: 12px; }
+.tanque-placa { margin: 0 0 6px 2px; font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
 
 /* ── ALOCAÇÃO DOS PEDIDOS ── */
 .linha-aloc { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 16px; padding: 12px 0; border-top: 1px solid var(--border); }
@@ -403,35 +413,12 @@ button, input { font: inherit; color: inherit; }
     </div>
   </section>
 
-  <!-- Etapa 3: configuração do caminhão (quantos compartimentos e a capacidade de cada um) -->
+  <!-- Etapa 3: configuração separada por placa do tanque -->
   <section class="tela" id="tela-configuracao">
-    <div class="titulo">Compartimentos do caminhão</div>
-    <div class="sub">Quantos compartimentos o tanque tem e quantos litros cabem em cada um.</div>
-    <!-- Caminhão que já fez check-in: mostra a configuração salva e só pergunta se mudou -->
-    <div class="cartao hidden" id="cartao-config-salva">
-      <div class="cartao-titulo">Configuração salva deste caminhão</div>
-      <div class="produto-nome" id="config-salva-resumo"></div>
-      <div class="nota" id="config-salva-meta"></div>
-      <div class="capacidades-salvas" id="config-salva-lista"></div>
-      <div class="produto-nome" style="margin-top:22px">Houve alguma mudança nos compartimentos?</div>
-      <div class="acoes" style="margin-top:12px">
-        <button class="btn btn-secundario" type="button" onclick="alterarConfiguracao()">Sim, alterar</button>
-        <button class="btn btn-primario" type="button" onclick="confirmarConfiguracaoSalva()">Não, está igual</button>
-      </div>
-    </div>
-    <div class="nota-sugestao hidden" id="config-nota"></div>
-    <div class="cartao" id="cartao-qtd">
-      <div class="produto-nome" style="margin-bottom:12px">Quantos compartimentos?</div>
-      <div class="qtd-opcoes" id="qtd-opcoes" role="group" aria-label="Quantidade de compartimentos"></div>
-    </div>
-    <div class="cartao hidden" id="cartao-capacidades">
-      <div class="capacidades-topo">
-        <div class="produto-nome">Capacidade de cada compartimento</div>
-        <button class="btn-link hidden" id="btn-copiar-cap" type="button" onclick="copiarCapacidade()"></button>
-      </div>
-      <div class="capacidades" id="capacidades"></div>
-      <div class="total-cap" id="total-cap"></div>
-    </div>
+    <div class="titulo">Compartimentos por placa</div>
+    <div class="sub">Informe separadamente os compartimentos de cada carreta. A numeração CT 01 recomeça em cada placa.</div>
+    <div class="configuracoes-placas" id="configuracoes-placas"></div>
+    <div class="config-total-conjunto" id="config-total-conjunto"></div>
     <div class="alerta hidden" id="alerta-config" role="alert"></div>
     <div class="acoes">
       <button class="btn btn-secundario" type="button" onclick="mostrarTela('agendamento')">Voltar</button>
@@ -565,15 +552,16 @@ button, input { font: inherit; color: inherit; }
    Quiosque de autoatendimento (tablet no guichê da base).
    O motorista se identifica com protocolo + CPF + placa; se os três batem com um agendamento
    de hoje desta base, ele confere os dados, informa a configuração do caminhão (quantos
-   compartimentos e quantos litros cada um; fica salva em compartimentosVeiculo/<placas do tanque>
+   compartimentos e quantos litros cada um, separados por placa; cada configuração fica salva em
+   compartimentosVeiculo/<placa do tanque>
    e nos próximos check-ins só é confirmada), aloca os pedidos (cada pedido inteiro; se não
    cabe, registra inconsistência para o faturamento) e informa 3 lacres e o envelope de amostra
    de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
    (status "aguardando") com o que o cockpit_transporte.py (nexta_automation/automation/
    autoatendimento) precisa para a Ordem de Frete:
      placa → --placa · tipoFrete → --tipo-frete · motoristaBp → --motorista
-     alocacoes[] → --alocacao ORDEM:PRODUTO:COMP[,COMP…]
-     compartimentos[] → --dados-compartimento INDICE:LACRE1:LACRE2:LACRE3:ENVELOPE
+     alocacoes[].compartimentos[] → { placa, indice, indiceGlobal }
+     compartimentos[] → { placa, indice, indiceGlobal, lacres, envelope }
    Configuração do tablet (uma vez, pela equipe Nexta): login de tipo "quiosque" (portal de agendamento →
    Usuários; a sessão fica salva) e o terminal = base onde o tablet fica. Login preso a uma base (baseId)
    usa ela; sem base, o terminal é escolhido no tablet e fica salvo no aparelho (localStorage). O motorista
@@ -609,8 +597,8 @@ const ETAPA_DA_TELA = { inicio: 1, agendamento: 2, configuracao: 3, alocacao: 4,
 // terminal = baseId que o tablet atende (do cadastro do quiosque ou escolhido no aparelho)
 const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBusca: 0, msgLogin: '' };
 // Check-in em andamento: agendamento (id, a) e o que veio dele (tipoFrete, motoristaBp, recursoSap, linhas);
-// configuração do caminhão (chaveTanque, configSalva, qtd, caps = litros digitados, errosCap); alocação e lacres por
-// compartimento (comps[i] = { linha, lacre1, lacre2, lacre3, envelope }, erros); alocadoCom = capacidades com que a
+// configuração por placa (configuracoes[], qtd total, caps achatadas, errosCap); alocação e lacres por
+// compartimento (comps[i] = { placa, indicePlaca, linha, lacres, envelope }, erros); alocadoCom = capacidades com que a
 // alocação atual foi respondida; alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 4
 let atd = null;
 let _cancelarAcompanhamento = null;
@@ -648,11 +636,11 @@ function mascararCpf(el) {
 // Na tela do quiosque o CPF aparece só em parte (outras pessoas podem estar olhando)
 function cpfParcial(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.***.***-${d.slice(9)}` : '—'; }
 function placasDe(a) { return [a.placaCavalo, a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean); }
-// Chave da configuração dos compartimentos: placa(s) de quem leva o tanque — carreta(s), na ordem do agendamento;
-// sem carreta (truck/toco), o próprio caminhão. Trocar o cavalo não muda a configuração
-function chaveTanque(a) {
-  const carretas = [a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean);
-  return (carretas.length ? carretas : [normalizarPlaca(a.placaCavalo)]).map(placaMercosul).join('+');
+// Compartimentos pertencem às carretas; em truck/toco, pertencem ao próprio
+// cavalo. A ordem é a mesma usada em recursoSap e na hierarquia do SAP.
+function placasDoTanque(a) {
+  const carretas = [a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean).map(placaMercosul);
+  return carretas.length ? carretas : [normalizarPlaca(a.placaCavalo)].filter(Boolean).map(placaMercosul);
 }
 // Configuração salva só vale se estiver inteira (1 a 12 compartimentos com capacidade válida)
 function configValida(cfg) {
@@ -966,12 +954,13 @@ async function prepararAtendimento(id, a) {
   }
 
   // Motorista e veículo provisórios no agendamento podem já ter entrado no SAP: consulta o cadastro atual
-  const tanque = chaveTanque(a);
-  const [checkin, cadMotorista, recurso, configSalva] = await Promise.all([
+  const placasTanque = placasDoTanque(a);
+  const [checkin, cadMotorista, recurso, configsSalvas] = await Promise.all([
     window._fb.carregarCheckin(a.protocolo),
     a.motoristaBp ? null : window._fb.carregarMotorista(a.motoristaCpf).catch(() => null),
     a.recursoSap || !a.recursoChave ? null : window._fb.carregarRecurso(a.recursoChave).catch(() => null),
-    window._fb.carregarConfigVeiculo(tanque).catch(() => null), // sem ela, o motorista informa (como na 1ª vez)
+    Promise.all(placasTanque.map((placa) =>
+      window._fb.carregarConfigVeiculo(placa).catch(() => null))),
   ]);
   // Inconsistência registrada antes (pedido não cabia) não impede tentar de novo: o check-in grava por cima
   if (checkin && ['aguardando', 'processando'].includes(checkin.status)) {
@@ -1010,12 +999,31 @@ async function prepararAtendimento(id, a) {
   if (!linhas.length || linhas.some(foraDoPadrao)) {
     return guiche('Atendimento no guichê', `Os pedidos do agendamento ${prot} precisam ser conferidos no guichê.`);
   }
+  const configuracoes = placasTanque.map((placa, i) => {
+    const configSalva = configValida(configsSalvas[i]);
+    const caps = Array(MAX_COMPARTIMENTOS).fill('');
+    (configSalva?.capacidadesLitros || []).forEach((capacidade, indice) => {
+      caps[indice] = String(capacidade);
+    });
+    return {
+      placa,
+      configSalva,
+      qtd: configSalva?.capacidadesLitros.length || 0,
+      caps,
+    };
+  });
+  const referencias = configuracoes.flatMap((config) =>
+    Array.from({ length: config.qtd }, (_, i) => ({
+      placa: config.placa,
+      indicePlaca: i + 1,
+      capacidade: config.caps[i],
+    })));
   return { atd: {
     id, a, tipoFrete: fretes[0], motoristaBp, recursoSap, linhas,
-    chaveTanque: tanque, configSalva: configValida(configSalva), editandoConfig: false,
-    qtd: 0, caps: Array(MAX_COMPARTIMENTOS).fill(''), errosCap: {}, alocadoCom: '',
+    configuracoes,
+    qtd: referencias.length, caps: referencias.map((ref) => ref.capacidade), errosCap: {}, alocadoCom: '',
     // linha: null = compartimento ainda sem resposta, '' = vazio, "<pedido>|<produto>" = linha alocada nele
-    comps: Array.from({ length: MAX_COMPARTIMENTOS }, () => ({ linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' })),
+    comps: referencias.map((ref) => ({ placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' })),
     alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false,
     erros: {}, // lacres: "<índice>.<campo>" → mensagem
   } };
@@ -1044,15 +1052,15 @@ function renderAgendamento() {
       <div class="produto-vol">${formatVolume(l.volume)}</div>
     </div>`).join('');
 }
-// Caminhão com configuração salva: só confirma se mudou; sem ela (1º check-in do tanque), informa
+// Cada placa de tanque é configurada separadamente porque CT 01, CT 02 etc.
+// recomeçam em cada carreta na hierarquia do SAP.
 function irParaConfiguracao() {
-  atd.editandoConfig = !atd.configSalva;
   mostrarAlerta('alerta-config', '');
   renderConfiguracao();
   mostrarTela('configuracao');
 }
 
-/* ── ETAPA 3: CONFIGURAÇÃO DO CAMINHÃO ── */
+/* ── ETAPA 3: CONFIGURAÇÃO POR PLACA ── */
 function somar(valores) { return valores.reduce((s, v) => s + v, 0); }
 // Litros digitados ("5000" ou "5.000") → número; null se vazio ou fora dos limites
 function litrosDoTexto(txt) {
@@ -1063,104 +1071,121 @@ function litrosDoTexto(txt) {
 function textoOcupacao(previsto, capacidade) {
   return previsto === capacidade ? formatVolume(capacidade) : `${formatVolume(previsto)} de ${formatVolume(capacidade)}`;
 }
+function sincronizarCompartimentos() {
+  const anteriores = new Map((atd.comps || []).map((c) => [`${c.placa}|${c.indicePlaca}`, c]));
+  const referencias = atd.configuracoes.flatMap((config) =>
+    Array.from({ length: config.qtd }, (_, i) => ({
+      placa: config.placa,
+      indicePlaca: i + 1,
+      capacidade: config.caps[i],
+    })));
+  atd.qtd = referencias.length;
+  atd.caps = referencias.map((ref) => ref.capacidade);
+  atd.comps = referencias.map((ref) => {
+    const anterior = anteriores.get(`${ref.placa}|${ref.indicePlaca}`);
+    return anterior || { placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' };
+  });
+}
+function referenciaCompartimento(i) {
+  const c = atd.comps[i];
+  return c ? `${c.placa} · CT ${pad2(c.indicePlaca)}` : `Compartimento ${i + 1}`;
+}
 function capacidades() { return atd.caps.slice(0, atd.qtd).map(litrosDoTexto); }
-function configIgualSalva(caps) {
-  const salva = atd.configSalva?.capacidadesLitros;
+function configIgualSalva(config) {
+  const salva = config.configSalva?.capacidadesLitros;
+  const caps = config.caps.slice(0, config.qtd).map(litrosDoTexto);
   return !!salva && salva.length === caps.length && salva.every((c, i) => c === caps[i]);
 }
 function renderConfiguracao() {
-  const salva = atd.configSalva;
-  const confirmando = !!salva && !atd.editandoConfig;
-  document.getElementById('cartao-config-salva').classList.toggle('hidden', !confirmando);
-  document.getElementById('cartao-qtd').classList.toggle('hidden', confirmando);
-  document.getElementById('btn-config-continuar').classList.toggle('hidden', confirmando);
-  const nota = confirmando ? '' : salva ? 'Altere o que mudou: a nova configuração fica salva para os próximos carregamentos.'
-    : 'Primeiro check-in deste caminhão: a configuração fica salva para os próximos carregamentos.';
-  const elNota = document.getElementById('config-nota');
-  elNota.textContent = nota;
-  elNota.classList.toggle('hidden', !nota);
-  if (confirmando) {
-    const caps = salva.capacidadesLitros;
-    document.getElementById('config-salva-resumo').textContent = `${caps.length} compartimento${caps.length > 1 ? 's' : ''} · ${formatVolume(somar(caps))}`;
-    document.getElementById('config-salva-meta').textContent = salva.atualizadoEm ? `Informada em ${formatDataBR(dataLocalISO(new Date(salva.atualizadoEm)))}` : '';
-    document.getElementById('config-salva-lista').innerHTML = caps.map((c, i) => `<span class="cap-chip">Comp. ${i + 1} · <b>${formatVolume(c)}</b></span>`).join('');
-    document.getElementById('cartao-capacidades').classList.add('hidden');
-    return;
-  }
-  document.getElementById('qtd-opcoes').innerHTML = Array.from({ length: MAX_COMPARTIMENTOS }, (_, k) => k + 1).map((n) =>
-    `<button type="button" class="qtd-opcao${atd.qtd === n ? ' sel' : ''}" aria-pressed="${atd.qtd === n}" onclick="escolherQtd(${n})">${n}</button>`).join('');
-  document.getElementById('cartao-capacidades').classList.toggle('hidden', !atd.qtd);
-  document.getElementById('capacidades').innerHTML = Array.from({ length: atd.qtd }, (_, i) => campoCapacidade(i)).join('');
-  atualizarTotalCapacidade();
+  document.getElementById('configuracoes-placas').innerHTML = atd.configuracoes.map((config, p) => {
+    const salva = config.configSalva;
+    const meta = salva
+      ? `Configuração salva${salva.atualizadoEm ? ` em ${formatDataBR(dataLocalISO(new Date(salva.atualizadoEm)))}` : ''}. Confira antes de continuar.`
+      : 'Primeiro check-in desta placa: a configuração será salva.';
+    const opcoes = Array.from({ length: MAX_COMPARTIMENTOS }, (_, k) => k + 1).map((n) =>
+      `<button type="button" class="qtd-opcao${config.qtd === n ? ' sel' : ''}" aria-pressed="${config.qtd === n}" onclick="escolherQtdPlaca(${p}, ${n})">${n}</button>`).join('');
+    const capacidadesHtml = config.qtd ? `
+      <div class="config-bloco">
+        <div class="capacidades-topo">
+          <div class="produto-nome">Capacidade de cada CT da placa ${esc(config.placa)}</div>
+          <button class="btn-link${config.qtd > 1 && litrosDoTexto(config.caps[0]) ? '' : ' hidden'}" type="button" onclick="copiarCapacidadePlaca(${p})">Usar ${formatVolume(litrosDoTexto(config.caps[0]))} em todos</button>
+        </div>
+        <div class="capacidades" id="capacidades-${p}">${Array.from({ length: config.qtd }, (_, i) => campoCapacidade(p, i)).join('')}</div>
+        <div class="total-cap" id="total-cap-${p}"></div>
+      </div>` : '';
+    return `<div class="cartao">
+      <div class="config-placa-topo"><div><div class="cartao-titulo">Tanque / carreta</div><div class="config-placa-id">${esc(config.placa)}</div></div><div class="config-placa-meta">${esc(meta)}</div></div>
+      <div class="config-bloco"><div class="produto-nome" style="margin-bottom:12px">Quantos compartimentos existem nesta placa?</div>
+      <div class="qtd-opcoes" role="group" aria-label="Quantidade de compartimentos da placa ${esc(config.placa)}">${opcoes}</div></div>
+      ${capacidadesHtml}
+    </div>`;
+  }).join('');
+  sincronizarCompartimentos();
+  atualizarTotaisConfiguracao();
 }
-function alterarConfiguracao() {
-  const caps = atd.configSalva.capacidadesLitros;
-  atd.qtd = caps.length;
-  caps.forEach((c, i) => { atd.caps[i] = String(c); });
-  atd.editandoConfig = true;
-  renderConfiguracao();
-}
-function confirmarConfiguracaoSalva() {
-  const caps = atd.configSalva.capacidadesLitros;
-  atd.qtd = caps.length;
-  caps.forEach((c, i) => { atd.caps[i] = String(c); });
-  avancarParaAlocacao();
-}
-function escolherQtd(n) {
-  atd.qtd = n;
+function escolherQtdPlaca(p, n) {
+  atd.configuracoes[p].qtd = n;
+  sincronizarCompartimentos();
   mostrarAlerta('alerta-config', '');
   renderConfiguracao();
-  [...document.querySelectorAll('#capacidades input')].find((el) => !el.value)?.focus();
+  [...document.querySelectorAll(`#capacidades-${p} input`)].find((el) => !el.value)?.focus();
 }
-function campoCapacidade(i) {
-  const erro = atd.errosCap[i] || '';
-  return `<div class="campo${erro ? ' erro' : ''}" id="cap-${i}">
-    <label for="in-cap-${i}">Compartimento ${i + 1}</label>
-    <div class="com-sufixo"><input id="in-cap-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(atd.caps[i])}" oninput="digitarCapacidade(${i}, this)"><span>L</span></div>
+function campoCapacidade(p, i) {
+  const config = atd.configuracoes[p], chave = `${p}.${i}`, erro = atd.errosCap[chave] || '';
+  return `<div class="campo${erro ? ' erro' : ''}" id="cap-${p}-${i}">
+    <label for="in-cap-${p}-${i}">CT ${pad2(i + 1)}</label>
+    <div class="com-sufixo"><input id="in-cap-${p}-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(config.caps[i])}" oninput="digitarCapacidade(${p}, ${i}, this)"><span>L</span></div>
     <div class="msg-erro">${esc(erro)}</div>
   </div>`;
 }
 // Só números (o ponto de milhar digitado some); digitar não redesenha a lista, só o total
-function digitarCapacidade(i, el) {
+function digitarCapacidade(p, i, el) {
   const v = soDigitos(el.value).slice(0, 5);
   el.value = v;
-  atd.caps[i] = v;
-  if (atd.errosCap[i]) {
-    delete atd.errosCap[i];
-    document.getElementById('cap-' + i).classList.remove('erro');
+  atd.configuracoes[p].caps[i] = v;
+  sincronizarCompartimentos();
+  const chave = `${p}.${i}`;
+  if (atd.errosCap[chave]) {
+    delete atd.errosCap[chave];
+    document.getElementById(`cap-${p}-${i}`).classList.remove('erro');
     if (!Object.keys(atd.errosCap).length) mostrarAlerta('alerta-config', '');
   }
-  atualizarTotalCapacidade();
+  atualizarTotaisConfiguracao();
 }
-function copiarCapacidade() {
-  for (let i = 1; i < atd.qtd; i++) { atd.caps[i] = atd.caps[0]; delete atd.errosCap[i]; }
+function copiarCapacidadePlaca(p) {
+  const config = atd.configuracoes[p];
+  for (let i = 1; i < config.qtd; i++) { config.caps[i] = config.caps[0]; delete atd.errosCap[`${p}.${i}`]; }
+  sincronizarCompartimentos();
   renderConfiguracao();
 }
-function atualizarTotalCapacidade() {
-  const caps = capacidades();
-  const total = somar(caps.filter(Boolean));
+function atualizarTotaisConfiguracao() {
+  atd.configuracoes.forEach((config, p) => {
+    const caps = config.caps.slice(0, config.qtd).map(litrosDoTexto);
+    const el = document.getElementById(`total-cap-${p}`);
+    if (el) el.innerHTML = `Total da placa: <strong>${formatVolume(somar(caps.filter(Boolean)))}</strong>`;
+  });
+  const caps = capacidades(), total = somar(caps.filter(Boolean));
   const cadastrada = Number(atd.a.capacidadeVeiculo) || 0;
   const completa = caps.length > 0 && caps.every(Boolean);
-  document.getElementById('total-cap').innerHTML = `Total: <strong>${formatVolume(total)}</strong>`
+  document.getElementById('config-total-conjunto').innerHTML = `Total do conjunto: <strong>${atd.qtd} compartimento${atd.qtd === 1 ? '' : 's'} · ${formatVolume(total)}</strong>`
     + (cadastrada ? ` · capacidade cadastrada do veículo: <strong>${formatVolume(cadastrada)}</strong>` : '')
     + (completa && cadastrada && total !== cadastrada ? '<span class="aviso">A soma é diferente da capacidade cadastrada. Confira os valores.</span>' : '');
-  const primeira = litrosDoTexto(atd.caps[0]);
-  const btn = document.getElementById('btn-copiar-cap');
-  btn.classList.toggle('hidden', !(atd.qtd > 1 && primeira));
-  if (primeira) btn.textContent = `Usar ${formatVolume(primeira)} em todos`;
 }
 function avancarParaAlocacao() {
-  if (!atd.qtd) { mostrarAlerta('alerta-config', 'Escolha quantos compartimentos o caminhão tem.'); return; }
+  sincronizarCompartimentos();
+  const semQuantidade = atd.configuracoes.filter((config) => !config.qtd).map((config) => config.placa);
+  if (semQuantidade.length) { mostrarAlerta('alerta-config', `Escolha quantos compartimentos existem na placa ${semQuantidade.join(', ')}.`); return; }
+  if (atd.qtd > MAX_COMPARTIMENTOS) { mostrarAlerta('alerta-config', `O conjunto informou ${atd.qtd} compartimentos. O autoatendimento aceita até ${MAX_COMPARTIMENTOS}; procure o guichê.`); return; }
   const caps = capacidades();
   atd.errosCap = {};
   caps.forEach((c, i) => {
     if (c) return;
     const n = Number(soDigitos(atd.caps[i]));
-    atd.errosCap[i] = !n ? 'Obrigatório' : n > CAPACIDADE_MAX_LITROS ? `Até ${formatVolume(CAPACIDADE_MAX_LITROS)}` : `Mínimo ${formatVolume(CAPACIDADE_MIN_LITROS)}`;
+    const comp = atd.comps[i], p = atd.configuracoes.findIndex((config) => config.placa === comp.placa);
+    atd.errosCap[`${p}.${comp.indicePlaca - 1}`] = !n ? 'Obrigatório' : n > CAPACIDADE_MAX_LITROS ? `Até ${formatVolume(CAPACIDADE_MAX_LITROS)}` : `Mínimo ${formatVolume(CAPACIDADE_MIN_LITROS)}`;
   });
   const invalidas = Object.keys(atd.errosCap).length;
   if (invalidas) {
-    atd.editandoConfig = true;
     renderConfiguracao();
     mostrarAlerta('alerta-config', invalidas === 1 ? 'Informe a capacidade do compartimento marcado em vermelho.' : `Informe a capacidade dos ${invalidas} compartimentos marcados em vermelho.`);
     return;
@@ -1177,7 +1202,7 @@ function avancarParaAlocacao() {
   }
   if (motivo) { registrarInconsistencia(motivo, caps); return; }
   // Configuração mudou desde a última alocação: as respostas antigas não valem mais, pergunta tudo de novo
-  const assinatura = caps.join(',');
+  const assinatura = atd.comps.map((c, i) => `${c.placa}:${c.indicePlaca}:${caps[i]}`).join('|');
   if (atd.alocadoCom !== assinatura) {
     atd.comps.forEach((c) => { c.linha = null; });
     atd.alocadoCom = assinatura;
@@ -1234,9 +1259,17 @@ function planejarAlocacao(caps, vols) {
   return plano;
 }
 function linhaDaChave(chave) { return atd.linhas.find((l) => l.chave === chave); }
-// Índice 1, 2, 3… é o compartimento na hierarquia do equipamento no cockpit
+// indiceGlobal mantém a ordem achatada da hierarquia do SAP; placa +
+// indicePlaca é a identidade exibida ao usuário e persistida no check-in.
 function compartimentosUsados() {
-  return atd.comps.slice(0, atd.qtd).map((c, i) => ({ indice: i + 1, i, c })).filter((u) => u.c.linha);
+  return atd.comps.slice(0, atd.qtd).map((c, i) => ({
+    indice: i + 1,
+    indiceGlobal: i + 1,
+    indicePlaca: c.indicePlaca,
+    placa: c.placa,
+    i,
+    c,
+  })).filter((u) => u.c.linha);
 }
 function semResposta() {
   const pendentes = [];
@@ -1261,9 +1294,9 @@ function situacaoDasLinhas() {
 }
 function textoSituacao(s) {
   if (!s.idx.length) return { cls: 'falta', txt: 'Sem compartimento', det: '' };
-  const det = `Compartimento${s.idx.length > 1 ? 's' : ''} ${s.idx.map((i) => i + 1).join(', ')} · ${formatVolume(s.cap)}`;
+  const det = `${s.idx.map(referenciaCompartimento).join(', ')} · ${formatVolume(s.cap)}`;
   if (s.falta) return { cls: 'falta', txt: `Faltam ${formatVolume(s.falta)}`, det };
-  if (s.sobrando >= 0) return { cls: 'sobra', txt: `Compartimento ${s.sobrando + 1} ficaria sem produto: deixe vazio`, det };
+  if (s.sobrando >= 0) return { cls: 'sobra', txt: `${referenciaCompartimento(s.sobrando)} ficaria sem produto: deixe vazio`, det };
   return { cls: 'ok', txt: 'Cabe inteiro', det: det + (s.cap > s.l.volume ? ` · livre ${formatVolume(s.cap - s.l.volume)}` : '') };
 }
 // Volume previsto em cada compartimento: a linha enche os seus em ordem até acabar
@@ -1290,7 +1323,7 @@ function nomeLinha(l) {
 function problemasAlocacao() {
   return situacaoDasLinhas().flatMap((s) => {
     if (s.falta) return [`Falta lugar para ${nomeLinha(s.l)}: faltam ${formatVolume(s.falta)}.`];
-    if (s.sobrando >= 0) return [`O compartimento ${s.sobrando + 1} ficou sem produto (${nomeLinha(s.l)} já coube antes).`];
+    if (s.sobrando >= 0) return [`${referenciaCompartimento(s.sobrando)} ficou sem produto (${nomeLinha(s.l)} já coube antes).`];
     return [];
   });
 }
@@ -1317,12 +1350,15 @@ function renderAlocacao() {
 // Desenho do tanque: o compartimento da vez em destaque, os respondidos na cor do produto
 function htmlTanque() {
   const caps = capacidades();
-  return `<div class="tanque" aria-hidden="true">${atd.comps.slice(0, atd.qtd).map((c, i) => {
-    const l = c.linha ? linhaDaChave(c.linha) : null;
-    const [classe, rotulo] = i === atd.alocAtual ? ['atual', 'agora']
-      : c.linha === null ? ['', '—'] : l ? ['cheio ' + corDaLinha(c.linha), nomeCurto(l)] : ['vazio', 'vazio'];
-    return `<div class="tanque-seg ${classe}" style="--peso:${caps[i] / 1000}"><span class="n">${i + 1}</span><span class="p">${esc(rotulo)}</span></div>`;
-  }).join('')}</div>`;
+  return atd.configuracoes.map((config) => {
+    const indices = atd.comps.map((c, i) => c.placa === config.placa ? i : -1).filter((i) => i >= 0);
+    return `<div class="tanque-grupo"><div class="tanque-placa">${esc(config.placa)}</div><div class="tanque" aria-hidden="true">${indices.map((i) => {
+      const c = atd.comps[i], l = c.linha ? linhaDaChave(c.linha) : null;
+      const [classe, rotulo] = i === atd.alocAtual ? ['atual', 'agora']
+        : c.linha === null ? ['', '—'] : l ? ['cheio ' + corDaLinha(c.linha), nomeCurto(l)] : ['vazio', 'vazio'];
+      return `<div class="tanque-seg ${classe}" style="--peso:${caps[i] / 1000}"><span class="n">CT ${pad2(c.indicePlaca)}</span><span class="p">${esc(rotulo)}</span></div>`;
+    }).join('')}</div></div>`;
+  }).join('');
 }
 function htmlPerguntaAlocacao() {
   const i = atd.alocAtual, caps = capacidades(), atual = atd.comps[i].linha;
@@ -1339,7 +1375,7 @@ function htmlPerguntaAlocacao() {
   const u = atd.alocUltima;
   if (u !== null && u !== i && atd.comps[u].linha !== null) {
     const l = atd.comps[u].linha ? linhaDaChave(atd.comps[u].linha) : null;
-    confirmado = `<div class="confirmado" role="status">✓ Compartimento ${u + 1}: ${l ? `${esc(nomeLinha(l))} · ${formatVolume(volumesPrevistos()[u])}` : 'vazio'}</div>`;
+    confirmado = `<div class="confirmado" role="status">✓ ${esc(referenciaCompartimento(u))}: ${l ? `${esc(nomeLinha(l))} · ${formatVolume(volumesPrevistos()[u])}` : 'vazio'}</div>`;
   }
   const algumaResposta = atd.comps.slice(0, atd.qtd).some((c) => c.linha !== null);
   return `
@@ -1347,7 +1383,7 @@ function htmlPerguntaAlocacao() {
     ${confirmado}
     <div class="cartao pergunta-card${atd.alocAnimar ? ' entrando' : ''}">
       <div class="pergunta-topo">
-        <div class="pergunta-titulo">Compartimento ${i + 1} <span class="de">de ${atd.qtd}</span></div>
+        <div class="pergunta-titulo">${esc(referenciaCompartimento(i))} <span class="de">${i + 1} de ${atd.qtd}</span></div>
         <div class="pergunta-cap">${formatVolume(caps[i])}</div>
       </div>
       <div class="produto-nome" style="margin-top:8px">Qual produto vai neste compartimento?</div>
@@ -1367,7 +1403,7 @@ function htmlResumoAlocacao() {
     const l = c.linha ? linhaDaChave(c.linha) : null;
     return `<div class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}">
       <div>
-        <div class="produto-nome">Compartimento ${i + 1} <span class="comp-cap">· ${formatVolume(caps[i])}</span></div>
+        <div class="produto-nome">${esc(referenciaCompartimento(i))} <span class="comp-cap">· ${formatVolume(caps[i])}</span></div>
         <div class="produto-meta">${l ? `<span class="marca"></span>${esc(nomeLinha(l))} · ${formatVolume(previstos[i])}` : 'Vazio'}</div>
       </div>
     </div>`;
@@ -1403,10 +1439,10 @@ function registrarEscolha(i, chave) {
   const falta = faltaPorLinha(), pendentes = semResposta();
   if (pendentes.length && atd.linhas.every((l) => falta[l.chave] <= 0)) {
     pendentes.forEach((k) => { atd.comps[k].linha = ''; });
-    const n = pendentes.map((k) => k + 1).join(', ');
+    const n = pendentes.map(referenciaCompartimento).join(', ');
     atd.alocNota = pendentes.length > 1
-      ? `Todos os produtos já couberam: os compartimentos ${n} ficam vazios.`
-      : `Todos os produtos já couberam: o compartimento ${n} fica vazio.`;
+      ? `Todos os produtos já couberam: ${n} ficam vazios.`
+      : `Todos os produtos já couberam: ${n} fica vazio.`;
   }
   const restantes = semResposta();
   if (!restantes.length) atd.alocModo = 'resumo';
@@ -1455,13 +1491,13 @@ function avancarParaLacres() {
 function renderLacres() {
   const caps = capacidades(), previstos = volumesPrevistos();
   const cabecalho = `<div class="tl-linha tl-cab" aria-hidden="true"><span>Compartimento</span>${CAMPOS_COMP.map(([, rotulo, , curto]) => `<span>${esc(curto || rotulo)}</span>`).join('')}</div>`;
-  document.getElementById('lista-lacres').innerHTML = cabecalho + compartimentosUsados().map(({ indice, i, c }) => `
+  document.getElementById('lista-lacres').innerHTML = cabecalho + compartimentosUsados().map(({ indicePlaca, placa, i, c }) => `
     <div class="tl-linha">
       <div class="tl-comp">
-        <span class="tl-n">${indice}</span>
-        <div><div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(nomeCurto(linhaDaChave(c.linha)))}</div><div class="tl-vol">${textoOcupacao(previstos[i], caps[i])}</div></div>
+        <span class="tl-n">${pad2(indicePlaca)}</span>
+        <div><div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}</div><div class="tl-vol">${esc(nomeCurto(linhaDaChave(c.linha)))} · ${textoOcupacao(previstos[i], caps[i])}</div></div>
       </div>
-      ${CAMPOS_COMP.map(([campo, rotulo]) => campoLacre(i, indice, campo, rotulo)).join('')}
+      ${CAMPOS_COMP.map(([campo, rotulo]) => campoLacre(i, `${placa} · CT ${pad2(indicePlaca)}`, campo, rotulo)).join('')}
     </div>`).join('');
   atualizarProgressoLacres();
 }
@@ -1497,7 +1533,7 @@ function erroDoLacre(i, campo) {
   for (const u of compartimentosUsados()) {
     for (const [outro, rotulo] of CAMPOS_COMP) {
       if ((u.i !== i || outro !== campo) && TIPO_CODIGO(outro) === TIPO_CODIGO(campo) && u.c[outro] === v) {
-        return `Repetido (comp. ${u.indice}, ${rotulo.toLowerCase()})`;
+        return `Repetido (${u.placa} · CT ${pad2(u.indicePlaca)}, ${rotulo.toLowerCase()})`;
       }
     }
   }
@@ -1563,7 +1599,7 @@ function sinalDeErro() {
 function validarLacres() {
   const erros = {};
   const vistos = { lacre: new Map(), envelope: new Map() };
-  for (const { indice, i, c } of compartimentosUsados()) {
+  for (const { indicePlaca, placa, i, c } of compartimentosUsados()) {
     for (const [campo, rotulo, max] of CAMPOS_COMP) {
       const v = c[campo];
       const tipo = TIPO_CODIGO(campo);
@@ -1571,7 +1607,7 @@ function validarLacres() {
       else if (!/^\d+$/.test(v)) erros[`${i}.${campo}`] = 'Só números';
       else if (v.length > max) erros[`${i}.${campo}`] = `Até ${max} números`;
       else if (vistos[tipo].has(v)) erros[`${i}.${campo}`] = `Repetido (${vistos[tipo].get(v)})`;
-      else vistos[tipo].set(v, `comp. ${indice}, ${rotulo.toLowerCase()}`);
+      else vistos[tipo].set(v, `${placa} · CT ${pad2(indicePlaca)}, ${rotulo.toLowerCase()}`);
     }
   }
   return erros;
@@ -1604,18 +1640,18 @@ function renderRevisao() {
   document.getElementById('revisao-produtos').innerHTML = situacaoDasLinhas().map((s) => `
     <div class="produto-linha">
       <div><div class="produto-nome">${esc(s.l.descricao)}</div><div class="produto-meta">Pedido ${esc(s.l.ordemVenda)} · ${formatVolume(s.l.volume)}</div></div>
-      <div class="produto-vol">${s.idx.length > 1 ? 'Comps.' : 'Comp.'} ${s.idx.map((i) => i + 1).join(', ')}</div>
+      <div class="produto-vol">${s.idx.map(referenciaCompartimento).map(esc).join('<br>')}</div>
     </div>`).join('');
-  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : i + 1)).filter(Boolean);
-  document.getElementById('revisao-comp').innerHTML = usados.map(({ indice, i, c }) => `
+  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : referenciaCompartimento(i))).filter(Boolean);
+  document.getElementById('revisao-comp').innerHTML = usados.map(({ indicePlaca, placa, i, c }) => `
     <div class="rev-comp">
-      <div class="rev-comp-topo"><strong>Compartimento ${indice}</strong><span>${esc(linhaDaChave(c.linha).descricao)} · ${textoOcupacao(previstos[i], caps[i])}</span></div>
+      <div class="rev-comp-topo"><strong>${esc(placa)} · CT ${pad2(indicePlaca)}</strong><span>${esc(linhaDaChave(c.linha).descricao)} · ${textoOcupacao(previstos[i], caps[i])}</span></div>
       <div class="rev-comp-codigos">
         <span>Lacres <b class="mono">${esc(c.lacre1)}</b> · <b class="mono">${esc(c.lacre2)}</b> · <b class="mono">${esc(c.lacre3)}</b></span>
         <span>Envelope <b class="mono">${esc(c.envelope)}</b></span>
       </div>
     </div>`).join('')
-    + (vazios.length ? `<div class="nota" style="margin-top:12px">Vazio${vazios.length > 1 ? 's' : ''}: compartimento${vazios.length > 1 ? 's' : ''} ${vazios.join(', ')}.</div>` : '');
+    + (vazios.length ? `<div class="nota" style="margin-top:12px">Vazio${vazios.length > 1 ? 's' : ''}: ${vazios.map(esc).join(', ')}.</div>` : '');
 }
 // Campos comuns ao check-in e à inconsistência (autoatendimento/<protocolo>)
 function dadosBaseCheckin() {
@@ -1643,10 +1679,27 @@ function dadosBaseCheckin() {
 }
 // Configuração informada (todos os compartimentos do tanque, inclusive os vazios) e de onde veio
 function dadosConfiguracao(caps) {
+  const configuracoesPlacas = atd.configuracoes.map((config) => ({
+    placa: config.placa,
+    configuracao: !config.configSalva ? 'informada' : configIgualSalva(config) ? 'salva' : 'alterada',
+    compartimentos: config.caps.slice(0, config.qtd).map((capacidade, i) => ({
+      placa: config.placa,
+      indice: i + 1,
+      capacidadeLitros: litrosDoTexto(capacidade),
+    })),
+  }));
+  const estados = configuracoesPlacas.map((config) => config.configuracao);
   return {
-    chaveTanque: atd.chaveTanque,
-    configuracaoCompartimentos: !atd.configSalva ? 'informada' : configIgualSalva(caps) ? 'salva' : 'alterada',
-    compartimentosVeiculo: caps.map((c, i) => ({ indice: i + 1, capacidadeLitros: c })),
+    chaveTanque: atd.configuracoes.map((config) => config.placa).join('+'),
+    configuracaoCompartimentos: estados.every((estado) => estado === 'salva') ? 'salva'
+      : estados.some((estado) => estado === 'alterada') ? 'alterada' : 'informada',
+    configuracoesPlacas,
+    compartimentosVeiculo: atd.comps.map((comp, i) => ({
+      placa: comp.placa,
+      indice: comp.indicePlaca,
+      indiceGlobal: i + 1,
+      capacidadeLitros: caps[i],
+    })),
   };
 }
 function dadosLinha(l) {
@@ -1657,13 +1710,21 @@ function montarCheckin() {
   return {
     ...dadosBaseCheckin(),
     ...dadosConfiguracao(caps),
-    // --alocacao ORDEM:PRODUTO:COMPARTIMENTOS, na ordem dos pedidos do agendamento
-    alocacoes: atd.linhas.map((l) => ({ ...dadosLinha(l), compartimentos: usados.filter((u) => u.c.linha === l.chave).map((u) => u.indice) })),
-    // --dados-compartimento INDICE:LACRE1:LACRE2:LACRE3:ENVELOPE (texto: zeros à esquerda contam)
-    compartimentos: usados.map(({ indice, i, c }) => {
+    // Cada referência preserva placa + CT local e também a posição achatada
+    // usada pela hierarquia do Web Dynpro.
+    alocacoes: atd.linhas.map((l) => ({
+      ...dadosLinha(l),
+      compartimentos: usados.filter((u) => u.c.linha === l.chave).map((u) => ({
+        placa: u.placa,
+        indice: u.indicePlaca,
+        indiceGlobal: u.indiceGlobal,
+      })),
+    })),
+    compartimentos: usados.map(({ indiceGlobal, indicePlaca, placa, i, c }) => {
       const l = linhaDaChave(c.linha);
       return {
-        indice, ordemVenda: l.ordemVenda, produto: l.produto, capacidadeLitros: caps[i], volumePrevistoLitros: previstos[i],
+        placa, indice: indicePlaca, indiceGlobal,
+        ordemVenda: l.ordemVenda, produto: l.produto, capacidadeLitros: caps[i], volumePrevistoLitros: previstos[i],
         lacre1: c.lacre1, lacre2: c.lacre2, lacre3: c.lacre3, envelopeAmostra: c.envelope,
       };
     }),
@@ -1778,17 +1839,18 @@ async function processarFaturamento() {
     const registro = montarCheckin();
     const protocolo = registro.protocolo;
     await window._fb.salvarCheckin(protocolo, registro);
-    // Configuração nova ou alterada fica salva para o próximo check-in do mesmo tanque (falha aqui não desfaz o check-in)
-    if (registro.configuracaoCompartimentos !== 'salva') {
-      window._fb.salvarConfigVeiculo(atendimento.chaveTanque, {
-        placas: atendimento.chaveTanque.split('+'),
-        capacidadesLitros: registro.compartimentosVeiculo.map((c) => c.capacidadeLitros),
+    // Cada placa mantém sua própria configuração; CT 01 de uma carreta não
+    // se mistura com CT 01 da outra. Falha aqui não desfaz o check-in.
+    registro.configuracoesPlacas.filter((config) => config.configuracao !== 'salva').forEach((config) => {
+      window._fb.salvarConfigVeiculo(config.placa, {
+        placas: [config.placa],
+        capacidadesLitros: config.compartimentos.map((c) => c.capacidadeLitros),
         atualizadoEm: registro.criadoEm,
         protocolo: registro.protocolo,
         quiosqueUid: registro.quiosqueUid,
         quiosqueNome: registro.quiosqueNome,
-      }).catch((e) => console.warn('Configuração do caminhão não foi salva', e));
-    }
+      }).catch((e) => console.warn(`Configuração da placa ${config.placa} não foi salva`, e));
+    });
     atd = null;
     acompanharFaturamento(protocolo);
   } catch (e) {
@@ -1900,7 +1962,7 @@ setTimeout(() => {
     salvarCheckin: (protocolo, dados) => set(ref(db, 'autoatendimento/' + protocolo), dados),
     acompanharCheckin: (protocolo, aoMudar, aoErro) =>
       onValue(ref(db, 'autoatendimento/' + protocolo), (snapshot) => aoMudar(snapshot.val()), aoErro),
-    // compartimentosVeiculo/<placas do tanque>: configuração confirmada no último check-in daquele tanque
+    // compartimentosVeiculo/<placa do tanque>: configuração própria de cada carreta
     carregarConfigVeiculo: (chave) => ler('compartimentosVeiculo/' + chave),
     salvarConfigVeiculo: (chave, dados) => set(ref(db, 'compartimentosVeiculo/' + chave), dados),
   };
