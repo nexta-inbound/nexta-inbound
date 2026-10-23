@@ -94,7 +94,7 @@
   .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 14px; text-align: left; }
 
   /* KPIs */
-  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
   @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; text-align: left; }
   .kpi[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -175,7 +175,8 @@
 
   .section-t { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); font-weight: 600; margin: 0 0 10px; }
 
-  .steps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .steps { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+  @media (max-width: 480px) { .steps { grid-template-columns: repeat(2, minmax(0,1fr)); } }
   .step { border-top: 4px solid var(--line); padding-top: 8px; font-size: 13px; color: var(--ink-3); }
   .step b { display: block; color: var(--ink-2); font-size: 13.5px; }
   .step.done { border-color: var(--ok); }
@@ -319,6 +320,20 @@
   table.clientes-det tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; background: var(--surface-2); }
   .aprov-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; color: var(--ink-2); }
   .aprov-barra .mono { font-weight: 600; color: var(--ink); }
+  /* Ordem de venda por cliente (Time Backoffice) */
+  .ov-cel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .ov-inp { width: 130px; border: 1px solid var(--accent); background: var(--surface); border-radius: 6px; padding: 6px 8px; font-family: var(--mono); font-size: 14px; }
+  .ov-inp:disabled { border-color: var(--line); background: var(--surface-2); }
+  .ov-cel .check { font-size: 13px; gap: 6px; white-space: nowrap; }
+  .ov-cel .check input { margin-top: 1px; }
+  .nao-inserido { color: var(--crit); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  /* Aba Ajuste MIS: contador na aba e códigos dos chamados de cada grupo */
+  .tab-n { display: inline-block; min-width: 20px; margin-left: 6px; padding: 0 6px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-family: var(--mono); font-size: 12px; line-height: 20px; text-align: center; }
+  .cods { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cod { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--accent); cursor: pointer; }
+  .cod:hover { border-color: var(--accent); }
+  table.mis td { white-space: nowrap; }
+  table.mis td.lancar { color: var(--warn); font-weight: 700; }
   .combo-vazio { padding: 8px 11px; color: var(--ink-3); font-size: 13px; font-style: italic; }
   label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
   label.f input, label.f select, label.f textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-weight: 400; font-size: 15px; min-width: 0; width: 100%; }
@@ -427,11 +442,13 @@
   <nav class="tabs" id="nav" role="tablist" hidden>
     <button type="button" role="tab" data-view="chamados" aria-selected="true">Chamados</button>
     <button type="button" role="tab" data-view="resumo" aria-selected="false">Resumo</button>
+    <button type="button" role="tab" data-view="mis" aria-selected="false" id="nav-mis" hidden>Ajuste MIS<span class="tab-n" id="nav-mis-n" title="Grupos com volume a lançar no MIS" hidden></span></button>
     <button type="button" role="tab" data-view="cadastros" aria-selected="false" id="nav-cad" hidden>Cadastros</button>
   </nav>
 
   <div id="view-cadastros" hidden></div>
   <div id="view-resumo" hidden></div>
+  <div id="view-mis" hidden></div>
 
   <div id="view-chamados">
   <section class="kpis" id="kpis" aria-label="Resumo da fila"></section>
@@ -507,6 +524,7 @@
     limiteD0: { h: 10, m: 0 },      // D0 abertos a partir deste horário: seguem o fluxo, mas sem SLA / sem garantia de atendimento
     slaDemanda: { h: 10, m: 30 },   // retorno do Time Demanda
     slaLogistica: { h: 11, m: 0 },  // retorno do Time Logística
+    slaBackoffice: { h: 11, m: 30 }, // retorno do Time Backoffice (pedido inserido no portal do revendedor)
     portalD1: { h: 15, m: 0 },      // até este horário o pedido D+1 ainda entra direto no portal revendedor (pede confirmação)
     volumeMaxCliente: 1000,         // m³ por cliente; acima disso é quase certo que digitaram em litros (bloqueia a abertura)
   };
@@ -577,11 +595,15 @@
     recusado_demanda:   { label: "Recusado pela Demanda",   tone: "crit", final: true },
     fila_logistica:     { label: "Aguardando Logística",    tone: "wait" },
     recusado_logistica: { label: "Recusado pela Logística", tone: "crit", final: true },
-    aprovado:           { label: "Aprovado · ajustar MIS",  tone: "info" },
+    // Aprovado pela Logística, aguardando o Backoffice inserir o pedido no portal do revendedor. No fluxo antigo era
+    // "ajustar MIS" (a Logística concluía); chamados que ficaram nele seguem para o Backoffice.
+    aprovado:           { label: "Aguardando Backoffice",   tone: "wait" },
+    recusado_backoffice: { label: "Recusado pelo Backoffice", tone: "crit", final: true },
+    // Pedido inserido no portal do revendedor. O lançamento da Logística no MIS (aba Ajuste MIS) não muda o status.
     concluido:          { label: "Concluído",               tone: "ok",   final: true },
     cancelado:          { label: "Cancelado pelo solicitante", tone: "wait", final: true },
   };
-  // Etapas em que quem abriu ainda pode cancelar (depois do ajuste no MIS o chamado já foi executado)
+  // Etapas em que quem abriu ainda pode cancelar (depois que o Backoffice insere o pedido no portal, não dá mais)
   const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado"];
   // Prioridade que a Demanda dá ao aprovar (demanda.prioridade): ajuda a Logística a escolher entre vários chamados da mesma base/produto
   const PRIORIDADES = {
@@ -590,15 +612,16 @@
     baixa: { label: "Baixa", tone: "wait", ordem: 3 },
   };
   const prioridadeDe = c => PRIORIDADES[c.demanda?.prioridade] || null;
-  const PAPEIS = { comercial: "Comercial", demanda: "Time Demanda", logistica: "Time Logística", consulta: "Somente consulta" };
-  const PAPEIS_ATIVOS = ["comercial", "demanda", "logistica"];
+  const PAPEIS = { comercial: "Comercial", demanda: "Time Demanda", logistica: "Time Logística", backoffice: "Time Backoffice", consulta: "Somente consulta" };
+  const PAPEIS_ATIVOS = ["comercial", "demanda", "logistica", "backoffice"];
   const SEGMENTOS = ["Petronas", "Bravo", "Total", "Bandeira Branca"]; // segmento (bandeira) de cada cliente do chamado
 
   const FILTROS = [
     { id: "todos", label: "Todos os chamados", test: () => true },
     // semData: filas e atrasos sempre mostram tudo, sem o filtro de data de faturamento
     { id: "fila_demanda", label: "Na fila da Demanda", test: c => c.status === "fila_demanda", semData: true },
-    { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica" || c.status === "aprovado", semData: true },
+    { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica", semData: true },
+    { id: "fila_backoffice", label: "Na fila do Backoffice", test: c => c.status === "aprovado", semData: true },
     { id: "atrasados", label: "Fora do prazo", test: c => atrasado(c), crit: true, semData: true },
   ];
 
@@ -621,6 +644,8 @@
     diretorio: [],     // [{ uid, nome, papeis }] de diretorio/: quem pode ser solicitante num chamado aberto em nome de outra pessoa
     cadTab: "bases",
     resumoData: "",    // idem para a aba Resumo
+    mis: { lotes: [], lancados: {} }, // lançamentos no MIS (ajustesMis/) e marca de cada chamado lançado (misLancado/<id> = lote)
+    misData: "",       // data de faturamento do histórico de lançamentos da aba Ajuste MIS
     cadBusca: "",
   };
 
@@ -672,35 +697,41 @@
     const alvo = new Date(y, m - 1, d); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
     return Math.round((alvo - hoje) / 86400000);
   }
+  // Data de faturamento relativa a hoje: D0, D+1, D-2…
+  const relDia = s => { const dd = difDias(s); return dd === 0 ? "D0" : dd > 0 ? `D+${dd}` : `D${dd}`; };
   function passouDe(agora, { h, m }) { return agora.getHours() * 60 + agora.getMinutes() >= h * 60 + m; }
   // Prazos de retorno sempre no próprio dia do faturamento (AAAA-MM-DD), não a partir da abertura
   function prazos(dataEntrega) {
     const [y, mes, d] = dataEntrega.split("-").map(Number);
     const as = ({ h, m }) => new Date(y, mes - 1, d, h, m).toISOString();
-    return { prazoDemanda: as(REGRAS.slaDemanda), prazoLogistica: as(REGRAS.slaLogistica) };
+    return { prazoDemanda: as(REGRAS.slaDemanda), prazoLogistica: as(REGRAS.slaLogistica), prazoBackoffice: as(REGRAS.slaBackoffice) };
   }
+  // Chamados abertos antes da etapa do Backoffice não gravaram prazoBackoffice: vale a regra atual
+  const prazoBackoffice = c => c.prazoBackoffice || prazos(c.dataEntrega).prazoBackoffice;
   function prazoAtual(c) {
     if (c.semSla) return null;
     if (c.status === "fila_demanda") return { quem: "Demanda", iso: c.prazoDemanda };
     if (c.status === "fila_logistica") return { quem: "Logística", iso: c.prazoLogistica };
+    if (c.status === "aprovado") return { quem: "Backoffice", iso: prazoBackoffice(c) };
     return null;
   }
   function atrasado(c) { const p = prazoAtual(c); return !!p && new Date() > new Date(p.iso); }
-  // SLA de resposta já cumprido/estourado: compara quando cada time respondeu (demanda.em / logistica.em) com o prazo
-  // gravado na abertura. Só etapas que tiveram resposta; chamados sem SLA não entram.
+  // SLA de resposta já cumprido/estourado: compara quando cada time respondeu (demanda.em / logistica.em /
+  // backoffice.em) com o prazo gravado na abertura. Só etapas que tiveram resposta; chamados sem SLA não entram.
   function slaRespostas(c) {
     if (c.semSla) return [];
-    return [["Demanda", c.demanda?.em, c.prazoDemanda], ["Logística", c.logistica?.em, c.prazoLogistica]]
+    return [["Demanda", c.demanda?.em, c.prazoDemanda], ["Logística", c.logistica?.em, c.prazoLogistica],
+      ["Backoffice", c.backoffice?.em, c.backoffice && prazoBackoffice(c)]]
       .filter(([, em, prazo]) => em && prazo)
       .map(([quem, em, prazo]) => ({ quem, em, prazo, atrasoMs: new Date(em) - new Date(prazo) }));
   }
   // "Matheus Piva Sanches" → "Matheus Sanches" (primeiro + último nome; o nome completo fica no hover)
   function nomeCurto(nome) { const p = String(nome).trim().split(/\s+/); return p.length > 2 ? `${p[0]} ${p[p.length - 1]}` : p.join(" "); }
-  // Última pessoa do Time Demanda/Logística que agiu no chamado (histórico); abertura e cancelamento do solicitante não contam
+  // Última pessoa do Time Demanda/Logística/Backoffice que agiu no chamado (histórico); abertura e cancelamento do solicitante não contam
   function ultimoAtendente(c) {
     const doSolicitante = /^(Chamado aberto|Aberto sem SLA|Cancelado pelo solicitante)/;
     return [...(c.historico || [])].reverse()
-      .find(h => (h.papel === "demanda" || h.papel === "logistica") && h.porNome && !doSolicitante.test(h.acao || "")) || null;
+      .find(h => ["demanda", "logistica", "backoffice"].includes(h.papel) && h.porNome && !doSolicitante.test(h.acao || "")) || null;
   }
   function fmtAtraso(ms) {
     const min = Math.ceil(ms / 60000);
@@ -731,17 +762,29 @@
     const vs = Array.isArray(d.volumes) ? d.volumes : Object.values(d.volumes || {});
     return clientesDe(c).map((x, i) => Number(vs[i] ?? anterior?.[i] ?? x.volume) || 0);
   }
+  // Pedido de cada cliente no portal do revendedor (backoffice.pedidos, alinhado com clientesDe(c)):
+  // { ov } = inserido · { naoInserido: true } = o Backoffice não conseguiu inserir · { semVolume: true } = Logística aprovou 0
+  const pedidosDe = c => { const p = c.backoffice?.pedidos; return Array.isArray(p) ? p : Object.values(p || {}); };
+  // Volume que virou pedido, por cliente: o que a Logística aprovou, zerado nos clientes que o Backoffice não inseriu.
+  // Concluídos no fluxo antigo (sem Backoffice) valem o que a Logística aprovou.
+  function volsFinais(c) {
+    const vs = volsAprovados(c, "logistica");
+    if (!vs || c.backoffice?.decisao !== "inserido") return vs;
+    const ps = pedidosDe(c);
+    return vs.map((v, i) => ps[i]?.ov ? v : 0);
+  }
   const aprovadoFinal = c => c.status === "aprovado" || c.status === "concluido";
+  // Aguardando Backoffice: o que a Logística aprovou · Concluído: o que virou pedido no portal
   function volumeAprovado(c) {
     if (!aprovadoFinal(c)) return 0;
-    const vs = volsAprovados(c, "logistica");
+    const vs = c.status === "concluido" ? volsFinais(c) : volsAprovados(c, "logistica");
     return vs ? soma(vs) : Number(c.volume) || 0; // sem registro da decisão: conta como aprovação integral
   }
   function ehParcial(c) { return aprovadoFinal(c) && volumeAprovado(c) < (Number(c.volume) || 0); }
   function statusDe(c) {
     const st = STATUS[c.status] || { label: c.status, tone: "wait" };
     if (!ehParcial(c)) return st;
-    return { ...st, label: c.status === "concluido" ? "Concluído (parcial)" : "Aprovado parcial · ajustar MIS" };
+    return { ...st, label: c.status === "concluido" ? "Concluído (parcial)" : "Aprovado parcial · ag. Backoffice" };
   }
   function resumoClientes(c) {
     const cs = clientesDe(c);
@@ -810,7 +853,7 @@
   }
 
   function filtroPadrao() {
-    return S.papel === "demanda" ? "fila_demanda" : S.papel === "logistica" ? "fila_logistica" : "todos";
+    return { demanda: "fila_demanda", logistica: "fila_logistica", backoffice: "fila_backoffice" }[S.papel] || "todos";
   }
 
   function configurarSessao() {
@@ -825,16 +868,19 @@
     $("usuarios").hidden = !S.me.admin;
     $("nav").hidden = false;
     $("nav-cad").hidden = !S.me.admin;
+    $("nav-mis").hidden = !podeMis();
     if (!S.me.admin && S.view === "cadastros") mostrarView("chamados");
+    if (!podeMis() && S.view === "mis") mostrarView("chamados");
     S.filtro = filtroPadrao();
   }
 
   function mostrarView(v) {
     S.view = v;
-    for (const x of ["chamados", "resumo", "cadastros"]) $("view-" + x).hidden = v !== x;
+    for (const x of ["chamados", "resumo", "mis", "cadastros"]) $("view-" + x).hidden = v !== x;
     for (const b of $("nav").querySelectorAll("[data-view]")) b.setAttribute("aria-selected", String(b.dataset.view === v));
     if (v === "cadastros") renderCadastros();
     if (v === "resumo") renderResumo();
+    if (v === "mis") renderMis();
   }
 
   let parar = [];
@@ -843,7 +889,7 @@
     parar = [];
     S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
     NOTIF.chave = ""; NOTIF.lista = []; atualizarSino();
-    S.cad = { bases: [], produtos: [] }; S.diretorio = [];
+    S.cad = { bases: [], produtos: [] }; S.cadCarregado = false; S.diretorio = []; S.mis = { lotes: [], lancados: {} };
     if (!user) { mostrarTela("login"); return; }
 
     mostrarTela("carregando");
@@ -896,12 +942,24 @@
         S.cad[t] = Object.entries(v[t] || {}).map(([id, x]) => ({ ...x, id }))
           .sort((a, b) => String(a[cfg.chave] || "").localeCompare(String(b[cfg.chave] || ""), "pt-BR"));
       }
+      S.cadCarregado = true;
+      atualizarAvisoCad();
       if (S.view === "cadastros") renderCadTabela();
       render(); // cidade/UF/região dos filtros vêm do cadastro de bases
     }, err => {
       console.error(err);
       mostrarBanner("Não foi possível carregar os cadastros de bases e produtos. Confira se as regras do banco foram atualizadas.");
     }));
+
+    // Lançamentos no MIS: a Logística usa na aba Ajuste MIS; para os demais, só a etapa "Ajuste MIS" do detalhe
+    parar.push(onValue(ref(db, "ajustesMis"), snap => {
+      S.mis.lotes = Object.entries(snap.val() || {}).map(([id, x]) => ({ ...x, id }));
+      aoMudarMis();
+    }, err => {
+      console.error(err);
+      if (podeMis()) mostrarBanner("Não foi possível carregar os lançamentos no MIS. Confira se as regras do banco foram atualizadas.");
+    }));
+    parar.push(onValue(ref(db, "misLancado"), snap => { S.mis.lancados = snap.val() || {}; aoMudarMis(); }, err => console.error(err)));
 
     // Só quem pode abrir chamado em nome de outra pessoa precisa da lista de usuários
     if (podeAbrirParaOutro()) parar.push(onValue(ref(db, "diretorio"), snap => {
@@ -1070,8 +1128,8 @@
   // Rótulos curtos dos chips de status (todos cabem numa linha); o nome completo aparece no hover
   const CHIP_LABEL = {
     recusa_auto: "Recusa auto", fila_demanda: "Ag. Demanda", recusado_demanda: "Recusado Demanda",
-    fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ajustar MIS",
-    concluido: "Concluído", cancelado: "Cancelado",
+    fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ag. Backoffice",
+    recusado_backoffice: "Recusado Backoffice", concluido: "Concluído", cancelado: "Cancelado",
   };
   // Tudo menos os chips, na visão do cartão f (padrão: o ativo) — base dos KPIs e das contagens dos chips
   function antesDosChips(f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0], base = chamadosFiltrados()) {
@@ -1230,10 +1288,16 @@
       el("span", {}, el("b", { text: "Sem SLA: " }), `D0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
       el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)} do dia do faturamento`),
       el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)} do dia do faturamento`),
+      el("span", {}, el("b", { text: "Retorno Backoffice: " }), `até ${fmtHora(REGRAS.slaBackoffice)} do dia do faturamento`),
     );
+
+    // Contador da aba Ajuste MIS: grupos (faturamento × base × produto) com volume a lançar
+    const nMis = podeMis() ? gruposMis().length : 0;
+    $("nav-mis-n").hidden = !nMis; $("nav-mis-n").textContent = nMis;
 
     // Só redesenha o detalhe aberto se o chamado mudou (não apaga o que a pessoa está digitando)
     if (S.view === "resumo") renderResumo();
+    if (S.view === "mis") renderMis();
 
     if (S.abertoId) {
       const c = S.chamados.find(x => x.id === S.abertoId);
@@ -1270,7 +1334,7 @@
 
     // Etapas
     const etapa = (nome, estado, txt) => el("div", { class: "step " + estado }, el("b", { text: nome }), txt);
-    const d = c.demanda, l = c.logistica;
+    const d = c.demanda, l = c.logistica, b = c.backoffice;
     const ateOuSemSla = iso => c.semSla ? "Sem SLA" : `Até ${fmtDataHora(iso)}`;
     const cancelado = c.status === "cancelado";
     // No cancelamento, a etapa que estava em aberto aparece como "Cancelado"; as seguintes ficam "—"
@@ -1280,10 +1344,17 @@
     const eLog = l ? [l.decisao === "aprovado" ? "done" : "fail", l.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
       c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] :
       cancelado && d?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
-    const eMis = c.status === "concluido" ? ["done", "Ajustado e enviado"] : c.status === "aprovado" ? ["now", "Pendente"] :
+    // Concluído sem registro do Backoffice = fluxo antigo, em que a própria Logística enviou ao portal
+    const eBo = b ? (b.decisao === "inserido" ? ["done", pedidosDe(c).some(p => p.naoInserido) ? "Inserido parcial" : "Pedido inserido"] : ["fail", "Recusado"]) :
+      c.status === "aprovado" ? ["now", ateOuSemSla(prazoBackoffice(c))] :
+      c.status === "concluido" ? ["done", "Enviado ao portal"] :
       cancelado && l?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+    // Lançamento da Logística no MIS: não muda o status (o chamado já está concluído), só informa se já foi feito
+    const lote = loteMis(c);
+    const eMis = lote ? ["done", `Lançado ${fmtDataHora(lote.em)}`] : l?.misEm ? ["done", "Ajustado"] :
+      pendenteMis(c) ? ["now", "Pendente (Logística)"] : ["", "—"];
     body.append(el("div", {}, el("p", { class: "section-t", text: "Etapas" }),
-      el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("MIS e portal", ...eMis))));
+      el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("Backoffice", ...eBo), etapa("Ajuste MIS", ...eMis))));
 
     // Dados
     const kv = (k, v, full) => el("div", { class: full ? "full" : "" }, el("dt", { text: k }), el("dd", { text: v || "—" }));
@@ -1294,20 +1365,41 @@
         kv("Base", c.base), kv("Produto", c.produto),
         kv("Motivo / observações", c.motivo, true),
         d?.tradeoff ? kv("Trade-off que subsidia o aumento", d.tradeoff, true) : null,
+        b?.motivo ? kv(b.decisao === "recusado" ? "Motivo da recusa do Backoffice" : "Observações do Backoffice", b.motivo, true) : null,
       )));
 
     // Clientes: solicitado × aprovado por etapa. Quem está decidindo preenche a coluna da própria etapa.
     // O modal é só informação do pedido: a Logística decide se consegue atender (e quanto), não o modal.
     const cs = clientesDe(c);
     const etapaEdit = S.papel === "demanda" && c.status === "fila_demanda" ? "demanda"
-      : S.papel === "logistica" && c.status === "fila_logistica" ? "logistica" : null;
+      : S.papel === "logistica" && c.status === "fila_logistica" ? "logistica"
+      : S.papel === "backoffice" && c.status === "aprovado" ? "backoffice" : null;
+    const volEdit = etapaEdit === "demanda" || etapaEdit === "logistica";
     const vDem = volsAprovados(c, "demanda"), vLog = volsAprovados(c, "logistica");
     // Teto de cada cliente: Demanda aprova até o solicitado; Logística até o que a Demanda aprovou
     const tetos = cs.map((x, i) => etapaEdit === "logistica" ? (vDem?.[i] ?? (Number(x.volume) || 0)) : Number(x.volume) || 0);
-    const inputsVol = etapaEdit ? cs.map((x, i) => el("input", { type: "number", class: "vol-aprov", min: "0", max: String(tetos[i]), step: "0.5",
+    const inputsVol = volEdit ? cs.map((x, i) => el("input", { type: "number", class: "vol-aprov", min: "0", max: String(tetos[i]), step: "0.5",
       inputmode: "decimal", placeholder: `até ${fmtNum(tetos[i])}`, "aria-label": `Volume aprovado para ${x.nome} (até ${fmtNum(tetos[i])} m³)` })) : null;
     const totEdit = el("td", { class: "num mono" });
     const colDem = !!vDem || etapaEdit === "demanda", colLog = !!vLog || etapaEdit === "logistica";
+    // Ordem de venda: o Backoffice digita a OV de cada cliente com volume aprovado, ou marca "Não inserido"
+    const vBo = vLog || cs.map(x => Number(x.volume) || 0); // chamado antigo sem volumes da Logística: integral
+    const ovEdit = etapaEdit === "backoffice" ? cs.map((x, i) => {
+      if (!(vBo[i] > 0)) return null; // cliente cortado pela Logística: nada a inserir
+      const inp = el("input", { type: "text", class: "ov-inp", maxlength: "30", autocomplete: "off", spellcheck: "false",
+        placeholder: "Nº da OV", "aria-label": `Ordem de venda de ${x.nome}` });
+      const nao = el("input", { type: "checkbox" });
+      nao.addEventListener("change", () => { inp.disabled = nao.checked; if (nao.checked) inp.value = ""; });
+      return { i, inp, nao, cel: el("div", { class: "ov-cel" }, inp, el("label", { class: "check" }, nao, "Não inserido")) };
+    }) : null;
+    const pedidos = pedidosDe(c);
+    const colOv = !!ovEdit || pedidos.length > 0;
+    const celOv = i => {
+      if (ovEdit) return ovEdit[i] ? el("td", {}, ovEdit[i].cel) : el("td", { class: "sub", text: "Sem volume aprovado" });
+      const p = pedidos[i] || {};
+      return p.ov ? el("td", { class: "mono", text: p.ov })
+        : p.naoInserido ? el("td", {}, el("span", { class: "nao-inserido", text: "Não inserido" })) : el("td", { class: "sub", text: "—" });
+    };
     // Volume abaixo do teto da etapa (corte) aparece destacado
     const celVol = (v, teto) => el("td", { class: "num mono" + (v < teto ? " corte" : ""), text: fmtVol(v), title: v < teto ? `Corte de ${fmtVol(teto - v)}` : null });
     const colAprov = (etapa, vs, i, teto) => etapaEdit === etapa ? el("td", { class: "num" }, inputsVol[i]) : vs ? celVol(vs[i], teto) : el("td", { class: "num sub", text: "—" });
@@ -1316,20 +1408,23 @@
         el("thead", {}, el("tr", {}, el("th", { text: "Cliente" }), el("th", { text: "Segmento" }), el("th", { text: "Modal" }),
           el("th", { class: "num", text: "Solicitado" }),
           colDem ? el("th", { class: "num", text: "Aprovado Demanda" }) : null,
-          colLog ? el("th", { class: "num", text: "Aprovado Logística" }) : null)),
+          colLog ? el("th", { class: "num", text: "Aprovado Logística" }) : null,
+          colOv ? el("th", { text: "Ordem de venda" }) : null)),
         el("tbody", { class: "plain" }, cs.map((x, i) => el("tr", {},
           el("td", { text: x.nome }), el("td", { text: x.segmento || "—" }), el("td", { text: x.modal || "—" }),
           el("td", { class: "num mono", text: fmtVol(x.volume) }),
           colDem ? colAprov("demanda", vDem, i, Number(x.volume) || 0) : null,
-          colLog ? colAprov("logistica", vLog, i, vDem?.[i] ?? (Number(x.volume) || 0)) : null))),
+          colLog ? colAprov("logistica", vLog, i, vDem?.[i] ?? (Number(x.volume) || 0)) : null,
+          colOv ? celOv(i) : null))),
         el("tfoot", {}, el("tr", {},
           el("td", { text: "Total", colspan: "3" }),
           el("td", { class: "num mono", text: fmtVol(c.volume) }),
           colDem ? (etapaEdit === "demanda" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vDem)) })) : null,
-          colLog ? (etapaEdit === "logistica" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vLog)) })) : null))))));
+          colLog ? (etapaEdit === "logistica" ? totEdit : el("td", { class: "num mono", text: fmtVol(soma(vLog)) })) : null,
+          colOv ? el("td", {}) : null))))));
 
     // Ação conforme papel
-    const acao = painelAcao(c, { inputsVol, tetos, totEdit });
+    const acao = painelAcao(c, { inputsVol, tetos, totEdit, ovEdit, vBo });
     if (acao) body.append(acao);
 
     // Histórico
@@ -1358,7 +1453,9 @@
   // o alerta do Windows (Notification API) só sai com o portal aberto em alguma aba.
   //   Time Demanda    → chamado novo na fila da Demanda
   //   Time Logística  → chamado aprovado pela Demanda (entrou na fila da Logística)
-  //   Quem abriu      → chamado respondido (aprovado pela Logística ou recusado por Demanda/Logística)
+  //   Time Backoffice → chamado aprovado pela Logística (entrou na fila do Backoffice)
+  //   Quem abriu      → aprovado pela Logística, concluído (pedido inserido) ou recusado por Demanda/Logística/Backoffice
+  //   Cancelamento    → avisa o time que estava com o chamado
   // Ninguém é avisado da própria ação (ex.: solicitante que cancela o próprio chamado).
   const NOTIF = { chave: "", vistos: null, lista: [], primeira: true };
   const NOTIF_MAX = 50;
@@ -1386,22 +1483,30 @@
     if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
       out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}`
         + (prioridadeDe(c) ? ` · prioridade ${prioridadeDe(c).label.toLowerCase()}` : "") + ". Aguardando o Time Logística." });
+    if (c.status === "aprovado" && ps.includes("backoffice") && c.logistica?.por !== me)
+      out.push({ titulo: `Chamado ${c.codigo} aprovado pela Logística`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(volumeAprovado(c))}. Aguardando o Time Backoffice inserir o pedido no portal do revendedor.` });
     if (c.status === "cancelado" && c.cancelamento?.por !== me) {
       // avisa o time que estava com o chamado na hora do cancelamento
       const de = c.cancelamento?.deStatus || antes;
-      const time = de === "fila_demanda" ? "demanda" : de === "fila_logistica" || de === "aprovado" ? "logistica" : null;
+      const time = { fila_demanda: "demanda", fila_logistica: "logistica", aprovado: "backoffice" }[de];
       if (time && ps.includes(time))
         out.push({ titulo: `Chamado ${c.codigo} cancelado pelo solicitante`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base}. Motivo: ${c.cancelamento?.motivo || "—"}` });
     }
     if (c.criadoPor === me) {
       if (c.status === "aprovado" && c.logistica?.por !== me) {
-        const tot = soma(volsAprovados(c, "logistica")) || c.volume;
-        out.push({ titulo: `Seu chamado ${c.codigo} foi aprovado`, txt: tot < c.volume ? `Aprovado parcialmente: ${fmtVol(tot)} de ${fmtVol(c.volume)}.` : `Aprovado integralmente: ${fmtVol(tot)}.` });
+        const tot = volumeAprovado(c);
+        out.push({ titulo: `Seu chamado ${c.codigo} foi aprovado pela Logística`, txt: (tot < c.volume ? `Aprovado parcialmente: ${fmtVol(tot)} de ${fmtVol(c.volume)}.` : `Aprovado integralmente: ${fmtVol(tot)}.`) + " Aguardando o Backoffice inserir o pedido." });
+      }
+      if (c.status === "concluido" && c.backoffice?.por && c.backoffice.por !== me) {
+        const tot = volumeAprovado(c);
+        out.push({ titulo: `Seu chamado ${c.codigo} foi concluído`, txt: `Pedido inserido no portal do revendedor: ${fmtVol(tot)}${tot < c.volume ? ` de ${fmtVol(c.volume)} solicitados` : ""}.` });
       }
       if (c.status === "recusado_demanda" && c.demanda?.por !== me)
         out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pela Demanda`, txt: c.demanda?.motivo || "" });
       if (c.status === "recusado_logistica" && c.logistica?.por !== me)
         out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pela Logística`, txt: c.logistica?.obs || "" });
+      if (c.status === "recusado_backoffice" && c.backoffice?.por !== me)
+        out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pelo Backoffice`, txt: c.backoffice?.motivo || "" });
     }
     return out.map(a => ({ ...a, id: c.id, status: c.status, em: c.atualizadoEm || new Date().toISOString(), lida: false }));
   }
@@ -1569,8 +1674,8 @@
             n.logistica = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
             n.status = "aprovado";
             evento(n, (r.parcial ? `Aprovado parcialmente pela Logística (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : `Aprovado pela Logística (${fmtVol(r.total)})`), obs.value.trim());
-            gravar(n, `Aprovado ${fmtVol(r.total)}. Falta ajustar o MIS e enviar ao portal.`);
-          } }, "Aprovar"),
+            gravar(n, `Aprovado ${fmtVol(r.total)} e enviado ao Backoffice.`);
+          } }, "Aprovar e enviar ao Backoffice"),
           el("button", { class: "btn danger", type: "button", onclick: () => {
             if (!obs.value.trim()) { err.textContent = "Informe o motivo da recusa nas observações."; return; }
             const n = structuredClone(c);
@@ -1581,32 +1686,73 @@
       return box;
     }
 
-    if (S.papel === "logistica" && c.status === "aprovado") {
-      const chk = el("input", { type: "checkbox", id: "a-mis" });
-      const btn = el("button", { class: "btn primary", type: "button", disabled: true, onclick: () => {
-        const n = structuredClone(c);
-        n.logistica = { ...n.logistica, misEm: new Date().toISOString(), misPor: S.meuId };
-        n.status = "concluido"; evento(n, "Ajustado no MIS e enviado ao portal");
-        gravar(n, "Chamado concluído");
-      } }, "Concluir chamado");
-      chk.addEventListener("change", () => (btn.disabled = !chk.checked));
-      const cs = clientesDe(c), vs = volsAprovados(c, "logistica") || [];
-      box.append(titulo("Ajuste no MIS"),
-        el("p", {}, "Volume a ajustar: ", el("b", { class: "mono", text: fmtVol(volumeAprovado(c)) }),
-          ehParcial(c) ? ` (aprovação parcial — solicitado ${fmtVol(c.volume)})` : "",
-          cs.length > 1 ? el("span", { class: "sub", text: " · " + cs.map((x, i) => `${x.nome}: ${fmtVol(vs[i])}`).join(" · ") }) : null),
-        el("label", { class: "check", for: "a-mis" }, chk, `Confirmo que ${fmtVol(volumeAprovado(c))} foram ajustados no MIS e enviados ao portal`), btn);
+    if (S.papel === "backoffice" && c.status === "aprovado") {
+      // A OV (ou "Não inserido") de cada cliente fica na tabela de clientes (ctx.ovEdit)
+      const linhas = ctx.ovEdit.filter(Boolean), vs = ctx.vBo, cs = clientesDe(c);
+      const mot = el("textarea", { id: "a-bo", placeholder: "Obrigatório se algum cliente não foi inserido (ex.: cliente bloqueado por crédito)" });
+      const err = el("div", { class: "err", role: "alert" });
+      const totalEl = el("span", { class: "mono" });
+      const atualizar = () => {
+        const fora = linhas.filter(o => o.nao.checked).length;
+        totalEl.textContent = `${fmtVol(soma(linhas.filter(o => !o.nao.checked).map(o => vs[o.i])))} de ${fmtVol(soma(vs))}`
+          + (fora ? ` · ${fora} cliente(s) não inserido(s)` : "");
+      };
+      linhas.forEach(o => o.nao.addEventListener("change", atualizar));
+      atualizar();
+      const registro = (decisao, extra = {}) => ({ decisao, ...extra, ...(mot.value.trim() ? { motivo: mot.value.trim() } : {}),
+        em: new Date().toISOString(), por: S.meuId });
+      box.append(titulo("Pedido no portal do revendedor"),
+        el("p", { text: "Insira o pedido de cada cliente no portal do revendedor e informe o número da ordem de venda na tabela acima." }),
+        el("div", { class: "aprov-barra" }, el("span", {}, "Volume a inserir: ", totalEl)),
+        el("label", { class: "f", for: "a-bo" }, "Observações", mot), err,
+        el("div", { class: "row" },
+          el("button", { class: "btn ok", type: "button", onclick: () => {
+            err.textContent = "";
+            const falta = linhas.find(o => !o.nao.checked && !o.inp.value.trim());
+            if (falta) { err.textContent = "Informe a ordem de venda de cada cliente (ou marque “Não inserido”)."; falta.inp.focus(); return; }
+            const inseridos = linhas.filter(o => !o.nao.checked);
+            if (!inseridos.length) { err.textContent = "Nenhum cliente inserido. Para encerrar o chamado sem pedido, use “Não foi possível inserir”."; return; }
+            if (inseridos.length < linhas.length && !mot.value.trim()) { err.textContent = "Explique nas observações por que algum cliente não foi inserido."; mot.focus(); return; }
+            const pedidos = cs.map((x, i) => { const o = linhas.find(y => y.i === i);
+              return !o ? { semVolume: true } : o.nao.checked ? { naoInserido: true } : { ov: o.inp.value.trim() }; });
+            const volumes = cs.map((x, i) => pedidos[i].ov ? vs[i] : 0);
+            const total = soma(volumes), teto = soma(vs);
+            const n = structuredClone(c);
+            n.backoffice = registro("inserido", { pedidos, volumes, volumeInserido: total });
+            n.status = "concluido";
+            const ovs = cs.map((x, i) => pedidos[i].ov ? `${x.nome}: OV ${pedidos[i].ov}` : pedidos[i].naoInserido ? `${x.nome}: não inserido` : null).filter(Boolean);
+            evento(n, total < teto ? `Pedido inserido parcialmente no portal (${fmtVol(total)} de ${fmtVol(teto)})` : `Pedido inserido no portal do revendedor (${fmtVol(total)})`,
+              [...ovs, mot.value.trim()].filter(Boolean).join(" · "));
+            gravar(n, "Chamado concluído. A Logística lança o volume no MIS pela aba Ajuste MIS.");
+          } }, "Pedido inserido · concluir"),
+          el("button", { class: "btn danger", type: "button", onclick: () => {
+            err.textContent = "";
+            if (!mot.value.trim()) { err.textContent = "Informe nas observações por que o pedido não foi inserido."; mot.focus(); return; }
+            const n = structuredClone(c);
+            n.backoffice = registro("recusado");
+            n.status = "recusado_backoffice"; evento(n, "Recusado pelo Backoffice", mot.value.trim());
+            gravar(n, "Chamado recusado");
+          } }, "Não foi possível inserir")));
       return box;
     }
 
-    // Quem abriu pode cancelar enquanto o chamado não foi encerrado nem ajustado no MIS. O chamado não é apagado:
+    // Concluído pelo Backoffice e ainda não lançado no MIS: o lançamento é por grupo, na aba Ajuste MIS
+    if (S.papel === "logistica" && podeMis() && pendenteMis(c)) {
+      box.append(titulo("Ajuste no MIS"),
+        el("p", {}, "Volume a lançar no MIS: ", el("b", { class: "mono", text: fmtVol(volumeAprovado(c)) }),
+          ". O lançamento é feito por data de faturamento, base e produto, junto com os outros chamados do grupo."),
+        el("div", { class: "row" }, el("button", { class: "btn primary", type: "button", onclick: () => { fechar(); mostrarView("mis"); } }, "Abrir Ajuste MIS")));
+      return box;
+    }
+
+    // Quem abriu pode cancelar até o Backoffice inserir o pedido no portal. O chamado não é apagado:
     // vai para o status "cancelado" (final), continua na lista e no CSV, mas fica fora do Resumo.
     if (c.criadoPor === S.meuId && CANCELAVEL.includes(c.status)) {
       const situacao = c.status === "fila_demanda"
         ? (c.semSla ? "Aguardando o Time Demanda (sem SLA)." : `Aguardando o Time Demanda até ${fmtDataHora(c.prazoDemanda)}.`)
         : c.status === "fila_logistica"
           ? (c.semSla ? "Aprovado pela Demanda. Aguardando o Time Logística (sem SLA)." : `Aprovado pela Demanda. Aguardando o Time Logística até ${fmtDataHora(c.prazoLogistica)}.`)
-          : "Aprovado pela Logística. Aguardando o ajuste no MIS.";
+          : `Aprovado pela Logística. Aguardando o Time Backoffice inserir o pedido no portal do revendedor${c.semSla ? " (sem SLA)" : ` até ${fmtDataHora(prazoBackoffice(c))}`}.`;
       const mot = el("textarea", { id: "a-cancel", placeholder: "Por que o chamado está sendo cancelado?" });
       const err = el("div", { class: "err", role: "alert" });
       box.append(titulo("Seu chamado"), el("p", { text: situacao }),
@@ -1615,7 +1761,7 @@
           const motivo = mot.value.trim();
           if (!motivo) { err.textContent = "Informe o motivo do cancelamento."; mot.focus(); return; }
           err.textContent = "";
-          const quem = c.status === "fila_demanda" ? "o Time Demanda" : "o Time Logística";
+          const quem = { fila_demanda: "o Time Demanda", fila_logistica: "o Time Logística", aprovado: "o Time Backoffice" }[c.status];
           if (!await confirmar(`Cancelar o chamado ${c.codigo}? Ele fica registrado como cancelado e ${quem} será avisado.`, { ok: "Cancelar chamado", cancelar: "Voltar" })) return;
           const n = structuredClone(c);
           n.cancelamento = { motivo, deStatus: c.status, em: new Date().toISOString(), por: S.meuId };
@@ -1626,7 +1772,7 @@
       return box;
     }
 
-    const quem = c.status === "fila_demanda" ? "Time Demanda" : c.status === "fila_logistica" || c.status === "aprovado" ? "Time Logística" : null;
+    const quem = { fila_demanda: "Time Demanda", fila_logistica: "Time Logística", aprovado: "Time Backoffice" }[c.status];
     if (quem) {
       box.append(el("p", { text: `Próxima ação é do ${quem}.` }));
       return box;
@@ -1650,7 +1796,7 @@
       const v = get();
       inp.value = v;
       const dd = v ? difDias(v) : null;
-      rel.textContent = dd === null ? "todas" : dd === 0 ? "D0" : dd > 0 ? `D+${dd}` : `D${dd}`;
+      rel.textContent = v ? relDia(v) : "todas";
       rel.classList.toggle("d0", dd === 0);
       btnHoje.hidden = dd === 0;
       btnTodas.hidden = !v;
@@ -1767,11 +1913,14 @@
     const lista = el("div", { class: "combo-lista", id: id + "-lista", role: "listbox" });
     let visiveis = [], ativo = -1;
 
+    // `itens` pode ser uma funcao: le o cadastro na hora de buscar (2026-10-23: no celular com 4G lento o formulario
+    // abria antes do cadastro chegar e ficava "Nenhum item cadastrado" ate' fechar e abrir de novo).
+    const listaItens = () => (typeof itens === "function" ? itens() : itens);
     function abrir(termo) {
       const t = semAcento(termo.trim());
       // Todas as palavras digitadas precisam aparecer (em qualquer ordem): "betim rbz" acha "BETIM - NEXTA RBZ"
       const palavras = t.split(/\s+/).filter(Boolean);
-      visiveis = itens.filter(i => palavras.every(p => i.busca.includes(p))).slice(0, 100);
+      visiveis = listaItens().filter(i => palavras.every(p => i.busca.includes(p))).slice(0, 100);
       ativo = visiveis.length ? 0 : -1;
       desenhar();
       lista.classList.add("open"); inp.setAttribute("aria-expanded", "true");
@@ -1781,7 +1930,7 @@
         ? visiveis.map((i, n) => el("div", { class: "combo-item" + (n === ativo ? " ativo" : ""), role: "option", id: `${id}-op${n}`,
             "aria-selected": String(n === ativo), onmousedown: () => escolher(i), onmousemove: () => { if (ativo !== n) { ativo = n; marcar(); } } },
             el("div", { text: i.texto }), i.sub ? el("div", { class: "sub", text: i.sub }) : null))
-        : [el("div", { class: "combo-vazio", text: itens.length ? "Nada encontrado" : "Nenhum item cadastrado" })]));
+        : [el("div", { class: "combo-vazio", text: listaItens().length ? "Nada encontrado" : (S.cadCarregado ? "Nenhum item cadastrado" : "Carregando…") })]));
       marcar();
     }
     function marcar() {
@@ -1814,6 +1963,15 @@
   }
 
   // ---------- Novo chamado ----------
+  function atualizarAvisoCad() {
+    const aviso = $("n-aviso-cad"), btn = document.querySelector("#dr-body form button[type=submit]");
+    if (!aviso) return;
+    const faltam = Object.entries(CAD).filter(([t]) => !S.cad[t].length).map(([, c]) => c.label.toLowerCase());
+    if (!S.cadCarregado) { aviso.hidden = false; aviso.textContent = "Carregando bases e produtos…"; if (btn) btn.disabled = true; return; }
+    aviso.hidden = !faltam.length;
+    aviso.textContent = faltam.length ? `Ainda não há ${faltam.join(", ")} cadastrados. ` + (S.me.admin ? "Cadastre na aba Cadastros antes de abrir chamados." : "Peça ao administrador para cadastrar.") : "";
+    if (btn) btn.disabled = faltam.length > 0;
+  }
   function abrirNovo() {
     S.abertoId = null;
     abrirDrawer("Novo chamado de adicional", "Preencha todos os campos. A solicitação vai para o Time Demanda.", { largo: true });
@@ -1821,12 +1979,12 @@
 
     // Base busca por Nome MIS, empresa, cidade, UF e depósito; produto pelo nome
     const cBase = combo({ id: "n-base", name: "base", placeholder: "Digite cidade, depósito ou nome MIS…",
-      itens: S.cad.bases.map(b => {
+      itens: () => S.cad.bases.map(b => {
         // Mostra só o Nome MIS, mas a busca continua achando por empresa/cidade/UF/depósito/regional
         return { valor: b.nomeMis, texto: b.nomeMis, busca: semAcento([b.nomeMis, b.empresa, b.cidade, b.estado, b.deposito, b.regional].join(" ")) };
       }) });
     const cProd = combo({ id: "n-prod", name: "produto", placeholder: "Digite parte do nome…",
-      itens: S.cad.produtos.map(p => ({ valor: p.nome, texto: p.nome, busca: semAcento(p.nome) })) });
+      itens: () => S.cad.produtos.map(p => ({ valor: p.nome, texto: p.nome, busca: semAcento(p.nome) })) });
     const campo = (id, rotulo, c) => el("div", { class: "campo" }, el("label", { for: id, text: rotulo }), c);
 
     // Em nome de outra pessoa: ela vira a solicitante (criadoPor: avisos, cancelamento, "Aberto por");
@@ -1912,13 +2070,13 @@
         aviso.textContent = `Faturamento hoje (D0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`;
       } else if (dd === 0) {
         aviso.className = "hint t-warn";
-        aviso.textContent = `Faturamento hoje (D0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)} e da Logística até ${fmtHora(REGRAS.slaLogistica)}.`;
+        aviso.textContent = `Faturamento hoje (D0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)}, da Logística até ${fmtHora(REGRAS.slaLogistica)} e do Backoffice até ${fmtHora(REGRAS.slaBackoffice)}.`;
       } else if (dd > 0) {
         const p = prazos(v);
         const portalAberto = dd === 1 && !passouDe(new Date(), REGRAS.portalD1);
         aviso.className = "hint " + (portalAberto ? "t-warn" : "t-info");
         aviso.textContent = (portalAberto ? `Ingresso de pedido D+1 ainda liberado no portal revendedor até as ${fmtHora(REGRAS.portalD1)}. ` : "")
-          + `Faturamento ${dd === 1 ? "amanhã" : diaSemana(v)} (D+${dd}). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)} e da Logística até ${fmtDataHora(p.prazoLogistica)}.`;
+          + `Faturamento ${dd === 1 ? "amanhã" : diaSemana(v)} (D+${dd}). Retorno da Demanda até ${fmtDataHora(p.prazoDemanda)}, da Logística até ${fmtDataHora(p.prazoLogistica)} e do Backoffice até ${fmtDataHora(p.prazoBackoffice)}.`;
       }
     }
     data.addEventListener("input", atualizarAviso);
@@ -2030,12 +2188,12 @@
       }
     });
 
-    if (faltamCad.length) {
-      form.querySelector("button[type=submit]").disabled = true;
-      body.append(el("div", { class: "hint t-warn", role: "status",
-        text: `Ainda não há ${faltamCad.join(", ")} cadastrados. ` + (S.me.admin ? "Cadastre na aba Cadastros antes de abrir chamados." : "Peça ao administrador para cadastrar.") }));
-    }
+    // Aviso do cadastro: enquanto o cadastro nao chegou mostra "Carregando…" e o onValue de cadastros atualiza
+    // (some sozinho quando bases/produtos chegam) — antes dizia "Ainda nao ha… cadastrados" pra quem abria rapido.
+    const avisoCad = el("div", { class: "hint t-warn", role: "status", id: "n-aviso-cad", hidden: true });
+    body.append(avisoCad);
     body.append(form);
+    atualizarAvisoCad();
     atualizarAviso();
   }
 
@@ -2182,17 +2340,19 @@
   }
 
   // ---------- Resumo (volume por base × produto) ----------
-  // Solicitado = Reprovado + Aprovado + Pendente Demanda + Pendente Logística.
-  // Reprovado = recusados/cancelados + cortes parciais (da Demanda e da Logística).
+  // Solicitado = Reprovado + Aprovado + Pendente Demanda + Pendente Logística + Pendente Backoffice.
+  // Solicitado = todos os chamados menos os cancelados pelo solicitante.
+  // Aprovado = concluído pelo Backoffice (volume que virou pedido no portal do revendedor).
+  // Pendentes = volume parado na fila de cada time (na do Backoffice, o que a Logística aprovou).
+  // Reprovado = recusas + cortes parciais (Demanda, Logística e clientes que o Backoffice não inseriu).
   // Pendentes trazem a quebra no prazo / atrasado / sem SLA (chaves <col>_ok, <col>_atr, <col>_sla).
-  // Solicitado = todos os chamados (inclui recusados/cancelados); Aprovado = aprovado pela Logística (com ou sem
-  // ajuste no MIS); Pendentes = volume parado na fila de cada time. Solicitado − demais colunas = recusado.
   const COLS_RESUMO = [
     { k: "sol",  l: "Volume adicional solicitado" },
     { k: "rep",  l: "Volume adicional reprovado", rep: true },
     { k: "apr",  l: "Volume adicional aprovado" },
     { k: "pDem", l: "Pendente Demanda", pend: true },
     { k: "pLog", l: "Pendente Logística", pend: true },
+    { k: "pBo",  l: "Pendente Backoffice", pend: true },
   ];
   // Estrutura da aba (título, data, filtros) montada uma vez; renderResumo() só redesenha a tabela,
   // senão um filtro aberto fecharia sozinho a cada atualização de chamado em tempo real.
@@ -2218,7 +2378,8 @@
     const mapa = mapaBases();
     const alvo = S.resumoData || null;
     const grupos = new Map();
-    const zerado = () => ({ sol: 0, rep: 0, apr: 0, pDem: 0, pDem_ok: 0, pDem_atr: 0, pDem_sla: 0, pLog: 0, pLog_ok: 0, pLog_atr: 0, pLog_sla: 0 });
+    const zerado = () => ({ sol: 0, rep: 0, apr: 0, pDem: 0, pDem_ok: 0, pDem_atr: 0, pDem_sla: 0, pLog: 0, pLog_ok: 0, pLog_atr: 0, pLog_sla: 0,
+      pBo: 0, pBo_ok: 0, pBo_atr: 0, pBo_sla: 0 });
     const total = zerado();
     for (const c of S.chamados) {
       if (c.status === "cancelado") continue; // cancelado pelo solicitante não conta como solicitado nem reprovado
@@ -2227,11 +2388,12 @@
       const k = `${c.base}\u0000${c.produto}`;
       if (!grupos.has(k)) grupos.set(k, { base: c.base || "—", produto: c.produto || "—", ...zerado() });
       const g = grupos.get(k), vol = Number(c.volume) || 0;
-      // Aprovado = volume final da Logística (pode ser parcial); Pendente Logística = o que a Demanda aprovou;
-      // o que sobra do solicitado foi reprovado (recusa, cancelamento ou corte parcial)
-      const [col, v] = aprovadoFinal(c) ? ["apr", volumeAprovado(c)]
+      // Aprovado = volume que virou pedido (pode ser parcial); Pendente Logística = o que a Demanda aprovou;
+      // Pendente Backoffice = o que a Logística aprovou; o que sobra do solicitado foi reprovado (recusa ou corte parcial)
+      const [col, v] = c.status === "concluido" ? ["apr", volumeAprovado(c)]
         : c.status === "fila_demanda" ? ["pDem", vol]
-        : c.status === "fila_logistica" ? ["pLog", soma(volsAprovados(c, "demanda")) || vol] : [null, 0];
+        : c.status === "fila_logistica" ? ["pLog", soma(volsAprovados(c, "demanda")) || vol]
+        : c.status === "aprovado" ? ["pBo", volumeAprovado(c)] : [null, 0];
       const add = (chave, x) => { g[chave] += x; total[chave] += x; };
       add("sol", vol);
       add("rep", Math.max(0, vol - v));
@@ -2254,13 +2416,131 @@
     };
     const filtrando = alvo || filtrosDe(FR).some(([, m]) => m.selected.size);
     $("resumo-box").replaceChildren(linhas.length
-      ? el("table", { class: "resumo", style: "min-width:900px" },
+      ? el("table", { class: "resumo", style: "min-width:1040px" },
           el("thead", {}, el("tr", {}, el("th", { text: "Base" }), el("th", { text: "Produto" }),
             COLS_RESUMO.map(c => el("th", { class: "num", text: c.l })))),
           el("tbody", { class: "plain" }, linhas.map(g => el("tr", {},
             el("td", { text: g.base }), el("td", { text: g.produto }), COLS_RESUMO.map(c => celula(g, c))))),
           el("tfoot", {}, el("tr", {}, el("td", { text: "Total", colspan: "2" }), COLS_RESUMO.map(c => celula(total, c)))))
       : el("div", { class: "empty", text: filtrando ? "Nenhum chamado com esses filtros." : "Nenhum chamado ainda." }));
+  }
+
+  // ---------- Ajuste no MIS (Time Logística) ----------
+  // O chamado termina quando o Backoffice insere o pedido no portal do revendedor. Depois a Logística lança o volume
+  // no MIS para o estoque não ficar negativo. Esse lançamento não muda o status do chamado e é feito por grupo
+  // (data de faturamento × base × produto), não chamado a chamado: cada confirmação grava um lote em ajustesMis/<lote>
+  // e marca misLancado/<chamado> = <lote>, tudo numa gravação só. Chamados concluídos depois de um lote formam um novo
+  // pendente no mesmo grupo (ex.: 80 m³ lançados às 8h; às 10h aparece "+30 m³ a lançar · total do dia 110 m³").
+  // A regra do banco só deixa criar a marca de um chamado uma vez: dois cliques ao mesmo tempo não lançam em dobro
+  // (a segunda gravação inteira é recusada).
+  const podeMis = () => !!S.me && (S.me.admin || S.me.papeis.includes("logistica"));
+  const loteMis = c => { const id = S.mis.lancados[c.id]; return id ? S.mis.lotes.find(x => x.id === id) || { id } : null; };
+  // Concluídos no fluxo antigo (logistica.misEm) já tiveram o MIS ajustado junto com a conclusão
+  const pendenteMis = c => c.status === "concluido" && !c.logistica?.misEm && !S.mis.lancados[c.id] && volumeAprovado(c) > 0;
+  const chaveMis = x => `${x.dataEntrega}\u0000${x.base}\u0000${x.produto}`;
+  function gruposMis() {
+    const lancado = new Map();
+    for (const l of S.mis.lotes) lancado.set(chaveMis(l), (lancado.get(chaveMis(l)) || 0) + (Number(l.volume) || 0));
+    const grupos = new Map();
+    for (const c of S.chamados) {
+      if (!pendenteMis(c)) continue;
+      const k = chaveMis(c);
+      if (!grupos.has(k)) grupos.set(k, { dataEntrega: c.dataEntrega, base: c.base || "—", produto: c.produto || "—", chamados: [], volume: 0, lancado: lancado.get(k) || 0 });
+      const g = grupos.get(k);
+      g.chamados.push(c); g.volume += volumeAprovado(c);
+    }
+    // Faturamento mais antigo primeiro (o que já devia ter sido lançado aparece no topo)
+    return [...grupos.values()].map(g => ({ ...g, volume: Math.round(g.volume * 10) / 10, lancado: Math.round(g.lancado * 10) / 10 }))
+      .sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega) || a.base.localeCompare(b.base, "pt-BR") || a.produto.localeCompare(b.produto, "pt-BR"));
+  }
+  // Lançamento ou desfazer: redesenha a aba e, se o detalhe aberto é de um concluído, a etapa "Ajuste MIS" dele
+  // (concluído não tem campo sendo digitado no painel)
+  function aoMudarMis() {
+    render();
+    const c = S.abertoId && S.chamados.find(x => x.id === S.abertoId);
+    if (c?.status === "concluido") renderDetalhe();
+  }
+
+  async function lancarMis(g, btn) {
+    const cods = g.chamados.map(c => c.codigo).join(", ");
+    if (!await confirmar(`Confirma que ${fmtVol(g.volume)} de ${g.produto} foram lançados no MIS para ${g.base}, faturamento ${fmtData(g.dataEntrega)}? Chamados: ${cods}.`,
+      { ok: "Lancei no MIS", cancelar: "Voltar" })) return;
+    const id = push(ref(db, "ajustesMis")).key;
+    const upd = {
+      ["ajustesMis/" + id]: { em: new Date().toISOString(), por: S.meuId, porNome: S.me.nome, dataEntrega: g.dataEntrega, base: g.base, produto: g.produto,
+        volume: g.volume, chamados: Object.fromEntries(g.chamados.map(c => [c.id, volumeAprovado(c)])) },
+      ...Object.fromEntries(g.chamados.map(c => ["misLancado/" + c.id, id])),
+    };
+    btn.disabled = true;
+    try { await update(ref(db), upd); toast(`${fmtVol(g.volume)} lançados no MIS · ${g.base} · ${g.produto}`); }
+    catch (e) {
+      console.error(e); btn.disabled = false;
+      toast(e?.code === "PERMISSION_DENIED" || /permission/i.test(e?.message || "")
+        ? "O banco recusou o lançamento: algum chamado do grupo já foi lançado por outra pessoa (a tela atualiza sozinha) ou as regras do Firebase estão desatualizadas."
+        : msgErro(e));
+    }
+  }
+
+  async function desfazerLote(l) {
+    const ids = Object.keys(l.chamados || {}).filter(id => S.mis.lancados[id] === l.id);
+    if (!await confirmar(`Desfazer o lançamento de ${fmtVol(l.volume)} (${l.base} · ${l.produto}, faturamento ${fmtData(l.dataEntrega)})? `
+      + `${ids.length === 1 ? "O chamado volta" : `Os ${ids.length} chamados voltam`} para a lista de pendentes. Corrija também no MIS.`, { ok: "Desfazer", cancelar: "Voltar" })) return;
+    try { await update(ref(db), { ["ajustesMis/" + l.id]: null, ...Object.fromEntries(ids.map(id => ["misLancado/" + id, null])) }); toast("Lançamento desfeito"); }
+    catch (e) { console.error(e); toast(msgErro(e)); }
+  }
+
+  // Estrutura montada uma vez (navegador de data); renderMis() só redesenha as tabelas
+  let NM = null;
+  function montarMis() {
+    NM = navData(() => S.misData, v => { S.misData = v; renderMis(); });
+    $("view-mis").replaceChildren(
+      el("div", { class: "section-header" },
+        el("div", {}, el("h2", { text: "Volume a lançar no MIS" }),
+          el("p", { text: "Chamados concluídos pelo Backoffice que ainda não foram lançados, somados por data de faturamento, base e produto." }))),
+      el("div", { class: "tablebox", id: "mis-pend" }),
+      el("div", { class: "section-header" },
+        el("div", {}, el("h2", { text: "Lançamentos feitos" }), el("p", { text: "Histórico do que já foi lançado no MIS pelo portal, por data de faturamento." })),
+        NM.el),
+      el("div", { class: "tablebox", id: "mis-lotes" }));
+  }
+  function renderMis() {
+    if (!NM) montarMis();
+    NM.sync();
+    const porId = new Map(S.chamados.map(c => [c.id, c]));
+    const codigos = cs => el("div", { class: "cods" }, cs.map(c => el("button", { class: "cod", type: "button",
+      title: `${resumoClientes(c)} · ${fmtVol(volumeAprovado(c))}`, onclick: () => abrir(c.id) }, c.codigo)));
+    const dia = s => el("td", {}, fmtData(s), el("span", { class: "tag" + (difDias(s) === 0 ? " d0" : ""), text: relDia(s) }));
+
+    const gs = gruposMis();
+    $("mis-pend").replaceChildren(gs.length
+      ? el("table", { class: "mis" },
+          el("thead", {}, el("tr", {}, el("th", { text: "Faturamento" }), el("th", { text: "Base" }), el("th", { text: "Produto" }),
+            el("th", { class: "num", text: "A lançar agora" }), el("th", { class: "num", text: "Já lançado no dia" }), el("th", { class: "num", text: "Total do dia" }),
+            el("th", { text: "Chamados" }), el("th", {}))),
+          el("tbody", { class: "plain" }, gs.map(g => el("tr", {},
+            dia(g.dataEntrega), el("td", { text: g.base }), el("td", { text: g.produto }),
+            el("td", { class: "num mono lancar", text: "+" + fmtVol(g.volume) }),
+            el("td", { class: "num mono", text: g.lancado ? fmtVol(g.lancado) : "—" }),
+            el("td", { class: "num mono", text: fmtVol(g.lancado + g.volume) }),
+            el("td", {}, codigos(g.chamados)),
+            el("td", { class: "num" }, el("button", { class: "btn ok sm", type: "button", onclick: e => lancarMis(g, e.currentTarget) }, "Lancei no MIS"))))))
+      : el("div", { class: "empty", text: "Nada pendente: todo o volume concluído pelo Backoffice já foi lançado no MIS." }));
+
+    const alvo = S.misData || null;
+    const lotes = S.mis.lotes.filter(l => !alvo || l.dataEntrega === alvo).sort((a, b) => String(b.em).localeCompare(String(a.em)));
+    $("mis-lotes").replaceChildren(lotes.length
+      ? el("table", { class: "mis" },
+          el("thead", {}, el("tr", {}, el("th", { text: "Lançado em" }), el("th", { text: "Faturamento" }), el("th", { text: "Base" }), el("th", { text: "Produto" }),
+            el("th", { class: "num", text: "Volume" }), el("th", { text: "Chamados" }), el("th", { text: "Por" }), el("th", {}))),
+          el("tbody", { class: "plain" }, lotes.map(l => el("tr", {},
+            el("td", { class: "mono", text: fmtDataHora(l.em) }), dia(l.dataEntrega), el("td", { text: l.base }), el("td", { text: l.produto }),
+            el("td", { class: "num mono", text: fmtVol(l.volume) }),
+            el("td", {}, codigos(Object.keys(l.chamados || {}).map(id => porId.get(id)).filter(Boolean))),
+            el("td", { title: l.porNome || "", text: l.porNome ? nomeCurto(l.porNome) : "—" }),
+            el("td", { class: "num" }, S.me.admin || l.por === S.meuId
+              ? el("button", { class: "btn ghost sm", type: "button", title: "Desfaz o lançamento no portal (os chamados voltam a ficar pendentes)", onclick: () => desfazerLote(l) }, "Desfazer")
+              : null)))))
+      : el("div", { class: "empty", text: alvo ? "Nenhum lançamento para esta data de faturamento." : "Nenhum lançamento ainda." }));
   }
 
   // ---------- Cadastros (admin) ----------
@@ -2423,11 +2703,18 @@
   }
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "motivo", "tradeoff", "obsLogistica"];
+    // volumeAprovadoFinal = o que virou pedido no portal (só chamados concluídos); lancadoMis = quando a Logística lançou no MIS
+    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoLogistica", "ordemVenda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "slaBackoffice", "motivo", "tradeoff", "obsLogistica", "obsBackoffice", "lancadoMis"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
-    const linhas = visiveis().flatMap(c => clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.abertoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
-      x.nome, x.segmento, x.modal, num(x.volume), num(volsAprovados(c, "demanda")?.[i]), num(aprovadoFinal(c) ? volsAprovados(c, "logistica")?.[i] : ""), num(c.volume), statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), c.motivo, c.demanda?.tradeoff, c.logistica?.obs].map(esc).join(";")));
+    const linhas = visiveis().flatMap(c => {
+      const vDem = volsAprovados(c, "demanda"), vLog = volsAprovados(c, "logistica"), vFin = c.status === "concluido" ? volsFinais(c) : null;
+      const ps = pedidosDe(c), misEm = loteMis(c)?.em || c.logistica?.misEm;
+      return clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.abertoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
+        x.nome, x.segmento, x.modal, num(x.volume), num(vDem?.[i]), num(vLog?.[i]), ps[i]?.ov || (ps[i]?.naoInserido ? "Não inserido" : ""), num(vFin?.[i]), num(c.volume),
+        statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), slaCsv(c, "Backoffice"),
+        c.motivo, c.demanda?.tradeoff, c.logistica?.obs, c.backoffice?.motivo, misEm ? fmtDataHora(misEm) : ""].map(esc).join(";"));
+    });
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = el("a", { href: url, download: `chamados_adicionais_${hojeStr()}.csv` });
@@ -2454,6 +2741,7 @@
     if (!$("overlay").hidden && !document.querySelector("dialog[open]")) fechar();
   });
   S.resumoData = hojeStr(); // Resumo abre no D0; a lista de chamados abre sem filtro de data (S.fData = "")
+  S.misData = hojeStr();    // histórico de lançamentos no MIS também abre no D0 (os pendentes aparecem sempre, de todas as datas)
   const NC = navData(() => S.fData, v => { S.fData = v; render(); });
   $("nav-data-chamados").replaceWith(NC.el);
   $("exportar").addEventListener("click", exportar);
