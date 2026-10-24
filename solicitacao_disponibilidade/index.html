@@ -2001,7 +2001,7 @@
     }
     function fecharLista() {
       lista.classList.remove("open"); inp.setAttribute("aria-expanded", "false");
-      inp.value = itens.find(i => i.valor === hidden.value)?.texto || "";
+      inp.value = listaItens().find(i => i.valor === hidden.value)?.texto || "";
     }
     function escolher(i) { hidden.value = i.valor; fecharLista(); }
 
