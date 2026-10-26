@@ -436,7 +436,7 @@ button, input { font: inherit; color: inherit; }
   <!-- Etapa 5: lacres e envelope de amostra de cada compartimento carregado -->
   <section class="tela" id="tela-lacres">
     <div class="titulo">Lacres e envelopes</div>
-    <div class="sub">Passe o leitor nos 3 lacres e no envelope de amostra de cada compartimento. Depois de cada leitura, o próximo campo já fica pronto.</div>
+    <div class="sub">Passe o leitor primeiro nos 3 lacres de cada compartimento e depois nos envelopes de amostra. Depois de cada leitura, o próximo campo já fica pronto.</div>
     <div class="lacres-progresso" id="lacres-progresso" aria-live="polite"></div>
     <div class="alerta hidden" id="alerta-lacres" role="alert"></div>
     <div class="tabela-lacres" id="lista-lacres"></div>
@@ -1486,8 +1486,8 @@ function avancarParaLacres() {
 }
 
 /* ── ETAPA 5: LACRES E ENVELOPES ── */
-// Tabela com uma linha por compartimento carregado; a ordem dos campos (lacre 1, 2, 3, envelope, próximo
-// compartimento) é a ordem em que o leitor de código de barras preenche
+// Tabela com uma linha por compartimento carregado. O leitor de código de barras preenche primeiro os lacres
+// (1, 2, 3 de cada compartimento, linha a linha) e depois os envelopes, de cima para baixo (camposNaOrdemDeLeitura)
 function renderLacres() {
   const caps = capacidades(), previstos = volumesPrevistos();
   const cabecalho = `<div class="tl-linha tl-cab" aria-hidden="true"><span>Compartimento</span>${CAMPOS_COMP.map(([, rotulo, , curto]) => `<span>${esc(curto || rotulo)}</span>`).join('')}</div>`;
@@ -1565,9 +1565,15 @@ function enterNoLacre(el) {
   const proximo = proximoLacreVazio(el);
   if (proximo) proximo.focus(); else avancarParaRevisao();
 }
-// Próximo campo vazio depois de `atual`, voltando ao começo da tabela se preciso
-function proximoLacreVazio(atual = null) {
+// Campos na ordem do leitor: todos os lacres (linha a linha) e só depois todos os envelopes
+function camposNaOrdemDeLeitura() {
   const campos = [...document.querySelectorAll('#lista-lacres input')];
+  const doTipo = (tipo) => campos.filter((c) => TIPO_CODIGO(c.dataset.campo) === tipo);
+  return [...doTipo('lacre'), ...doTipo('envelope')];
+}
+// Próximo campo vazio depois de `atual` na ordem do leitor, voltando ao começo se preciso
+function proximoLacreVazio(atual = null) {
+  const campos = camposNaOrdemDeLeitura();
   const k = campos.indexOf(atual);
   return [...campos.slice(k + 1), ...campos.slice(0, Math.max(k, 0))].find((c) => !c.value) || null;
 }
@@ -1616,7 +1622,7 @@ function avancarParaRevisao() {
   atd.erros = validarLacres();
   renderLacres();
   if (atualizarAlertaLacres()) {
-    const el = document.querySelector('#lista-lacres .campo.erro input');
+    const el = camposNaOrdemDeLeitura().find((c) => c.closest('.campo').classList.contains('erro'));
     el.focus(); // selecionado (onfocus): a próxima leitura já substitui
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
