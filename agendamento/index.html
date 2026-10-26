@@ -168,6 +168,11 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .item-remove:hover { color: var(--danger); }
 .pedido-busca { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
 .pedido-resumo { margin-top: 18px; }
+/* Produto do pedido: desmarcado = fica para outro agendamento (cada produto vai inteiro) */
+.produto-marca { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.produto-marca input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex-shrink: 0; }
+.produto-fora, .produto-fora strong { color: var(--text-muted); }
+.produto-fora strong { text-decoration: line-through; }
 .resumo-base { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; }
 .resumo-total { font-size: 14px; color: var(--text-dim); margin: 10px 0 4px; }
 .resumo-total strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
@@ -651,7 +656,8 @@ tbody tr:hover td { background: var(--panel-soft); }
 
       <div class="wizard-etapa hidden" data-etapa="3">
         <div class="card-title">Pedidos do carregamento</div>
-        <div class="form-hint" style="margin:-8px 0 14px">Digite o número de cada pedido que vai neste carregamento e clique em Adicionar.</div>
+        <div class="form-hint" style="margin:-8px 0 14px">Digite o número de cada pedido que vai neste carregamento e clique em Adicionar.
+          Cada produto do pedido vai inteiro; para levar só parte dos produtos, desmarque os que ficam para outro agendamento.</div>
         <div class="pedido-busca">
           <div class="form-field" style="flex:1;max-width:280px">
             <label>Nº do Pedido</label>
@@ -1069,7 +1075,8 @@ const STATE = {
   // recurso: consulta de recursos/<chave> com as placas digitadas (capacidade do veículo);
   // motoristaCad: consulta de motoristas/<cpf> com o CPF digitado
   // turnoSugerido: turno de entrega do 1º pedido (pré-seleciona o turno, se a base atende nele)
-  novo: { pedidos: [], baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, turnoSugerido: '' },
+  // produtosFora: refItem dos produtos dos pedidos adicionados que ficam para outro agendamento (desmarcados)
+  novo: { pedidos: [], produtosFora: new Set(), baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, turnoSugerido: '' },
   baseEditando: null,      // id da base aberta no formulário de Cadastros
   pedidosDepositos: null,  // Cadastros → Bases: centro, depósito, entrega e volume de cada pedido (resumo dos depósitos sem base)
   recursos: null,          // Cadastros → Recursos: recursos/ inteiro (null até abrir a subaba)
@@ -1415,14 +1422,17 @@ function volumesAgendados() {
   }
   return total;
 }
-// O carregamento leva todo o saldo de cada produto dos pedidos adicionados
+// O carregamento leva todo o saldo de cada produto marcado dos pedidos adicionados.
+// A unidade que não quebra é pedido + produto (uma remessa/linha no cockpit do SAP): o pedido pode ir em partes,
+// um produto em cada agendamento, mas cada produto vai inteiro.
 function volumesNesteAgendamento() {
   const agendados = volumesAgendados();
   const total = {};
   for (const p of STATE.novo.pedidos) {
     for (const i of itensDe(p)) {
+      const ref = refItem(p.nrPedido, i.codigo);
       const saldo = saldoItem(p, i, agendados);
-      if (saldo > 0) total[refItem(p.nrPedido, i.codigo)] = saldo;
+      if (saldo > 0 && !STATE.novo.produtosFora.has(ref)) total[ref] = saldo;
     }
   }
   return total;
@@ -1793,16 +1803,28 @@ async function adicionarPedido() {
     mostrarStatusPedido(`O pedido ${nr} não tem saldo para agendar${protocolos.length ? ` (já agendado em ${protocolos.join(', ')})` : ''}.`, 'erro');
     return;
   }
-  // O pedido vai inteiro (todo o saldo): só entra se couber no que sobra do veículo
+  // Cada produto vai inteiro (todo o saldo). Se o pedido inteiro não cabe no que sobra do veículo, entram os produtos
+  // que cabem (na ordem do pedido) e os outros ficam desmarcados, para outro agendamento
   const capacidade = veiculoDasPlacas()?.volume;
-  const volumePedido = itensDe(pedido).reduce((s, i) => s + Math.max(0, saldoItem(pedido, i, agendados)), 0);
+  const comSaldo = itensDe(pedido).filter((i) => saldoItem(pedido, i, agendados) > 0);
+  const volumePedido = comSaldo.reduce((s, i) => s + saldoItem(pedido, i, agendados), 0);
   const jaNoCarregamento = volumeDoCarregamento();
+  const fora = [];
   if (capacidade && jaNoCarregamento + volumePedido > capacidade) {
-    mostrarStatusPedido(`O pedido ${nr} (${formatVolume(volumePedido)}) não cabe: o veículo leva ${formatVolume(capacidade)} e este carregamento já tem ${formatVolume(jaNoCarregamento)}.`, 'erro');
-    return;
+    let sobra = capacidade - jaNoCarregamento;
+    for (const i of comSaldo) {
+      const saldo = saldoItem(pedido, i, agendados);
+      if (saldo <= sobra) sobra -= saldo; else fora.push(i);
+    }
+    if (fora.length === comSaldo.length) {
+      mostrarStatusPedido(`O pedido ${nr} (${formatVolume(volumePedido)}) não cabe: o veículo leva ${formatVolume(capacidade)} e este carregamento já tem ${formatVolume(jaNoCarregamento)}.`
+        + (comSaldo.length > 1 ? ' Cada produto vai inteiro e nenhum cabe no que sobra.' : ''), 'erro');
+      return;
+    }
   }
 
   STATE.novo.pedidos.push(pedido);
+  for (const i of fora) STATE.novo.produtosFora.add(refItem(nr, i.codigo));
   campo.value = '';
   if (STATE.novo.pedidos.length === 1) {
     // Data = entrega do pedido (todos os pedidos da carreta têm a mesma); turno sugerido quando o pedido traz
@@ -1810,15 +1832,35 @@ async function adicionarPedido() {
     STATE.novo.turnoSugerido = TURNO_DO_PEDIDO[pedido.turnoEntrega] || '';
     renderOpcoesTurno();
   }
-  mostrarStatusPedido(`Pedido ${nr} adicionado.`, 'ok');
+  mostrarStatusPedido(fora.length
+    ? `Pedido ${nr} adicionado sem ${fora.map((i) => i.descricao || i.codigo).join(', ')}: o pedido inteiro não cabe no veículo e `
+      + `${fora.length === 1 ? 'esse produto fica' : 'esses produtos ficam'} para outro agendamento. Para trocar, marque e desmarque os produtos na lista.`
+    : `Pedido ${nr} adicionado.`, fora.length ? 'aviso' : 'ok');
   campo.focus(); // pronto para digitar o próximo pedido
   atualizarBaseDosPedidos(); // sobrescreve a mensagem se a base não estiver cadastrada
 }
 
 function removerPedido(nr) {
   STATE.novo.pedidos = STATE.novo.pedidos.filter((p) => p.nrPedido !== nr);
+  for (const ref of STATE.novo.produtosFora) if (ref.startsWith(nr + '|')) STATE.novo.produtosFora.delete(ref);
   if (!STATE.novo.pedidos.length) mostrarStatusPedido('');
   atualizarBaseDosPedidos();
+}
+// Checkbox do produto na etapa Pedidos: desmarcado fica para outro agendamento; o pedido continua com os outros produtos
+function marcarProdutoAgendamento(nr, codigo, marcado) {
+  if (!STATE.novo.pedidos.some((p) => p.nrPedido === nr)) return;
+  const ref = refItem(nr, codigo);
+  if (marcado) STATE.novo.produtosFora.delete(ref);
+  else STATE.novo.produtosFora.add(ref);
+  if (!marcado && !Object.keys(volumesNesteAgendamento()).some((k) => k.startsWith(nr + '|'))) {
+    STATE.novo.produtosFora.delete(ref); // volta a marcar
+    mostrarStatusPedido(`O pedido ${nr} precisa levar ao menos um produto. Para tirar o pedido inteiro, use o ✕.`, 'aviso');
+  } else if (STATE.novo.baseId) mostrarStatusPedido('');
+  renderPedidosAgendamento();
+}
+// Produtos com saldo do pedido que ficam para outro agendamento (desmarcados na etapa Pedidos)
+function produtosForaDoPedido(p, agendados) {
+  return itensDe(p).filter((i) => saldoItem(p, i, agendados) > 0 && STATE.novo.produtosFora.has(refItem(p.nrPedido, i.codigo)));
 }
 
 // Liga os pedidos à base (centro + depósito do 1º; todos são iguais). Roda de novo quando o cadastro de bases muda.
@@ -1852,16 +1894,27 @@ function renderPedidosAgendamento() {
     : '<span class="texto-perigo">não cadastrada no portal</span>';
   // Tabela única, no mesmo formato do detalhe do agendamento: uma linha por produto, dados do pedido mesclados.
   // "A carregar" = saldo do produto (o que ainda não está em outro agendamento): vai todo neste carregamento.
+  // Pedido com mais de um produto com saldo: cada produto tem checkbox; o desmarcado fica para outro agendamento.
+  const produto = (p, i) => {
+    const saldo = saldoItem(p, i, agendados);
+    const total = Number(i.volume) || 0;
+    const marcavel = saldo > 0 && itensDe(p).filter((x) => saldoItem(p, x, agendados) > 0).length > 1;
+    const fora = saldo > 0 && STATE.novo.produtosFora.has(refItem(p.nrPedido, i.codigo));
+    const nome = marcavel
+      ? `<label class="produto-marca"><input type="checkbox" ${fora ? '' : 'checked'} onchange="marcarProdutoAgendamento(${jsArg(p.nrPedido)}, ${jsArg(i.codigo)}, this.checked)">${esc(i.descricao)}</label>`
+      : esc(i.descricao);
+    return { nome, saldo, fora, nota: fora ? 'fica de fora' : saldo !== total ? `de ${formatVolume(total)}` : '' };
+  };
   const linhas = pedidos.map((p) => {
     const itens = itensDe(p);
     const span = itens.length > 1 ? ` rowspan="${itens.length}"` : '';
     return itens.map((i, idx) => {
-      const saldo = saldoItem(p, i, agendados);
-      const total = Number(i.volume) || 0;
-      const disponivel = `<strong>${formatVolume(saldo)}</strong>${saldo !== total ? `<div class="form-hint" style="margin:0">de ${formatVolume(total)}</div>` : ''}`;
+      const x = produto(p, i);
+      const cls = x.fora ? ' produto-fora' : '';
+      const disponivel = `<strong>${formatVolume(x.saldo)}</strong>${x.nota ? `<div class="form-hint" style="margin:0">${x.nota}</div>` : ''}`;
       const doPedido = idx > 0 ? '' : `<td${span}><strong>${esc(p.nrPedido)}</strong></td><td${span} class="quebra">${esc(p.clienteNome)}</td><td${span} class="quebra">${esc(p.clienteCidade) || '—'}</td><td${span}>${esc(p.tipoFrete) || '—'}</td>`;
       const remover = idx > 0 ? '' : `<td${span}><button type="button" class="item-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></td>`;
-      return `<tr>${doPedido}<td class="quebra">${esc(i.descricao)}</td><td class="num">${disponivel}</td>${remover}</tr>`;
+      return `<tr>${doPedido}<td class="quebra${cls}">${x.nome}</td><td class="num${cls}">${disponivel}</td>${remover}</tr>`;
     }).join('');
   }).join('');
   // No celular: um cartão por pedido (a tabela não cabe na largura)
@@ -1871,12 +1924,12 @@ function renderPedidosAgendamento() {
         <button type="button" class="item-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></div>
       <div class="pedido-card-cli">${[p.clienteNome, p.clienteCidade, p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
       ${itensDe(p).map((i) => {
-        const saldo = saldoItem(p, i, agendados);
-        const total = Number(i.volume) || 0;
-        return `<div class="pedido-card-item"><span>${esc(i.descricao)}</span><span class="vol"><strong>${formatVolume(saldo)}</strong>${saldo !== total ? `<small>de ${formatVolume(total)}</small>` : ''}</span></div>`;
+        const x = produto(p, i);
+        return `<div class="pedido-card-item${x.fora ? ' produto-fora' : ''}"><span>${x.nome}</span><span class="vol"><strong>${formatVolume(x.saldo)}</strong>${x.nota ? `<small>${x.nota}</small>` : ''}</span></div>`;
       }).join('')}
     </div>`).join('');
-  const parciais = pedidos.map((p) => [p.nrPedido, protocolosDoPedido(p.nrPedido)]).filter(([, prot]) => prot.length);
+  // Pedido com parte em outro agendamento: este leva o restante, a não ser que algum produto tenha ficado de fora
+  const parciais = pedidos.map((p) => [p.nrPedido, protocolosDoPedido(p.nrPedido), produtosForaDoPedido(p, agendados).length > 0]).filter(([, prot]) => prot.length);
   const total = volumeDoCarregamento();
   const capacidade = veiculoDasPlacas()?.volume;
   el.innerHTML = `
@@ -1887,7 +1940,7 @@ function renderPedidosAgendamento() {
     </table>
     <div class="pedidos-cards">${cartoes}</div>
     <div class="resumo-total">Volume do carregamento: <strong class="${capacidade && total > capacidade ? 'texto-perigo' : ''}">${formatVolume(total)}</strong>${capacidade ? ` de ${formatVolume(capacidade)} (capacidade do veículo)` : ''}</div>
-    ${parciais.map(([nr, prot]) => `<div class="form-hint">Parte do pedido ${esc(nr)} já agendada em ${prot.map(esc).join(', ')}; este carregamento leva o restante.</div>`).join('')}`;
+    ${parciais.map(([nr, prot, algumFora]) => `<div class="form-hint">Parte do pedido ${esc(nr)} já agendada em ${prot.map(esc).join(', ')}${algumFora ? '' : '; este carregamento leva o restante'}.</div>`).join('')}`;
   el.classList.remove('hidden');
   // Outro agendamento do mesmo pedido muda o saldo: o resumo da última etapa acompanha
   if (etapaWizard === ETAPAS_WIZARD.length) renderRevisaoAgendamento();
@@ -2151,11 +2204,16 @@ function erroDaEtapa(n) {
     // Outro agendamento pode ter levado o saldo enquanto este era preenchido
     const neste = volumesNesteAgendamento();
     const semSaldo = pedidos.filter((p) => !itensDe(p).some((i) => neste[refItem(p.nrPedido, i.codigo)] > 0));
-    if (semSaldo.length) return `Pedido ${semSaldo.map((p) => p.nrPedido).join(', ')} não tem mais saldo para agendar (já entrou em outro agendamento). Tire do agendamento.`;
-    // Única conferência de volume: o total dos pedidos cabe no veículo
+    if (semSaldo.length) {
+      const agendados = volumesAgendados();
+      const podeMarcar = semSaldo.some((p) => produtosForaDoPedido(p, agendados).length);
+      return `Pedido ${semSaldo.map((p) => p.nrPedido).join(', ')} não tem mais saldo para agendar nos produtos marcados (já entraram em outro agendamento). `
+        + (podeMarcar ? 'Marque outro produto ou tire o pedido do agendamento.' : 'Tire do agendamento.');
+    }
+    // Única conferência de volume: o total dos produtos marcados cabe no veículo
     const veiculo = veiculoDasPlacas();
     const total = volumeDoCarregamento();
-    if (veiculo?.volume && total > veiculo.volume) return `O volume dos pedidos (${formatVolume(total)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). Tire pedido ou volte à etapa Veículo e troque o veículo.`;
+    if (veiculo?.volume && total > veiculo.volume) return `O volume dos pedidos (${formatVolume(total)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). Desmarque produto, tire pedido ou volte à etapa Veículo e troque o veículo.`;
     return '';
   }
   // Data e horário
@@ -2248,12 +2306,17 @@ function renderRevisaoAgendamento() {
   const veiculo = veiculoDasPlacas();
   const total = volumeDoCarregamento();
   const { nome, cpf } = lerMotorista();
+  const agendados = volumesAgendados();
+  const pedido = (p) => {
+    const fora = produtosForaDoPedido(p, agendados);
+    return esc(p.nrPedido) + (fora.length ? ` <span class="form-hint">(sem ${fora.map((i) => esc(i.descricao || i.codigo)).join(', ')})</span>` : '');
+  };
   const item = (rotulo, valor, etapa) => `<div class="info-item"><div class="info-lbl">${rotulo}<button type="button" class="link-alterar" onclick="irParaEtapa(${etapa})">alterar</button></div><div class="info-val">${valor}</div></div>`;
   document.getElementById('wizardRevisao').innerHTML = `<div class="info-row">
     ${item('Veículo', placas.map(esc).join(' / ') + (veiculo && veiculo.origem !== 'sap' ? '<div class="form-hint aviso">cadastro provisório</div>' : ''), ETAPA.veiculo)}
     ${item('Motorista', `${esc(nome)}<div class="form-hint">CPF ${esc(formatCpf(cpf))}</div>`
       + (motoristaDoCadastro() && motoristaDoCadastro().origem !== 'sap' ? '<div class="form-hint aviso">cadastro provisório</div>' : ''), ETAPA.motorista)}
-    ${item('Pedidos', STATE.novo.pedidos.map((p) => esc(p.nrPedido)).join(', '), ETAPA.pedidos)}
+    ${item('Pedidos', STATE.novo.pedidos.map(pedido).join(', '), ETAPA.pedidos)}
     ${item('Volume', `<span class="${veiculo?.volume && total > veiculo.volume ? 'texto-perigo' : ''}">${formatVolume(total)}</span>`
       + (veiculo?.volume ? `<div class="form-hint">capacidade do veículo ${formatVolume(veiculo.volume)}</div>` : ''), ETAPA.pedidos)}
   </div>`;
@@ -2412,6 +2475,7 @@ function registroPedidoAgendamento(p, neste) {
 function resetarFormularioAgendamento() {
   for (const id of ['f-pedido-sap', 'f-data', 'f-turno', 'f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2', 'f-capacidade-prov', 'f-motorista', 'f-motorista-cpf']) document.getElementById(id).value = '';
   STATE.novo.pedidos = [];
+  STATE.novo.produtosFora = new Set();
   STATE.novo.recurso = null;
   STATE.novo.motoristaCad = null;
   STATE.novo.turnoSugerido = '';
@@ -2725,7 +2789,7 @@ function abrirTrocaPedidos(id) {
     <div class="modal-sub">${esc([a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`, a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`,
       a.placaCavalo, a.motorista].filter(Boolean).join(' · '))}</div>
     <div class="form-hint" style="margin:0 0 12px">O agendamento continua o mesmo (protocolo, ${a.baseTipo === 'agendamento' ? 'horário' : 'turno'}, veículo e motorista); muda só a lista de pedidos.
-      Entra pedido do mesmo cliente, levando todo o saldo, como no agendamento normal.</div>
+      Entra pedido do mesmo cliente, com todo o saldo de todos os produtos.</div>
     <div id="trocaLista"></div>
     <div class="form-hint" id="trocaStatus"></div>
     <div id="trocaCandidatos"></div>
@@ -2953,8 +3017,10 @@ function montarTrocaPedidos(id, a, sairam, novos, neste, total) {
 // com o terminal, o relógio de carga (minutos desde a 00:00 do dia base) e as paradas (cliente + itens com ordemSAP, produto e volume em m³).
 // Cada viagem vira um agendamento, com as mesmas conferências do assistente. Só a equipe interna importa.
 // - O que a pessoa resolve no portal (data, horário/turno livre, CPF do motorista) abre a janela de ajuste.
-// - Volume parcial bloqueia: o SAP não quebra pedido/produto, então cada pedido + produto da viagem precisa levar
-//   exatamente o saldo do pedido no portal, e todo produto do pedido com saldo precisa estar na mesma viagem.
+// - Volume parcial bloqueia: o SAP não quebra a remessa (pedido + produto, uma linha no cockpit), então cada
+//   pedido + produto da viagem precisa levar exatamente o saldo do produto no portal e estar numa viagem só.
+//   O pedido pode ir em partes (um produto em cada viagem, as "quebras" do roteirizador): produto do pedido que não
+//   está na viagem continua com saldo para outro agendamento.
 // - Data de carregamento pode ser antes da entrega do pedido (só equipe interna; a regra do banco confere).
 // - Data, horário e motorista saem do arquivo como a tela do roteirizador mostra (cargaDaViagem, motoristaDaViagem).
 //   O arquivo não traz CPF: o motorista vem do cadastro pelo nome, quando há exatamente um com esse nome.
@@ -2970,7 +3036,7 @@ const ESTADO_VIAGEM = {
   criada: { rotulo: 'Agendada', badge: 'badge-accent' },
   erro: { rotulo: 'Erro', badge: 'badge-danger' },
 };
-const MSG_SAP_NAO_QUEBRA = 'O SAP não quebra pedido/produto: revise a roteirização.';
+const MSG_SAP_NAO_QUEBRA = 'O SAP não quebra a remessa (pedido + produto): revise a roteirização.';
 
 function nrPedidoValido(nr) { return /^[A-Za-z0-9_-]+$/.test(nr); }
 function dataIsoDe(v) {
@@ -3036,17 +3102,18 @@ function lerViagensRoteirizacao(json) {
       if (!via || !Array.isArray(via.paradas) || !via.paradas.length) continue; // veículo sem viagem
       const vei = veiculos.get(veiculoId) || {};
       const carga = cargaDaViagem(via, diaBase);
-      const itens = new Map(); // refItem → item (o mesmo pedido + produto em duas paradas soma)
-      let parcial = Array.isArray(via.quebras) && via.quebras.length > 0;
+      // refItem → item (o mesmo pedido + produto em duas paradas soma). completo === false = o roteirizador levou só
+      // parte do volume do produto. via.quebras (pedido dividido por produto entre viagens) não bloqueia.
+      const itens = new Map();
       for (const parada of via.paradas) {
         for (const i of parada.itens || []) {
           const [codigo, ...descricao] = String(i.produto || '').split(' - '); // "2000033 - PETRONAS ETANOL COMUM"
           const nr = String(i.ordemSAP ?? '').trim();
           const chave = refItem(nr, codigo.trim());
-          const item = itens.get(chave) || { nr, codigo: codigo.trim(), descricao: descricao.join(' - ').trim(), volume: 0 };
+          const item = itens.get(chave) || { nr, codigo: codigo.trim(), descricao: descricao.join(' - ').trim(), volume: 0, parcial: false };
           item.volume += Math.round((Number(i.volume) || 0) * 1000);
+          if (i.completo === false) item.parcial = true;
           itens.set(chave, item);
-          if (i.completo === false) parcial = true;
         }
       }
       viagens.push({
@@ -3060,7 +3127,6 @@ function lerViagensRoteirizacao(json) {
         cpfRoteirizador: soDigitos(via.motoristaCpf),
         nomeRoteirizador: String(via.motorista || motoristaDaViagem(vei, carga.min)).replace(/\s+/g, ' ').trim(),
         itens: [...itens.values()],
-        parcial,
       });
     }
   }
@@ -3081,12 +3147,13 @@ async function lerArquivoRoteirizacao(input) {
     return;
   }
   if (!viagens.length) { toast('A roteirização não tem viagens com carga.', 'error'); return; }
-  // O mesmo pedido + produto em mais de uma viagem = pedido quebrado entre veículos
+  // O mesmo pedido + produto em mais de uma viagem = remessa quebrada entre veículos
   const viagensPorItem = {};
-  for (const v of viagens) for (const i of v.itens) { const k = refItem(i.nr, i.codigo); viagensPorItem[k] = (viagensPorItem[k] || 0) + 1; }
+  viagens.forEach((v, idx) => { for (const i of v.itens) (viagensPorItem[refItem(i.nr, i.codigo)] ??= []).push(idx); });
   const imp = STATE.importacao = {
     arquivo: arquivo.name, salvoEm: json.savedAt || '', salvoPor: json.salvoPor || '',
-    divididos: new Set(Object.keys(viagensPorItem).filter((k) => viagensPorItem[k] > 1)),
+    divididos: new Set(Object.keys(viagensPorItem).filter((k) => viagensPorItem[k].length > 1)),
+    viagensPorItem, // refItem → índices das viagens com esse pedido + produto (aviso do produto que vai em outra viagem)
     // Estado de cada viagem: data/horario/turno/cpf/nome/capacidadeProv começam com o que veio do arquivo e mudam na janela de ajuste
     viagens: viagens.map((v, idx) => ({
       ...v, idx, data: v.dataRoteirizador, horario: v.horarioRoteirizador, turno: '', cpf: v.cpfRoteirizador, nome: '', capacidadeProv: null,
@@ -3204,9 +3271,8 @@ function avaliarViagem(imp, v, agendados, porPetId) {
   const jaAgendada = v.petId && porPetId.get(v.petId);
   if (jaAgendada) { Object.assign(v, { estado: 'importada', protocolo: jaAgendada.protocolo, agendado: jaAgendada }); return; }
 
-  // Pedidos: cada pedido + produto leva exatamente o saldo, e nenhum produto com saldo fica de fora
+  // Pedidos: cada pedido + produto leva exatamente o saldo; produto do pedido fora da viagem fica para outro agendamento
   if (!v.itens.length) bloqueios.push('Viagem sem pedidos no arquivo.');
-  if (v.parcial) bloqueios.push('A roteirização leva só parte de um pedido nesta viagem (carga parcial). ' + MSG_SAP_NAO_QUEBRA);
   const pedidos = [];
   for (const nr of new Set(v.itens.map((i) => i.nr))) {
     const doArquivo = v.itens.filter((i) => i.nr === nr);
@@ -3218,6 +3284,7 @@ function avaliarViagem(imp, v, agendados, porPetId) {
     for (const i of doArquivo) {
       const item = itensDe(p).find((x) => x.codigo === i.codigo);
       if (!item) { bloqueios.push(`Pedido ${nr}: o produto ${i.descricao || i.codigo} não está no pedido.`); continue; }
+      if (i.parcial) { bloqueios.push(`Pedido ${nr}, ${item.descricao || i.codigo}: a roteirização leva só parte do volume do produto nesta viagem (carga parcial). ${MSG_SAP_NAO_QUEBRA}`); continue; }
       const saldo = saldoItem(p, item, agendados);
       if (Math.abs(saldo - i.volume) > 1) {
         const protocolos = protocolosDoPedido(nr);
@@ -3227,7 +3294,10 @@ function avaliarViagem(imp, v, agendados, porPetId) {
     }
     for (const item of itensDe(p)) {
       const saldo = saldoItem(p, item, agendados);
-      if (saldo > 0 && !doArquivo.some((i) => i.codigo === item.codigo)) bloqueios.push(`Pedido ${nr}: o produto ${item.descricao || item.codigo} (${formatVolume(saldo)}) ficou fora da viagem. ${MSG_SAP_NAO_QUEBRA}`);
+      if (saldo <= 0 || doArquivo.some((i) => i.codigo === item.codigo)) continue;
+      const outra = imp.viagens[imp.viagensPorItem[refItem(nr, item.codigo)]?.[0]];
+      avisos.push(`Pedido ${nr}: ${item.descricao || item.codigo} (${formatVolume(saldo)}) não vai nesta viagem`
+        + (outra ? ` (vai na viagem ${outra.petId || outra.idx + 1}).` : ' e fica com saldo para outro agendamento.'));
     }
     if (!p.dataEntrega) bloqueios.push(`Pedido ${nr} está sem data de entrega no portal do revendedor.`);
     else if (p.dataEntrega < hoje()) bloqueios.push(`A data de entrega do pedido ${nr} (${formatDataBR(p.dataEntrega)}) já passou.`);
@@ -3356,7 +3426,8 @@ function renderImportacao() {
       ${stat('Agendadas', conta('criada', 'importada'))}
     </div>
     <div class="form-hint" style="margin:0 0 12px">Cada viagem vira um agendamento. Falta data, horário ou motorista: clique em Ajustar.
-      Volume parcial ou pedido fora da carteira: corrija no roteirizador, salve e importe o arquivo de novo (o que já foi agendado não é agendado outra vez).</div>
+      O pedido pode ir em partes (cada produto numa viagem), mas cada produto vai inteiro.
+      Produto com volume parcial ou em mais de uma viagem, ou pedido fora da carteira: corrija no roteirizador, salve e importe o arquivo de novo (o que já foi agendado não é agendado outra vez).</div>
     <div class="tabela-scroll">
       <table class="tabela-itens" id="impTabela">
         <thead><tr><th>Viagem</th><th>Veículo</th><th>Motorista</th><th>Pedidos</th><th>Base</th><th>Data</th><th>Horário</th><th class="num">Volume</th><th>Situação</th><th></th></tr></thead>
@@ -3671,12 +3742,15 @@ async function agendarViagensProntas() {
   else if (falhas) toast('Nenhuma viagem foi agendada. Confira a situação de cada uma.', 'error');
 }
 async function criarAgendamentoDaViagem(imp, v) {
+  // Só os produtos que estão na viagem (o pedido pode ir em partes), cada um com todo o saldo (conferido em avaliarViagem)
   const agendados = volumesAgendados();
+  const naViagem = new Set(v.itens.map((i) => refItem(i.nr, i.codigo)));
   const neste = {};
   for (const p of v.pedidos) {
     for (const i of itensDe(p)) {
+      const ref = refItem(p.nrPedido, i.codigo);
       const saldo = saldoItem(p, i, agendados);
-      if (saldo > 0) neste[refItem(p.nrPedido, i.codigo)] = saldo;
+      if (saldo > 0 && naViagem.has(ref)) neste[ref] = saldo;
     }
   }
   // Se a gravação falhar depois daqui, esse número de protocolo fica pulado (sem problema)
