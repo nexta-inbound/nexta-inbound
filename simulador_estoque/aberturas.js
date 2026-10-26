@@ -48,6 +48,11 @@
   const valorSalvo = (t, p) => dados[t.empDep]?.[cloud.produtoKey(p.nome)] || null;
   // "Enviado" igual a planilha (aba Menu): alguma abertura do terminal maior que zero.
   const enviado = t => t.produtos.some(p => (valorSalvo(t, p)?.abertura || 0) > 0);
+  // Base unica das aberturas (2026-10-26): linhas copiadas do Formulario Excel pelo ETL tem origem 'planilha'.
+  // Ficam marcadas na tela; ao Salvar, a linha e' regravada inteira (sem origem) e passa a valer como portal.
+  const daPlanilha = s => s?.origem === 'planilha';
+  const viaPlanilha = t => enviado(t) && t.produtos.every(p => { const s = valorSalvo(t, p); return !((s?.abertura || 0) > 0) || daPlanilha(s); });
+  const situacao = t => enviado(t) ? (viaPlanilha(t) ? 'Enviado · via planilha' : 'Enviado') : 'Pendente';
   const ultimaAtualizacao = t => t.produtos.map(p => valorSalvo(t, p)).filter(Boolean)
     .reduce((m, v) => (!m || (v.atualizadoEm || 0) > (m.atualizadoEm || 0)) ? v : m, null);
   const quando = ms => ms ? new Date(ms).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) : '';
@@ -109,8 +114,10 @@
         }
         const salvo = valorSalvo(t, p) || {};
         // Padrao 0 em tudo (usuaria, 2026-10-16): a pessoa so' troca o que tiver valor.
+        const planilha = daPlanilha(salvo);
         const campo = k => `<td><input type="number" min="0" step="1" inputmode="numeric" data-ab-campo="${k}" data-ab-produto="${esc(p.nome)}"
-            value="${salvo[k] ?? 0}" ${pode ? '' : 'readonly'} aria-label="${esc(p.nome)} · ${esc(ROTULO_CAMPO[k])}"></td>`;
+            value="${salvo[k] ?? 0}" ${pode ? '' : 'readonly'} aria-label="${esc(p.nome)} · ${esc(ROTULO_CAMPO[k])}"
+            ${planilha && salvo[k] > 0 ? `class="ab-planilha" title="Veio do Formulário Excel (planilha). Confirme ou corrija e salve para valer o portal."` : ''}></td>`;
         // Referencia do MIS do dia (2026-10-19): so' indicativo pra quem preenche, embaixo da Abertura Dia.
         const mis = referencia[t.empDep]?.[p.nome];
         const abertura = campo('abertura').replace('</td>', mis != null
@@ -119,7 +126,7 @@
       }
       return `<article class="ab-terminal ${enviado(t) ? 'ab-enviado' : 'ab-pendente'}" data-ab-terminal="${esc(t.empDep)}">
         <div class="ab-topo"><div><h4>${esc(t.nome)}</h4>
-          <span class="ab-situacao">${enviado(t) ? 'Enviado' : 'Pendente'}</span>
+          <span class="ab-situacao">${situacao(t)}</span>
           ${ult ? `<small>Última alteração: ${esc(ult.atualizadoPorNome || '')} · ${quando(ult.atualizadoEm)}</small>` : ''}</div>
           <div class="ab-acoes">${pode ? '' : '<small>Somente leitura</small>'}
           <button type="button" class="ab-hist-botao" data-ab-hist="${esc(t.empDep)}">Histórico</button></div></div>

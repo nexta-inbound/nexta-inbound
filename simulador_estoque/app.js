@@ -342,7 +342,7 @@ function popupTransferencia(campo,i){
  const saida=campo==='transferenciasSaida',itens=transferencias(i,campo);
  const total=itens.reduce((s,t)=>s+(t.volume||0),0);
  return `<strong>Transferência · ${saida?'saída':'entrada'} · ${esc(label(i))}</strong><p>${fmt(total)} m³ ${saida?'saindo desta base para outras bases da rede':'chegando de outras bases da rede'}</p>`
-  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(t.para||'—'):'← '+esc(t.de||'—')} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Trânsito real + Não programado" e "LE"</em>':''}</dd></div>`).join('')}</dl>`;
+  +`<dl class="viagens">${itens.map(t=>`<div><dt>${saida?'→ '+esc(cidadeBase(t.para)):'← '+esc(cidadeBase(t.de))} · ${fmt(t.volume)} m³${saida?'':emViagemTransf(t)?` · <span style="color:#C4B5FD">${esc(t.statusViagem)}</span>`:' · <span style="color:#F9A8D4">sem status de viagem</span>'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}${!saida&&t.conta&&t.conta!=='naoprog'?` · retirada do Trânsito ${t.conta==='cif'?'CIF':'FOB'} para não somar duas vezes`:''}${!saida&&!emViagemTransf(t)&&!incluiNaoProg($('entrada')?.value)?' · <em>sem status de viagem: só entra na conta em "Trânsito real + Não programado" e "LE"</em>':''}</dd></div>`).join('')}</dl>`;
 }
 function mostrarPopupTransf(el){const pop=$('transf-popover');if(!pop)return;pop.innerHTML=el.dataset.transf==='bombeioPortal'?popupBombeioPortal(+el.dataset.day):popupTransferencia(el.dataset.transf,+el.dataset.day);pop.hidden=false;
  const r=el.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;pop.style.left=`${Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)}px`;pop.style.top=`${r.bottom+8+h<=innerHeight-8?r.bottom+8:Math.max(8,r.top-h-8)}px`;}
@@ -415,11 +415,12 @@ function viagemDaTransf(t,i){
 // LARANJA se ainda nao tem. A etiqueta "⇄ Transferencia de..." vai na mesma cor da linha.
 // Origem da transferencia = CIDADE + base que esta' transferindo (usuaria, 2026-10-21: "quero saber a cidade de origem,
 // qual base esta' transferindo"), no lugar do nome do fornecedor do portal (que pra transferencia e' so' "NEXTA"/"SIM").
-function origemTransf(t){
- const r=D.records.find(x=>x.base===t.de);if(!r)return t.de||'—';
- const cidade=cidadeDe(r),resto=t.de.startsWith(cidade+' ')?t.de.slice(cidade.length+1):t.de;
+function cidadeBase(nome){
+ const r=nome&&D.records.find(x=>x.base===nome);if(!r)return nome||'—';
+ const cidade=cidadeDe(r),resto=nome.startsWith(cidade+' ')?nome.slice(cidade.length+1):nome;
  return `${cidade} · ${resto}`;
 }
+const origemTransf=t=>cidadeBase(t.de);
 function linhaTransfHtml(t,i){
  const v=viagemDaTransf(t,i),temTempos=Boolean(v?.eta||v?.chegadaReal||v?.statusViagem||t.statusViagem),cor=temTempos?'#60A5FA':'#F97316';
  const origem=origemTransf(t),destino=record?.base||t.para||'—';
