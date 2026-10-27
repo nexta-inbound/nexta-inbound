@@ -1513,10 +1513,12 @@ function campoLacre(i, indice, campo, rotulo) {
   </div>`;
 }
 // Digitar não redesenha a tabela (o teclado do tablet continuaria aberto no campo certo). Ao tocar num campo
-// preenchido, o código fica selecionado: a próxima leitura substitui em vez de emendar
+// preenchido, o código fica selecionado: a próxima leitura substitui em vez de emendar. O leitor traz o lacre
+// com zeros à esquerda (0012781) e o SAP só aceita o número (12781): os zeros saem já na leitura
 function digitarLacre(el) {
   const i = Number(el.dataset.i), campo = el.dataset.campo;
-  const valor = el.value.replace(/\s/g, '');
+  let valor = el.value.replace(/\s/g, '');
+  if (TIPO_CODIGO(campo) === 'lacre') valor = valor.replace(/^0+(?=\d)/, '');
   if (el.value !== valor) el.value = valor;
   atd.comps[i][campo] = valor;
   marcarErroLacre(i, campo, '');
