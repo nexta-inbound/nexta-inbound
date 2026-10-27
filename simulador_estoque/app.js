@@ -447,6 +447,9 @@ function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaRe
 function vendaRealPassado(i){return history(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
 function valorPassado(k,i,result){
  if(k==='opening')return history(i)?.opening??null;
+ // Lastro e abertura menos lastro tambem no passado (usuaria, 2026-10-27): o lastro e' o da politica (o mesmo de hoje).
+ if(k==='lastro')return result[0]?.lastro??null;
+ if(k==='openingNet'){const ab=history(i)?.opening;return ab==null?null:ab-(result[0]?.lastro||0);}
  // Igual ao BI nos dias passados (usuaria, 2026-10-27): saida = venda real (vendas_projecao) e entrada = recebimento
  // realizado do SAP (recebimentos_projecao) — o BI nao usa viagem no passado (finalizada quase nunca tem chegada).
  if(k==='outgoing')return vendaRealPassado(i)??history(i)?.sale??null;
