@@ -106,8 +106,13 @@ function fresh(r,cenarioForcado,entradaForcada){
   // material. So' sobrescreve quando 'auto' (nao em 'cadencia', que ja' e' uma fonte explicita
   // diferente) e fora do cenario 'Inbound + MIS' (que tem sua propria fonte de FOB/CIF, loaded.inboundMis).
   if(future&&entrada.startsWith('auto')&&scenario!=='Inbound + MIS'){
-   const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)];
-   if(vivo&&(vivo.fob!=null||vivo.cif!=null)){movements.fob[i]=vivo.fob??0;movements.cif[i]=vivo.cif??0;}
+   // Com o transito ao vivo carregado, ele e' a UNICA fonte do FOB/CIF futuro (usuaria, 2026-10-27: "isso NUNCA
+   // pode acontecer"): dia sem viagem ao vivo = 0. Antes caia no FOB da carga (CSV das :00/:30), e a viagem que o
+   // ETA novo empurrou pro dia seguinte contava nos dois dias (Betim POTENCIAL hidratado, 60 em 28 e 29/10).
+   if(D.transitoAoVivo){
+    const vivo=D.transitoAoVivo[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)];
+    movements.fob[i]=vivo?.fob??0;movements.cif[i]=vivo?.cif??0;
+   }
    // "Programado + Não programado" (pedido da usuaria, 2026-10-08): soma no FOB as viagens ainda sem placa.
    if(incluiNaoProg(entrada))movements.fob[i]+=fobNaoProgramado(r,day(i))??0;
    // Transferencia de entrada em linha propria (pedido da usuaria, 2026-10-15): a viagem que vem de outra base
