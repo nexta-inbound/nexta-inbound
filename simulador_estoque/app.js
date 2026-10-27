@@ -395,6 +395,7 @@ function transitoPassado(i,k){const vs=registrosReais().map(r=>D.transitoAoVivo?
 // Recebimento realizado no SAP (planilhas mensais de movimentacao, por data de lancamento) — so' dias
 // passados; mesma regra do "Recebimentos realizados" do BI (pedido da usuaria, 2026-10-08).
 function recebidoPassado(i){return somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.recebidoSap));}
+function vendaRealPassado(i){return somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.vendaReal));}
 // Viagens do portal (detalhe de D.transitoAoVivo) que entram no dia, com o destino = cidade/deposito/
 // empresa do registro — pedido da usuaria, 2026-10-09: ver id da viagem, origem e destino tambem nos
 // dias passados (o que chegou) e no grafico. Usado pelos popups da grade (cenarios.js) e do grafico.
@@ -446,8 +447,10 @@ function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaRe
 function vendaRealPassado(i){return history(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
 function valorPassado(k,i,result){
  if(k==='opening')return history(i)?.opening??null;
- if(k==='outgoing')return history(i)?.sale??null;
- if(k==='incoming'){const f=transitoPassado(i,'fob'),c=transitoPassado(i,'cif');return f==null&&c==null?null:(f||0)+(c||0);}
+ // Igual ao BI nos dias passados (usuaria, 2026-10-27): saida = venda real (vendas_projecao) e entrada = recebimento
+ // realizado do SAP (recebimentos_projecao) — o BI nao usa viagem no passado (finalizada quase nunca tem chegada).
+ if(k==='outgoing')return vendaRealPassado(i)??history(i)?.sale??null;
+ if(k==='incoming'){const sap=recebidoPassado(i);if(sap!=null)return sap;const f=transitoPassado(i,'fob'),c=transitoPassado(i,'cif');return f==null&&c==null?null:(f||0)+(c||0);}
  if(k==='close'){const prox=i+1===0?result[0]?.opening:history(i+1)?.opening;return prox??null;}
  return null;
 }
@@ -506,15 +509,17 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  for(const [k,l,sign] of linhasVisiveis){
   // "+ linhas" so' com as referencias de VENDA, dentro do bloco de Vendas, logo abaixo da linha que debita
   // (usuaria, 2026-10-19: "as entradas nao precisa trazer"). As 4 linhas entram no rowspan dos botoes de venda.
-  const INFO_VENDAS=4;
+  const INFO_VENDAS=5;
   const controlCell=k===entradaKeys[0]?`<th rowspan="${entradaKeys.length}" class="row-controls" id="entrada-controls-cell"></th>`
    :k===saidaKeys[0]?`<th rowspan="${saidaKeys.length+(mostrarInfoGrade&&saidaKeys[0]==='sale'?INFO_VENDAS:0)}" class="row-controls" id="scenario-controls-cell"></th>`:'';
   const rotulo=(k==='fob'?'Trânsito FOB · programado (com placa)':k==='planned'?'Cadência sugerida':l)+horaFonte({fob:'transito',cif:'transito',pump:'cadencia',sale:fonteDaVenda()}[k]);
-  html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Faturamento pendente de integração':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:history(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
+  html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Venda real do dia (faturamento), igual ao BI':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:k==='sale'?(vendaRealPassado(i)??history(i)?.sale):history(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
   if(k==='sale'){
    html+=infoRow('VMD reprojetada',i=>record.bi?.days[day(i)]?.vmd,true,'vmd');
    html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.days?.[day(i)]?.le??record.bi?.semana?.porDia?.[day(i)]?.le,true,'le');
    html+=infoRow('Pedidos em tela',i=>record.bi?.days[day(i)]?.billing,true,'va05');
+   // Disp. MIS do dia (usuaria, 2026-10-27: "retroativo de VMD / disp / venda real"), tambem nos 5 dias passados.
+   html+=infoRow('Disp. MIS',i=>somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability)),true,'dispMis');
    // Mesma venda real do botao "Real" (deposito; passado = faturamento, hoje = VA05 do dia).
    html+=infoRow('Real',i=>{const d=record.bi?.days?.[day(i)];return d&&'vendaReal' in d?d.vendaReal:record.bi?.semana?.porDia?.[day(i)]?.real;},true,'faturamento');
   } }
@@ -598,8 +603,9 @@ const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
 let chartContext=null;
-let mostrarHistoricoGrade=false;
-let mostrarInfoGrade=false;
+// Os 5 dias passados e as linhas de referencia (VMD, LE, Pedidos, Disp. MIS, Real) abrem visiveis (usuaria, 2026-10-27).
+let mostrarHistoricoGrade=true;
+let mostrarInfoGrade=true;
 document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){mostrarHistoricoGrade=!mostrarHistoricoGrade;render(true);}if(e.target.closest('#toggle-info')){mostrarInfoGrade=!mostrarInfoGrade;render(true);}if(e.target.closest('#toggle-extensao'))alternarExtensao();});
 // Grafico no formato do Power BI (pedido da usuaria, 2026-10-09: "deixar + parecido o grafico de barras"):
 // barra larga empilhada = Lastro (faixa laranja na base) + Abertura − Lastro + entradas do dia (Recebimentos,

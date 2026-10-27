@@ -209,13 +209,21 @@
   // 2026-10-21: "pq ta pontilhado?" — o popup so' mostrava a viagem, nao a cadencia somada).
   const cad=modal==='fob'?cadenciaAmbar(index):0;
   const cadHtml=cad>0?`<p style="color:#FBBF24">+ ${fmt(cad)} m³ de cadência MIS do dia (planejamento, ainda sem viagem) · borda âmbar pontilhada</p>`:'';
-  if(!viagens.length&&!transfJunto.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||'<p>Sem detalhe de viagem ao vivo pra este dia.</p>'}`;
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
   const nReal=realizadas.length+transfJunto.length,volReal=realizadas.reduce((s,v)=>s+v.volume,0)+transfJunto.reduce((s,t)=>s+(t.volume||0),0);
+  // Conferencia (usuaria, 2026-10-27: "tem que ter as informacoes das viagens... se nao tiver, temos que mapear"):
+  // o que a celula soma alem das viagens/transferencias/cadencia listadas aparece em vermelho. Nao vale pra valor
+  // digitado nem pro botao Cadencia MIS (que nao vem de viagem).
+  const valor=state.movements[modal]?.[index]??0,volProg=programadas.reduce((s,v)=>s+v.volume,0);
+  let semViagem=valor-volReal-cad;
+  if(Math.abs(semViagem-volProg)<0.5)semViagem=0;   // nao programadas somadas ("Transito real + Nao programado"/LE)
+  const avisoSemViagem=day(index)>=today()&&semViagem>0.5&&valor===baseline.movements[modal]?.[index]&&$('entrada')?.value!=='cadencia'
+   ?`<p style="color:#F87171">⚠ ${fmt(semViagem)} m³ sem viagem identificada. Avise o administrador do simulador (base, produto e dia).</p>`:'';
+  if(!viagens.length&&!transfJunto.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||(avisoSemViagem?'':'<p>Sem detalhe de viagem ao vivo pra este dia.</p>')}${avisoSemViagem}`;
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
    +(nReal?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}${transfJunto.map(t=>linhaTransfHtml(t,index)).join('')}</dl><p style="color:#60A5FA">${nReal} viagem(ns) · total ${fmt(volReal)} m³${transfJunto.length?` (inclui ${transfJunto.length} transferência(s))`:''}</p>`:'')
    +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma em "Trânsito real + Não programado" e "LE"</p>`:'')
-   +cadHtml;
+   +cadHtml+avisoSemViagem;
  }
  // Popup "de qual deposito/empresa vem essa abertura" no modo combinado — pedido da usuaria,
  // 2026-10-05: "na abertura, quando selecionar + de 1, eu preciso saber qual deposito e empresa".
@@ -226,6 +234,9 @@
  function avisoAtraso(dataAbertura){if(!dataAbertura||dataAbertura===D.date)return'';const dias=diasDesde(dataAbertura);return ` ⚠ há ${dias} dia${dias===1?'':'s'}`;}
  function conteudoPopupAbertura(){
   const combinados=record._registrosCombinados;
+  // Base unificada (2026-10-27): deposito compartilhado soma a abertura de cada empresa (atualizar_dados.unificar_registros).
+  const partes=record.componentes;
+  if(!combinados&&partes?.length)return `<strong>Estoque inicial · abertura · ${dateLabel(D.date)}</strong><dl>${partes.map(c=>`<div><dt>${esc(c.base)}</dt><dd>${fmt(c.opening)} m³ · ${dateLabel(c.aberturaEm||D.date)}${avisoAtraso(c.aberturaEm)}</dd></div>`).join('')}</dl><p>Depósito compartilhado: ${partes.length} empresa(s) somadas · total ${fmt(record.opening)} m³</p>`;
   if(!combinados)return `<strong>Estoque inicial · abertura</strong><p>${fmt(record.opening)} m³ · ${dateLabel(record.aberturaEm||D.date)}${avisoAtraso(record.aberturaEm)}</p>`;
   const linha=r=>`<div><dt>${esc(depositoDe(r))} · ${esc(empresaDe(r))}</dt><dd>${fmt(r.opening)} m³ · ${dateLabel(r.aberturaEm||D.date)}${avisoAtraso(r.aberturaEm)}</dd></div>`;
   return `<strong>Estoque inicial · abertura · ${dateLabel(D.date)}</strong><dl>${combinados.map(linha).join('')}</dl><p>${combinados.length} base(s) · total ${fmt(record.opening)} m³</p>`;
