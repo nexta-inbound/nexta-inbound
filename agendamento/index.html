@@ -156,7 +156,7 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .troca-sai td .badge { text-decoration: none; }
 .troca-nao-entram { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; color: var(--text-muted); }
 .troca-nao-entram li { margin: 2px 0; }
-/* Importar roteirização → ajuste: motoristas do cadastro com o nome digitado */
+/* Motoristas do cadastro com o nome digitado (equipe interna): assistente, alteração e ajuste da importação */
 .mot-opcoes { margin-top: 6px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .mot-opcao { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; padding: 8px 12px; border: none; border-bottom: 1px solid var(--border); background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .mot-opcao:last-child { border-bottom: none; }
@@ -642,11 +642,12 @@ tbody tr:hover td { background: var(--panel-soft); }
             <input type="text" id="f-motorista-cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" autocomplete="off" oninput="onCpfMotoristaChange(this)">
           </div>
           <div class="form-field">
-            <label>Nome do Motorista</label>
-            <input type="text" id="f-motorista" placeholder="Nome completo" autocomplete="off">
+            <label>Nome do Motorista<button type="button" class="link-alterar hidden" id="motoristaTrocar" onclick="trocarMotorista(FORM_NOVO)">trocar</button></label>
+            <input type="text" id="f-motorista" placeholder="Nome completo" autocomplete="off" oninput="renderOpcoesMotorista(FORM_NOVO)">
           </div>
         </div>
         <div class="form-hint" id="motoristaStatus"></div>
+        <div id="motoristaOpcoes"></div> <!-- equipe interna: busca do motorista pelo nome -->
         <!-- CPF sem cadastro de motorista: quem agenda informa o nome e o motorista entra como provisório (a Nexta valida depois) -->
         <div class="cad-provisorio hidden" id="motoristaProvisorio">
           <div class="cp-titulo">Motorista sem cadastro</div>
@@ -737,6 +738,63 @@ tbody tr:hover td { background: var(--panel-soft); }
 <!-- MODAL: Alterar pedidos de um agendamento (equipe interna) -->
 <div class="modal-overlay" id="modalTrocaPedidos">
   <div class="modal" style="width:860px" id="trocaPedidosConteudo"></div>
+</div>
+
+<!-- MODAL: Alterar veículo e motorista de um agendamento (quem criou e equipe interna).
+     Mesmos campos das etapas Veículo e Motorista do assistente, com os ids prefixados por "alt-" (FORM_ALTERACAO) -->
+<div class="modal-overlay" id="modalAlteracao">
+  <div class="modal" style="width:860px" onkeydown="onTeclaAlteracao(event)">
+    <div class="modal-title" id="alt-titulo">Alterar veículo e motorista</div>
+    <div class="modal-sub" id="alt-sub"></div>
+    <div class="form-hint" style="margin:0 0 16px">O agendamento continua o mesmo (protocolo, data, horário ou turno e pedidos); muda só o veículo e/ou o motorista.</div>
+    <div class="card-title">Placas do veículo</div>
+    <div class="form-row">
+      <div class="form-field">
+        <label>Placa do Cavalo</label>
+        <input type="text" id="alt-f-placa-cavalo" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase" oninput="renderStatusVeiculo(FORM_ALTERACAO)">
+      </div>
+      <div class="form-field">
+        <label>Placa da Carreta 1 <span class="lbl-opc">(opcional)</span></label>
+        <input type="text" id="alt-f-placa-carreta" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase" oninput="renderStatusVeiculo(FORM_ALTERACAO)">
+      </div>
+      <div class="form-field">
+        <label>Placa da Carreta 2 <span class="lbl-opc">(opcional)</span></label>
+        <input type="text" id="alt-f-placa-carreta2" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase" oninput="renderStatusVeiculo(FORM_ALTERACAO)">
+      </div>
+    </div>
+    <div class="form-hint" id="alt-veiculoStatus"></div>
+    <div class="form-hint" id="alt-volumeTxt"></div>
+    <div class="cad-provisorio hidden" id="alt-veiculoProvisorio">
+      <div class="cp-titulo">Veículo sem cadastro</div>
+      <div class="form-hint" id="alt-veiculoProvisorioTxt"></div>
+      <div class="form-field" style="max-width:280px;margin-top:12px">
+        <label>Capacidade total do veículo (litros)</label>
+        <input type="number" id="alt-f-capacidade-prov" min="1000" max="100000" step="500" placeholder="ex: 45000" inputmode="numeric" autocomplete="off">
+      </div>
+    </div>
+    <div class="card-title" style="margin-top:22px">Motorista</div>
+    <div class="form-row">
+      <div class="form-field">
+        <label>CPF do Motorista</label>
+        <input type="text" id="alt-f-motorista-cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" autocomplete="off" oninput="onCpfMotoristaChange(this, FORM_ALTERACAO)">
+      </div>
+      <div class="form-field">
+        <label>Nome do Motorista<button type="button" class="link-alterar hidden" id="alt-motoristaTrocar" onclick="trocarMotorista(FORM_ALTERACAO)">trocar</button></label>
+        <input type="text" id="alt-f-motorista" placeholder="Nome completo" autocomplete="off" oninput="renderOpcoesMotorista(FORM_ALTERACAO)">
+      </div>
+    </div>
+    <div class="form-hint" id="alt-motoristaStatus"></div>
+    <div id="alt-motoristaOpcoes"></div>
+    <div class="cad-provisorio hidden" id="alt-motoristaProvisorio">
+      <div class="cp-titulo">Motorista sem cadastro</div>
+      <div class="form-hint" id="alt-motoristaProvisorioTxt"></div>
+    </div>
+    <div class="wizard-erro hidden" id="alt-erro"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="fecharAlteracao()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarAlteracao" onclick="salvarAlteracao()">Salvar alteração</button>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL: Detalhe do Pedido (aba Pedidos) -->
@@ -1073,10 +1131,11 @@ const STATE = {
   // pedidos = pedidosSap/<nr> já adicionados à carreta; baseId/baseChave = base ligada a eles (centro + depósito).
   // baseSlots/slotsOcupados ficam null até o 1º retorno do Firebase (grade mostra "carregando").
   // recurso: consulta de recursos/<chave> com as placas digitadas (capacidade do veículo);
-  // motoristaCad: consulta de motoristas/<cpf> com o CPF digitado
+  // motoristaCad: consulta de motoristas/<cpf> com o CPF digitado;
+  // motoristasNome: cadastro de motoristas por nome (equipe interna busca o motorista pelo nome), lido uma vez por agendamento
   // turnoSugerido: turno de entrega do 1º pedido (pré-seleciona o turno, se a base atende nele)
   // produtosFora: refItem dos produtos dos pedidos adicionados que ficam para outro agendamento (desmarcados)
-  novo: { pedidos: [], produtosFora: new Set(), baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, turnoSugerido: '' },
+  novo: { pedidos: [], produtosFora: new Set(), baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, motoristasNome: null, turnoSugerido: '' },
   baseEditando: null,      // id da base aberta no formulário de Cadastros
   pedidosDepositos: null,  // Cadastros → Bases: centro, depósito, entrega e volume de cada pedido (resumo dos depósitos sem base)
   recursos: null,          // Cadastros → Recursos: recursos/ inteiro (null até abrir a subaba)
@@ -1096,6 +1155,7 @@ const STATE = {
   ultimoAgendamento: null,  // dados do agendamento que acabou de ser criado (comprovante em PDF)
   importacao: null,         // roteirização (JSON do roteirizador) aberta na janela de importação
   troca: null,              // trocar pedidos: { id do agendamento, saem: Set(nr), novos: [pedidosSap] }
+  alteracao: null,          // alterar veículo e motorista: { id do agendamento, recurso, motoristaCad } (consultas como em STATE.novo)
   adminClientesSel: new Set(), // códigos marcados no formulário de usuário (admin)
   msgLogin: '',
 };
@@ -1352,6 +1412,10 @@ function reiniciarListenerAgendamentos() {
     if (STATE.troca) {
       if (STATE.agendamentos[STATE.troca.id]?.status === 'agendado') renderTrocaPedidos();
       else { fecharTrocaPedidos(false); toast('O agendamento foi cancelado ou faturado enquanto os pedidos eram trocados.', 'info'); }
+    }
+    if (STATE.alteracao && STATE.agendamentos[STATE.alteracao.id]?.status !== 'agendado') {
+      fecharAlteracao(false);
+      toast('O agendamento foi cancelado ou faturado enquanto o veículo e o motorista eram alterados.', 'info');
     }
   };
   // Cliente vê os agendamentos que têm pedido dele (índice agendamentosPorCliente), dos últimos 60 dias em diante;
@@ -2023,12 +2087,21 @@ const ETAPA = { veiculo: 1, motorista: 2, pedidos: 3, data: 4 };
 const ETAPAS_WIZARD = ['Veículo', 'Motorista', 'Pedidos', 'Data e horário'];
 let etapaWizard = 1;
 
-function lerPlacas() {
-  return ['f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2'].map((id) => normalizarPlaca(document.getElementById(id).value));
+// Campos de veículo e motorista: os das etapas 1 e 2 do assistente e os da janela Alterar veículo e motorista (mesmos
+// ids com o prefixo "alt-"). Cada formulário guarda as consultas de cadastro (recurso, motoristaCad) no próprio estado;
+// as funções abaixo recebem o formulário e, sem ele, valem para o assistente.
+// aoConsultarVeiculo: no assistente, a ocupação do veículo na etapa Pedidos (e o resumo da última)
+// nome: o da constante, para os onclick montados em HTML (escolher o motorista da busca pelo nome)
+const FORM_NOVO = { nome: 'FORM_NOVO', prefixo: '', estado: () => STATE.novo, aoConsultarVeiculo: () => renderPedidosAgendamento() };
+const FORM_ALTERACAO = { nome: 'FORM_ALTERACAO', prefixo: 'alt-', estado: () => STATE.alteracao || {}, aoConsultarVeiculo: () => {} };
+function elForm(form, id) { return document.getElementById(form.prefixo + id); }
+
+function lerPlacas(form = FORM_NOVO) {
+  return ['f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2'].map((id) => normalizarPlaca(elForm(form, id).value));
 }
-function chaveDasPlacas() { return chaveRecurso(lerPlacas().filter(Boolean)); }
-function lerMotorista() {
-  return { nome: document.getElementById('f-motorista').value.trim(), cpf: soDigitos(document.getElementById('f-motorista-cpf').value) };
+function chaveDasPlacas(form = FORM_NOVO) { return chaveRecurso(lerPlacas(form).filter(Boolean)); }
+function lerMotorista(form = FORM_NOVO) {
+  return { nome: elForm(form, 'f-motorista').value.trim(), cpf: soDigitos(elForm(form, 'f-motorista-cpf').value) };
 }
 
 // Veículo = recurso do SAP TM (Cadastros → Recursos) com exatamente as placas digitadas, juntas por "+"
@@ -2037,45 +2110,45 @@ function lerMotorista() {
 const CAPACIDADE_MINIMA_VALIDA = 1000; // o SAP tem recursos com volume 0/1 (cavalo sozinho): não vale como capacidade
 const CAPACIDADE_MAXIMA_PROVISORIA = 100000; // barra erro de digitação (ex.: 450000) no cadastro provisório
 // Consulta SAP + provisório; repete só se as placas mudarem ou se a leitura anterior falhou. Nunca rejeita.
-function buscarRecursoDasPlacas() {
-  const placas = lerPlacas().filter(Boolean);
+function buscarRecursoDasPlacas(form = FORM_NOVO) {
+  const placas = lerPlacas(form).filter(Boolean);
   if (!placas.length || !placas.every(placaValida)) return Promise.resolve();
   const chave = chaveRecurso(placas);
-  const atual = STATE.novo.recurso;
+  const atual = form.estado().recurso;
   if (atual?.chave === chave && !atual.erro) return atual.busca;
-  if (atual && atual.chave !== chave) document.getElementById('f-capacidade-prov').value = ''; // era de outras placas
+  if (atual && atual.chave !== chave) elForm(form, 'f-capacidade-prov').value = ''; // era de outras placas
   const r = { chave, dados: undefined, origem: null }; // dados: undefined = consultando; null = sem cadastro
   r.busca = Promise.all([window._fb.carregarRecurso(chave), window._fb.carregarRecursoPendente(chave)])
     .then(([sap, provisorio]) => { r.dados = sap || provisorio || null; r.origem = sap ? 'sap' : provisorio ? 'provisorio' : null; },
       (e) => { console.warn('Cadastro de veículos não consultado', e); r.dados = null; r.erro = true; })
     .then(() => {
-      if (STATE.novo.recurso !== r) return;
-      renderStatusVeiculo();
-      renderPedidosAgendamento(); // ocupação do veículo na etapa Pedidos (e o resumo da última)
+      if (form.estado().recurso !== r) return;
+      renderStatusVeiculo(form);
+      form.aoConsultarVeiculo();
     });
-  STATE.novo.recurso = r;
-  renderStatusVeiculo();
+  form.estado().recurso = r;
+  renderStatusVeiculo(form);
   return r.busca;
 }
-function capacidadeProvisoriaDigitada() {
-  const v = Number(document.getElementById('f-capacidade-prov').value);
+function capacidadeProvisoriaDigitada(form = FORM_NOVO) {
+  const v = Number(elForm(form, 'f-capacidade-prov').value);
   return v >= CAPACIDADE_MINIMA_VALIDA && v <= CAPACIDADE_MAXIMA_PROVISORIA ? v : null;
 }
 // Veículo das placas digitadas, já consultado: { chave, origem, id, volume }. origem 'sap' | 'provisorio' |
 // 'novo' (sem cadastro, com a capacidade informada agora: vira cadastro provisório ao confirmar).
 // volume null = recurso do SAP sem volume máximo. Devolve null se não consultou, se a consulta falhou ou sem capacidade.
-function veiculoDasPlacas() {
-  const r = STATE.novo.recurso;
-  if (!r || r.dados === undefined || r.erro || r.chave !== chaveDasPlacas()) return null;
+function veiculoDasPlacas(form = FORM_NOVO) {
+  const r = form.estado().recurso;
+  if (!r || r.dados === undefined || r.erro || r.chave !== chaveDasPlacas(form)) return null;
   if (r.dados) return { chave: r.chave, origem: r.origem, id: r.dados.id || null, volume: r.dados.volumeMax >= CAPACIDADE_MINIMA_VALIDA ? r.dados.volumeMax : null };
-  const volume = capacidadeProvisoriaDigitada();
+  const volume = capacidadeProvisoriaDigitada(form);
   return volume ? { chave: r.chave, origem: 'novo', id: null, volume } : null;
 }
 // Etapa Veículo: cadastrado no SAP, provisório ou sem cadastro (abre o cadastro provisório)
-function renderStatusVeiculo() {
-  const r = STATE.novo.recurso;
-  const atual = r && r.chave === chaveDasPlacas() ? r : null; // placas mudaram: a consulta anterior não vale
-  const status = document.getElementById('veiculoStatus');
+function renderStatusVeiculo(form = FORM_NOVO) {
+  const r = form.estado().recurso;
+  const atual = r && r.chave === chaveDasPlacas(form) ? r : null; // placas mudaram: a consulta anterior não vale
+  const status = elForm(form, 'veiculoStatus');
   let texto = '', cls = '';
   if (atual && atual.dados === undefined) texto = 'Consultando o cadastro de veículos…';
   else if (atual?.origem === 'sap') {
@@ -2089,9 +2162,9 @@ function renderStatusVeiculo() {
   status.textContent = texto;
   status.className = 'form-hint' + (cls ? ' ' + cls : '');
   const semCadastro = !!atual && atual.dados === null && !atual.erro;
-  document.getElementById('veiculoProvisorio').classList.toggle('hidden', !semCadastro);
+  elForm(form, 'veiculoProvisorio').classList.toggle('hidden', !semCadastro);
   if (semCadastro) {
-    document.getElementById('veiculoProvisorioTxt').textContent = `As placas ${lerPlacas().filter(Boolean).join(' + ')} não estão no cadastro de recursos. `
+    elForm(form, 'veiculoProvisorioTxt').textContent = `As placas ${lerPlacas(form).filter(Boolean).join(' + ')} não estão no cadastro de recursos. `
       + 'Confira se estão certas. Se estiverem, informe a capacidade total e siga com um cadastro provisório: a equipe Nexta valida depois.';
   }
 }
@@ -2099,38 +2172,38 @@ function renderStatusVeiculo() {
 // Motorista = cadastro de motoristas do SAP (Cadastros → Motoristas) pelo CPF; sem cadastro, vale o provisório
 // (motoristasPendentes/<cpf>). A consulta sai assim que o CPF fica completo e válido; o nome vem do cadastro.
 // Repete só se o CPF mudar ou se a leitura anterior falhou. Nunca rejeita.
-function buscarMotorista() {
-  const { cpf } = lerMotorista();
+function buscarMotorista(form = FORM_NOVO) {
+  const { cpf } = lerMotorista(form);
   if (!cpfValido(cpf)) return Promise.resolve();
-  const atual = STATE.novo.motoristaCad;
+  const atual = form.estado().motoristaCad;
   if (atual?.cpf === cpf && !atual.erro) return atual.busca;
   const m = { cpf, dados: undefined, origem: null }; // dados: undefined = consultando; null = sem cadastro
   m.busca = Promise.all([window._fb.carregarMotorista(cpf), window._fb.carregarMotoristaPendente(cpf)])
     .then(([sap, provisorio]) => { m.dados = sap || provisorio || null; m.origem = sap ? 'sap' : provisorio ? 'provisorio' : null; },
       (e) => { console.warn('Cadastro de motoristas não consultado', e); m.dados = null; m.erro = true; })
-    .then(() => { if (STATE.novo.motoristaCad === m) renderStatusMotorista(); });
-  STATE.novo.motoristaCad = m;
-  renderStatusMotorista();
+    .then(() => { if (form.estado().motoristaCad === m) renderStatusMotorista(form); });
+  form.estado().motoristaCad = m;
+  renderStatusMotorista(form);
   return m.busca;
 }
-function onCpfMotoristaChange(el) {
+function onCpfMotoristaChange(el, form = FORM_NOVO) {
   mascararCpf(el);
-  buscarMotorista();
-  renderStatusMotorista();
+  buscarMotorista(form);
+  renderStatusMotorista(form);
 }
 // Motorista do CPF digitado, já consultado: { cpf, origem: 'sap' | 'provisorio' | 'novo', bp }; null se não consultou ou falhou
-function motoristaDoCadastro() {
-  const m = STATE.novo.motoristaCad;
-  const { cpf } = lerMotorista();
+function motoristaDoCadastro(form = FORM_NOVO) {
+  const m = form.estado().motoristaCad;
+  const { cpf } = lerMotorista(form);
   if (!m || m.cpf !== cpf || m.dados === undefined || m.erro) return null;
   return { cpf, origem: m.dados ? m.origem : 'novo', bp: m.origem === 'sap' ? (m.dados.bp || null) : null };
 }
 // Etapa Motorista: cadastrado no SAP, provisório ou sem cadastro (abre o cadastro provisório).
 // Com cadastro, o nome vem dele e não se edita; sem cadastro, quem agenda digita o nome completo
-function renderStatusMotorista() {
-  const m = STATE.novo.motoristaCad;
-  const atual = m && m.cpf === lerMotorista().cpf ? m : null; // CPF mudou: a consulta anterior não vale
-  const campoNome = document.getElementById('f-motorista');
+function renderStatusMotorista(form = FORM_NOVO) {
+  const m = form.estado().motoristaCad;
+  const atual = m && m.cpf === lerMotorista(form).cpf ? m : null; // CPF mudou: a consulta anterior não vale
+  const campoNome = elForm(form, 'f-motorista');
   if (atual?.dados) {
     campoNome.value = atual.dados.nome;
     campoNome.readOnly = true;
@@ -2140,7 +2213,7 @@ function renderStatusMotorista() {
     campoNome.readOnly = false;
     delete campoNome.dataset.doCadastro;
   }
-  const status = document.getElementById('motoristaStatus');
+  const status = elForm(form, 'motoristaStatus');
   let texto = '', cls = '';
   if (atual && atual.dados === undefined) texto = 'Consultando o cadastro de motoristas…';
   else if (atual?.origem === 'sap') {
@@ -2154,48 +2227,133 @@ function renderStatusMotorista() {
   status.textContent = texto;
   status.className = 'form-hint' + (cls ? ' ' + cls : '');
   const semCadastro = !!atual && atual.dados === null && !atual.erro;
-  document.getElementById('motoristaProvisorio').classList.toggle('hidden', !semCadastro);
+  elForm(form, 'motoristaProvisorio').classList.toggle('hidden', !semCadastro);
   if (semCadastro) {
-    document.getElementById('motoristaProvisorioTxt').textContent = `O CPF ${formatCpf(atual.cpf)} não está no cadastro de motoristas. `
+    elForm(form, 'motoristaProvisorioTxt').textContent = `O CPF ${formatCpf(atual.cpf)} não está no cadastro de motoristas. `
       + 'Confira se está certo. Se estiver, informe o nome completo e siga com um cadastro provisório: a equipe Nexta valida depois.';
   }
+  renderOpcoesMotorista(form);
+}
+
+// Equipe interna: o campo do nome busca no cadastro de motoristas (SAP + provisórios) e escolher um preenche o CPF.
+// Homônimos aparecem com o final do CPF. Com o nome travado pelo CPF, a lista some e aparece o "trocar".
+// Com CPF fora do cadastro (vai virar provisório), mostra só quem tem exatamente o nome digitado: pode ser o CPF errado.
+const MAX_OPCOES_MOTORISTA = 8; // também no ajuste da importação
+function renderOpcoesMotorista(form = FORM_NOVO) {
+  const el = elForm(form, 'motoristaOpcoes');
+  const campoNome = elForm(form, 'f-motorista');
+  const interno = STATE.usuario?.tipo === 'interno';
+  const travado = !!campoNome.dataset.doCadastro;
+  elForm(form, 'motoristaTrocar').classList.toggle('hidden', !interno || !travado);
+  campoNome.placeholder = interno ? 'Nome completo ou parte, para buscar' : 'Nome completo';
+  if (!interno || travado) { el.innerHTML = ''; return; }
+  const { nome, cpf } = lerMotorista(form);
+  const m = form.estado().motoristaCad;
+  const consulta = m && m.cpf === cpf ? m : null;
+  const semCadastro = cpfValido(cpf);
+  if (semCadastro && (consulta?.dados !== null || consulta.erro)) { el.innerHTML = ''; return; } // consultando ou falhou: o status mostra
+  const chave = chaveNome(nome);
+  if (chave.length < 3) {
+    el.innerHTML = cpf ? '' : '<div class="form-hint">Sem o CPF? Digite o nome do motorista para buscar no cadastro.</div>';
+    return;
+  }
+  const dono = form.estado();
+  if (!dono.motoristasNome) {
+    el.innerHTML = '<div class="form-hint">Carregando o cadastro de motoristas…</div>';
+    carregarMotoristasPorNome(dono).then(() => { if (form.estado() === dono) renderOpcoesMotorista(form); }, (e) => {
+      if (form.estado() === dono) el.innerHTML = `<div class="form-hint erro">Não foi possível ler o cadastro de motoristas: ${esc(msgErro(e, 'sem conexão'))}. Informe o CPF.</div>`;
+    });
+    return;
+  }
+  let achados = buscarMotoristasPorNome(dono, nome);
+  if (semCadastro) achados = achados.filter((o) => o.chave === chave);
+  if (!achados.length) {
+    el.innerHTML = semCadastro ? '' : '<div class="form-hint">Nenhum motorista do cadastro com esse nome. Busque por parte do nome ou informe o CPF.</div>';
+    return;
+  }
+  const iguais = achados.filter((o) => o.chave === chave).length;
+  const titulo = semCadastro ? `O CPF digitado não está no cadastro, mas há ${iguais > 1 ? 'motoristas' : 'motorista'} com esse nome. Se for o mesmo, escolha:`
+    : iguais > 1 ? `${iguais} motoristas com esse nome: escolha pelo final do CPF.` : 'Escolha o motorista do cadastro:';
+  el.innerHTML = `<div class="form-hint">${titulo}</div>
+    <div class="mot-opcoes">${achados.slice(0, MAX_OPCOES_MOTORISTA).map((o) => {
+      const homonimos = dono.motoristasNome.porChave.get(o.chave);
+      const detalhe = [homonimos.length > 1 ? 'CPF ' + finalCpf(o.cpf, homonimos) : '', o.origem === 'sap' ? '' : 'provisório'].filter(Boolean).join(' · ');
+      return `<button type="button" class="mot-opcao" onclick="escolherMotorista(${form.nome}, ${jsArg(o.cpf)})"><span>${esc(o.nome)}</span>${detalhe ? `<small>${esc(detalhe)}</small>` : ''}</button>`;
+    }).join('')}</div>
+    ${achados.length > MAX_OPCOES_MOTORISTA ? `<div class="form-hint">Mostrando ${MAX_OPCOES_MOTORISTA} de ${formatNumero(achados.length)}. Refine a busca.</div>` : ''}`;
+}
+// CPF só com os últimos dígitos (•••.•••.•12-34): os que bastam para diferenciar dos homônimos, no mínimo 4
+function finalCpf(cpf, homonimos) {
+  let n = 4;
+  while (n < 11 && homonimos.some((o) => o.cpf !== cpf && o.cpf.endsWith(cpf.slice(-n)))) n++;
+  const d = '•'.repeat(11 - n) + cpf.slice(-n);
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+function escolherMotorista(form, cpf) {
+  const campoCpf = elForm(form, 'f-motorista-cpf');
+  campoCpf.value = formatCpf(cpf);
+  onCpfMotoristaChange(campoCpf, form); // consulta o CPF: o nome vem do cadastro e trava
+}
+// Solta o motorista escolhido: limpa o CPF e volta a buscar pelo mesmo nome (os homônimos aparecem de novo)
+function trocarMotorista(form) {
+  const campoNome = elForm(form, 'f-motorista');
+  const nome = campoNome.value;
+  elForm(form, 'f-motorista-cpf').value = '';
+  renderStatusMotorista(form); // libera o nome
+  campoNome.value = nome;
+  renderOpcoesMotorista(form);
+  campoNome.focus();
+  campoNome.select();
+}
+// Enter no nome buscando sem CPF: com um só motorista na lista, escolhe; com vários, espera a escolha (não avança nem salva)
+function enterNaBuscaMotorista(form) {
+  const opcoes = elForm(form, 'motoristaOpcoes').querySelectorAll('.mot-opcao');
+  if (!opcoes.length || cpfValido(lerMotorista(form).cpf)) return false;
+  if (opcoes.length === 1) opcoes[0].click();
+  return true;
+}
+
+// Problema nos campos de veículo ('' quando está tudo certo): etapa Veículo e alteração de veículo
+function erroVeiculo(form = FORM_NOVO) {
+  const [cavalo, carreta1, carreta2] = lerPlacas(form);
+  if (!cavalo) return 'Informe a placa do cavalo.';
+  for (const [nome, placa] of [['do cavalo', cavalo], ['da carreta 1', carreta1], ['da carreta 2', carreta2]]) {
+    if (placa && !placaValida(placa)) return `Placa ${nome} inválida. Use o formato ABC1234 ou ABC1D23.`;
+  }
+  if (carreta2 && !carreta1) return 'Preencha a placa da carreta 1 antes da carreta 2.';
+  // A consulta das placas é feita (e esperada) em irParaEtapa, confirmarAgendamento e salvarAlteracao
+  const r = form.estado().recurso;
+  if (!r || r.chave !== chaveDasPlacas(form) || r.dados === undefined) return 'Consultando o cadastro de veículos. Tente de novo em instantes.';
+  if (r.erro) return 'Não foi possível consultar o cadastro de veículos. Verifique a conexão e tente de novo.';
+  if (!r.dados) {
+    if (!elForm(form, 'f-capacidade-prov').value) return 'Veículo sem cadastro: confira as placas ou informe a capacidade para o cadastro provisório.';
+    if (!capacidadeProvisoriaDigitada(form)) return `Capacidade do veículo: informe o total em litros, entre ${formatVolume(CAPACIDADE_MINIMA_VALIDA)} e ${formatVolume(CAPACIDADE_MAXIMA_PROVISORIA)}.`;
+  }
+  return '';
+}
+// Problema nos campos de motorista ('' quando está tudo certo): etapa Motorista e alteração de motorista
+function erroMotorista(form = FORM_NOVO) {
+  const { nome, cpf } = lerMotorista(form);
+  if (!cpf && STATE.usuario?.tipo === 'interno') return nome ? 'Escolha o motorista na lista (busca pelo nome) ou informe o CPF.' : 'Informe o CPF do motorista ou busque pelo nome.';
+  if (!cpf) return 'Informe o CPF do motorista.';
+  if (!cpfValido(cpf)) return 'CPF do motorista inválido.';
+  // A consulta do CPF é esperada em irParaEtapa, confirmarAgendamento e salvarAlteracao
+  const m = form.estado().motoristaCad;
+  if (!m || m.cpf !== cpf || m.dados === undefined) return 'Consultando o cadastro de motoristas. Tente de novo em instantes.';
+  if (m.erro) return 'Não foi possível consultar o cadastro de motoristas. Verifique a conexão e tente de novo.';
+  if (!m.dados) {
+    if (!nome) return 'Motorista sem cadastro: confira o CPF ou informe o nome completo para o cadastro provisório.';
+    if (nome.split(/\s+/).length < 2) return 'Informe o nome completo do motorista (nome e sobrenome).';
+  }
+  return '';
 }
 
 // Problema que impede sair da etapa n ('' quando está tudo certo)
 function erroDaEtapa(n) {
   const pedidos = STATE.novo.pedidos;
   const base = baseAtual();
-  if (n === ETAPA.veiculo) {
-    const [cavalo, carreta1, carreta2] = lerPlacas();
-    if (!cavalo) return 'Informe a placa do cavalo.';
-    for (const [nome, placa] of [['do cavalo', cavalo], ['da carreta 1', carreta1], ['da carreta 2', carreta2]]) {
-      if (placa && !placaValida(placa)) return `Placa ${nome} inválida. Use o formato ABC1234 ou ABC1D23.`;
-    }
-    if (carreta2 && !carreta1) return 'Preencha a placa da carreta 1 antes da carreta 2.';
-    // A consulta das placas é feita (e esperada) em irParaEtapa e confirmarAgendamento
-    const r = STATE.novo.recurso;
-    if (!r || r.chave !== chaveDasPlacas() || r.dados === undefined) return 'Consultando o cadastro de veículos. Tente de novo em instantes.';
-    if (r.erro) return 'Não foi possível consultar o cadastro de veículos. Verifique a conexão e tente de novo.';
-    if (!r.dados) {
-      if (!document.getElementById('f-capacidade-prov').value) return 'Veículo sem cadastro: confira as placas ou informe a capacidade para o cadastro provisório.';
-      if (!capacidadeProvisoriaDigitada()) return `Capacidade do veículo: informe o total em litros, entre ${formatVolume(CAPACIDADE_MINIMA_VALIDA)} e ${formatVolume(CAPACIDADE_MAXIMA_PROVISORIA)}.`;
-    }
-    return '';
-  }
-  if (n === ETAPA.motorista) {
-    const { nome, cpf } = lerMotorista();
-    if (!cpf) return 'Informe o CPF do motorista.';
-    if (!cpfValido(cpf)) return 'CPF do motorista inválido.';
-    // A consulta do CPF é esperada em irParaEtapa e confirmarAgendamento
-    const m = STATE.novo.motoristaCad;
-    if (!m || m.cpf !== cpf || m.dados === undefined) return 'Consultando o cadastro de motoristas. Tente de novo em instantes.';
-    if (m.erro) return 'Não foi possível consultar o cadastro de motoristas. Verifique a conexão e tente de novo.';
-    if (!m.dados) {
-      if (!nome) return 'Motorista sem cadastro: confira o CPF ou informe o nome completo para o cadastro provisório.';
-      if (nome.split(/\s+/).length < 2) return 'Informe o nome completo do motorista (nome e sobrenome).';
-    }
-    return '';
-  }
+  if (n === ETAPA.veiculo) return erroVeiculo();
+  if (n === ETAPA.motorista) return erroMotorista();
   if (n === ETAPA.pedidos) {
     if (!pedidos.length) return 'Adicione ao menos um pedido.';
     if (!base) return msgBaseIndisponivel(pedidos[0], baseDoPedido(pedidos[0]));
@@ -2291,6 +2449,7 @@ function onTeclaWizard(ev) {
   if (ev.key !== 'Enter' || ev.target.tagName !== 'INPUT' || ev.target.id === 'f-pedido-sap') return;
   if (etapaWizard >= ETAPAS_WIZARD.length) return;
   ev.preventDefault();
+  if (ev.target.id === 'f-motorista' && enterNaBuscaMotorista(FORM_NOVO)) return;
   avancarEtapa();
 }
 
@@ -2421,7 +2580,6 @@ function montarAgendamento({ protocolo, pedidos, neste, baseId, base, data, turn
     clientes[p.clienteCodigo] = registroClienteAgendamento(p);
     pedidosAgendamento[p.nrPedido] = registroPedidoAgendamento(p, neste);
   }
-  const [placaCavalo, placaCarreta, placaCarreta2] = placas;
   const dados = {
     protocolo,
     criadoPorUid: STATE.usuario.uid,
@@ -2432,16 +2590,8 @@ function montarAgendamento({ protocolo, pedidos, neste, baseId, base, data, turn
     centro: pedidos[0].centro, depositoCodigo: pedidos[0].depositoCodigo,
     turno: base.tipo === 'fila' ? turno : null,
     slotHorario: base.tipo === 'agendamento' ? slotHorario : null,
-    placaCavalo, placaCarreta: placaCarreta || null, placaCarreta2: placaCarreta2 || null,
-    // Veículo: recurso do SAP ou cadastro provisório (recursosPendentes/<recursoChave>), com a capacidade usada
-    recursoChave: veiculo.chave,
-    recursoSap: veiculo.origem === 'sap' ? veiculo.id : null,
-    recursoProvisorio: veiculo.origem !== 'sap',
-    capacidadeVeiculo: veiculo.volume,
-    // Motorista: cadastro do SAP (BP) ou cadastro provisório (motoristasPendentes/<motoristaCpf>)
-    motorista, motoristaCpf,
-    motoristaBp: motoristaCad.bp,
-    motoristaProvisorio: motoristaCad.origem !== 'sap',
+    ...camposVeiculo(placas, veiculo),
+    ...camposMotorista(motorista, motoristaCpf, motoristaCad),
     clientes,
     // Mesmos códigos em lista: a regra de leitura confere cada posição contra as filiais do usuário cliente
     clientesLista: Object.keys(clientes),
@@ -2450,14 +2600,39 @@ function montarAgendamento({ protocolo, pedidos, neste, baseId, base, data, turn
     status: 'agendado',
     ...extras,
   };
-  // Veículo e/ou motorista sem cadastro: o cadastro provisório é gravado junto com o agendamento (tudo ou nada)
-  const autoria = { criadoPor: STATE.usuario.nome || STATE.usuario.email, criadoPorUid: STATE.usuario.uid, criadoEm: dados.criadoEm, protocolo };
-  const provisorios = {};
-  if (veiculo.origem === 'novo') {
-    provisorios['recursosPendentes/' + veiculo.chave] = { placas: placas.filter(Boolean), volumeMax: veiculo.volume, tipo: placaCarreta ? 'CON' : 'TRK', ...autoria };
-  }
-  if (motoristaCad.origem === 'novo') provisorios['motoristasPendentes/' + motoristaCpf] = { cpf: motoristaCpf, nome: motorista, ...autoria };
+  const provisorios = cadastrosProvisorios({ protocolo, em: dados.criadoEm, placas, veiculo, motorista, motoristaCpf, motoristaCad });
   return { dados, provisorios };
+}
+// Campos do veículo e do motorista no agendamento: os mesmos na criação e na alteração de veículo/motorista
+function camposVeiculo(placas, veiculo) {
+  const [placaCavalo, placaCarreta, placaCarreta2] = placas;
+  return {
+    placaCavalo, placaCarreta: placaCarreta || null, placaCarreta2: placaCarreta2 || null,
+    // Veículo: recurso do SAP ou cadastro provisório (recursosPendentes/<recursoChave>), com a capacidade usada
+    recursoChave: veiculo.chave,
+    recursoSap: veiculo.origem === 'sap' ? veiculo.id : null,
+    recursoProvisorio: veiculo.origem !== 'sap',
+    capacidadeVeiculo: veiculo.volume,
+  };
+}
+function camposMotorista(motorista, motoristaCpf, motoristaCad) {
+  return {
+    // Motorista: cadastro do SAP (BP) ou cadastro provisório (motoristasPendentes/<motoristaCpf>)
+    motorista, motoristaCpf,
+    motoristaBp: motoristaCad.bp,
+    motoristaProvisorio: motoristaCad.origem !== 'sap',
+  };
+}
+// Veículo e/ou motorista sem cadastro: o cadastro provisório é gravado junto com o agendamento (tudo ou nada).
+// Na alteração, veiculo ou motoristaCad null = esse não mudou
+function cadastrosProvisorios({ protocolo, em, placas, veiculo, motorista, motoristaCpf, motoristaCad }) {
+  const autoria = { criadoPor: STATE.usuario.nome || STATE.usuario.email, criadoPorUid: STATE.usuario.uid, criadoEm: em, protocolo };
+  const provisorios = {};
+  if (veiculo?.origem === 'novo') {
+    provisorios['recursosPendentes/' + veiculo.chave] = { placas: placas.filter(Boolean), volumeMax: veiculo.volume, tipo: placas[1] ? 'CON' : 'TRK', ...autoria };
+  }
+  if (motoristaCad?.origem === 'novo') provisorios['motoristasPendentes/' + motoristaCpf] = { cpf: motoristaCpf, nome: motorista, ...autoria };
+  return provisorios;
 }
 // clientes/<código> e pedidos/<nr> do agendamento (assistente, importação e troca de pedidos)
 function registroClienteAgendamento(p) {
@@ -2478,6 +2653,7 @@ function resetarFormularioAgendamento() {
   STATE.novo.produtosFora = new Set();
   STATE.novo.recurso = null;
   STATE.novo.motoristaCad = null;
+  STATE.novo.motoristasNome = STATE.novo.buscaMotoristasNome = null; // o próximo agendamento lê os provisórios de novo
   STATE.novo.turnoSugerido = '';
   renderStatusVeiculo(); // esconde os cadastros provisórios
   renderStatusMotorista(); // e libera o nome do motorista
@@ -2653,10 +2829,11 @@ function abrirDetalheAgendamento(id) {
   const podeCancel = a.status === 'agendado' && (STATE.usuario.admin || a.criadoPorUid === STATE.usuario.uid);
   const motivo = motivoRevisar(a);
   const podeTrocar = podeTrocarPedidos(a);
+  const podeAlterar = podeAlterarVeiculoMotorista(a);
   document.getElementById('modalDetalheConteudo').innerHTML = `
     <div class="modal-title">${esc(a.protocolo)}</div>
     <div class="modal-sub">Criado por ${esc(a.criadoPorNome)} em ${new Date(a.criadoEm).toLocaleString('pt-BR')}${a.editadoEm
-      ? ` · pedidos alterados por ${esc(a.editadoPor)} em ${new Date(a.editadoEm).toLocaleString('pt-BR')}` : ''}</div>
+      ? ` · alterado por ${esc(a.editadoPor)} em ${new Date(a.editadoEm).toLocaleString('pt-BR')}` : ''}</div>
     ${motivo ? `<div class="aviso-revisar"><div class="cp-titulo">Revisar este agendamento</div>
       <div class="form-hint">${esc(motivo)}. ${podeTrocar
         ? `Em Alterar pedidos, troque o pedido para manter o agendamento (mesmo protocolo, ${a.baseTipo === 'agendamento' ? 'horário' : 'turno'}, veículo e motorista) ou, se a carga não vai sair, cancele para liberar ${a.baseTipo === 'agendamento' ? 'o horário' : 'a vaga'}.`
@@ -2703,6 +2880,7 @@ function abrirDetalheAgendamento(id) {
     <div class="modal-actions">
       <button class="btn btn-secondary" style="margin-right:auto" onclick="baixarPdfAgendamento('${id}', this)">Baixar PDF</button>
       <button class="btn btn-secondary" onclick="fecharModal('modalDetalhe')">Fechar</button>
+      ${podeAlterar ? `<button class="btn btn-primary" onclick="abrirAlteracao('${id}')">Alterar veículo/motorista</button>` : ''}
       ${podeTrocar ? `<button class="btn btn-primary" onclick="abrirTrocaPedidos('${id}')">Alterar pedidos</button>` : ''}
       ${podeCancel ? `<button class="btn btn-danger" onclick="cancelarAgendamento('${id}')">Cancelar Agendamento</button>` : ''}
     </div>`;
@@ -3012,6 +3190,161 @@ function montarTrocaPedidos(id, a, sairam, novos, neste, total) {
   return updates;
 }
 
+/* ── ALTERAR VEÍCULO E MOTORISTA: quem criou o agendamento e a equipe interna, com o agendamento aberto ── */
+// Troca o cavalo/carreta(s) (veículo quebrou, outro conjunto vai carregar) e/ou o motorista; o resto continua igual
+// (protocolo, data, horário/turno e pedidos). Mesmos campos e conferências das etapas Veículo e Motorista do assistente
+// (cadastro do SAP ou provisório, gravado junto) e o veículo novo precisa levar o volume do carregamento.
+// O quiosque lê veículo e motorista do agendamento no check-in: depois do check-in a troca é no guichê (com o check-in
+// "inconsistente" ainda vale: o motorista refaz o check-in). Gravado num único update() multi-path (campos do veículo
+// e/ou do motorista, editadoEm/Por, cadastros provisórios e o histórico em edicoes/<id>). A regra do banco ($campo em
+// agendamentos/$id) só aceita esses campos, de quem criou ou da equipe interna, com o agendamento aberto e sem check-in.
+function podeAlterarVeiculoMotorista(a) {
+  return a.status === 'agendado' && (STATE.usuario.tipo === 'interno' || a.criadoPorUid === STATE.usuario.uid);
+}
+function placasDoAgendamento(a) { return [a.placaCavalo, a.placaCarreta, a.placaCarreta2].map(normalizarPlaca); }
+
+function abrirAlteracao(id) {
+  const a = STATE.agendamentos[id];
+  if (!a || !podeAlterarVeiculoMotorista(a)) return;
+  const f = FORM_ALTERACAO;
+  STATE.alteracao = { id, recurso: null, motoristaCad: null };
+  const [cavalo, carreta1, carreta2] = placasDoAgendamento(a);
+  elForm(f, 'f-placa-cavalo').value = cavalo;
+  elForm(f, 'f-placa-carreta').value = carreta1;
+  elForm(f, 'f-placa-carreta2').value = carreta2;
+  elForm(f, 'f-capacidade-prov').value = '';
+  elForm(f, 'f-motorista-cpf').value = formatCpf(a.motoristaCpf);
+  const campoNome = elForm(f, 'f-motorista');
+  campoNome.value = a.motorista || '';
+  campoNome.readOnly = false;
+  delete campoNome.dataset.doCadastro; // com cadastro, o nome vem dele quando a consulta do CPF voltar
+  document.getElementById('alt-titulo').textContent = `Alterar veículo e motorista · ${a.protocolo}`;
+  document.getElementById('alt-sub').textContent = [a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`,
+    a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`].filter(Boolean).join(' · ');
+  document.getElementById('alt-volumeTxt').textContent = `O veículo precisa levar o volume deste carregamento: ${formatVolume(a.volumeTotal)}.`;
+  mostrarErroAlteracao('');
+  renderStatusVeiculo(f);
+  renderStatusMotorista(f);
+  fecharModal('modalDetalhe');
+  abrirModal('modalAlteracao');
+  // Cadastro do veículo e do motorista atuais: mostra a situação de cada um (e traz o nome do motorista do cadastro)
+  buscarRecursoDasPlacas(f);
+  buscarMotorista(f);
+  elForm(f, 'f-placa-cavalo').focus();
+}
+function onTeclaAlteracao(ev) {
+  if (ev.key !== 'Enter' || ev.target.tagName !== 'INPUT') return;
+  ev.preventDefault();
+  if (ev.target.id === 'alt-f-motorista' && enterNaBuscaMotorista(FORM_ALTERACAO)) return;
+  salvarAlteracao();
+}
+function fecharAlteracao(reabrirDetalhe = true) {
+  const id = STATE.alteracao?.id;
+  STATE.alteracao = null;
+  fecharModal('modalAlteracao');
+  if (reabrirDetalhe && STATE.agendamentos[id]) abrirDetalheAgendamento(id);
+}
+function mostrarErroAlteracao(msg) {
+  const el = document.getElementById('alt-erro');
+  el.textContent = msg || '';
+  el.classList.toggle('hidden', !msg);
+}
+// Como no assistente: sem cadastro, o cursor vai para o dado do cadastro provisório (capacidade ou nome) e, enquanto
+// ele está vazio, o quadro do cadastro provisório já explica o que fazer (sem repetir em vermelho)
+function mostrarErroCampoAlteracao(msg, quadro, dado, foco) {
+  const f = FORM_ALTERACAO;
+  const pedeDado = elForm(f, quadro).classList.contains('hidden') ? null : elForm(f, dado);
+  mostrarErroAlteracao(pedeDado && !pedeDado.value.trim() ? '' : msg);
+  (pedeDado || elForm(f, foco)).focus();
+}
+// O que mudou: veículo = alguma placa; motorista = CPF ou nome (com o mesmo CPF, o nome pode ter vindo do cadastro
+// atualizado: aí grava o nome e o BP do cadastro)
+function mudancasAlteracao(a) {
+  const f = FORM_ALTERACAO;
+  const placas = lerPlacas(f);
+  const { nome, cpf } = lerMotorista(f);
+  const atuais = placasDoAgendamento(a);
+  return { placas, nome, cpf, veiculo: placas.some((p, i) => p !== atuais[i]), motorista: cpf !== a.motoristaCpf || nome !== a.motorista };
+}
+
+async function salvarAlteracao() {
+  const alt = STATE.alteracao;
+  const btn = document.getElementById('btnSalvarAlteracao');
+  if (!alt || btn.disabled) return;
+  const f = FORM_ALTERACAO;
+  mostrarErroAlteracao('');
+  // Cadastro e capacidade do veículo e cadastro do motorista precisam das consultas das placas e do CPF atuais terminadas
+  btn.disabled = true;
+  await Promise.all([buscarRecursoDasPlacas(f), buscarMotorista(f)]);
+  btn.disabled = false;
+  const a = STATE.agendamentos[alt.id];
+  if (STATE.alteracao !== alt || !a) return; // a janela fechou enquanto consultava
+  if (a.status !== 'agendado') return mostrarErroAlteracao('Este agendamento não está mais aberto (foi cancelado ou faturado).');
+  const m = mudancasAlteracao(a);
+  if (!m.veiculo && !m.motorista) return mostrarErroAlteracao('Nada mudou: troque as placas ou o motorista.');
+  const erroV = m.veiculo ? erroVeiculo(f) : '';
+  if (erroV) return mostrarErroCampoAlteracao(erroV, 'veiculoProvisorio', 'f-capacidade-prov', 'f-placa-cavalo');
+  const erroM = m.motorista ? erroMotorista(f) : '';
+  if (erroM) return mostrarErroCampoAlteracao(erroM, 'motoristaProvisorio', 'f-motorista', 'f-motorista-cpf');
+  const veiculo = m.veiculo ? veiculoDasPlacas(f) : null;
+  if (veiculo?.volume && a.volumeTotal > veiculo.volume) {
+    return mostrarErroAlteracao(`O volume deste carregamento (${formatVolume(a.volumeTotal)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). `
+      + `Informe outro veículo${podeTrocarPedidos(a) ? ' ou tire pedido em Alterar pedidos' : ''}.`);
+  }
+  const cadMotorista = m.motorista ? motoristaDoCadastro(f) : null;
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  try {
+    // Só a equipe interna lê o check-in; para quem criou (cliente ou transportadora), a regra do banco confere
+    if (STATE.usuario.tipo === 'interno') {
+      const checkin = await window._fb.carregarCheckin(a.protocolo);
+      if (checkin && checkin.status !== 'inconsistente') return mostrarErroAlteracao('O motorista já fez o check-in deste agendamento no quiosque: a troca de veículo ou motorista agora é no guichê.');
+    }
+    await window._fb.salvarAlteracao(montarAlteracao(alt.id, a, m, veiculo, cadMotorista));
+    const ambos = veiculo && cadMotorista;
+    toast(`${ambos ? 'Veículo e motorista' : veiculo ? 'Veículo' : 'Motorista'} do agendamento ${a.protocolo} ${ambos ? 'atualizados' : 'atualizado'}.`, 'success');
+    fecharAlteracao();
+  } catch (e) {
+    console.error(e);
+    // Outro usuário pode ter cadastrado o mesmo veículo ou motorista (provisório) enquanto a janela estava aberta
+    if (ehErroPermissao(e) && veiculo?.origem === 'novo') {
+      alt.recurso = null;
+      await buscarRecursoDasPlacas(f);
+      if (veiculoDasPlacas(f)?.origem !== 'novo') return mostrarErroAlteracao('Este veículo acabou de ser cadastrado por outro usuário. Confira a capacidade e salve de novo.');
+    }
+    if (ehErroPermissao(e) && cadMotorista?.origem === 'novo') {
+      alt.motoristaCad = null;
+      await buscarMotorista(f);
+      if (motoristaDoCadastro(f)?.origem !== 'novo') return mostrarErroAlteracao('Este motorista acabou de ser cadastrado por outro usuário. Confira o nome e salve de novo.');
+    }
+    mostrarErroAlteracao(ehErroPermissao(e)
+      ? 'O banco recusou a alteração: o motorista pode já ter feito o check-in no quiosque (aí a troca é no guichê) ou o agendamento mudou. Confira e tente de novo.'
+      : msgErro(e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Salvar alteração';
+  }
+}
+// Caminhos do update(): campos do veículo e/ou do motorista (veiculo / motoristaCad null = esse não muda), editadoEm/Por,
+// cadastros provisórios e o histórico em edicoes/<id> (de → para)
+function montarAlteracao(id, a, m, veiculo, motoristaCad) {
+  const raiz = 'agendamentos/' + id;
+  const agora = new Date().toISOString();
+  const por = STATE.usuario.nome || STATE.usuario.email;
+  const campos = {
+    ...(veiculo ? camposVeiculo(m.placas, veiculo) : {}),
+    ...(motoristaCad ? camposMotorista(m.nome, m.cpf, motoristaCad) : {}),
+    editadoEm: agora, editadoPor: por, editadoPorUid: STATE.usuario.uid,
+  };
+  const updates = Object.fromEntries(Object.entries(campos).map(([campo, valor]) => [`${raiz}/${campo}`, valor]));
+  updates[`${raiz}/edicoes/${window._fb.novaChave(raiz + '/edicoes')}`] = {
+    em: agora, por, porUid: STATE.usuario.uid,
+    ...(veiculo ? { veiculo: { de: placasDoAgendamento(a).filter(Boolean), para: m.placas.filter(Boolean) } } : {}),
+    ...(motoristaCad ? { motorista: { de: { nome: a.motorista || null, cpf: a.motoristaCpf || null }, para: { nome: m.nome, cpf: m.cpf } } } : {}),
+  };
+  return Object.assign(updates, cadastrosProvisorios({ protocolo: a.protocolo, em: agora, placas: m.placas, veiculo, motorista: m.nome, motoristaCpf: m.cpf, motoristaCad }));
+}
+
 /* ── IMPORTAR ROTEIRIZAÇÃO ── */
 // JSON salvo pelo roteirizador da logística (pasta "Historico Roteirizações"): resultado/<id do veículo> = viagens, cada uma
 // com o terminal, o relógio de carga (minutos desde a 00:00 do dia base) e as paradas (cliente + itens com ordemSAP, produto e volume em m³).
@@ -3188,26 +3521,28 @@ function consultarMotoristaImportacao(imp, cpf) {
 }
 // Nome para comparar: sem acento, maiúscula, pontuação e espaço sobrando ("ANDERSON ARAÚJO  SANTOS" = "Anderson Araujo Santos")
 function chaveNome(nome) { return normalizarBusca(nome).replace(/[^a-z0-9]+/g, ' ').trim(); }
-// Cadastro de motoristas por nome (SAP + provisórios; o SAP vale quando o CPF está nos dois), lido uma vez por importação.
+// Cadastro de motoristas por nome (SAP + provisórios; o SAP vale quando o CPF está nos dois), lido uma vez por dono:
+// a importação ou o formulário do motorista (STATE.novo, STATE.alteracao). Fica em dono.motoristasNome.
 // A lista do SAP é a mesma da subaba Cadastros → Motoristas (carregarMotoristas guarda em STATE.motoristas).
-async function carregarMotoristasPorNome(imp) {
-  if (imp.motoristasNome) return;
-  const [, pendentes] = await Promise.all([carregarMotoristas(), window._fb.listarMotoristasPendentes()]);
-  const porCpf = {};
-  for (const m of Object.values(pendentes)) porCpf[m.cpf] = { cpf: m.cpf, nome: m.nome, origem: 'provisorio' };
-  for (const m of Object.values(STATE.motoristas || {})) porCpf[m.cpf] = { cpf: m.cpf, nome: m.nome, bp: m.bp || '', origem: 'sap' };
-  const lista = Object.values(porCpf).map((m) => ({ ...m, chave: chaveNome(m.nome) })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  const porChave = new Map();
-  for (const m of lista) porChave.set(m.chave, [...(porChave.get(m.chave) || []), m]);
-  imp.motoristasNome = { lista, porChave };
+function carregarMotoristasPorNome(dono) {
+  dono.buscaMotoristasNome ??= Promise.all([carregarMotoristas(), window._fb.listarMotoristasPendentes()]).then(([, pendentes]) => {
+    const porCpf = {};
+    for (const m of Object.values(pendentes)) porCpf[m.cpf] = { cpf: m.cpf, nome: m.nome, origem: 'provisorio' };
+    for (const m of Object.values(STATE.motoristas || {})) porCpf[m.cpf] = { cpf: m.cpf, nome: m.nome, bp: m.bp || '', origem: 'sap' };
+    const lista = Object.values(porCpf).map((m) => ({ ...m, chave: chaveNome(m.nome) })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const porChave = new Map();
+    for (const m of lista) porChave.set(m.chave, [...(porChave.get(m.chave) || []), m]);
+    dono.motoristasNome = { lista, porChave };
+  }, (e) => { dono.buscaMotoristasNome = null; throw e; });
+  return dono.buscaMotoristasNome;
 }
 function motoristasComNome(imp, nome) { return (nome && imp.motoristasNome?.porChave.get(chaveNome(nome))) || []; }
 // Busca pelo que a pessoa digitou: cada palavra tem que aparecer no nome; quem tem exatamente o nome vem primeiro
-function buscarMotoristasPorNome(imp, texto) {
+function buscarMotoristasPorNome(dono, texto) {
   const chave = chaveNome(texto);
-  if (chave.length < 3 || !imp.motoristasNome) return [];
+  if (chave.length < 3 || !dono.motoristasNome) return [];
   const palavras = chave.split(' ');
-  const achados = imp.motoristasNome.lista.filter((m) => palavras.every((p) => m.chave.includes(p)));
+  const achados = dono.motoristasNome.lista.filter((m) => palavras.every((p) => m.chave.includes(p)));
   return [...achados.filter((m) => m.chave === chave), ...achados.filter((m) => m.chave !== chave)];
 }
 function carregarHorariosImportacao(imp, baseId, data) {
@@ -3625,7 +3960,6 @@ async function renderMotoristaAjuste() {
     mostrar(`O CPF ${formatCpf(cpf)} não está no cadastro de motoristas. Confira o CPF; se estiver certo, informe o nome completo: o motorista entra como provisório.`, 'aviso');
   }
 }
-const MAX_OPCOES_MOTORISTA = 8;
 // Motoristas do cadastro com o nome digitado; com o nome travado pelo CPF, a lista some
 function renderOpcoesMotoristaAjuste() {
   const atual = ajusteAtual();
@@ -5121,8 +5455,10 @@ async function trocarSenha() {
     },
     // Troca de pedidos (equipe interna): caminhos prontos de montarTrocaPedidos, num único update() multi-path
     salvarTrocaPedidos: (updates) => update(ref(db), updates),
+    // Troca de veículo e/ou motorista (quem criou ou equipe interna): caminhos prontos de montarAlteracao, num único update()
+    salvarAlteracao: (updates) => update(ref(db), updates),
     novaChave: (caminho) => push(ref(db, caminho)).key,
-    // Check-in do motorista no quiosque (autoatendimento/<protocolo>): depois dele os pedidos não se trocam no portal
+    // Check-in do motorista no quiosque (autoatendimento/<protocolo>): depois dele pedidos, veículo e motorista não se trocam no portal
     carregarCheckin: async (protocolo) => (await get(ref(db, 'autoatendimento/' + protocolo))).val(),
     ouvirAgendamentosTodos: (cb, onErro) => ouvir('agendamentos', cb, onErro),
     // Transportadora: só os agendamentos que ela criou (a regra libera apenas esta consulta por criadoPorUid = o próprio uid)
