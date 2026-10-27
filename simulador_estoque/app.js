@@ -325,14 +325,20 @@ function marcarTransferencias(){
  // Bombeio de hoje vindo da aba Aberturas (Receb. Efetuado + Receb. Programado): mesmo popup, com o que ja'
  // aconteceu e o que ainda vai acontecer (usuaria, 2026-10-20).
  document.querySelectorAll('#grid input[data-row="pump"]').forEach(input=>{const i=+input.dataset.day,td=input.parentElement;
-  if(bombeioPortalDia(i)){td.dataset.transf='bombeioPortal';td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
+  if(bombeioPortalDia(i)||bombeioMisDia(i).length){td.dataset.transf='bombeioPortal';td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
 }
 function bombeioPortalDia(i){const itens=registrosReais().map(r=>r.bi?.days?.[day(i)]?.bombeioPortal).filter(Boolean);
  return itens.length?{efetuado:itens.reduce((s,b)=>s+(b.efetuado||0),0),programado:itens.reduce((s,b)=>s+(b.programado||0),0)}:null;}
-function popupBombeioPortal(i){const b=bombeioPortalDia(i);if(!b)return '';
+// Origem de cada bombeio da cadencia MIS (frete DAP) no dia (usuaria, 2026-10-27: "da onde e' esse bombeio, qual origem").
+function bombeioMisDia(i){return i<0?[]:registrosReais().flatMap(r=>r.bi?.days?.[day(i)]?.bombeioMis||[]);}
+function bombeioMisHtml(i,titulo){const itens=bombeioMisDia(i);if(!itens.length)return '';
+ return `<p><strong>${titulo} (${fmt(itens.reduce((s,b)=>s+(b.volume||0),0))} m³)</strong></p><dl class="viagens">${itens.map(b=>`<div><dt>${esc(b.origem||'Origem não informada')} · ${fmt(b.volume)} m³</dt><dd>Origem: ${esc(b.origem||'—')} → Destino: ${esc(b.destino||'—')}${b.oc?` · Pedido MIS ${esc(b.oc)}`:''}</dd></div>`).join('')}</dl>`;}
+function popupBombeioPortal(i){const b=bombeioPortalDia(i);
+ if(!b)return `<strong>Bombeio · ${esc(label(i))}</strong>`+bombeioMisHtml(i,'Cadência MIS · bombeio');
  return `<strong>Bombeio · ${esc(label(i))} · aba Aberturas</strong><p>${fmt(b.efetuado+b.programado)} m³ informados pela base (soma das colunas 2 e 3)</p>`
   +`<dl class="viagens"><div><dt>✓ Já recebido · ${fmt(b.efetuado)} m³</dt><dd>Receb. Efetuado / Disponível — o que já aconteceu</dd></div>`
-  +`<div><dt>⏳ Ainda vai chegar · ${fmt(b.programado)} m³</dt><dd>Receb. Programado Dia — o que vai acontecer</dd></div></dl>`;}
+  +`<div><dt>⏳ Ainda vai chegar · ${fmt(b.programado)} m³</dt><dd>Receb. Programado Dia — o que vai acontecer</dd></div></dl>`
+  +bombeioMisHtml(i,'Planejado na cadência MIS · referência');}
 // Transferencias de entrada que ENTRAM na conta do dia (mesma regra do fresh()): pro popup do dia, ja' que desde
 // 2026-10-20 elas somam no Trânsito FOB sem linha nem barra propria.
 function transfEntradaContadas(i){
@@ -593,12 +599,14 @@ const movSeries=[
  // Transferencia de entrada nao tem mais barra propria (roxo/rosa ate' 2026-10-20): soma no Trânsito FOB (cinza)
  // e aparece destacada no popup do dia.
  ['planned','Cadência sugerida','#A3E635',i=>i>=0?state.movements.planned[i]:null],
- ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:transitoPassado(i,'fob')],
- ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:transitoPassado(i,'cif')],
- ['vmd','VMD reprojetada','#FFFFFF',i=>i>=0?(record.bi?.days[day(i)]?.vmd??null):null],
- ['plannedSales','Vendas Planejadas','#D9F99D',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.LE?.plannedSales??null):null],
+ // Passado igual a tabela e ao BI: com recebimento do SAP no dia, o transito nao entra de novo (senao soma duas vezes).
+ ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:recebidoPassado(i)!=null?null:transitoPassado(i,'fob')],
+ ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:recebidoPassado(i)!=null?null:transitoPassado(i,'cif')],
+ // Linhas de venda/Disp. MIS tambem nos 5 dias passados, como no grafico do BI (usuaria, 2026-10-27).
+ ['vmd','VMD reprojetada','#FFFFFF',i=>record.bi?.days?.[day(i)]?.vmd??null],
+ ['plannedSales','Vendas Planejadas','#D9F99D',i=>{const d=record.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??record.bi?.semana?.porDia?.[day(i)]?.le:null)??null;}],
  ['actualSales','Vendas Real','#C8C8C8',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
- ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):null],
+ ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
 const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','planned','fob','cif'];
@@ -718,8 +726,10 @@ function popupGrafico(i){
  const futuro=i>=0;
  const linhas=[];
  linhas.push(['Abertura',futuro?result[i]?.opening:history(i)?.opening]);
- if(futuro)linhas.push(['Fechamento',result[i]?.close]);
- linhas.push(['Vendas aplicada (debita)',futuro?state.movements.sale[i]:history(i)?.sale]);
+ // Passado: fechamento = abertura do dia seguinte e totais iguais aos da tabela (usuaria, 2026-10-27).
+ linhas.push(['Fechamento',futuro?result[i]?.close:valorPassado('close',i,result)]);
+ if(!futuro)linhas.push(['Total de entradas (realizado)',valorPassado('incoming',i,result)]);
+ linhas.push([futuro?'Vendas aplicada (debita)':'Venda real (debita)',futuro?state.movements.sale[i]:valorPassado('outgoing',i,result)]);
  for(const [,nome,,valorEm] of movSeries){const v=valorEm(i);if(v!=null)linhas.push([nome,v]);}
  const semanaDia=record.bi?.semana?.porDia?.[day(i)],depositoDia=record.bi?.semanaPorDeposito?.porDia?.[day(i)];
  let semanaHtml='';
@@ -743,7 +753,7 @@ function popupGrafico(i){
  const naoProgHtml=naoProg.length?`<p><strong style="color:#F97316">Não programado · sem placa (${naoProg.length} · ${fmt(naoProg.reduce((s,v)=>s+(v.volume||0),0))} m³)</strong></p><dl class="viagens">${naoProg.map(linhaViagemHtml).join('')}</dl>`:'';
  const transf=futuro&&!unificaTransf?transfEntradaContadas(i):[];
  const transfHtml=transf.length?`<p><strong style="color:#C4B5FD">⇄ Transferências entre bases · já somadas no Trânsito FOB (${fmt(transf.reduce((s,t)=>s+(t.volume||0),0))} m³)</strong></p><dl class="viagens">${transf.map(t=>`<div><dt><span style="color:#C4B5FD">← ${esc(t.de||'—')}</span> · ${fmt(t.volume)} m³${t.statusViagem?` · ${esc(t.statusViagem)}`:' · sem status de viagem'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}</dd></div>`).join('')}</dl>`:'';
- return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${naoProgHtml}${transfHtml}${semanaHtml}`;
+ return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${naoProgHtml}${transfHtml}${futuro&&state.movements.pump[i]>0?bombeioMisHtml(i,'Bombeio · origem (cadência MIS)'):''}${semanaHtml}`;
 }
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');

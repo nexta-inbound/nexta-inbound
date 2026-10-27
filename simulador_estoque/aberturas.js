@@ -46,12 +46,14 @@
   const terminalVisivel = t => perfil.perfil !== 'base' || cloud.canEditAbertura(t.empDep);
   const cidadesVisiveis = () => (layout?.cidades || []).filter(c => c.terminais.some(terminalVisivel));
   const valorSalvo = (t, p) => dados[t.empDep]?.[cloud.produtoKey(p.nome)] || null;
-  // "Enviado" igual a planilha (aba Menu): alguma abertura do terminal maior que zero.
-  const enviado = t => t.produtos.some(p => (valorSalvo(t, p)?.abertura || 0) > 0);
+  // "Enviado" = o terminal tem alguma linha gravada no dia (usuaria, 2026-10-27: "se a pessoa nao clicou no botao, ai sim
+  // e' pendente"): quem salvou no portal (mesmo tudo zero, o Salvar grava todos os produtos) ou planilha com qualquer
+  // campo preenchido (abertura ou recebimentos). Antes exigia abertura > 0 e base que so' recebeu ficava "Pendente".
+  const enviado = t => t.produtos.some(p => valorSalvo(t, p));
   // Base unica das aberturas (2026-10-26): linhas copiadas do Formulario Excel pelo ETL tem origem 'planilha'.
   // Ficam marcadas na tela; ao Salvar, a linha e' regravada inteira (sem origem) e passa a valer como portal.
   const daPlanilha = s => s?.origem === 'planilha';
-  const viaPlanilha = t => enviado(t) && t.produtos.every(p => { const s = valorSalvo(t, p); return !((s?.abertura || 0) > 0) || daPlanilha(s); });
+  const viaPlanilha = t => enviado(t) && t.produtos.every(p => { const s = valorSalvo(t, p); return !s || daPlanilha(s); });
   const situacao = t => enviado(t) ? (viaPlanilha(t) ? 'Enviado · via planilha' : 'Enviado') : 'Pendente';
   const ultimaAtualizacao = t => t.produtos.map(p => valorSalvo(t, p)).filter(Boolean)
     .reduce((m, v) => (!m || (v.atualizadoEm || 0) > (m.atualizadoEm || 0)) ? v : m, null);
