@@ -1259,8 +1259,11 @@ function planejarAlocacao(caps, vols) {
   return plano;
 }
 function linhaDaChave(chave) { return atd.linhas.find((l) => l.chave === chave); }
-// indiceGlobal mantém a ordem achatada da hierarquia do SAP; placa +
-// indicePlaca é a identidade exibida ao usuário e persistida no check-in.
+// indiceGlobal é apenas a chave estável na ordem configurada no check-in.
+// A identidade real é placa + indicePlaca (sequência local da carreta); o
+// cockpit lê a hierarquia exibida pelo SAP e traduz essa identidade antes de
+// alocar, independentemente de o SAP mostrar CT 01..04 + CT 05..09 ou reiniciar
+// a segunda carreta em CT 01.
 function compartimentosUsados() {
   return atd.comps.slice(0, atd.qtd).map((c, i) => ({
     indice: i + 1,
