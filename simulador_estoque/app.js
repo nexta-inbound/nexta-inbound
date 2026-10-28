@@ -626,9 +626,10 @@ const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
 const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
 let chartContext=null;
-// Os 5 dias passados e as linhas de referencia (VMD, LE, Pedidos, Disp. MIS, Real) abrem visiveis (usuaria, 2026-10-27).
-let mostrarHistoricoGrade=true;
-let mostrarInfoGrade=true;
+// Os 5 dias passados e as linhas de referencia (VMD, LE, Pedidos, Disp. MIS, Real) abrem RECOLHIDOS, igual ao
+// "+ fim do LE" (usuaria, 2026-10-28: "como padrao ... os botoes todos fechados"); antes abriam visiveis (27/10).
+let mostrarHistoricoGrade=false;
+let mostrarInfoGrade=false;
 document.addEventListener('click',e=>{if(e.target.closest('#toggle-historico')){mostrarHistoricoGrade=!mostrarHistoricoGrade;render(true);}if(e.target.closest('#toggle-info')){mostrarInfoGrade=!mostrarInfoGrade;render(true);}if(e.target.closest('#toggle-extensao'))alternarExtensao();});
 // Grafico no formato do Power BI (pedido da usuaria, 2026-10-09: "deixar + parecido o grafico de barras"):
 // barra larga empilhada = Lastro (faixa laranja na base) + Abertura − Lastro + entradas do dia (Recebimentos,
