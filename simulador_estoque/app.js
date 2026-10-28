@@ -615,10 +615,10 @@ const movSeries=[
  ['fob','Trânsito FOB','#B0B0B0',i=>i>=0?state.movements.fob[i]:recebidoPassado(i)!=null?null:transitoPassado(i,'fob')],
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:recebidoPassado(i)!=null?null:transitoPassado(i,'cif')],
  // Linhas de venda/Disp. MIS tambem nos 5 dias passados, como no grafico do BI (usuaria, 2026-10-27).
- ['vmd','VMD reprojetada','#FFFFFF',i=>record.bi?.days?.[day(i)]?.vmd??null],
- ['plannedSales','Vendas Planejadas','#D9F99D',i=>{const d=record.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??record.bi?.semana?.porDia?.[day(i)]?.le:null)??null;}],
- ['actualSales','Vendas Real','#C8C8C8',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
- ['availability','Disp. MIS','#39FF14',i=>i>=0?(record.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
+ ['vmd','VMD reprojetada','#FFFFFF',i=>record?.bi?.days?.[day(i)]?.vmd??null],
+ ['plannedSales','Vendas Planejadas','#D9F99D',i=>{const d=record?.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??record?.bi?.semana?.porDia?.[day(i)]?.le:null)??null;}],
+ ['actualSales','Vendas Real','#C8C8C8',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
+ ['availability','Disp. MIS','#39FF14',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
 const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','planned','fob','cif'];
