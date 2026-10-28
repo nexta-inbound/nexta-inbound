@@ -8,7 +8,8 @@
  // Disp. MIS voltou (usuaria, 2026-10-21: "na saida coloca a opcao de disponibilidade MIS, igual estava antes").
  const modes=['VMD','Pedidos em tela','Real','Disp MIS'];
  // So' o texto do botao muda (2026-10-16); o valor interno continua 'VMD' (regras do Firebase e cenarios salvos).
- const rotuloCenario={VMD:'VMD reprojetada','Disp MIS':'Disp. MIS'};
+ // "Real" aparece como "Faturamento" (usuaria, 2026-10-28); o valor interno continua 'Real'.
+ const rotuloCenario={VMD:'VMD reprojetada','Disp MIS':'Disp. MIS',Real:'Faturamento'};
  const today=simulationToday;
  const dateLabel=value=>new Date(value+'T12:00:00').toLocaleDateString('pt-BR');
  const popup=$('sales-popover');

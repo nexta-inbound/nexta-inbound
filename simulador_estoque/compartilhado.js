@@ -80,7 +80,7 @@
     if (existentes.length) {
       const ultima = existentes.sort((a, b) => b.versao - a.versao)[0];
       const prosseguir = confirm(`Já existe uma visão salva hoje para ${base} · ${record.product} · `
-        + `${content.scenario} (v${ultima.versao}, por ${ultima.autorNome}). Salvar uma nova versão? `
+        + `${content.scenario === 'Real' ? 'Faturamento' : content.scenario} (v${ultima.versao}, por ${ultima.autorNome}). Salvar uma nova versão? `
         + 'A anterior continua no histórico.');
       if (!prosseguir) { note('Cenário salvo para a equipe. Visão do dia não atualizada.'); return; }
       motivo = (prompt('Motivo da nova versão (obrigatório):', '') || '').trim();

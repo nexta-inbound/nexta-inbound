@@ -332,7 +332,7 @@
       <summary><strong>${esc(c.cidade)}</strong> <small>${c.lista.length} simulação(ões)</small></summary>
       <table class="hoje-tabela"><thead><tr><th>Base</th><th>Produto</th><th>Cenário</th><th>Situação ao salvar</th><th>Menor estoque (m³)</th><th>Versão</th><th>Autor / motivo</th><th>Horário</th><th></th></tr></thead>
       <tbody>${c.lista.map(it => `<tr class="dia-${it.indicadores?.situacao || ''}">
-        <td>${esc(it.base)}</td><td>${esc(it.produto)}</td><td>${esc(it.cenario)}</td>
+        <td>${esc(it.base)}</td><td>${esc(it.produto)}</td><td>${esc(it.cenario === 'Real' ? 'Faturamento' : it.cenario)}</td>
         <td>${esc(rotuloSalvo[it.indicadores?.situacao] || '—')}</td>
         <td>${it.indicadores ? fmt(it.indicadores.menorEstoque) : '—'}${it.indicadores?.diaMenorEstoque ? ` <small>em ${dataCurta(it.indicadores.diaMenorEstoque)}</small>` : ''}</td>
         <td>v${it.versao}</td>
@@ -358,13 +358,13 @@
     const calc = E.calculate(s, total);
     const dataDe = i => { const d = new Date(s.date + 'T12:00:00'); d.setDate(d.getDate() + i);
       return d.toLocaleDateString('pt-BR', {weekday: 'short', day: '2-digit', month: '2-digit'}).replace('.', ''); };
-    const rotuloVenda = {VMD: 'Vendas · VMD reprojetada', 'Pedidos em tela': 'Vendas · Pedidos em tela', Real: 'Vendas · Real', LE: 'Vendas · LE vigente'}[s.scenario] || 'Vendas';
+    const rotuloVenda = {VMD: 'Vendas · VMD reprojetada', 'Pedidos em tela': 'Vendas · Pedidos em tela', Real: 'Vendas · Faturamento', LE: 'Vendas · LE vigente'}[s.scenario] || 'Vendas';
     const linhasMov = E.rows.filter(([k]) => dias.some(i => (s.movements[k]?.[i] || 0) !== 0))
       .map(([k, nome, sinal]) => `<tr><th scope="row">${sinal > 0 ? '+' : '−'} ${esc(k === 'sale' ? rotuloVenda : nome)}</th>${dias.map(i => `<td>${fmt(s.movements[k][i])}</td>`).join('')}</tr>`).join('');
     const faixa = v => ({danger: 'hist-critico', warn: 'hist-atencao', good: 'hist-ok', high: 'hist-alto'})[E.stockBand(v, s)] || '';
     const premissa = (rot, v) => `<div><small>${rot}</small><strong>${v == null ? '—' : fmt(v) + ' m³'}</strong></div>`;
     dialogoHist.innerHTML = `<header><div><h2>${esc(it.base)} · ${esc(it.produto)}</h2>
-        <p>Cenário <strong>${esc(it.cenario)}</strong> · v${it.versao} · salvo por <strong>${esc(it.autorNome || '—')}</strong>
+        <p>Cenário <strong>${esc(it.cenario === 'Real' ? 'Faturamento' : it.cenario)}</strong> · v${it.versao} · salvo por <strong>${esc(it.autorNome || '—')}</strong>
         ${it.atualizadoEm ? ` em ${new Date(it.atualizadoEm).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}` : ''}
         ${it.motivo ? `<br>Motivo: ${esc(it.motivo)}` : ''}</p>
         <p class="hist-congelado">🔒 Exatamente como foi salvo — não usa os dados de hoje.</p></div>

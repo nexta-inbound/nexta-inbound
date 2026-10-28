@@ -282,7 +282,7 @@ function select(){
  // Com filtro de Status da viagem ligado, FOB/CIF/Transferencia de hoje em diante vem sempre do filtro (2026-10-19).
  if(filtroStatusAtivo())for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];
  // Rascunho salvo antes da linha de transferencia sair (2026-10-20): o que estava nela vai pro FOB.
- for(let i=0;i<30;i++)if(state.movements.transferIn[i]){state.movements.fob[i]+=state.movements.transferIn[i];state.movements.transferIn[i]=0;}E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturado (Real)',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
+ for(let i=0;i<30;i++)if(state.movements.transferIn[i]){state.movements.fob[i]+=state.movements.transferIn[i];state.movements.transferIn[i]=0;}E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturamento',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
 // Politica de estoque (abertura/lastro/minimo/medio/maximo/capacidade): fixa, vem da planilha e nao
 // e' editavel pela simulacao (pedido da usuaria, 2026-09-28) — so os movimentos (entradas/saidas)
 // continuam editaveis, na tabela e no editor por dia.
@@ -542,7 +542,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
    // Disp. MIS do dia (usuaria, 2026-10-27: "retroativo de VMD / disp / venda real"), tambem nos 5 dias passados.
    html+=infoRow('Disp. MIS',i=>somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability)),true,'dispMis');
    // Mesma venda real do botao "Real" (deposito; passado = faturamento, hoje = VA05 do dia).
-   html+=infoRow('Real',i=>{const d=record.bi?.days?.[day(i)];return d&&'vendaReal' in d?d.vendaReal:record.bi?.semana?.porDia?.[day(i)]?.real;},true,'faturamento');
+   html+=infoRow('Faturamento',i=>{const d=record.bi?.days?.[day(i)];return d&&'vendaReal' in d?d.vendaReal:record.bi?.semana?.porDia?.[day(i)]?.real;},true,'faturamento');
   } }
  for(const [k,l] of [['incoming','Total de entradas'],['outgoing','Total de saídas']])html+=outputRow(k,l);
  $('grid').innerHTML=html+'</tbody>';}
@@ -747,8 +747,8 @@ function popupGrafico(i){
  const semanaDia=record.bi?.semana?.porDia?.[day(i)],depositoDia=record.bi?.semanaPorDeposito?.porDia?.[day(i)];
  let semanaHtml='';
  if(semanaDia||depositoDia){
-  const linha=(titulo,d)=>d?`<div><dt>${esc(titulo)}</dt><dd>${fmt(d.real)} de ${fmt(d.le)} m³ (${d.le?Math.round(d.real/d.le*100):0}%)</dd></div>`:'';
-  semanaHtml=`<p><strong>LE da semana · já realizado</strong></p><dl>${linha('Cidade (consolidado)',semanaDia)}${linha('Este depósito',depositoDia)}</dl>`;
+  const linha=(titulo,d)=>d?`<div><dt>${esc(titulo)}</dt><dd>${fmt(d.real)} m³ faturados de ${fmt(d.le)} m³ do LE (${d.le?Math.round(d.real/d.le*100):0}%)</dd></div>`:'';
+  semanaHtml=`<p><strong>LE da semana × Faturamento</strong></p><dl>${linha('Cidade (consolidado)',semanaDia)}${linha('Este depósito',depositoDia)}</dl>`;
  }
  // Politica de estoque no popup (pedido da usuaria, 2026-10-16): mesmos valores das linhas tracejadas do grafico.
  const politicaPopup=[['Lastro mínimo','lastro'],['Estoque mínimo','min'],['Estoque médio','mid'],['Estoque máximo','max'],['Capacidade','capacity']].filter(([,k])=>state[k]!=null);
