@@ -17073,8 +17073,8 @@ function exportarHerrlog() {
     const dataCarregamento = parseDataHora(v.dtCarregProg || v.dtCarreg, v.horaCarregProg)
       || parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg);
     const dataDescarga = parseDataHora(v.dtDescProg || v.dtDesc, v.horaDescProg) || dataCarregamento;
-    // Início Previsto = 4h antes do carregamento (tempo de deslocamento até o ponto de carga).
-    const inicioPrevisto = dataCarregamento ? new Date(dataCarregamento.getTime() - 4 * 60 * 60 * 1000) : null;
+    // Início Previsto = mesmo horário do carregamento programado (antes era 4h antes).
+    const inicioPrevisto = dataCarregamento;
     const trailers = [v.placaCarreta1, v.placaCarreta2].filter(Boolean).join(';');
     const volumeLitros = (v.volume || 0) * 1000;
 
