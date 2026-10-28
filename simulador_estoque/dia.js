@@ -411,7 +411,6 @@
     document.body.dataset.aba = nome;
     botoesAba.forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
     fecharPopup();
-    try { localStorage.setItem('simulador.aba', nome); } catch { /* sem armazenamento: so' nao lembra a aba */ }
     if (nome === 'alertas') render();
     else if (nome === 'cenario') renderCenario();
     else if (nome === 'historico') renderHistorico();
@@ -419,7 +418,8 @@
   botoesAba.forEach(b => b.onclick = () => { trocarAba(b.dataset.abaAlvo); scrollTo({top: 0}); });
   $('abas-bar').hidden = false;
   abrir.hidden = true; fechar.hidden = true;
-  let abaInicial = 'simulacao';
-  try { abaInicial = localStorage.getItem('simulador.aba') || 'simulacao'; } catch { /* idem */ }
-  trocarAba(botoesAba.some(b => b.dataset.abaAlvo === abaInicial) ? abaInicial : 'simulacao');
+  // Sempre abre na "Simulacao de estoques" (usuaria, 2026-10-28: "quero que ja venha padrao na aba Simulacao de
+  // estoques"); nao lembra mais a ultima aba. O perfil 'base' continua abrindo em Aberturas (aberturas.js).
+  try { localStorage.removeItem('simulador.aba'); } catch {}
+  trocarAba('simulacao');
 })();
