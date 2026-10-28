@@ -117,9 +117,10 @@
         const salvo = valorSalvo(t, p) || {};
         // Padrao 0 em tudo (usuaria, 2026-10-16): a pessoa so' troca o que tiver valor.
         const planilha = daPlanilha(salvo);
-        const campo = k => `<td><input type="number" min="0" step="1" inputmode="numeric" data-ab-campo="${k}" data-ab-produto="${esc(p.nome)}"
+        // Abertura Dia aceita negativo (usuaria, 2026-10-28); recebimentos continuam >= 0.
+        const campo = k => `<td><input type="number" ${k === 'abertura' ? '' : 'min="0" '}step="1" inputmode="${k === 'abertura' ? 'text' : 'numeric'}" data-ab-campo="${k}" data-ab-produto="${esc(p.nome)}"
             value="${salvo[k] ?? 0}" ${pode ? '' : 'readonly'} aria-label="${esc(p.nome)} · ${esc(ROTULO_CAMPO[k])}"
-            ${planilha && salvo[k] > 0 ? `class="ab-planilha" title="Veio do Formulário Excel (planilha). Confirme ou corrija e salve para valer o portal."` : ''}></td>`;
+            ${planilha && salvo[k] ? `class="ab-planilha" title="Veio do Formulário Excel (planilha). Confirme ou corrija e salve para valer o portal."` : ''}></td>`;
         // Referencia do MIS do dia (2026-10-19): so' indicativo pra quem preenche, embaixo da Abertura Dia.
         const mis = referencia[t.empDep]?.[p.nome];
         const abertura = campo('abertura').replace('</td>', mis != null
@@ -146,7 +147,7 @@
       for (const [k] of CAMPOS) {
         const campo = bloco.querySelector(`input[data-ab-campo="${k}"][data-ab-produto="${CSS.escape(p.nome)}"]`);
         const v = campo.value.trim() === '' ? 0 : Math.round(Number(campo.value));
-        valores[k] = Number.isFinite(v) && v >= 0 ? v : NaN;
+        valores[k] = Number.isFinite(v) && (v >= 0 || k === 'abertura') ? v : NaN;
       }
       const salvo = valorSalvo(t, p);
       return {produto: p.nome, unidade: p.unidade, valores, anteriores: salvo ? Object.fromEntries(CAMPOS.map(([k]) => [k, salvo[k] ?? null])) : null};
@@ -160,19 +161,19 @@
     const alvos = (cidade?.terminais || []).filter(t => terminalVisivel(t) && cloud.canEditAbertura(t.empDep) && pendentes.has(t.empDep));
     if (!alvos.length) { status('Nenhuma alteração para salvar.'); return; }
     const lotes = alvos.map(coletar);
-    if (lotes.some(l => !l)) { status('Há valores inválidos: use apenas números inteiros, sem sinal negativo.', true); return; }
-    const vazios = lotes.filter(({linhas}) => !linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura > 0)).map(({t}) => t.nome);
+    if (lotes.some(l => !l)) { status('Há valores inválidos: use apenas números inteiros (negativo só na Abertura Dia).', true); return; }
+    const vazios = lotes.filter(({linhas}) => !linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura !== 0)).map(({t}) => t.nome);
     if (vazios.length && !confirm(`Nenhuma abertura de combustível foi preenchida em:\n${vazios.map(n => '• ' + n).join('\n')}\n\nSalvar assim mesmo?`)) return;
     // Diferenca acima de 10% da referencia (usuaria, 2026-10-19): um resumo so', de todos os terminais; a pessoa
     // confirma ou volta pra corrigir. A mensagem pra gestao (WhatsApp) sai da maquina logistica.
     const fora = lotes.flatMap(({t, linhas}) => linhas.filter(l => l.unidade !== 'frascos').map(l => {
       const ref = referencia[t.empDep]?.[l.produto], ab = l.valores.abertura;
-      return ref > 0 && ab > 0 && Math.abs(ab - ref) / ref > 0.10 ? {terminal: t.nome, produto: l.produto, ab, ref, pct: Math.round((ab - ref) / ref * 100)} : null;
+      return ref > 0 && ab !== 0 && Math.abs(ab - ref) / ref > 0.10 ? {terminal: t.nome, produto: l.produto, ab, ref, pct: Math.round((ab - ref) / ref * 100)} : null;
     }).filter(Boolean));
     if (fora.length) {
       const texto = fora.map(f => `• ${f.terminal} · ${f.produto}: digitado ${num(f.ab)} L × referência ${num(f.ref)} L (${f.pct > 0 ? '+' : ''}${f.pct}%)`).join('\n');
       if (!confirm(`A abertura ficou mais de 10% diferente da referência do SAP:\n\n${texto}\n\n`
-          + 'Tem certeza de que essa é a abertura? Se confirmar, ela vai para o grupo Status RPA Nexta no WhatsApp marcada em vermelho.')) return;
+          + 'Tem certeza de que essa é a abertura? Se confirmar, ela vai para o grupo Aberturas do Dia no WhatsApp marcada em vermelho.')) return;
     }
     const botao = $('ab-salvar-cidade'); if (botao) { botao.disabled = true; botao.textContent = 'Salvando…'; }
     const falhas = [];
@@ -233,12 +234,9 @@
   setInterval(() => {
     if (document.body.dataset.aba === 'aberturas' && !document.hidden && !pendentes.size && !carregando) carregar();
   }, 60000);
-  // Perfil 'base' sempre entra na aba Aberturas (e' o que ele preenche); ve Alertas, Cenario e Historico, mas NAO a
-  // aba "Simulacao de estoques" (usuaria, 2026-10-21).
-  if (perfil.perfil === 'base') {
-    const abaSimulacao = document.querySelector('#abas-bar [data-aba-alvo="simulacao"]');
-    if (abaSimulacao) abaSimulacao.hidden = true;
-    if (document.body.dataset.aba !== 'aberturas') botaoAba?.click();
-  }
+  // Perfil 'base' sempre entra na aba Aberturas (e' o que ele preenche). Ve as outras abas, inclusive a
+  // "Simulacao de estoques", so' como consulta (usuaria, 2026-10-27; antes ficava escondida): campos e
+  // "Salvar na equipe" travados por cloud.canEdit (so' administrador/regional), em compartilhado.js.
+  if (perfil.perfil === 'base' && document.body.dataset.aba !== 'aberturas') botaoAba?.click();
   if (document.body.dataset.aba === 'aberturas' && !carregouUmaVez) aoMostrar();
 })();
