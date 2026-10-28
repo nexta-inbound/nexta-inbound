@@ -145,6 +145,12 @@
   opcoesGrafico.querySelector('.graf-status').title=cadencia?'Em "Cadência MIS" não há carros: o filtro não se aplica.':'';
   opcoesGrafico.querySelector('[data-status-todos]').setAttribute('aria-pressed',String(!ativo));
   opcoesGrafico.querySelectorAll('[data-status-viagem]').forEach(b=>b.setAttribute('aria-pressed',String(ativo&&filtroStatusViagem.has(b.dataset.statusViagem))));
+  // So' os status que tem viagem no recorte, de hoje em diante (usuaria, 2026-10-28: "me mostre apenas os que
+  // aparecem"). "Todos" fica sempre.
+  const presentes=new Set();
+  if(record)for(const r of registrosReais())for(let i=0;i<n;i++){if(day(i)<today())continue;
+   for(const v of D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)]?.viagens||[])presentes.add(categoriaViagem(v));}
+  opcoesGrafico.querySelectorAll('[data-status-viagem]').forEach(b=>{b.hidden=!presentes.has(b.dataset.statusViagem);});
  }
  function chooseStatusViagem(chave){
   if(!record){message('Escolha cidade, depósito e produto antes de filtrar o status da viagem.');return;}

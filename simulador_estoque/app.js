@@ -115,10 +115,10 @@ function fresh(r,cenarioForcado,entradaForcada){
    // Com o transito ao vivo carregado, ele e' a UNICA fonte do FOB/CIF futuro (usuaria, 2026-10-27: "isso NUNCA
    // pode acontecer"): dia sem viagem ao vivo = 0. Antes caia no FOB da carga (CSV das :00/:30), e a viagem que o
    // ETA novo empurrou pro dia seguinte contava nos dois dias (Betim POTENCIAL hidratado, 60 em 28 e 29/10).
-   if(D.transitoAoVivo){
-    const vivo=D.transitoAoVivo[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)];
-    movements.fob[i]=vivo?.fob??0;movements.cif[i]=vivo?.cif??0;
-   }
+   // 'vivo' fica fora do if: o filtro de Status da viagem (mais abaixo) le as viagens dele — dentro do bloco dava
+   // "vivo is not defined" e os botoes de status travavam (2026-10-28).
+   const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[day(i)];
+   if(D.transitoAoVivo){movements.fob[i]=vivo?.fob??0;movements.cif[i]=vivo?.cif??0;}
    // "Programado + Não programado" (pedido da usuaria, 2026-10-08): soma no FOB as viagens ainda sem placa.
    if(incluiNaoProg(entrada))movements.fob[i]+=fobNaoProgramado(r,day(i))??0;
    // Transferencia de entrada em linha propria (pedido da usuaria, 2026-10-15): a viagem que vem de outra base
