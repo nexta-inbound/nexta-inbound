@@ -408,4 +408,3 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 
 /* Botao de entrada desabilitado (Cadencia MIS em construcao, 2026-10-21) */
 .scenario-buttons button:disabled{opacity:.45;cursor:not-allowed;border-style:dashed}
-/* Bases e produtos em botoes sempre a vista (2026-10-28) */.base-options.sempre-aberto>summary{list-style:none;cursor:default;pointer-events:none}.base-options.sempre-aberto>summary::-webkit-details-marker{display:none}.base-options.sempre-aberto>summary .info-tip{pointer-events:auto}.chips-rotulo{display:block;margin-top:10px}

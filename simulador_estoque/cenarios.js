@@ -40,16 +40,9 @@
  tableSection.querySelector('.section-title').append($('saved'));
  const sourceDetails=$('source').closest('details');
  for(const id of ['bi-loaded','auto-status','scenario-note'])sourceDetails.append($(id));
- // Cidade, deposito, empresa e produto em BOTOES, sempre a vista (usuaria, 2026-10-28: "os produtos, vc consegue
- // colocar em botoes? e as bases tbm?"): os <select> continuam guardando a escolha, so' saem da tela; os chips
- // (editor.js renderChips) sao o controle. Produto vem logo depois das bases.
- const opcoesBase=document.querySelector('.base-options'),opcoesProduto=document.querySelector('.product-options');
- opcoesBase.open=true;opcoesBase.classList.add('sempre-aberto');
- opcoesBase.addEventListener('toggle',()=>{if(!opcoesBase.open)opcoesBase.open=true;});
- for(const [id,rotulo] of [['cidade-chips','CIDADE'],['deposito-chips','DEPÓSITO'],['empresa-chips','EMPRESA']])
-  $(id).insertAdjacentHTML('beforebegin',`<span class="eyebrow chips-rotulo">${rotulo}</span>`);
- opcoesBase.after(opcoesProduto);
- for(const id of ['cidade','deposito','empresa','product'])$(id).closest('label').hidden=true;
+ // Bases e produtos em botoes sempre a vista foram testados e desfeitos no mesmo dia (usuaria, 2026-10-28: "n gostei
+ // dos botoes"): volta as listas suspensas.
+ document.querySelector('.product-options').hidden=true;
  // .base-options (chips de cidade/deposito/empresa) NAO fica mais escondido aqui (pedido da usuaria,
  // 2026-10-05, "onde fica o botao? nao encontrei!") — antes era escondido sempre, mesmo antes de ter
  // isso que mostrar; agora precisa continuar acessivel DEPOIS da selecao tambem, porque e' onde a
