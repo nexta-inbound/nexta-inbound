@@ -220,8 +220,10 @@
     renderRanking(itens, colunasDe(itens), matriz(itens));
   }
   campoProdutoRanking.onchange = renderCenario;
-  try { campoTransito.checked = localStorage.getItem('simulador.cenarioTransito') !== 'nao'; } catch { /* sem armazenamento: fica marcado */ }
-  campoTransito.onchange = () => { try { localStorage.setItem('simulador.cenarioTransito', campoTransito.checked ? 'sim' : 'nao'); } catch {} renderCenario(); };
+  // Sempre abre marcado, sem lembrar do navegador (usuaria, 2026-10-28: tudo no padrao a cada acesso).
+  campoTransito.checked = true;
+  try { localStorage.removeItem('simulador.cenarioTransito'); } catch {}
+  campoTransito.onchange = () => renderCenario();
 
   function render() {
     statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();

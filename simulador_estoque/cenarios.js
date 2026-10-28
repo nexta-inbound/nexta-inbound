@@ -40,7 +40,16 @@
  tableSection.querySelector('.section-title').append($('saved'));
  const sourceDetails=$('source').closest('details');
  for(const id of ['bi-loaded','auto-status','scenario-note'])sourceDetails.append($(id));
- document.querySelector('.product-options').hidden=true;
+ // Cidade, deposito, empresa e produto em BOTOES, sempre a vista (usuaria, 2026-10-28: "os produtos, vc consegue
+ // colocar em botoes? e as bases tbm?"): os <select> continuam guardando a escolha, so' saem da tela; os chips
+ // (editor.js renderChips) sao o controle. Produto vem logo depois das bases.
+ const opcoesBase=document.querySelector('.base-options'),opcoesProduto=document.querySelector('.product-options');
+ opcoesBase.open=true;opcoesBase.classList.add('sempre-aberto');
+ opcoesBase.addEventListener('toggle',()=>{if(!opcoesBase.open)opcoesBase.open=true;});
+ for(const [id,rotulo] of [['cidade-chips','CIDADE'],['deposito-chips','DEPÓSITO'],['empresa-chips','EMPRESA']])
+  $(id).insertAdjacentHTML('beforebegin',`<span class="eyebrow chips-rotulo">${rotulo}</span>`);
+ opcoesBase.after(opcoesProduto);
+ for(const id of ['cidade','deposito','empresa','product'])$(id).closest('label').hidden=true;
  // .base-options (chips de cidade/deposito/empresa) NAO fica mais escondido aqui (pedido da usuaria,
  // 2026-10-05, "onde fica o botao? nao encontrei!") — antes era escondido sempre, mesmo antes de ter
  // isso que mostrar; agora precisa continuar acessivel DEPOIS da selecao tambem, porque e' onde a
@@ -70,7 +79,7 @@
  // Resumo da regra de cada botao (aparece ao passar o mouse; usuaria, 2026-10-19).
  const entradaModes=[
   ['auto','Trânsito real','Só o que já está no trânsito: FOB e CIF com placa, transferências com status de viagem (T1 a T5) e o bombeio da cadência MIS.'],
-  ['auto+naoprog','Trânsito real + Não programado','Trânsito real + viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) + transferências sem status.'],
+  ['auto+naoprog','Trânsito real + Não programado','Igual ao botão LE do BI: viagens do portal com e sem placa (Ofertado, Aceito, Backlog) e transferências sem status em todos os dias; da semana que vem em diante soma a cadência MIS que ainda não virou viagem no portal. Quando a S+1 sobe no portal, passa a valer o portal.'],
   // 3 botoes (usuaria, 2026-10-21): Transito real, Transito real + Nao programado e Cadencia MIS ("deixa da cadencia do
   // MIS tbm"). O LE saiu da tela; o calculo dele continua no app.js.
   ['cadencia','Cadência MIS','Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.'],

@@ -49,8 +49,11 @@ function entradasTransfPorDia(r){
 // (FOB/CIF/transferencia) em "Fontes automaticas" e "Programado + Nao programado"; com todos marcados = regra normal.
 const STATUS_VIAGEM=[['T1','T1 · Programado'],['T2','T2 · Na origem'],['T3','T3 · Em deslocamento'],['T4','T4 · No destino'],
  ['T5','T5 · Finalizada'],['sem','Sem status'],['backlog','Backlog (sem placa)']];
+// Sempre abre com TODOS os status marcados (usuaria, 2026-10-28: "traga como padrao os dados de todos os botoes"):
+// o filtro nao fica mais guardado no navegador — quem desmarcava um status deixava de ver viagens nas visitas
+// seguintes sem perceber. A marca antiga e' apagada.
 let filtroStatusViagem=new Set(STATUS_VIAGEM.map(([k])=>k));
-try{const salvo=JSON.parse(localStorage.getItem('simulador.filtroStatusViagem')||'null');if(Array.isArray(salvo))filtroStatusViagem=new Set(salvo);}catch{}
+try{localStorage.removeItem('simulador.filtroStatusViagem');}catch{}
 const filtroStatusAtivo=()=>filtroStatusViagem.size<STATUS_VIAGEM.length;
 // Categoria do carro: sem placa (grupo 'programado' no detalhe) = backlog; com placa, pelo T1..T5 da Herrlog.
 function categoriaViagem(v){if(v.grupo==='programado')return 'backlog';const m=/^T([1-5])/.exec(String(v.statusViagem||''));return m?'T'+m[1]:'sem';}
@@ -62,11 +65,14 @@ const incluiNaoProg=e=>e==='auto+naoprog'||e==='auto+tudo';
 // = "Programado + Nao programado"); da segunda da S+1 (D.bi.inbound.switchDate) em diante SOMA-SE a cadencia MIS do
 // dia (FOB/CIF) — o BI nao troca o portal pela cadencia, soma (26/10: 167,5 do portal + 65 da cadencia = 233).
 const entradaNoDia=(e,iso)=>e==='le-bi'?'auto+naoprog':e;
-const somaCadenciaS1=(e,iso)=>e==='le-bi'&&iso>=(D.bi?.inbound?.switchDate||'9999');
+// "Trânsito real + Não programado" passou a ser o LE do BI (usuaria, 2026-10-28: "programado + nao programado quero
+// que seja o botao igual ao LE"): na S+1 soma a cadencia MIS que ainda nao virou viagem no portal.
+const comoLE=e=>e==='le-bi'||e==='auto+naoprog';
+const somaCadenciaS1=(e,iso)=>comoLE(e)&&iso>=(D.bi?.inbound?.switchDate||'9999');
 // Parte do FOB do dia que e' so' planejamento da cadencia MIS (borda ambar tracejada na tabela e no grafico):
 // no botao "LE" (2026-10-21, usuaria: "deixa o ambar"), a cadencia MIS somada da S+1 em diante.
 function cadenciaAmbar(i){const e=$('entrada')?.value,iso=day(i);if(i<0)return 0;
- if(e==='le-bi')return somaCadenciaS1(e,iso)?registrosReais().reduce((s,r)=>{const c=r.bi?.days?.[iso]?.cadencia;return s+(c?.fobPendente??c?.fob??0);},0):0;
+ if(comoLE(e))return somaCadenciaS1(e,iso)?registrosReais().reduce((s,r)=>{const c=r.bi?.days?.[iso]?.cadencia;return s+(c?.fobPendente??c?.fob??0);},0):0;
  if(e==='auto+tudo')return registrosReais().reduce((s,r)=>s+cadenciaMisSemViagem(r,iso),0);
  return 0;}
 function cadenciaMisSemViagem(r,iso){
@@ -74,7 +80,7 @@ function cadenciaMisSemViagem(r,iso){
  const planejadas=(entradasTransfPorDia(r)[iso]||[]).filter(t=>t.conta!=='fob'&&t.conta!=='cif').reduce((s,t)=>s+(t.volume||0),0);
  return Math.max(0,v-planejadas-(fobNaoProgramado(r,iso)||0));
 }
-function trocarFiltroStatus(chaves){filtroStatusViagem=new Set(chaves);try{localStorage.setItem('simulador.filtroStatusViagem',JSON.stringify([...filtroStatusViagem]));}catch{}}
+function trocarFiltroStatus(chaves){filtroStatusViagem=new Set(chaves);}
 function fresh(r,cenarioForcado,entradaForcada){
  // Padrao VMD reprojetada (2026-10-19: LE e Disp MIS sairam dos botoes).
  const scenario=cenarioForcado||$('scenario')?.value||'VMD',today=simulationToday();
@@ -328,13 +334,19 @@ function marcarTransferencias(){
   if(bombeioPortalDia(i)||bombeioMisDia(i).length){td.dataset.transf='bombeioPortal';td.dataset.day=i;input.removeAttribute('title');td.classList.add('transf-com-detalhe');}});
 }
 function bombeioPortalDia(i){const itens=registrosReais().map(r=>r.bi?.days?.[day(i)]?.bombeioPortal).filter(Boolean);
- return itens.length?{efetuado:itens.reduce((s,b)=>s+(b.efetuado||0),0),programado:itens.reduce((s,b)=>s+(b.programado||0),0)}:null;}
+ return itens.length?{efetuado:itens.reduce((s,b)=>s+(b.efetuado||0),0),programado:itens.reduce((s,b)=>s+(b.programado||0),0),
+  informativo:itens.some(b=>b.informativo)}:null;}
 // Origem de cada bombeio da cadencia MIS (frete DAP) no dia (usuaria, 2026-10-27: "da onde e' esse bombeio, qual origem").
 function bombeioMisDia(i){return i<0?[]:registrosReais().flatMap(r=>r.bi?.days?.[day(i)]?.bombeioMis||[]);}
 function bombeioMisHtml(i,titulo){const itens=bombeioMisDia(i);if(!itens.length)return '';
  return `<p><strong>${titulo} (${fmt(itens.reduce((s,b)=>s+(b.volume||0),0))} m³)</strong></p><dl class="viagens">${itens.map(b=>`<div><dt>${esc(b.origem||'Origem não informada')} · ${fmt(b.volume)} m³</dt><dd>Origem: ${esc(b.origem||'—')} → Destino: ${esc(b.destino||'—')}${b.oc?` · Pedido MIS ${esc(b.oc)}`:''}</dd></div>`).join('')}</dl>`;}
 function popupBombeioPortal(i){const b=bombeioPortalDia(i);
  if(!b)return `<strong>Bombeio · ${esc(label(i))}</strong>`+bombeioMisHtml(i,'Cadência MIS · bombeio');
+ // Informativo (usuaria, 2026-10-28): a conta usa a cadencia MIS, igual ao BI; colunas 2 e 3 da aba Aberturas so' aparecem.
+ if(b.informativo)return `<strong>Bombeio · ${esc(label(i))}</strong>`+bombeioMisHtml(i,'Cadência MIS · bombeio (entra na conta)')
+  +`<p><strong>Informado pela base na aba Aberturas · ${fmt(b.efetuado+b.programado)} m³</strong> <small>(só informativo, não entra na conta)</small></p>`
+  +`<dl class="viagens"><div><dt>✓ Receb. Efetuado / Disponível · ${fmt(b.efetuado)} m³</dt><dd>o que já aconteceu</dd></div>`
+  +`<div><dt>⏳ Receb. Programado Dia · ${fmt(b.programado)} m³</dt><dd>o que ainda vai acontecer</dd></div></dl>`;
  return `<strong>Bombeio · ${esc(label(i))} · aba Aberturas</strong><p>${fmt(b.efetuado+b.programado)} m³ informados pela base (soma das colunas 2 e 3)</p>`
   +`<dl class="viagens"><div><dt>✓ Já recebido · ${fmt(b.efetuado)} m³</dt><dd>Receb. Efetuado / Disponível — o que já aconteceu</dd></div>`
   +`<div><dt>⏳ Ainda vai chegar · ${fmt(b.programado)} m³</dt><dd>Receb. Programado Dia — o que vai acontecer</dd></div></dl>`
