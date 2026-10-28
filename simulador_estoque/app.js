@@ -617,7 +617,7 @@ const movSeries=[
  // Linhas de venda/Disp. MIS tambem nos 5 dias passados, como no grafico do BI (usuaria, 2026-10-27).
  ['vmd','VMD reprojetada','#FFFFFF',i=>record?.bi?.days?.[day(i)]?.vmd??null],
  ['plannedSales','Vendas Planejadas','#D9F99D',i=>{const d=record?.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??record?.bi?.semana?.porDia?.[day(i)]?.le:null)??null;}],
- ['actualSales','Vendas Real','#C8C8C8',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
+ ['actualSales','Faturamento','#C8C8C8',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
  ['availability','Disp. MIS','#39FF14',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
