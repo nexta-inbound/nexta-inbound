@@ -47,9 +47,14 @@
  const opcoesBase=document.querySelector('.base-options'),opcoesProduto=document.querySelector('.product-options');
  opcoesBase.open=true;opcoesBase.classList.add('sempre-aberto');
  opcoesBase.addEventListener('toggle',()=>{if(!opcoesBase.open)opcoesBase.open=true;});
- for(const [id,rotulo] of [['cidade-chips','CIDADE'],['deposito-chips','DEPÓSITO'],['empresa-chips','EMPRESA']])
-  $(id).insertAdjacentHTML('beforebegin',`<span class="eyebrow chips-rotulo">${rotulo}</span>`);
- opcoesBase.after(opcoesProduto);
+ // Lado a lado como no BI (usuaria, 2026-10-29: "deixa a disposicao mais assim"): Empresa | Cidade | Deposito |
+ // Produto, cada um em grade. A cascata continua cidade -> deposito -> empresa (empresa aparece depois do deposito).
+ const grade=document.createElement('div');grade.className='filtros-grade';
+ for(const [id,rotulo] of [['empresa-chips','EMPRESA'],['cidade-chips','CIDADE'],['deposito-chips','DEPÓSITO'],['product-chips','PRODUTO']]){
+  const bloco=document.createElement('div');bloco.className=`filtro-bloco filtro-${id.split('-')[0]}`;
+  bloco.innerHTML=`<span class="eyebrow chips-rotulo">${rotulo}</span>`;bloco.append($(id));grade.append(bloco);
+ }
+ opcoesBase.append(grade);opcoesProduto.hidden=true;
  for(const id of ['cidade','deposito','empresa','product'])$(id).closest('label').hidden=true;
  // .base-options (chips de cidade/deposito/empresa) NAO fica mais escondido aqui (pedido da usuaria,
  // 2026-10-05, "onde fica o botao? nao encontrei!") — antes era escondido sempre, mesmo antes de ter
@@ -168,10 +173,10 @@
    atual.has(chave)?atual.delete(chave):atual.add(chave);
    trocarFiltroStatus(atual.size?[...atual]:STATUS_VIAGEM.map(([k])=>k));
   }
+  // As linhas de transito sempre seguem o filtro (2026-10-19, "a tabela tem que obedecer ao filtro"): desde
+  // 2026-10-29 o proprio select() traz FOB/CIF/Transferencia da fonte (e tira de novo a parte planejada quando
+  // ha' cadencia sugerida aplicada).
   persist();select();
-  // As linhas de transito sempre seguem o filtro (2026-10-19, "a tabela tem que obedecer ao filtro"): sem isto,
-  // um cenario salvo no navegador segurava os valores antigos de FOB/CIF/Transferencia (mergeSource).
-  for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=today())state.movements[k][i]=baseline.movements[k][i];
   persist();render(true);syncStatusViagem();
  }
  opcoesGrafico.addEventListener('click',event=>{

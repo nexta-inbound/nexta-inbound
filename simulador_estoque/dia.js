@@ -35,7 +35,8 @@
       $('deposito').value = depositoDe(registro); $('deposito').onchange();
       $('empresa').value = empresaDe(registro); $('empresa').onchange();
     }
-    if ([...$('product').options].some(o => o.value === produto)) $('product').value = produto;
+    // Produto agora e' multi (produtosAtivos, app.js 2026-10-29): abre so' aquele.
+    if ([...$('product').options].some(o => o.value === produto)) { produtosAtivos = new Set([produto]); $('product').value = produto; }
     $('scenario').value = cenario; select();
     scrollTo({top: 0, behavior: 'smooth'});
   }

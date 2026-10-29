@@ -409,3 +409,12 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 /* Botao de entrada desabilitado (Cadencia MIS em construcao, 2026-10-21) */
 .scenario-buttons button:disabled{opacity:.45;cursor:not-allowed;border-style:dashed}
 /* Bases e produtos em botoes sempre a vista (2026-10-28) */.base-options.sempre-aberto>summary{list-style:none;cursor:default;pointer-events:none}.base-options.sempre-aberto>summary::-webkit-details-marker{display:none}.base-options.sempre-aberto>summary .info-tip{pointer-events:auto}.chips-rotulo{display:block;margin-top:10px}
+/* Filtros lado a lado como no BI (2026-10-29): Empresa | Cidade | Deposito | Produto, cada um em grade */
+.filtros-grade{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start;margin-top:4px}
+.filtro-bloco .chips{display:grid;gap:4px;margin-top:6px}
+.filtro-bloco .chips button{width:100%;min-height:40px;padding:6px 10px;white-space:normal;line-height:1.15}
+.filtro-empresa .chips{grid-template-columns:minmax(78px,auto)}
+.filtro-cidade{flex:3 1 560px}.filtro-cidade .chips{grid-template-rows:repeat(3,auto);grid-auto-flow:column;grid-auto-columns:minmax(108px,1fr)}
+.filtro-deposito{flex:1 1 300px}.filtro-deposito .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
+.filtro-product{flex:1 1 300px}.filtro-product .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:700px){.filtros-grade{gap:14px}.filtro-bloco{flex:1 1 100%}.filtro-cidade .chips{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-deposito .chips,.filtro-product .chips{grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-empresa .chips{grid-template-columns:repeat(3,minmax(0,1fr))}}

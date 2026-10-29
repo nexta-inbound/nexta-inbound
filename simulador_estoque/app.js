@@ -17,7 +17,11 @@ const CARGA_SUGESTAO=60,GATILHO_SUGESTAO=0.70;let avisosSugestao={};
 // a combinacao atual junta 2+ registros — compartilhado.js usa essa flag pra desabilitar so' o
 // "Salvar na equipe" (o resto da edicao continua liberado normalmente).
 let depositosAtivos=new Set(),empresasAtivas=new Set(),modoCombinado=false;
-function mergeSource(saved,current){const next=structuredClone(current),previous=saved.sourceBaseline;if(previous){for(const [k]of parameters)if(saved[k]!==previous[k])next[k]=saved[k];for(const [k]of E.rows)for(let i=0;i<30;i++)if(saved.movements[k][i]!==previous.movements[k][i])next.movements[k][i]=saved.movements[k][i];}else{for(const [k]of parameters)next[k]=saved[k];next.movements=structuredClone(saved.movements);}next.name=saved.name;return next;}
+// Visao geral (usuaria, 2026-10-29: "como padrao no grafico, traga somando tudo ... a tabela congela"): sem cidade =
+// todas as bases; sem produto marcado = todos; varios produtos podem ser marcados. Sem cidade ou com 2+ produtos o
+// grafico soma e a tabela fica SO' LEITURA (somenteLeitura; trava em compartilhado.js lock()).
+let produtosAtivos=new Set(),somenteLeitura=false;
+function mergeSource(saved,current){const next=structuredClone(current),previous=saved.sourceBaseline;if(previous){for(const [k]of parameters)if(saved[k]!==previous[k])next[k]=saved[k];for(const [k]of E.rows)for(let i=0;i<30;i++)if(saved.movements[k][i]!==previous.movements[k][i])next.movements[k][i]=saved.movements[k][i];}else{for(const [k]of parameters)next[k]=saved[k];next.movements=structuredClone(saved.movements);}next.name=saved.name;if(saved.sugestaoDesde!=null)next.sugestaoDesde=saved.sugestaoDesde;return next;}
 const parameters=[['opening','Estoque inicial / abertura'],['lastro','Lastro mínimo'],['min','Estoque mínimo'],['mid','Estoque médio'],['max','Estoque máximo'],['capacity','Capacidade física']];
 function simulationToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
 // cenarioForcado (pedido da usuaria, 2026-10-01): permite calcular o estado "fresh" de QUALQUER
@@ -196,7 +200,7 @@ function sourceNote(k,i){const loaded=record.bi?.days[day(i)],mode=state.scenari
  }
  const field=k==='sale'?'vmd':k;if(loaded?.missingModelRow)return 'Sem linha de dados para este recorte nas fontes; valor inicial zero.';return `${D.bi?.formulas[field]??D.bi?.formulas[k]??k} · ${loaded?.[field]==null?'sem valor na fonte, considerado zero na simulação':fmt(loaded[field])+' m³ importados'} · ${day(i)}`;}
 function message(s){$('message').textContent=s;clearTimeout(timer);timer=setTimeout(()=>$('message').textContent='',7000);}
-function persist(){try{state.sourceBaseline=baseline;localStorage.setItem(key(),JSON.stringify(state));$('saved').textContent='SALVO NESTE NAVEGADOR';}catch{$('saved').textContent='SEM SALVAMENTO LOCAL';message('Não foi possível salvar no navegador. Exporte o JSON para guardar suas alterações.');}}
+function persist(){if(somenteLeitura){$('saved').textContent='SOMENTE LEITURA';return;}try{state.sourceBaseline=baseline;localStorage.setItem(key(),JSON.stringify(state));$('saved').textContent='SALVO NESTE NAVEGADOR';}catch{$('saved').textContent='SEM SALVAMENTO LOCAL';message('Não foi possível salvar no navegador. Exporte o JSON para guardar suas alterações.');}}
 function options(el,values){el.replaceChildren(...values.map(v=>new Option(v,v)));}
 // Cidade+deposito (pedido da usuaria, 2026-10-01: "deixa primeiro sem nenhuma selecao, e filtra cidade
 // e depois o deposito" — antes era um unico select de 'base' com tudo junto, ex. "Betim POTENCIAL").
@@ -216,13 +220,15 @@ function empresaDe(registro){return registro.bi?.empresa||'';}
 // Empresa) — por isso o 3o filtro de Empresa.
 // Registros batendo cidade + QUALQUER deposito ativo + QUALQUER empresa ativa (os Sets, nao mais um
 // unico valor). Com 1 so' em cada Set, e' exatamente o que baseAtual() fazia antes.
-function registrosAtuais(){const cidade=$('cidade').value;if(!cidade||!depositosAtivos.size||!empresasAtivas.size)return[];return D.records.filter(r=>cidadeDe(r)===cidade&&depositosAtivos.has(depositoDe(r))&&empresasAtivas.has(empresaDe(r)));}
+// Sem cidade = todas as bases permitidas; deposito/empresa sem nenhum marcado = todos da cidade (visao geral, 2026-10-29).
+function registrosAtuais(){const cidade=$('cidade').value,permitidas=new Set(basesPermitidas());return D.records.filter(r=>permitidas.has(r.base)&&(!cidade||(cidadeDe(r)===cidade&&(!depositosAtivos.size||depositosAtivos.has(depositoDe(r)))&&(!empresasAtivas.size||empresasAtivas.has(empresaDe(r))))));}
+const registrosSelecionados=()=>registrosAtuais().filter(r=>!produtosAtivos.size||produtosAtivos.has(r.product));
 // Pedido da usuaria, 2026-10-05 (bug achado por ela): ligar/desligar 1 chip de deposito/empresa
 // reconstroi a lista de produtos, e sem preservar a selecao anterior o <select> pula sozinho pro
 // 1o produto da nova lista (ex.: de "Diesel S10 A" pro "Biodiesel") sem avisar — ai os numeros da
 // tela pareciam errados, mas era outro produto sendo mostrado. Mesmo padrao ja usado em
 // refreshDepositoOptions/refreshEmpresaOptions: so' troca se o produto atual nao existir mais.
-function products(){const produtoAnterior=$('product').value;options($('product'),[...new Set(registrosAtuais().map(r=>r.product))]);if(produtoAnterior&&[...$('product').options].some(o=>o.value===produtoAnterior))$('product').value=produtoAnterior;select();}
+function products(){const disponiveis=[...new Set(registrosAtuais().map(r=>r.product))].sort((a,b)=>a.localeCompare(b,'pt-BR'));options($('product'),disponiveis);produtosAtivos=new Set([...produtosAtivos].filter(p=>disponiveis.includes(p)));sincronizarSelectMultiplo($('product'),produtosAtivos);select();}
 function somaOuNula(valores){const presentes=valores.filter(v=>v!==null&&v!==undefined);return presentes.length?presentes.reduce((a,b)=>a+b,0):null;}
 // So' os campos realmente lidos de record.bi.days fora do fresh() (VMD/Pedidos em tela nas linhas de
 // referencia da tabela) — tudo que alimenta a simulacao de verdade (fob/cif/pump/sale/...) ja vem
@@ -232,7 +238,7 @@ function semanaCombinada(registros){const semanas=registros.map(r=>r.bi?.semana)
 // "record" sintetico pro modo combinado: so' metadados/exibicao (base/politica/texto) — a simulacao em
 // si usa freshCombinado, nao os campos deste objeto. emp_dep fica null de proposito: o popup de
 // trânsito FOB (cenarios.js) ja degrada bem pra "sem detalhe" quando nao acha D.transitoAoVivo[null].
-function construirRegistroCombinado(registros,openingSomado){const cidade=cidadeDe(registros[0]),produto=registros[0].product;const depositos=[...new Set(registros.map(depositoDe))].sort((a,b)=>a.localeCompare(b,'pt-BR')),empresas=[...new Set(registros.map(empresaDe))].sort((a,b)=>a.localeCompare(b,'pt-BR'));const atrasado=registros.find(r=>r.aberturaEm&&r.aberturaEm!==D.date);return{id:'combinado:'+registros.map(r=>r.id).sort().join(','),base:`${cidade} · ${depositos.join(' + ')} · ${empresas.join(' + ')} (combinado)`,product:produto,sheet:'—',row:'—',opening:openingSomado,aberturaEm:atrasado?atrasado.aberturaEm:D.date,policy:{name:`Combinado · ${registros.length} bases somadas`,source:'Somado automaticamente a partir das bases selecionadas',sheet:'—',row:'—'},
+function construirRegistroCombinado(registros,openingSomado){const ordenar=v=>[...new Set(v)].sort((a,b)=>a.localeCompare(b,'pt-BR'));const cidades=ordenar(registros.map(cidadeDe)),produtos=ordenar(registros.map(r=>r.product));const cidade=cidades.length>1?'Todas as cidades':cidades[0],produto=produtos.length>1?(produtosAtivos.size?produtos.join(' + '):'Todos os produtos'):produtos[0];const depositos=ordenar(registros.map(depositoDe)),empresas=ordenar(registros.map(empresaDe));const atrasado=registros.find(r=>r.aberturaEm&&r.aberturaEm!==D.date);return{id:'combinado:'+registros.map(r=>r.id).sort().join(','),base:cidades.length>1?`Visão geral · ${registros.length} recortes somados`:`${cidade} · ${depositos.join(' + ')} · ${empresas.join(' + ')} (combinado)`,product:produto,sheet:'—',row:'—',opening:openingSomado,aberturaEm:atrasado?atrasado.aberturaEm:D.date,policy:{name:`Combinado · ${registros.length} bases somadas`,source:'Somado automaticamente a partir das bases selecionadas',sheet:'—',row:'—'},
  // _registrosCombinados: os registros REAIS por tras da soma, guardados aqui so' pro popup de
  // transito FOB (cenarios.js) conseguir mostrar de qual deposito/empresa cada viagem e' — pedido da
  // usuaria, 2026-10-05: "tem como trazer no fob pra qual deposito esta direcionado?".
@@ -267,9 +273,10 @@ async function alternarExtensao(){
  message(extensaoAtiva?`Mostrando até ${label(n-1)} (fim do LE deste recorte).`:'De volta aos 15 dias.');
 }
 function select(){
- const registros=registrosAtuais().filter(r=>r.product===$('product').value);
+ const registros=registrosSelecionados();
  avisosSugestao={};
  modoCombinado=registros.length>1;
+ somenteLeitura=!$('cidade').value||new Set(registros.map(r=>r.product)).size>1;
  if(!registros.length)record=undefined;
  else if(!modoCombinado)record=registros[0];
  // Filtro de regiao pode deixar a lista de bases vazia (ex.: nao ha base dessa regiao pra este login);
@@ -280,9 +287,15 @@ function select(){
  n=horizonteRecorte(registros);
  if(modoCombinado){const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}
  else baseline=fresh(record);
- state=structuredClone(baseline);try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}
- // Com filtro de Status da viagem ligado, FOB/CIF/Transferencia de hoje em diante vem sempre do filtro (2026-10-19).
- if(filtroStatusAtivo())for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];
+ // Visao geral / varios produtos: so' a fonte, sem rascunho do navegador (a tabela nem edita nesse modo).
+ state=structuredClone(baseline);if(!somenteLeitura)try{const saved=localStorage.getItem(key());if(saved){const candidate=E.validate(JSON.parse(saved));if(candidate.id===record.id&&candidate.date===D.date){state=mergeSource(candidate,baseline);}}}catch{message('Cenário local inválido ou indisponível. Abertura original carregada.');}
+ // FOB/CIF/Transferencia de hoje em diante vem SEMPRE da fonte (trânsito ao vivo), mesmo com rascunho salvo no
+ // navegador (usuaria, 2026-10-29: Brasilia TECBRAS Hidratado ficou com 60 de um rascunho com 2 viagens de 60 no
+ // popup — "melhor dar o refresh"). Antes so' valia com o filtro de Status da viagem ligado (2026-10-19).
+ for(const k of ['fob','cif','transferIn'])for(let i=0;i<n;i++)if(day(i)>=simulationToday())state.movements[k][i]=baseline.movements[k][i];
+ // Com a cadencia sugerida aplicada, a parte planejada do FOB/CIF continua fora (senao somaria com a sugestao):
+ // tira de novo, ja' com o transito novo.
+ if(state.sugestaoDesde!=null)for(let i=state.sugestaoDesde;i<n;i++){const p=planejadoDoDia(i);for(const k of ['fob','cif'])if(p[k]>0)state.movements[k][i]-=p[k];}
  // Rascunho salvo antes da linha de transferencia sair (2026-10-20): o que estava nela vai pro FOB.
  for(let i=0;i<30;i++)if(state.movements.transferIn[i]){state.movements.fob[i]+=state.movements.transferIn[i];state.movements.transferIn[i]=0;}E.rows.find(r=>r[0]==='sale')[1]=({VMD:'Vendas · VMD reprojetada',LE:'Vendas · LE vigente',['Pedidos em tela']:'Vendas · Pedidos em tela',Real:'Vendas · Faturamento',['Disp MIS']:'Vendas · Disp. MIS'})[state.scenario]||'Vendas';premises();render(true);}
 // Politica de estoque (abertura/lastro/minimo/medio/maximo/capacidade): fixa, vem da planilha e nao
@@ -813,7 +826,7 @@ $('clamp').onchange=()=>{state.clamp=$('clamp').checked;persist();render();};$('
 // Restaurar, junto da tabela) — mesma acao, so' que exposta num unico lugar agora. Exportar CSV/Salvar
 // JSON/Abrir cenario (arquivo local) nao tem mais botao na tela; o Firebase ("Salvar na equipe") segue
 // disponivel pra compartilhar cenarios com a equipe.
-function restaurarDaFonte(){avisosSugestao={};$('entrada').value='auto';if(modoCombinado){const registros=registrosAtuais().filter(r=>r.product===$('product').value);const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}else baseline=fresh(record);state=structuredClone(baseline);persist();premises();render(true);message('Recorte restaurado aos dados da fonte (origem da entrada voltou para Trânsito real).');}
+function restaurarDaFonte(){avisosSugestao={};$('entrada').value='auto';if(modoCombinado){const registros=registrosSelecionados();const {baseline:combinada,openingSomado}=freshCombinado(registros);record=construirRegistroCombinado(registros,openingSomado);baseline=combinada;}else baseline=fresh(record);state=structuredClone(baseline);persist();premises();render(true);message('Recorte restaurado aos dados da fonte (origem da entrada voltou para Trânsito real).');}
 $('entrada').onchange=()=>{persist();select();};
 $('reset-tabela').onclick=restaurarDaFonte;
 // Sugestao de cadencia (pedido da usuaria, 2026-10-12, a partir de uma planilha dela): preenche a linha
@@ -875,6 +888,7 @@ function sugerirCadencia(objetivo='tanque'){
  const plano=E.suggest(semSugestao,n,{carga:CARGA_SUGESTAO,teto:capacidade,inclusive:false,inicio:hojeI+1,...obj.opcoes(capacidade)});
  avisosSugestao={};
  plano.forEach((d,i)=>{state.movements.planned[i]=d.volume;if(d.situacao==='nao-cabe')avisosSugestao[i]={...d,motivo:obj.motivo(capacidade),limite:obj.limite?.()};});
+ state.sugestaoDesde=hojeI+1;  // o refresh do transito (select) tira de novo a parte planejada desses dias
  persist();render(true);
  const cargas=plano.reduce((s,d)=>s+d.cargas,0),semEspaco=plano.filter(d=>d.situacao==='nao-cabe').length;
  const aviso=semEspaco?` Em ${semEspaco} dia(s) o estoque fica abaixo ${obj.motivo(capacidade)}, mas uma carga de ${CARGA_SUGESTAO} m³ não cabe ${obj.limite?obj.limite():'no tanque'} (células em vermelho).`:'';
@@ -911,4 +925,5 @@ if(perfilVeTudo)$('regiao-filtro-label').hidden=false;
 $('regiao-filtro')?.addEventListener('change',()=>{refreshBaseOptions();products();});
 // Pedido da usuaria, 2026-10-01: nada pre-selecionado ao abrir (antes tinha um default fixo em
 // "Duque de Caxias" + "Gasolina A", resquicio de teste que nunca devia ter ficado).
-refreshBaseOptions();options($('product'),[]);select();$('date').value=D.date;
+// Abre na visao geral (2026-10-29): grafico somando todas as bases e produtos, tabela so' leitura.
+refreshBaseOptions();products();$('date').value=D.date;

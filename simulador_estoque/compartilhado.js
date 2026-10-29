@@ -25,7 +25,8 @@
   // registrosAtuais()/basesPermitidas()) — so' "Salvar na equipe" fica bloqueado, porque nao existe
   // uma unica base pra registrar o cenario salvo.
   // Perfil de consulta (base/leitura) nao edita nem no combinado (usuaria, 2026-10-27: "somente como leitura").
-  const editable = () => Boolean(record) && cloud.canEdit(record.base);
+  // Visao geral / varios produtos somados (somenteLeitura, app.js, 2026-10-29): tabela congelada pra todo perfil.
+  const editable = () => Boolean(record) && !somenteLeitura && cloud.canEdit(record.base);
   function lock() {
     const allowed = editable();
     const podeSalvarEquipe = allowed && !modoCombinado;
@@ -40,7 +41,7 @@
     $('cloud-save').disabled = !podeSalvarEquipe || busy;
     if (context !== identity()) {
       context = identity(); currentId = null; expected = null;
-      note(modoCombinado ? 'Modo combinado: edição liberada, mas não dá pra salvar na equipe (não existe uma base só pra registrar).' : allowed ? 'Rascunho local. Use Salvar na equipe para compartilhar.' : 'Consulta: edição desta base não liberada para seu perfil.');
+      note(somenteLeitura ? 'Visão somada (todas as bases ou mais de um produto): só o gráfico. Escolha 1 cidade e 1 produto para simular na tabela.' : modoCombinado ? 'Modo combinado: edição liberada, mas não dá pra salvar na equipe (não existe uma base só pra registrar).' : allowed ? 'Rascunho local. Use Salvar na equipe para compartilhar.' : 'Consulta: edição desta base não liberada para seu perfil.');
     }
   }
   const previousRender = render;
