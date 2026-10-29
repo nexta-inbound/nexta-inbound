@@ -30,6 +30,7 @@
     <div class="ab-barra">
       <label>Data <input type="date" id="ab-dia"></label>
       <button type="button" id="ab-voltar" hidden>‹ Todas as cidades</button>
+      <button type="button" id="ab-exportar" hidden title="Baixa as aberturas do dia escolhido no formato da planilha das bases">⬇ Baixar consolidado (Excel)</button>
       <span id="ab-status" class="ab-status" role="status"></span>
     </div>
     <div id="ab-menu" class="ab-menu"></div>
@@ -198,6 +199,62 @@
         : '<p>Nenhuma alteração registrada neste dia.</p>';
     } catch (erro) { console.error(erro); caixa.textContent = 'Não foi possível carregar o histórico.'; }
   }
+
+  // Baixar consolidado (usuaria, 2026-10-28: "pra mim e pra aiko"): aberturas do dia do filtro no formato da
+  // planilha "DD.MM.AAAA.xlsx". O modelo (cadastros/modeloExcelAberturas, publicar_modelo_aberturas.py) ja' vem
+  // com C/D/E zeradas como <c r=..><v>0</v></c>; aqui so' troca esses valores no XML de cada aba, sem refazer o
+  // arquivo — botoes, segmentacoes e protecao ficam como na planilha; o Excel recalcula as formulas ao abrir.
+  const JSZIP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+  let jszip = null;
+  const carregarJSZip = () => jszip ||= new Promise((ok, falha) => {
+    const tag = document.createElement('script');
+    tag.src = JSZIP_URL; tag.onload = () => ok(window.JSZip);
+    tag.onerror = () => { jszip = null; falha(new Error('Não foi possível carregar o gerador de Excel.')); };
+    document.head.append(tag);
+  });
+  // Mesmo casamento do export manual: sem acento, sem diferenca de maiuscula e de espacos.
+  const chave = s => String(s ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+  async function exportarConsolidado() {
+    const botao = $('ab-exportar'), dia = campoDia.value;
+    botao.disabled = true; status('Gerando o Excel…');
+    try {
+      const [JSZip, modelo, doDia] = await Promise.all([carregarJSZip(), cloud.modeloExcelAberturas(), cloud.aberturasDoDia(dia)]);
+      if (!modelo?.conteudo) throw new Error('O modelo da planilha ainda não foi publicado. Fale com o administrador.');
+      if (!layout) layout = await cloud.aberturasLayout();
+      const valores = new Map();
+      for (const c of layout.cidades || []) for (const t of c.terminais) for (const p of t.produtos) {
+        const s = doDia[t.empDep]?.[cloud.produtoKey(p.nome)];
+        if (s && typeof s === 'object') valores.set(`${chave(t.nome)}|${chave(p.nome)}`, [s.abertura, s.recebEfetuado, s.recebProgramado].map(v => Number(v) || 0));
+      }
+      const zip = await JSZip.loadAsync(modelo.conteudo, {base64: true});
+      const porArquivo = new Map();
+      for (const linha of JSON.parse(modelo.mapa)) (porArquivo.get(linha.arquivo) || porArquivo.set(linha.arquivo, []).get(linha.arquivo)).push(linha);
+      let preenchidas = 0;
+      for (const [arquivo, linhas] of porArquivo) {
+        let xml = await zip.file(arquivo).async('string');
+        for (const l of linhas) {
+          const v = valores.get(`${chave(l.terminal)}|${chave(l.produto)}`);
+          if (!v) continue;
+          preenchidas++;
+          ['C', 'D', 'E'].forEach((col, i) => {
+            xml = xml.replace(new RegExp(`(<c r="${col}${l.linha}"(?: s="\\d+")?>)<v>[^<]*</v>`), `$1<v>${v[i]}</v>`);
+          });
+        }
+        zip.file(arquivo, xml);
+      }
+      const blob = await zip.generateAsync({type: 'blob', compression: 'DEFLATE',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const [a, m, d] = dia.split('-'), agora = new Date();
+      const hora = `${String(agora.getHours()).padStart(2, '0')}h${String(agora.getMinutes()).padStart(2, '0')}`;
+      const link = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: `Aberturas ${d}.${m}.${a} (Firebase ${hora}).xlsx`});
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+      status(`Excel gerado: ${preenchidas} linhas com abertura salva no portal; as demais saem com 0.`);
+    } catch (erro) {
+      console.error(erro); status(erro.message || 'Não foi possível gerar o Excel.', true);
+    } finally { botao.disabled = false; }
+  }
+  if (cloud.podeExportarAberturas?.()) { $('ab-exportar').hidden = false; $('ab-exportar').onclick = exportarConsolidado; }
 
   const temPendencia = () => pendentes.size > 0;
   const podeSair = () => !temPendencia() || confirm('Há alterações não salvas nesta cidade. Sair mesmo assim?');

@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '01e5a8769e';
+const VERSAO_SITE = 'b4caa279de';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -246,6 +246,10 @@ onAuthStateChanged(auth, async user => {
       async aberturasDoDia(dia) { return (await get(ref(db, `aberturas/${dia}`))).val() || {}; },
       // Referencia do MIS do dia (litros), so' indicativo na tela (2026-10-19). Sem permissao/sem dado = {}.
       async referenciaAberturas(dia) { try { return (await get(ref(db, `aberturas/${dia}/_mis`))).val() || {}; } catch { return {}; } },
+      // Botao "Baixar consolidado (Excel)" (usuaria, 2026-10-28: so' ela e a Aiko): marca exportaAberturas no perfil;
+      // o modelo da planilha (cadastros/modeloExcelAberturas) so' e' legivel com a marca (gerar_regras_acesso.py).
+      podeExportarAberturas() { return profile.exportaAberturas === true; },
+      async modeloExcelAberturas() { return (await get(ref(db, 'cadastros/modeloExcelAberturas'))).val(); },
       async historicoAberturas(dia, empDep) { return (await get(ref(db, `aberturasHistorico/${dia}/${empDep}`))).val() || {}; },
       // Grava o terminal inteiro numa operacao so' (valores + historico das mudancas). `linhas`:
       // [{produto, unidade, valores:{abertura, recebEfetuado, recebProgramado}, anteriores:{...}|null}].
