@@ -234,7 +234,8 @@ body[data-aba="simulacao"] main>:not([data-aba~="simulacao"]),
 body[data-aba="alertas"] main>:not([data-aba~="alertas"]),
 body[data-aba="cenario"] main>:not([data-aba~="cenario"]),
 body[data-aba="historico"] main>:not([data-aba~="historico"]),
-body[data-aba="aberturas"] main>:not([data-aba~="aberturas"]){display:none!important}
+body[data-aba="aberturas"] main>:not([data-aba~="aberturas"]),
+body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]){display:none!important}
 /* Ranking + quadro por produto lado a lado */
 .ranking-corpo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
 @media(max-width:1000px){.ranking-corpo{grid-template-columns:1fr}}
@@ -418,3 +419,29 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .filtro-deposito{flex:1 1 300px}.filtro-deposito .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 .filtro-product{flex:1 1 300px}.filtro-product .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:700px){.filtros-grade{gap:14px}.filtro-bloco{flex:1 1 100%}.filtro-cidade .chips{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-deposito .chips,.filtro-product .chips{grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-empresa .chips{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* Aba Usuarios (2026-10-29): so' quem gerencia usuarios ve */
+.us-form{border:1px solid var(--border);border-radius:12px;padding:16px;margin:8px 0 22px;display:grid;gap:10px}
+.us-form h3,.us-lista-topo h3{margin:0;font-size:16px}
+.us-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.us-campos label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.us-campos input,#us-busca{padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:#ffffff08;color:inherit;font:inherit}
+.us-campos input[readonly]{opacity:.6}
+.us-chips{margin-top:2px}
+.us-bases{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.us-cidade strong{font-size:13px}
+.us-acoes-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.us-status{font-size:13px;color:var(--muted)}
+.us-status[data-tipo="ok"]{color:#4ADE80}.us-status[data-tipo="erro"]{color:#FF8A7F}.us-status[data-tipo="aviso"]{color:#FBBF24}
+.us-lista-topo{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:8px}
+#us-busca{min-width:240px;max-width:100%}
+.us-tabela-wrap{overflow-x:auto}
+.us-tabela{width:100%;border-collapse:collapse;font-size:13px}
+.us-tabela th,.us-tabela td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.us-tabela th{color:var(--muted);font-weight:600;white-space:nowrap}
+.us-det{max-width:320px}
+.us-acoes{white-space:nowrap}.us-acoes button{padding:5px 9px;font-size:12px;margin:0 4px 4px 0}
+.us-perigo{border-color:#FF6B5F66!important;color:#FF8A7F!important}
+.us-tag{font-size:11px;padding:1px 6px;border-radius:999px;background:#8dc8302b;color:#EEFE7A;white-space:nowrap}
+.us-sit{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.us-ok{background:#16653433;color:#4ADE80}.us-temp{background:#FBBF2422;color:#FBBF24}.us-bloq,.us-off{background:#B91C1C33;color:#FF8A7F}
+.us-campos input:invalid:placeholder-shown{border-color:var(--border);box-shadow:none}

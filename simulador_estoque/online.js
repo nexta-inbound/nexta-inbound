@@ -17,7 +17,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'e3bccf99d6';
+const VERSAO_SITE = '97e98e4adf';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -210,6 +210,8 @@ onAuthStateChanged(auth, async user => {
         || !['administrador', 'regional', 'leitura', 'base'].includes(profile.perfil)) {
       throw new Error('Sua conta ainda não tem acesso liberado ao simulador.');
     }
+    // Desativado pela aba Usuarios (2026-10-29); as regras do banco tambem negam os dados.
+    if (profile.desativado === true) throw new Error('Seu acesso ao simulador foi desativado. Fale com a gestão.');
     const senha = await situacaoSenha(user, profile);
     if (senha.tipo === 'bloqueada') {
       try { await signOut(auth); } catch {}
@@ -358,6 +360,22 @@ onAuthStateChanged(auth, async user => {
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
       ...aberturasApi,
+      // Aba Usuarios (usuaria, 2026-10-29: so' ela e o Matheus Sanches): lista/edita perfis direto; criar login e
+      // resetar senha viram pedido em pedidosUsuarios, executado pela maquina logistica (pedidos_usuarios.py).
+      gerenciaUsuarios() { return profile.gerenciaUsuarios === true; },
+      async listarPerfis() { return (await get(ref(db, 'perfis'))).val() || {}; },
+      async salvarPerfil(uid, campos) {
+        const caminhos = {};
+        for (const [campo, valor] of Object.entries(campos)) caminhos[`perfis/${uid}/${campo}`] = valor;
+        await update(ref(db), caminhos);
+      },
+      async pedirUsuario(dados) {
+        const novo = push(ref(db, 'pedidosUsuarios'));
+        await set(novo, {...dados, por: user.uid, porNome: profile.nome || user.email, em: serverTimestamp(), status: 'pendente'});
+        return novo.key;
+      },
+      acompanharPedido(id, aoMudar) { return onValue(ref(db, `pedidosUsuarios/${id}`), s => aoMudar(s.val())); },
+      async enviarRedefinicao(email) { await sendPasswordResetEmail(auth, email); },
       // Dias 15..29 sob demanda (botao "+ fim do LE", 2026-10-19): {record_id: {iso: dia}} das 3 regioes.
       async carregarExtensao() {
         const partes = await Promise.all(visibleRegions.map(r => get(ref(db, `fontes/extensao/${r}`)).then(s => s.val()).catch(() => null)));
@@ -371,7 +389,7 @@ onAuthStateChanged(auth, async user => {
         return Object.fromEntries(dias.map((dia, i) => [dia, arvores[i]]));
       },
     };
-    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js']) await script(name);
+    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js', 'usuarios.js']) await script(name);
     await concluirEntrada();
     el('auto-status').textContent = `Fontes de ${data.date}. A tela atualiza sozinha quando sai uma carga nova.`;
     const sync = el('sync-status');
