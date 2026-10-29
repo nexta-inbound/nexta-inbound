@@ -759,12 +759,8 @@ function popupGrafico(i){
  if(!futuro)linhas.push(['Total de entradas (realizado)',valorPassado('incoming',i,result)]);
  linhas.push([futuro?'Vendas aplicada (debita)':'Venda real (debita)',futuro?state.movements.sale[i]:valorPassado('outgoing',i,result)]);
  for(const [,nome,,valorEm] of movSeries){const v=valorEm(i);if(v!=null)linhas.push([nome,v]);}
- const semanaDia=record.bi?.semana?.porDia?.[day(i)],depositoDia=record.bi?.semanaPorDeposito?.porDia?.[day(i)];
- let semanaHtml='';
- if(semanaDia||depositoDia){
-  const linha=(titulo,d)=>d?`<div><dt>${esc(titulo)}</dt><dd>${fmt(d.real)} m³ faturados de ${fmt(d.le)} m³ do LE (${d.le?Math.round(d.real/d.le*100):0}%)</dd></div>`:'';
-  semanaHtml=`<p><strong>LE da semana × Faturamento</strong></p><dl>${linha('Cidade (consolidado)',semanaDia)}${linha('Este depósito',depositoDia)}</dl>`;
- }
+ // Bloco "LE da semana × Faturamento" saiu do popup (usuaria, 2026-10-29: "tira esse escrito do popup").
+ const semanaHtml='';
  // Politica de estoque no popup (pedido da usuaria, 2026-10-16): mesmos valores das linhas tracejadas do grafico.
  const politicaPopup=[['Lastro mínimo','lastro'],['Estoque mínimo','min'],['Estoque médio','mid'],['Estoque máximo','max'],['Capacidade','capacity']].filter(([,k])=>state[k]!=null);
  const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³</dd></div>`).join('')}</dl>`:'';
