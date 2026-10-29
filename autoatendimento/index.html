@@ -282,6 +282,12 @@ button, input { font: inherit; color: inherit; }
 .resultado .acoes { justify-content: center; }
 .resultado .acoes .btn-primario { margin-left: 0; }
 .contagem { font-size: 15px; color: var(--text-muted); margin-top: 16px; min-height: 22px; }
+.documentos-impressao { max-width: 720px; margin: 24px auto 0; text-align: left; }
+.documentos-impressao .sub { max-width: none; margin: 4px 0 16px; font-size: 16px; }
+.documentos-acoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.documentos-acoes .btn { width: 100%; min-height: 68px; white-space: normal; }
+.documentos-status { min-height: 22px; margin-top: 12px; color: var(--text-dim); font-size: 15px; text-align: center; }
+@media (max-width: 700px) { .documentos-acoes { grid-template-columns: 1fr; } }
 
 /* ── PROCESSAMENTO DO FATURAMENTO ── */
 .processamento { max-width: 720px; margin: 0 auto; }
@@ -298,6 +304,11 @@ button, input { font: inherit; color: inherit; }
 .historico-progresso li.atual .marcador { background: var(--accent-dim); color: var(--accent); }
 .historico-progresso li.erro .marcador { background: var(--danger-dim); color: var(--danger); }
 .historico-progresso .hora { font-family: var(--mono); font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+.correcao-lacre { margin-top: 18px; border-color: var(--accent2); background: var(--accent2-dim); }
+.correcao-lacre .cartao-titulo { color: var(--accent2); }
+.correcao-lacre .acoes { margin-top: 16px; }
+.correcao-lacre .acoes .btn-primario { min-width: 220px; }
+.correcao-lacre-status { min-height: 22px; margin-top: 10px; color: var(--text-dim); font-size: 15px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .barra-progresso > div { transition: none; } }
 
 .rodape { text-align: center; font-size: 13px; color: var(--text-muted); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); user-select: none; }
@@ -382,8 +393,8 @@ button, input { font: inherit; color: inherit; }
     <div class="campos">
       <div class="campo" id="c-protocolo">
         <label for="in-protocolo">Protocolo do agendamento</label>
-        <div class="com-prefixo"><span>AG-</span><input id="in-protocolo" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="000123" enterkeyhint="next" oninput="this.value = soDigitos(this.value)"></div>
-        <div class="dica">Está no comprovante do agendamento (ex.: AG-000123).</div>
+        <div class="com-prefixo"><span>AG-</span><input id="in-protocolo" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="78" enterkeyhint="next" oninput="digitarProtocolo(this)"></div>
+        <div class="dica" id="dica-protocolo"></div>
         <div class="msg-erro"></div>
       </div>
       <div class="campo" id="c-cpf">
@@ -473,6 +484,18 @@ button, input { font: inherit; color: inherit; }
         <ol class="historico-progresso" id="processamento-historico"></ol>
       </div>
       <div class="alerta hidden" id="processamento-erro" role="alert"></div>
+      <div class="cartao correcao-lacre hidden" id="correcao-lacre" aria-live="polite">
+        <div class="cartao-titulo">Correção necessária</div>
+        <div class="produto-nome" id="correcao-lacre-titulo">Lacre já utilizado</div>
+        <div class="sub" id="correcao-lacre-texto" style="margin-bottom:16px"></div>
+        <div class="campo" id="campo-correcao-lacre">
+          <label for="correcao-lacre-valor">Leia outro lacre</label>
+          <input id="correcao-lacre-valor" type="text" inputmode="numeric" autocomplete="off" maxlength="15" enterkeyhint="send" oninput="this.value=soDigitos(this.value).slice(0, LIMITES.lacre)">
+          <div class="msg-erro"></div>
+        </div>
+        <div class="acoes"><button class="btn btn-primario" id="btn-correcao-lacre" type="button" onclick="enviarCorrecaoLacre()">Enviar novo lacre</button></div>
+        <div class="correcao-lacre-status" id="correcao-lacre-status"></div>
+      </div>
       <div class="acoes hidden" id="processamento-acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Voltar ao início</button></div>
       <div class="contagem" id="processamento-contagem"></div>
     </div>
@@ -484,6 +507,15 @@ button, input { font: inherit; color: inherit; }
       <div class="titulo">Faturamento concluído!</div>
       <div class="protocolo-grande" id="fim-protocolo"></div>
       <div class="sub" id="fim-texto">Aguarde ser chamado para o carregamento.</div>
+      <div class="cartao documentos-impressao hidden" id="fim-documentos">
+        <div class="cartao-titulo">Documentos para impressão</div>
+        <div class="sub">Abra cada documento e use o botão de imprimir do visualizador de PDF.</div>
+        <div class="documentos-acoes" id="fim-documentos-acoes">
+          <button class="btn btn-secundario" id="btn-ordem-carregamento" type="button" onclick="abrirDocumentoImpressao('ordemCarregamento')">Abrir Ordem de Carregamento</button>
+          <button class="btn btn-secundario" id="btn-formulario-amostragem" type="button" onclick="abrirDocumentoImpressao('formularioAmostragem')">Abrir Formulário de Amostragem</button>
+        </div>
+        <div class="documentos-status" id="fim-documentos-status" aria-live="polite"></div>
+      </div>
       <div class="acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button></div>
       <div class="contagem" id="fim-contagem"></div>
     </div>
@@ -579,7 +611,7 @@ const CAPACIDADE_MIN_LITROS = 500;
 const CAPACIDADE_MAX_LITROS = 50000;
 const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
 const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
-const TEMPO_TELA_FIM = 20;           // s mostrando o "check-in concluído"
+const TEMPO_TELA_FIM = 120;          // tempo para abrir e imprimir os dois PDFs
 const TEMPO_TELA_AVISO = 30;
 const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
 const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
@@ -602,6 +634,8 @@ const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBu
 // alocação atual foi respondida; alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 4
 let atd = null;
 let _cancelarAcompanhamento = null;
+let _registroProcessamento = null;
+let _urlsDocumentos = [];
 
 /* ── UTILITÁRIOS (mesmos do portal de agendamento) ── */
 function esc(s) {
@@ -702,14 +736,90 @@ function mostrarAviso({ titulo, texto, tipo = 'atencao' }) {
 function reiniciar() {
   if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
   atd = null;
+  _registroProcessamento = null;
+  _urlsDocumentos.forEach((url) => URL.revokeObjectURL(url));
+  _urlsDocumentos = [];
   Q.falhasBusca = 0;
   for (const id of ['in-protocolo', 'in-cpf', 'in-placa']) document.getElementById(id).value = '';
+  digitarProtocolo(document.getElementById('in-protocolo'));
   for (const id of ['c-protocolo', 'c-cpf', 'c-placa']) marcarErro(id, '');
   mostrarAlerta('alerta-inicio', '');
   fecharInatividade();
   fecharMenuQuiosque();
   if (document.activeElement) document.activeElement.blur(); // fecha o teclado do tablet
   mostrarTela('inicio');
+}
+
+function renderDocumentosFim(documentos) {
+  const caixa = document.getElementById('fim-documentos');
+  const acoes = document.getElementById('fim-documentos-acoes');
+  const ordem = documentos?.ordemCarregamento;
+  const amostragem = documentos?.formularioAmostragem;
+  const danfes = Array.isArray(documentos?.notasFiscaisPdf)
+    ? documentos.notasFiscaisPdf.filter((item) => item?.storagePath)
+    : [];
+  const disponiveis = Boolean(ordem?.storagePath && amostragem?.storagePath);
+  caixa.classList.toggle('hidden', !disponiveis);
+  document.getElementById('fim-documentos-status').textContent = '';
+  for (const id of ['btn-ordem-carregamento', 'btn-formulario-amostragem']) {
+    document.getElementById(id).disabled = false;
+  }
+  acoes.querySelectorAll('.btn-danfe').forEach((botao) => botao.remove());
+  danfes.forEach((documento, indice) => {
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.className = 'btn btn-secundario btn-danfe';
+    botao.textContent = `Abrir DANFE ${documento.notaFiscal || documento.numero || indice + 1}`;
+    botao.addEventListener('click', () => abrirDanfeImpressao(indice, botao));
+    acoes.appendChild(botao);
+  });
+}
+
+async function abrirDocumentoImpressao(chave) {
+  const documento = _registroProcessamento?.documentos?.[chave];
+  const botaoId = chave === 'ordemCarregamento'
+    ? 'btn-ordem-carregamento'
+    : 'btn-formulario-amostragem';
+  const botao = document.getElementById(botaoId);
+  await abrirDocumentoDados(documento, botao);
+}
+
+async function abrirDanfeImpressao(indice, botao) {
+  const danfes = _registroProcessamento?.documentos?.notasFiscaisPdf;
+  const documento = Array.isArray(danfes) ? danfes[indice] : null;
+  await abrirDocumentoDados(documento, botao);
+}
+
+async function abrirDocumentoDados(documento, botao) {
+  const status = document.getElementById('fim-documentos-status');
+  if (!documento?.storagePath || !botao || botao.disabled) return;
+
+  // A aba e criada ainda dentro do clique para nao ser bloqueada pelo navegador.
+  const janela = window.open('', '_blank');
+  if (!janela) {
+    status.textContent = 'O navegador bloqueou a abertura. Libere pop-ups e tente novamente.';
+    return;
+  }
+  janela.document.title = documento.rotulo || 'Documento para impressão';
+  janela.document.body.textContent = 'Carregando documento…';
+  botao.disabled = true;
+  status.textContent = `Carregando ${documento.rotulo || 'documento'}…`;
+  try {
+    const blob = await window._fb.carregarDocumento(documento.storagePath);
+    if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
+    const url = URL.createObjectURL(blob);
+    _urlsDocumentos.push(url);
+    janela.location.replace(url);
+    status.textContent = 'Documento aberto. Use o ícone de impressão da nova aba.';
+  } catch (e) {
+    console.error(e);
+    janela.close();
+    status.textContent = ehErroPermissao(e)
+      ? 'Este quiosque não tem permissão para abrir o PDF. Chame a equipe Nexta.'
+      : 'Não foi possível carregar o PDF. Verifique a conexão e tente novamente.';
+  } finally {
+    botao.disabled = false;
+  }
 }
 function mostrarAlerta(id, html) {
   const el = document.getElementById(id);
@@ -883,10 +993,21 @@ async function onSessaoFirebase(user) {
 }
 
 /* ── ETAPA 1: IDENTIFICAÇÃO ── */
+const DICA_PROTOCOLO = 'Está no comprovante. Pode digitar só o número, sem os zeros (ex.: 78 para AG-000078).';
+// Com ou sem os zeros da frente: 78, 000078 e 00000078 viram AG-000078
+function protocoloDoTexto(v) {
+  const digitos = soDigitos(v).replace(/^0+(?=\d)/, '');
+  return digitos ? 'AG-' + digitos.padStart(6, '0') : '';
+}
+// Enquanto digita, a dica mostra o protocolo completo que vai ser buscado
+function digitarProtocolo(el) {
+  el.value = soDigitos(el.value);
+  const protocolo = protocoloDoTexto(el.value);
+  document.getElementById('dica-protocolo').innerHTML = protocolo ? `Protocolo <b class="mono">${protocolo}</b>` : DICA_PROTOCOLO;
+}
 function lerIdentificacao() {
-  const digitos = soDigitos(document.getElementById('in-protocolo').value);
   return {
-    protocolo: digitos ? 'AG-' + digitos.padStart(6, '0') : '',
+    protocolo: protocoloDoTexto(document.getElementById('in-protocolo').value),
     cpf: soDigitos(document.getElementById('in-cpf').value),
     placa: normalizarPlaca(document.getElementById('in-placa').value),
   };
@@ -963,14 +1084,14 @@ async function prepararAtendimento(id, a) {
       window._fb.carregarConfigVeiculo(placa).catch(() => null))),
   ]);
   // Inconsistência registrada antes (pedido não cabia) não impede tentar de novo: o check-in grava por cima
-  if (checkin && ['aguardando', 'processando'].includes(checkin.status)) {
+  if (checkin && ['aguardando', 'processando', 'aguardando_correcao_lacre'].includes(checkin.status)) {
     return { acompanhar: prot };
   }
   if (checkin?.status === 'concluido') {
     const ordem = checkin.resultado?.ordemFrete;
     return { aviso: { tipo: 'ok', titulo: 'Faturamento já concluído', texto: `O faturamento do agendamento ${prot} já foi concluído${ordem ? ` (OF ${ordem})` : ''}. Aguarde ser chamado para o carregamento.` } };
   }
-  if (checkin?.status === 'erro') {
+  if (checkin?.status === 'erro' || checkin?.status === 'revisao_manual') {
     return guiche('Faturamento precisa de conferência', checkin.processamento?.mensagem || `O faturamento do agendamento ${prot} precisa ser conferido no guichê.`);
   }
   if (checkin && checkin.status !== 'inconsistente') {
@@ -1778,15 +1899,80 @@ function listaHistorico(valor) {
 function renderHistoricoProcessamento(historico, status) {
   const eventos = listaHistorico(historico);
   document.getElementById('processamento-historico').innerHTML = eventos.map((evento, i) => {
-    const erro = evento.etapa === 'erro';
+    const erro = evento.etapa === 'erro' || evento.etapa === 'revisao_manual';
     const atual = i === eventos.length - 1 && status !== 'concluido';
     const classe = erro ? 'erro' : atual ? 'atual' : '';
     const marcador = erro ? '!' : atual ? '•' : '✓';
     return `<li class="${classe}"><span class="marcador">${marcador}</span><span>${esc(evento.mensagem || evento.etapa || 'Etapa concluída')}</span><span class="hora">${evento.em ? horaBR(evento.em) : ''}</span></li>`;
   }).join('');
 }
+function lacresDoRegistro(registro) {
+  return listaHistorico(registro?.compartimentos).flatMap((c) => [c?.lacre1, c?.lacre2, c?.lacre3]).filter(Boolean).map(String);
+}
+function renderCorrecaoLacre(registro) {
+  const caixa = document.getElementById('correcao-lacre');
+  const correcao = registro?.correcaoLacre;
+  const aguardando = registro?.status === 'aguardando_correcao_lacre'
+    && correcao?.tipo === 'lacre_ja_utilizado';
+  caixa.classList.toggle('hidden', !aguardando);
+  if (!aguardando) return;
+  const referencia = correcao.placa && correcao.indiceCompartimento != null
+    ? `${correcao.placa} · CT ${pad2(correcao.indiceCompartimento)}`
+    : `Compartimento ${correcao.indiceCompartimentoSap || ''}`;
+  document.getElementById('correcao-lacre-titulo').textContent = `${correcao.rotulo || 'Lacre'} já utilizado`;
+  document.getElementById('correcao-lacre-texto').textContent = `O lacre ${correcao.lacreRejeitado} de ${referencia} já está na OF ${correcao.ordemFreteExistente}. Leia outro lacre para continuar o mesmo faturamento.`;
+  const input = document.getElementById('correcao-lacre-valor');
+  const btn = document.getElementById('btn-correcao-lacre');
+  const respondida = correcao.resposta?.solicitacaoId === correcao.solicitacaoId;
+  if (input.dataset.solicitacaoId !== (correcao.solicitacaoId || '')) {
+    input.value = '';
+    marcarErro('campo-correcao-lacre', '');
+  }
+  input.dataset.solicitacaoId = correcao.solicitacaoId || '';
+  input.disabled = respondida;
+  btn.disabled = respondida;
+  document.getElementById('correcao-lacre-status').textContent = respondida
+    ? 'Novo lacre enviado. Aguarde a confirmação do SAP…'
+    : 'O navegador do faturamento está aberto e aguardando esta leitura.';
+  if (!respondida && document.activeElement !== input) setTimeout(() => input.focus(), 0);
+}
+async function enviarCorrecaoLacre() {
+  const registro = _registroProcessamento;
+  const correcao = registro?.correcaoLacre;
+  const input = document.getElementById('correcao-lacre-valor');
+  const btn = document.getElementById('btn-correcao-lacre');
+  if (registro?.status !== 'aguardando_correcao_lacre' || !correcao?.solicitacaoId) return;
+  const valor = soDigitos(input.value).slice(0, LIMITES.lacre);
+  let erro = '';
+  if (!valor) erro = 'Leia o novo lacre.';
+  else if (valor === String(correcao.lacreRejeitado || '')) erro = 'Use um lacre diferente do recusado.';
+  else if (lacresDoRegistro(registro).some((lacre) => lacre === valor && lacre !== String(correcao.lacreRejeitado || ''))) erro = 'Este lacre já foi informado em outro compartimento.';
+  marcarErro('campo-correcao-lacre', erro);
+  if (erro) { input.select(); sinalDeErro(); return; }
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    await window._fb.enviarCorrecaoLacre(registro.protocolo, {
+      solicitacaoId: correcao.solicitacaoId,
+      valor,
+      enviadoEm: new Date().toISOString(),
+      quiosqueUid: Q.usuario.uid,
+    });
+    input.disabled = true;
+    document.getElementById('correcao-lacre-status').textContent = 'Novo lacre enviado. Aguarde a confirmação do SAP…';
+  } catch (e) {
+    console.error(e);
+    marcarErro('campo-correcao-lacre', ehErroPermissao(e)
+      ? 'O quiosque não tem permissão para enviar a correção. Chame a equipe Nexta.'
+      : 'Sem conexão. Tente enviar novamente.');
+    btn.disabled = false;
+  } finally {
+    btn.textContent = 'Enviar novo lacre';
+  }
+}
 function atualizarProcessamento(registro) {
   if (!registro) return;
+  _registroProcessamento = registro;
   const status = registro.status || 'aguardando';
   const p = registro.processamento || {};
   const percentual = Math.max(1, Math.min(100, Number(p.percentual) || (status === 'concluido' ? 100 : 1)));
@@ -1795,11 +1981,14 @@ function atualizarProcessamento(registro) {
   document.getElementById('processamento-percentual').textContent = `${percentual}%`;
   barra.setAttribute('aria-valuenow', percentual);
   preenchimento.style.width = `${percentual}%`;
-  preenchimento.style.background = status === 'erro' ? 'var(--danger)' : '';
+  preenchimento.style.background = ['erro', 'revisao_manual'].includes(status)
+    ? 'var(--danger)'
+    : status === 'aguardando_correcao_lacre' ? 'var(--accent2)' : '';
   const msg = document.getElementById('processamento-msg');
   msg.textContent = p.mensagem || (status === 'aguardando' ? 'Na fila. Aguardando o runner de faturamento…' : 'Processando…');
-  msg.classList.toggle('erro', status === 'erro');
+  msg.classList.toggle('erro', ['erro', 'revisao_manual'].includes(status));
   renderHistoricoProcessamento(p.historico, status);
+  renderCorrecaoLacre(registro);
 
   if (status === 'concluido') {
     if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
@@ -1808,9 +1997,10 @@ function atualizarProcessamento(registro) {
     document.getElementById('fim-texto').textContent = ordem
       ? `Protocolo ${registro.protocolo}. A ordem de frete foi processada; aguarde ser chamado para o carregamento.`
       : `Protocolo ${registro.protocolo}. Aguarde ser chamado para o carregamento.`;
+    renderDocumentosFim(registro.documentos);
     mostrarTela('fim');
     iniciarContagem('fim-contagem', TEMPO_TELA_FIM);
-  } else if (status === 'erro') {
+  } else if (status === 'erro' || status === 'revisao_manual') {
     document.getElementById('processamento-erro').textContent = p.mensagem || `Não foi possível concluir. Procure o faturamento com o protocolo ${registro.protocolo}.`;
     document.getElementById('processamento-erro').classList.remove('hidden');
     document.getElementById('processamento-acoes').classList.remove('hidden');
@@ -1829,6 +2019,9 @@ function acompanharFaturamento(protocolo) {
   document.getElementById('processamento-msg').classList.remove('erro');
   document.getElementById('processamento-historico').innerHTML = '';
   document.getElementById('processamento-erro').classList.add('hidden');
+  document.getElementById('correcao-lacre').classList.add('hidden');
+  document.getElementById('correcao-lacre-valor').value = '';
+  marcarErro('campo-correcao-lacre', '');
   document.getElementById('processamento-acoes').classList.add('hidden');
   document.getElementById('processamento-contagem').textContent = '';
   mostrarTela('processamento');
@@ -1916,6 +2109,7 @@ document.addEventListener('keydown', (ev) => {
   if (ev.target.id === 'login-senha') { fazerLogin(); return; }
   if (ev.target.id === 'menu-senha') { ev.target.blur(); return; } // duas ações no menu: a equipe toca na que quer
   if (ev.target.id === 'in-placa') { buscarAgendamento(); return; }
+  if (ev.target.id === 'correcao-lacre-valor') { enviarCorrecaoLacre(); return; }
   if (ev.target.closest('#lista-lacres')) { enterNoLacre(ev.target); return; }
   const campos = [...document.querySelectorAll('.tela.ativa input')];
   const proximo = campos[campos.indexOf(ev.target) + 1];
@@ -1940,6 +2134,8 @@ setTimeout(() => {
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getStorage, ref as storageRef, getBlob }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // Mesmo projeto do portal de agendamento. Config pública (não é segredo): o acesso é protegido pelas regras
   const firebaseConfig = {
@@ -1954,6 +2150,7 @@ setTimeout(() => {
   const app  = initializeApp(firebaseConfig);
   const db   = getDatabase(app);
   const auth = getAuth(app); // sessão persistente: o tablet continua logado depois de recarregar
+  const storage = getStorage(app);
   const ler = async (caminho) => (await get(ref(db, caminho))).val();
 
   window._fb = {
@@ -1971,8 +2168,10 @@ setTimeout(() => {
     // autoatendimento/<protocolo do agendamento>: check-in (ou inconsistência) do motorista
     carregarCheckin: (protocolo) => ler('autoatendimento/' + protocolo),
     salvarCheckin: (protocolo, dados) => set(ref(db, 'autoatendimento/' + protocolo), dados),
+    enviarCorrecaoLacre: (protocolo, resposta) => set(ref(db, `autoatendimento/${protocolo}/correcaoLacre/resposta`), resposta),
     acompanharCheckin: (protocolo, aoMudar, aoErro) =>
       onValue(ref(db, 'autoatendimento/' + protocolo), (snapshot) => aoMudar(snapshot.val()), aoErro),
+    carregarDocumento: (storagePath) => getBlob(storageRef(storage, storagePath)),
     // compartimentosVeiculo/<placa do tanque>: configuração própria de cada carreta
     carregarConfigVeiculo: (chave) => ler('compartimentosVeiculo/' + chave),
     salvarConfigVeiculo: (chave, dados) => set(ref(db, 'compartimentosVeiculo/' + chave), dados),
