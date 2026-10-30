@@ -1477,6 +1477,7 @@
   body.transportador-mode #chipCancelado,
   body.transportador-mode #wrapProgramadorFiltro,
   body.transportador-mode #campo-programador,
+  body.transportador-mode #campo-compra-pedagio,
   body.transportador-mode #btnMinhaAssinatura,
   body.transportador-mode #chipSepAgend,
   body.transportador-mode .chip-agend,
@@ -4342,11 +4343,22 @@
       </div>
     </div>
 
-    <div class="modal-field" id="campo-programador" style="max-width:320px">
-      <div class="modal-label">Programador</div>
-      <select class="config-input" id="m-programador">
-        <option value="">— Não classificado —</option>
-      </select>
+    <div class="modal-row" style="grid-template-columns:320px 1fr;align-items:start">
+      <div class="modal-field" id="campo-programador">
+        <div class="modal-label">Programador</div>
+        <select class="config-input" id="m-programador">
+          <option value="">— Não classificado —</option>
+        </select>
+      </div>
+      <div class="modal-field" id="campo-compra-pedagio">
+        <div class="modal-label">Compra de Pedágio</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;min-height:40px">
+          <input type="checkbox" id="m-compraPedagio" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0"
+            onchange="atualizarHintCompraPedagio()">
+          Comprar vale-pedágio automaticamente (Pamcard)
+        </label>
+        <div class="tf-hint" id="m-compraPedagio-hint"></div>
+      </div>
     </div>
 
     <div class="modal-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -14250,6 +14262,8 @@ function openModal(idx) {
   document.getElementById('m-cpfMotorista').value   = v.cpfMotorista || '';
   document.getElementById('m-obs').value            = v.obs || '';
   document.getElementById('m-ajuste-seta').value    = v.volumeSetaProposto || v.volume || '';
+  document.getElementById('m-compraPedagio').checked = compraPedagioAtiva(v);
+  atualizarHintCompraPedagio();
   _editingDiasDsr = new Set(diasDsrDaViagem(v));
   renderChipDiaDsr();
   ajustarCampoFrotaDedicada();
@@ -14321,6 +14335,28 @@ function ajustarModalParaTipoUsuario(v) {
     document.getElementById('m-status').disabled = !adminReabre;
     document.getElementById('m-diaDsr').classList.add('chip-group-disabled');
     document.getElementById('btnSalvarViagem').style.display = adminReabre ? '' : 'none';
+  }
+
+  // Flag de compra do pedágio (ver compraPedagioAtiva): só staff (o campo some pro
+  // transportador via CSS) e travado depois que a compra foi enviada à Pamcard — daí em
+  // diante o bot conclui/reconcilia sem olhar o flag (ver pedagioJaEnviadoPamcard).
+  document.getElementById('m-compraPedagio').disabled = transportador || cancelada || pedagioJaEnviadoPamcard(v);
+}
+
+// Hint do flag "Compra de Pedágio" no modal — explica a trava ou o efeito do estado atual.
+function atualizarHintCompraPedagio() {
+  const v = editingIdx !== null ? viagensAtivo()[editingIdx] : null;
+  const hint = document.getElementById('m-compraPedagio-hint');
+  hint.style.color = '';
+  if (v && pedagioJaEnviadoPamcard(v)) {
+    hint.textContent = '🔒 Compra já enviada à Pamcard — não é mais possível dispensar por aqui.';
+  } else if (v?.modal === 'CIF') {
+    hint.textContent = 'Viagem CIF — a compra automática só acontece em viagens FOB.';
+  } else if (!document.getElementById('m-compraPedagio').checked) {
+    hint.textContent = 'Dispensado: o bot não compra o pedágio quando a viagem entrar em T2/T3.';
+    hint.style.color = 'var(--accent2)';
+  } else {
+    hint.textContent = 'O bot compra quando a viagem entra em T2 (após 1h no ciclo) ou T3.';
   }
 }
 
@@ -15276,6 +15312,20 @@ async function salvarViagem() {
   v.cpfMotorista   = document.getElementById('m-cpfMotorista').value.trim();
   v.obs            = document.getElementById('m-obs').value;
   v.programador    = document.getElementById('m-programador').value;
+  // Flag de compra do pedágio — só grava se o campo estava liberado (ver
+  // ajustarModalParaTipoUsuario) e mudou; a viagem nasce sem o campo (= compra ativa).
+  const chkCompraPedagio = document.getElementById('m-compraPedagio');
+  if (!chkCompraPedagio.disabled && chkCompraPedagio.checked !== compraPedagioAtiva(v)) {
+    v.compraPedagio = chkCompraPedagio.checked;
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    v.historicoProgramacao.push({
+      data: new Date().toISOString(),
+      usuario: _authUsuarioAtual?.nome || '',
+      evento: v.compraPedagio
+        ? 'Compra de pedágio reativada (bot Pamcard volta a comprar no T2/T3)'
+        : 'Compra de pedágio dispensada (bot Pamcard não compra esta viagem)',
+    });
+  }
   // Assinatura não é mais embutida aqui — gerarOrdemRetirada() busca em
   // assinaturasProgramadores (node próprio, liberado pra qualquer autenticado) pelo
   // nome, na hora de gerar o PDF, em vez de carregar uma cópia junto com a viagem.
@@ -16198,7 +16248,7 @@ function valorOrdenacaoMon(l, coluna) {
       return c in ordemAderencia ? ordemAderencia[c] : 99;
     }
     case 'statusHerrlog':   return statusExibidoMon(v, mon);
-    case 'statusPedagio':   return monitoramentoPamcard[v.idViagem]?.statusCompraPedagio || '';
+    case 'statusPedagio':   return statusPedagioExibido(v);
     default: return '';
   }
 }
@@ -16415,6 +16465,32 @@ function pedagioComprado(v) {
   return monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio === 'COMPRADO';
 }
 
+// ── FLAG DE COMPRA DO PEDÁGIO ──
+// Toda viagem nasce com a compra ativa — o campo compraPedagio só aparece no Firebase depois
+// que alguém mexe no flag do modal Gerenciar Viagem (ver salvarViagem). Só `false` explícito
+// dispensa, mesma regra do bot_pamcard.py (compra_pedagio_desativada em dominio.py), que
+// então não seleciona a viagem quando ela entra em T2/T3.
+function compraPedagioAtiva(v) {
+  return v?.compraPedagio !== false;
+}
+
+// Status do monitoramentoPamcard a partir dos quais a compra já foi enviada à Pamcard
+// (mesmo conjunto de STATUS_DASHBOARD_IRREVERSIVEIS em estado_firebase.py). Daí em diante o
+// bot conclui/reconcilia a compra sem olhar o flag — por isso ele trava no modal.
+const PEDAGIO_STATUS_ENVIADO_PAMCARD = ['INCLUINDO', 'VIAGEM_CRIADA', 'LIBERANDO', 'LIBERADO', 'CARREGANDO', 'COMPRADO', 'INCERTO'];
+
+function pedagioJaEnviadoPamcard(v) {
+  return PEDAGIO_STATUS_ENVIADO_PAMCARD.includes(monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio);
+}
+
+// Status mostrado/ordenado na coluna Vale Pedágio (Monitoramento): DISPENSADO quando o flag
+// foi desligado e nada chegou a ser enviado à Pamcard; senão, o status publicado pelo bot.
+function statusPedagioExibido(v) {
+  if (v?.modal === 'CIF') return '';
+  if (!compraPedagioAtiva(v) && !pedagioJaEnviadoPamcard(v)) return 'DISPENSADO';
+  return monitoramentoPamcard[v?.idViagem]?.statusCompraPedagio || '';
+}
+
 function bloqueadoPorPedagio(v) {
   if (!pedagioComprado(v)) return false;
   alert('Não é possível alterar esta viagem considerando que o pedágio já foi comprado, para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.');
@@ -16483,6 +16559,9 @@ const PEDAGIO_BADGE_CLASSE = {
 
 function renderPedagioCelulaMon(v) {
   const ped = monitoramentoPamcard[v.idViagem];
+  if (statusPedagioExibido(v) === 'DISPENSADO') {
+    return '<span class="badge badge-neutro" title="Compra de pedágio desligada no Gerenciar Viagem — o bot Pamcard não compra esta viagem.">DISPENSADO</span>';
+  }
   if (v.modal === 'CIF' || !ped) return '<span style="color:var(--text-muted)">—</span>';
 
   const status = ped.statusCompraPedagio || '—';
