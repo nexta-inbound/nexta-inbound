@@ -1063,16 +1063,20 @@ tbody tr:hover td { background: var(--panel-soft); }
     <div class="subtab-content" id="sub-recursos">
       <div class="card">
         <div class="card-title">Cadastros provisórios <span class="badge badge-warn hidden" id="pendentesQtd"></span></div>
-        <div class="form-hint" style="margin:0 0 12px">Veículos sem recurso no SAP TM, cadastrados por quem agendou, com a capacidade informada por essa pessoa. Cadastre o veículo no SAP e importe a planilha: o provisório sai daqui sozinho. Exclua o que estiver errado.</div>
+        <div class="form-hint" style="margin:0 0 12px">Veículos sem recurso no SAP TM, cadastrados por quem agendou, com a capacidade informada por essa pessoa. Cadastre o veículo no SAP; na próxima sincronização do datalake o provisório sai daqui sozinho. Exclua o que estiver errado.</div>
         <div id="listaRecursosPendentes"><div class="chip-empty">Nenhum cadastro provisório.</div></div>
       </div>
       <div class="card">
-        <div class="card-title">Importar planilha do SAP TM</div>
-        <div class="form-hint" id="recursosMetaTxt" style="margin:0 0 10px">Nenhuma planilha importada ainda.</div>
-        <div class="form-hint" style="margin-bottom:12px">Use a exportação da lista de recursos do SAP TM (.xlsx), com as colunas Recurso de caminhão, Volume máximo, Perf.compartmto., Proprietário recurso, Motorista proposto e Agrupmto.equip. A planilha <strong>substitui o cadastro inteiro</strong>: recurso que não estiver nela sai do portal. Antes de gravar, o portal mostra o que muda.</div>
-        <input type="file" id="recursosArquivo" class="hidden" accept=".xlsx,.xls,.csv" onchange="lerPlanilhaRecursos(this)">
-        <button class="btn btn-primary btn-sm" onclick="document.getElementById('recursosArquivo').click()">Escolher planilha…</button>
-        <div id="recursosPrevia"></div>
+        <div class="card-title">Recursos do SAP TM</div>
+        <div class="form-hint" id="recursosMetaTxt" style="margin:0">Aguardando a primeira sincronização do datalake.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Importar perfis de compartimento</div>
+        <div class="form-hint" id="perfisCompartimentoMetaTxt" style="margin:0 0 10px">Nenhuma planilha importada ainda.</div>
+        <div class="form-hint" style="margin-bottom:12px">Exporte no SAP a tela <strong>Perfis de Compartimento</strong> (.xlsx, .xls ou .csv), com as colunas Perfil do compartimento, Nº sequência, Tipo de Compartimento e Total de Lacres. Cada linha representa um compartimento; por exemplo, o tipo 5.000L vira uma capacidade de 5.000 litros. A planilha substitui o catálogo inteiro.</div>
+        <input type="file" id="perfisCompartimentoArquivo" class="hidden" accept=".xlsx,.xls,.csv" onchange="lerPlanilhaPerfisCompartimento(this)">
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('perfisCompartimentoArquivo').click()">Escolher planilha…</button>
+        <div id="perfisCompartimentoPrevia"></div>
       </div>
       <div class="card">
         <div class="card-title">Consultar recursos</div>
@@ -1139,8 +1143,10 @@ const STATE = {
   baseEditando: null,      // id da base aberta no formulário de Cadastros
   pedidosDepositos: null,  // Cadastros → Bases: centro, depósito, entrega e volume de cada pedido (resumo dos depósitos sem base)
   recursos: null,          // Cadastros → Recursos: recursos/ inteiro (null até abrir a subaba)
-  recursosMeta: {},        // última importação da planilha (quem, quando, quantos)
-  recursosImport: null,    // planilha lida e ainda não gravada (prévia do que muda)
+  recursosMeta: {},        // última sincronização do datalake
+  perfisCompartimento: null,      // perfil SAP -> capacidades dos compartimentos
+  perfisCompartimentoMeta: {},    // última importação da planilha de perfis
+  perfisCompartimentoImport: null,
   recursosPendentes: {},   // cadastros provisórios de veículo (feitos no agendamento), aguardando validação
   cadastroVeiculos: {},    // lista de agendamentos: situação do cadastro de cada veículo (cor da placa)
   cadastroMotoristas: {},  // lista de agendamentos: situação do cadastro de cada motorista, por CPF (cor do nome)
@@ -1381,6 +1387,10 @@ function iniciarApp() {
       STATE.recursosMeta = meta;
       renderMetaRecursos();
     }, erroListener('o cadastro de recursos'));
+    window._fb.ouvirPerfisCompartimentoMeta((meta) => {
+      STATE.perfisCompartimentoMeta = meta;
+      renderMetaPerfisCompartimento();
+    }, erroListener('os perfis de compartimento'));
     window._fb.ouvirRecursosPendentes((pendentes) => {
       STATE.recursosPendentes = pendentes;
       renderRecursosPendentes();
@@ -3357,9 +3367,13 @@ function montarAlteracao(id, a, m, veiculo, motoristaCad) {
 // - Data de carregamento pode ser antes da entrega do pedido (só equipe interna; a regra do banco confere).
 // - Data, horário e motorista saem do arquivo como a tela do roteirizador mostra (cargaDaViagem, motoristaDaViagem).
 //   O arquivo não traz CPF: o motorista vem do cadastro pelo nome, quando há exatamente um com esse nome.
+// - Viagem com carregamento em mais de uma base (o roteirizador junta bases da mesma cidade): vira um agendamento por
+//   base (separarCarregamentos), com o alerta na linha. O horário do roteirizador é do 1º carregamento; nos outros a
+//   pessoa escolhe. A viagem só entra inteira: carregamento que precisa ser revisado na roteirização segura os outros.
 // Campos que o roteirizador pode gravar em cada viagem e que valem sobre o cálculo: dataCarregamento (AAAA-MM-DD),
 // motoristaCpf (11 dígitos) e motorista (nome).
-// A viagem importada guarda roteirizacao/petId: importar o mesmo arquivo de novo não agenda a viagem outra vez.
+// A viagem importada guarda roteirizacao/petId (e o carregamento, quando são vários): importar o mesmo arquivo de novo
+// não agenda a viagem outra vez.
 const ESTADO_VIAGEM = {
   pronta: { rotulo: 'Pronta', badge: 'badge-success' },
   ajustar: { rotulo: 'Ajustar', badge: 'badge-warn' },
@@ -3370,6 +3384,7 @@ const ESTADO_VIAGEM = {
   erro: { rotulo: 'Erro', badge: 'badge-danger' },
 };
 const MSG_SAP_NAO_QUEBRA = 'O SAP não quebra a remessa (pedido + produto): revise a roteirização.';
+const MSG_SO_1A_CARGA = 'o roteirizador só traz o horário do 1º';
 
 function nrPedidoValido(nr) { return /^[A-Za-z0-9_-]+$/.test(nr); }
 function dataIsoDe(v) {
@@ -3437,13 +3452,15 @@ function lerViagensRoteirizacao(json) {
       const carga = cargaDaViagem(via, diaBase);
       // refItem → item (o mesmo pedido + produto em duas paradas soma). completo === false = o roteirizador levou só
       // parte do volume do produto. via.quebras (pedido dividido por produto entre viagens) não bloqueia.
+      // terminal = onde o roteirizador carrega o pedido (a viagem pode carregar em mais de um)
       const itens = new Map();
       for (const parada of via.paradas) {
         for (const i of parada.itens || []) {
           const [codigo, ...descricao] = String(i.produto || '').split(' - '); // "2000033 - PETRONAS ETANOL COMUM"
           const nr = String(i.ordemSAP ?? '').trim();
           const chave = refItem(nr, codigo.trim());
-          const item = itens.get(chave) || { nr, codigo: codigo.trim(), descricao: descricao.join(' - ').trim(), volume: 0, parcial: false };
+          const item = itens.get(chave) || { nr, codigo: codigo.trim(), descricao: descricao.join(' - ').trim(), volume: 0, parcial: false,
+            terminal: String(parada.pedido?.terminal || '') };
           item.volume += Math.round((Number(i.volume) || 0) * 1000);
           if (i.completo === false) item.parcial = true;
           itens.set(chave, item);
@@ -3480,25 +3497,64 @@ async function lerArquivoRoteirizacao(input) {
     return;
   }
   if (!viagens.length) { toast('A roteirização não tem viagens com carga.', 'error'); return; }
-  // O mesmo pedido + produto em mais de uma viagem = remessa quebrada entre veículos
-  const viagensPorItem = {};
-  viagens.forEach((v, idx) => { for (const i of v.itens) (viagensPorItem[refItem(i.nr, i.codigo)] ??= []).push(idx); });
   const imp = STATE.importacao = {
     arquivo: arquivo.name, salvoEm: json.savedAt || '', salvoPor: json.salvoPor || '',
-    divididos: new Set(Object.keys(viagensPorItem).filter((k) => viagensPorItem[k].length > 1)),
-    viagensPorItem, // refItem → índices das viagens com esse pedido + produto (aviso do produto que vai em outra viagem)
-    // Estado de cada viagem: data/horario/turno/cpf/nome/capacidadeProv começam com o que veio do arquivo e mudam na janela de ajuste
+    // Estado de cada viagem: data/horario/turno/cpf/nome/capacidadeProv começam com o que veio do arquivo e mudam na janela de ajuste.
+    // viagem = posição da viagem no arquivo (os carregamentos de uma viagem separada em bases têm a mesma)
     viagens: viagens.map((v, idx) => ({
-      ...v, idx, data: v.dataRoteirizador, horario: v.horarioRoteirizador, turno: '', cpf: v.cpfRoteirizador, nome: '', capacidadeProv: null,
+      ...v, viagem: idx, data: v.dataRoteirizador, horario: v.horarioRoteirizador, turno: '', cpf: v.cpfRoteirizador, nome: '', capacidadeProv: null,
       estado: '', bloqueios: [], ajustes: [], avisos: [], pedidos: [], erroEnvio: '', protocolo: '',
     })),
     // Consultas ao banco (cada chave uma vez): pedidos/<nr>, recursos/<chave>, motoristas/<cpf>, baseSlots/<base>, ocupados/<base|data>
     pedidos: {}, recursos: {}, motoristas: {}, baseSlots: {}, ocupados: {}, consultas: {},
     carregando: true, erroCarga: '', enviando: false, ajuste: null,
   };
+  indexarViagens(imp);
   abrirModal('modalImportacao');
   await prepararImportacao(imp);
 }
+// idx = posição da viagem na importação; viagensPorItem = refItem → índices das viagens com esse pedido + produto (aviso do
+// produto que vai em outra viagem). O mesmo pedido + produto em mais de uma viagem = remessa quebrada entre veículos (divididos).
+function indexarViagens(imp) {
+  imp.viagensPorItem = {};
+  imp.viagens.forEach((v, idx) => { v.idx = idx; for (const i of v.itens) (imp.viagensPorItem[refItem(i.nr, i.codigo)] ??= []).push(idx); });
+  imp.divididos = new Set(Object.keys(imp.viagensPorItem).filter((k) => imp.viagensPorItem[k].length > 1));
+}
+// Carregamento em mais de uma base: a viagem vira um carregamento por base (centro + depósito dos pedidos), cada um um agendamento.
+// O do terminal de origem da viagem vem primeiro e fica com o horário de carga do roteirizador; nos outros a pessoa escolhe.
+// Pedido fora da carteira (sem base) vai com o carregamento do mesmo terminal do roteirizador e bloqueia a viagem como sempre.
+function separarCarregamentos(imp) {
+  let separou = false;
+  imp.viagens = imp.viagens.flatMap((v) => {
+    if (v.partes) return [v];
+    const porBase = new Map();
+    const semBase = [];
+    for (const i of v.itens) {
+      const p = imp.pedidos[i.nr];
+      if (!p) { semBase.push(i); continue; }
+      const k = p.centro + '|' + p.depositoCodigo;
+      porBase.set(k, [...(porBase.get(k) || []), i]);
+    }
+    if (porBase.size < 2) return [v];
+    const partes = [...porBase.values()];
+    for (const i of semBase) (partes.find((itens) => itens.some((x) => x.terminal === i.terminal)) || partes[0]).push(i);
+    const daOrigem = (itens) => itens.some((i) => i.terminal === v.terminal);
+    partes.sort((a, b) => daOrigem(b) - daOrigem(a));
+    separou = true;
+    const volumeViagem = v.itens.reduce((s, i) => s + i.volume, 0);
+    return partes.map((itens, k) => ({
+      ...v, itens, parte: k + 1, partes: partes.length, volumeViagem,
+      terminal: [...new Set(itens.map((i) => i.terminal).filter(Boolean))].join(' / ') || v.terminal,
+      ...(k ? { horarioRoteirizador: '', horario: '' } : {}),
+    }));
+  });
+  if (separou) indexarViagens(imp);
+  return separou;
+}
+// Nome da viagem nas mensagens: o petId do roteirizador, com o carregamento quando a viagem carrega em mais de uma base
+function nomeViagem(v) { return (v.petId || String(v.idx + 1)) + (v.partes > 1 ? ` (carregamento ${v.parte} de ${v.partes})` : ''); }
+// Os outros carregamentos da mesma viagem
+function carregamentosIrmaos(imp, v) { return v.partes > 1 ? imp.viagens.filter((o) => o !== v && o.viagem === v.viagem) : []; }
 
 // Consulta uma vez por chave; a promessa fica guardada para quem pedir a mesma chave junto. Falhou: tenta de novo na próxima.
 function consultarImportacao(imp, tipo, chave, buscar) {
@@ -3579,6 +3635,8 @@ async function prepararImportacao(imp) {
       if (iguais.length === 1) Object.assign(v, { cpf: iguais[0].cpf, cpfPeloNome: true });
     }
     await Promise.all(imp.viagens.map((v) => carregarDadosViagem(imp, v)));
+    // A base de cada pedido só se sabe agora; separada a viagem, carrega os horários da base de cada carregamento
+    if (separarCarregamentos(imp)) await Promise.all(imp.viagens.filter((v) => v.partes > 1).map((v) => carregarDadosViagem(imp, v)));
   } catch (e) {
     console.error(e);
     imp.erroCarga = 'Não foi possível consultar os pedidos e cadastros: ' + msgErro(e, 'sem conexão') + '.';
@@ -3595,7 +3653,19 @@ function avaliarImportacao() {
   const imp = STATE.importacao;
   if (!imp) return;
   const agendados = volumesAgendados();
-  const porPetId = new Map(objList(STATE.agendamentos).filter((a) => a.status !== 'cancelado' && a.roteirizacao?.petId).map((a) => [a.roteirizacao.petId, a]));
+  const porPetId = new Map();
+  for (const a of objList(STATE.agendamentos)) {
+    const petId = a.status !== 'cancelado' && a.roteirizacao?.petId;
+    if (petId) porPetId.set(petId, [...(porPetId.get(petId) || []), a]);
+  }
+  imp.travadas = null;
+  for (const v of imp.viagens) avaliarViagem(imp, v, agendados, porPetId);
+  // Viagem com mais de um carregamento só entra inteira: o que precisa ser revisado na roteirização segura os outros.
+  // Avalia de novo para os horários que eles seguravam ficarem livres para as viagens seguintes.
+  const travadas = new Map(); // viagem → carregamentos bloqueados
+  for (const v of imp.viagens) if (v.partes > 1 && v.estado === 'bloqueada') travadas.set(v.viagem, [...(travadas.get(v.viagem) || []), v]);
+  if (!travadas.size) return;
+  imp.travadas = travadas;
   for (const v of imp.viagens) avaliarViagem(imp, v, agendados, porPetId);
 }
 // bloqueios = só o roteirizador resolve (viagem não entra); ajustes = a janela de ajuste resolve; avisos = só informação
@@ -3603,7 +3673,8 @@ function avaliarViagem(imp, v, agendados, porPetId) {
   if (v.estado === 'criada' || v.estado === 'enviando') return; // seguraSlot continua valendo
   const bloqueios = [], ajustes = [], avisos = [];
   Object.assign(v, { bloqueios, ajustes, avisos, seguraSlot: false, protocolo: '', agendado: null });
-  const jaAgendada = v.petId && porPetId.get(v.petId);
+  // Viagem separada em carregamentos: cada um é um agendamento com o mesmo petId; o deste é o que tem os pedidos dele
+  const jaAgendada = v.petId && (porPetId.get(v.petId) || []).find((a) => v.itens.some((i) => a.pedidos?.[i.nr]));
   if (jaAgendada) { Object.assign(v, { estado: 'importada', protocolo: jaAgendada.protocolo, agendado: jaAgendada }); return; }
 
   // Pedidos: cada pedido + produto leva exatamente o saldo; produto do pedido fora da viagem fica para outro agendamento
@@ -3632,7 +3703,7 @@ function avaliarViagem(imp, v, agendados, porPetId) {
       if (saldo <= 0 || doArquivo.some((i) => i.codigo === item.codigo)) continue;
       const outra = imp.viagens[imp.viagensPorItem[refItem(nr, item.codigo)]?.[0]];
       avisos.push(`Pedido ${nr}: ${item.descricao || item.codigo} (${formatVolume(saldo)}) não vai nesta viagem`
-        + (outra ? ` (vai na viagem ${outra.petId || outra.idx + 1}).` : ' e fica com saldo para outro agendamento.'));
+        + (outra ? ` (vai na viagem ${nomeViagem(outra)}).` : ' e fica com saldo para outro agendamento.'));
     }
     if (!p.dataEntrega) bloqueios.push(`Pedido ${nr} está sem data de entrega no portal do revendedor.`);
     else if (p.dataEntrega < hoje()) bloqueios.push(`A data de entrega do pedido ${nr} (${formatDataBR(p.dataEntrega)}) já passou.`);
@@ -3641,7 +3712,8 @@ function avaliarViagem(imp, v, agendados, porPetId) {
   v.volumeTotal = v.itens.reduce((s, i) => s + i.volume, 0);
   v.entregaMin = pedidos.map((p) => p.dataEntrega).filter(Boolean).sort()[0] || '';
 
-  // Base: um agendamento é de uma base só (centro + depósito dos pedidos)
+  // Base: um agendamento é de uma base só (centro + depósito dos pedidos); a viagem que carrega em mais de uma já veio
+  // separada em carregamentos (separarCarregamentos)
   const centros = new Set(pedidos.map((p) => p.centro + '|' + p.depositoCodigo));
   if (centros.size > 1) bloqueios.push('A viagem junta pedidos de bases diferentes (centro + depósito); um agendamento é de uma base só. Revise a roteirização.');
   const base = baseDaViagem(imp, v);
@@ -3669,7 +3741,10 @@ function avaliarViagem(imp, v, agendados, porPetId) {
       } else ajustes.push('Veículo sem cadastro: informe a capacidade para o cadastro provisório.');
     } else bloqueios.push('Não foi possível consultar o cadastro de veículos. Feche e importe o arquivo de novo.');
   }
-  if (v.veiculo?.volume && v.volumeTotal > v.veiculo.volume) bloqueios.push(`O volume da viagem (${formatVolume(v.volumeTotal)}) passa da capacidade do veículo (${formatVolume(v.veiculo.volume)}).`);
+  // O veículo leva todos os carregamentos da viagem
+  if (v.veiculo?.volume && (v.volumeViagem || v.volumeTotal) > v.veiculo.volume) {
+    bloqueios.push(`O volume da viagem (${formatVolume(v.volumeViagem || v.volumeTotal)}${v.partes > 1 ? `, somando os ${v.partes} carregamentos` : ''}) passa da capacidade do veículo (${formatVolume(v.veiculo.volume)}).`);
+  }
 
   // Motorista: pelo CPF (do arquivo, achado pelo nome ou da janela de ajuste); sem cadastro, entra como provisório
   // com o nome do arquivo (ou da janela de ajuste)
@@ -3707,7 +3782,7 @@ function avaliarViagem(imp, v, agendados, porPetId) {
   if (v.base && v.data) {
     if (v.base.tipo === 'fila') {
       const turno = v.turno || (v.horario ? turnoDoHorario(v.horario) : '');
-      if (!turno) ajustes.push('Escolha o turno de carregamento (o arquivo não traz o horário de carga).');
+      if (!turno) ajustes.push(`Escolha o turno ${v.parte > 1 ? `do ${v.parte}º carregamento (${MSG_SO_1A_CARGA})` : 'de carregamento (o arquivo não traz o horário de carga)'}.`);
       else if (!turnosDaBase(v.base).includes(turno)) ajustes.push(`A base ${v.base.nome} não atende no turno ${labelTurno(turno)}${v.turno ? '' : ` (carga às ${v.horario})`}. Escolha outro turno.`);
       else v.turnoFinal = turno;
     } else {
@@ -3716,11 +3791,18 @@ function avaliarViagem(imp, v, agendados, porPetId) {
     }
   }
 
+  // Outro carregamento da viagem precisa ser revisado na roteirização: este também não entra (2ª passada de avaliarImportacao)
+  const travados = (imp.travadas?.get(v.viagem) || []).filter((o) => o !== v);
+  if (!bloqueios.length && travados.length) {
+    bloqueios.push(`${travados.length > 1 ? 'Os carregamentos' : 'O carregamento'} ${travados.map((o) => `${o.parte} (base ${o.base?.nome || o.terminal})`).join(', ')} desta viagem `
+      + `${travados.length > 1 ? 'precisam' : 'precisa'} ser revisado${travados.length > 1 ? 's' : ''} na roteirização: a viagem só é agendada com todos os carregamentos.`);
+  }
+
   v.seguraSlot = slotOk && !bloqueios.length;
   v.estado = bloqueios.length ? 'bloqueada' : ajustes.length ? 'ajustar' : 'pronta';
 }
 function erroSlotViagem(imp, v) {
-  if (!v.horario) return 'Escolha o horário de carregamento (o arquivo não traz o horário de carga).';
+  if (!v.horario) return `Escolha o horário ${v.parte > 1 ? `do ${v.parte}º carregamento (${MSG_SO_1A_CARGA})` : 'de carregamento (o arquivo não traz o horário de carga)'}.`;
   const slots = imp.baseSlots[v.base.id];
   const ocupados = imp.ocupados[v.base.id + '|' + v.data];
   if (!slots || !ocupados) return 'Escolha o horário de carregamento.';
@@ -3730,7 +3812,7 @@ function erroSlotViagem(imp, v) {
   // Outra viagem desta importação com o mesmo horário: fica com quem vem antes (ou com quem já foi agendada)
   const outra = imp.viagens.find((o) => o !== v && o.seguraSlot && (o.idx < v.idx || o.estado === 'criada' || o.estado === 'enviando')
     && o.base?.id === v.base.id && o.data === v.data && o.horario === v.horario);
-  return outra ? `O horário ${v.horario} ficou com a viagem ${outra.petId || outra.idx + 1} desta importação. Escolha outro horário.` : '';
+  return outra ? `O horário ${v.horario} ficou com a viagem ${nomeViagem(outra)} desta importação. Escolha outro horário.` : '';
 }
 function slotDeOutraViagem(imp, v, data, horario) {
   return imp.viagens.find((o) => o !== v && o.seguraSlot && o.base?.id === v.base?.id && o.data === data && o.horario === horario);
@@ -3760,7 +3842,8 @@ function renderImportacao() {
       ${stat('Revisar na roteirização', conta('bloqueada'), 'perigo')}
       ${stat('Agendadas', conta('criada', 'importada'))}
     </div>
-    <div class="form-hint" style="margin:0 0 12px">Cada viagem vira um agendamento. Falta data, horário ou motorista: clique em Ajustar.
+    <div class="form-hint" style="margin:0 0 12px">Cada viagem vira um agendamento; a que carrega em mais de uma base vira um por base, cada um com o seu horário.
+      Falta data, horário ou motorista: clique em Ajustar.
       O pedido pode ir em partes (cada produto numa viagem), mas cada produto vai inteiro.
       Produto com volume parcial ou em mais de uma viagem, ou pedido fora da carteira: corrija no roteirizador, salve e importe o arquivo de novo (o que já foi agendado não é agendado outra vez).</div>
     <div class="tabela-scroll">
@@ -3776,6 +3859,7 @@ function linhaViagemImportacao(imp, v) {
     ...(v.erroEnvio ? [['erro', v.erroEnvio]] : []),
     ...v.bloqueios.map((m) => ['erro', m]),
     ...v.ajustes.map((m) => ['aviso', m]),
+    ...(v.partes > 1 ? [['aviso', alertaCarregamentos(imp, v)]] : []),
     ...v.avisos.map((m) => ['', m]),
   ];
   const ag = v.agendado; // já agendada (importação anterior): mostra o que foi gravado
@@ -3786,7 +3870,7 @@ function linhaViagemImportacao(imp, v) {
     : esc(v.horario || '—');
   const podeAjustar = ['ajustar', 'pronta', 'erro'].includes(v.estado) && !imp.enviando;
   return `<tr>
-    <td><strong>${esc(v.petId || '—')}</strong>${dica(v.terminal)}</td>
+    <td><strong>${esc(v.petId || '—')}</strong>${dica(v.partes > 1 ? `carregamento ${v.parte} de ${v.partes} · ${v.terminal}` : v.terminal)}</td>
     <td class="placa">${v.placas.map(esc).join('<br>') || '—'}</td>
     <td class="quebra">${esc(v.motoristaCad?.nome || v.nome || v.nomeRoteirizador || '—')}${dica(v.cpf && `CPF ${formatCpf(v.cpf)}${v.cpfPeloNome ? ' · achado pelo nome' : ''}`)}</td>
     <td class="quebra">${[...new Set(v.itens.map((i) => i.nr))].map(esc).join(', ')}${dica(clientes.length > 1 ? `${clientes[0]} +${clientes.length - 1}` : clientes[0])}</td>
@@ -3798,6 +3882,11 @@ function linhaViagemImportacao(imp, v) {
       ${msgs.length ? `<div class="imp-msgs">${msgs.map(([cls, m]) => `<div class="form-hint ${cls}">${esc(m)}</div>`).join('')}</div>` : ''}</td>
     <td>${podeAjustar ? `<button class="btn btn-secondary btn-sm" onclick="abrirAjusteViagem(${v.idx})">${v.estado === 'pronta' ? 'Alterar' : 'Ajustar'}</button>` : ''}</td>
   </tr>`;
+}
+// Alerta da viagem que carrega em mais de uma base (a base de cada carregamento; sem pedido na carteira, o terminal do roteirizador)
+function alertaCarregamentos(imp, v) {
+  const bases = [v, ...carregamentosIrmaos(imp, v)].sort((a, b) => a.parte - b.parte).map((o) => baseDaViagem(imp, o)?.nome || o.terminal);
+  return `Viagem com ${v.partes} carregamentos (${bases.join(', ')}): vira um agendamento em cada base.`;
 }
 function fecharImportacao() {
   const imp = STATE.importacao;
@@ -3817,10 +3906,15 @@ function abrirAjusteViagem(idx) {
   const veiculoSemCadastro = placasDaViagemValidas(v) && imp.recursos[chaveRecurso(v.placas)]?.dados === null;
   const capacidade = v.capacidadeProv ?? v.capacidadeRoteirizador;
   const pendencias = [...v.ajustes, ...(v.erroEnvio ? [v.erroEnvio] : [])];
+  // Os outros carregamentos da viagem, para escolher o horário deste na sequência
+  const irmaos = carregamentosIrmaos(imp, v).map((o) => [`${o.parte}º na base ${o.base?.nome || o.agendado?.baseNome || o.terminal}`,
+    (o.agendado?.dataCarregamento || o.data) && formatDataBR(o.agendado?.dataCarregamento || o.data), o.agendado ? (o.agendado.slotHorario || labelTurno(o.agendado.turno))
+      : o.base?.tipo === 'fila' ? o.turnoFinal && labelTurno(o.turnoFinal) : o.horario && `às ${o.horario}`].filter(Boolean).join(', '));
   document.getElementById('ajusteViagemConteudo').innerHTML = `
-    <div class="modal-title">Ajustar viagem ${esc(v.petId)}</div>
+    <div class="modal-title">Ajustar viagem ${esc(nomeViagem(v))}</div>
     <div class="modal-sub">${esc([v.placas.join(' / '), v.terminal, base && `base ${base.nome}`,
       v.horarioRoteirizador && `carga ${v.dataRoteirizador ? `em ${formatDataBR(v.dataRoteirizador)} ` : ''}às ${v.horarioRoteirizador} no roteirizador`].filter(Boolean).join(' · '))}</div>
+    ${irmaos.length ? `<div class="form-hint" style="margin:-4px 0 14px">${esc(`Outros carregamentos desta viagem: ${irmaos.join('; ')}. O motorista vale para todos; a data também, para os que estão no mesmo dia.`)}</div>` : ''}
     ${pendencias.length ? `<div class="aviso-revisar"><div class="cp-titulo">O que falta</div><ul>${pendencias.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
     <div class="form-row">
       <div class="form-field">
@@ -3902,7 +3996,7 @@ async function renderSlotsAjuste() {
   if (aj.horario && !livre(aj.horario)) aj.horario = '';
   grid.innerHTML = ativos.map((s) => {
     const outra = slotDeOutraViagem(imp, v, data, s.horario);
-    const titulo = ocupados[s.horario] ? 'Ocupado' : outra ? `Reservado para a viagem ${outra.petId} desta importação` : '';
+    const titulo = ocupados[s.horario] ? 'Ocupado' : outra ? `Reservado para a viagem ${nomeViagem(outra)} desta importação` : '';
     return `<button type="button" class="slot-btn ${aj.horario === s.horario ? 'selecionado' : ''}" ${livre(s.horario) ? '' : 'disabled'} title="${esc(titulo)}" onclick="selecionarSlotAjuste(${jsArg(s.horario)})">${esc(s.horario)}</button>`;
   }).join('');
 }
@@ -4010,11 +4104,14 @@ async function aplicarAjusteViagem() {
   if (campoCapacidade && !(capacidade >= CAPACIDADE_MINIMA_VALIDA && capacidade <= CAPACIDADE_MAXIMA_PROVISORIA)) {
     return mostrarErroAjuste(`Capacidade do veículo: informe o total em litros, entre ${formatVolume(CAPACIDADE_MINIMA_VALIDA)} e ${formatVolume(CAPACIDADE_MAXIMA_PROVISORIA)}.`);
   }
+  // Carregamentos da mesma viagem: mesmo veículo e motorista; a data acompanha os que estavam no mesmo dia deste
+  const irmaos = carregamentosIrmaos(imp, v).filter((o) => !['criada', 'enviando', 'importada'].includes(o.estado));
+  const mudamData = irmaos.filter((o) => o.data === v.data && o.data !== data);
   const btn = document.getElementById('btnAplicarAjuste');
   btn.disabled = true;
   try {
     await consultarMotoristaImportacao(imp, cpf);
-    if (v.base?.tipo === 'agendamento') await carregarHorariosImportacao(imp, v.base.id, data);
+    await Promise.all([v, ...mudamData].filter((o) => o.base?.tipo === 'agendamento').map((o) => carregarHorariosImportacao(imp, o.base.id, data)));
   } catch (e) {
     return mostrarErroAjuste('Não foi possível consultar o cadastro: ' + msgErro(e, 'sem conexão'));
   } finally {
@@ -4028,6 +4125,9 @@ async function aplicarAjusteViagem() {
   if (v.base?.tipo === 'agendamento') v.horario = aj.horario;
   if (v.base?.tipo === 'fila') v.turno = turno;
   if (campoCapacidade) v.capacidadeProv = capacidade;
+  for (const o of irmaos) {
+    Object.assign(o, { cpf: v.cpf, cpfPeloNome: v.cpfPeloNome, nome: v.nome, ...(campoCapacidade ? { capacidadeProv: capacidade } : {}), ...(mudamData.includes(o) ? { data } : {}) });
+  }
   avaliarImportacao();
   renderImportacao();
   if (v.estado === 'ajustar') { mostrarErroAjuste(v.ajustes[0]); renderSlotsAjuste(); return; }
@@ -4094,7 +4194,8 @@ async function criarAgendamentoDaViagem(imp, v) {
     protocolo, pedidos: v.pedidos, neste, baseId: v.base.id, base: v.base, data: v.data, turno: v.turnoFinal, slotHorario: v.horario,
     placas: [v.placas[0], v.placas[1] || '', v.placas[2] || ''], veiculo: v.veiculo,
     motorista: v.motoristaCad.nome, motoristaCpf: v.cpf, motoristaCad: v.motoristaCad,
-    extras: { roteirizacao: { petId: v.petId || null, arquivo: imp.arquivo, salvaEm: imp.salvoEm || null, terminal: v.terminal || null } },
+    extras: { roteirizacao: { petId: v.petId || null, arquivo: imp.arquivo, salvaEm: imp.salvoEm || null, terminal: v.terminal || null,
+      ...(v.partes > 1 ? { carregamento: v.parte, carregamentos: v.partes } : {}) } },
   });
   await window._fb.criarAgendamento(id, dados, provisorios);
   v.protocolo = protocolo;
@@ -4504,16 +4605,12 @@ async function criarCliente() {
   } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
 
-/* ── CADASTROS → RECURSOS (veículos do SAP TM, importados da planilha) ── */
-// Planilha = exportação da lista de recursos do SAP TM; cada linha é um recurso com as placas juntas por "+"
-// (conjunto = cavalo+carreta(s); truck e toco = uma placa). A importação substitui recursos/ inteiro.
-// recursos/<chave> = { id (como está no SAP), placas, volumeMax, tipo?, perfil?, proprietario?, motorista?,
-//                      outrosIds? (outros recursos do SAP com o mesmo veículo) }
+/* ── CADASTROS → RECURSOS (veículos e perfis de compartimento do SAP TM) ── */
+// recursos/ é sincronizado automaticamente do datalake. A planilha administrativa alimenta apenas
+// perfisCompartimento/: perfil SAP → capacidades, na ordem dos compartimentos.
 const XLSX_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 const TIPO_RECURSO = { CON: 'Conjunto', TRK: 'Truck', TOC: 'Toco', CAR: 'Carreta', sem_tipo: 'Sem tipo' };
-// Coluna reconhecida pelo começo do cabeçalho (sem acento): aguenta acento trocado na exportação do SAP
-const COLUNAS_RECURSO = { recurso: 'recurso', volume: 'volume', perfil: 'perf', proprietario: 'propriet', motorista: 'motorista', tipo: 'agrup' };
-const CAMPOS_RECURSO = ['id', 'placas', 'volumeMax', 'tipo', 'perfil', 'proprietario', 'motorista', 'outrosIds'];
+const CAMPOS_PERFIL_COMPARTIMENTO = ['perfil', 'capacidadesLitros', 'lacresPorCompartimento'];
 const MAX_RESULTADOS_RECURSO = 100;
 let _xlsxLib = null;
 let _buscaRecursos = null;
@@ -4526,7 +4623,7 @@ function carregarLibXlsx() {
   return _xlsxLib;
 }
 
-/* Importação de planilha do SAP (recursos e motoristas): peças comuns */
+/* Importação de planilha do SAP (perfis de compartimento e motoristas): peças comuns */
 // Primeira aba do arquivo (.xlsx, .xls ou .csv) como matriz de linhas, com os valores crus das células
 async function lerArquivoPlanilha(arquivo) {
   await carregarLibXlsx();
@@ -4580,68 +4677,78 @@ function confirmarSubstituicao(rotulo, total, removidos) {
     + (removidos ? `\n\n${formatNumero(removidos)} ${rotulo} que não estão na planilha saem do portal.` : ''));
 }
 
-// "Recurso de caminhão" do SAP → placas. Conserta o que dá (hífen, espaço, "+" sobrando, placas coladas);
-// null se sobrar placa inválida
-function placasDoRecurso(id) {
-  const placas = String(id).split(/[+/]/).map(normalizarPlaca).filter(Boolean)
-    .flatMap((p) => p.length > 7 && p.length % 7 === 0 ? p.match(/.{7}/g) : [p]);
-  return placas.length && placas.every(placaValida) ? placas : null;
+function chavePerfilCompartimento(perfil) {
+  const bytes = new TextEncoder().encode(String(perfil || '').trim().toUpperCase());
+  let binario = '';
+  bytes.forEach((b) => { binario += String.fromCharCode(b); });
+  return btoa(binario).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-// Número de célula: vem como número do .xlsx; em .csv pode vir texto no formato brasileiro (45.000 ou 45.000,5)
-function numeroPlanilha(v) {
-  if (typeof v === 'number') return v;
-  const s = String(v ?? '').replace(/\s/g, '');
-  if (!s) return NaN;
-  return Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/\./g, ''));
+function cabecalhoPerfilCompartimento(v) {
+  return normalizarBusca(v).replace(/[^a-z0-9]/g, '');
 }
-
-// Linhas da planilha (matriz) → { recursos: { chave: dados }, ignorados: [{ linha, id, motivo }],
-// repetidos: [{ linha, id, volumeMax, valeId, valeVolume }], corrigidos, lidas }
-function lerLinhasRecursos(linhas) {
-  const { iCab, col, texto } = colunasPlanilha(linhas, COLUNAS_RECURSO, ['recurso', 'volume'],
-    'Não achei as colunas "Recurso de caminhão" e "Volume máximo". Use a exportação da lista de recursos do SAP TM.');
-  const recursos = {}, ignorados = [], ocorrencias = {};
+function litrosTipoCompartimento(v) {
+  const digitos = String(v ?? '').replace(/\D/g, '');
+  const n = Number(digitos);
+  return n >= 500 && n <= 50000 ? n : null;
+}
+// A extração "Perfis de Compartimento" traz uma linha por CT. O campo Tipo de Compartimento
+// contém a capacidade (ex.: 5.000L) e Nº sequência define a ordem na carreta.
+function lerLinhasPerfisCompartimento(linhas) {
+  const cabecalhos = (l) => l.map(cabecalhoPerfilCompartimento);
+  const iCab = linhas.slice(0, 10).findIndex((l) => {
+    const c = cabecalhos(l);
+    return c.some((h) => h.includes('perfildocompart'))
+      && c.some((h) => h.includes('sequ'))
+      && c.some((h) => h.includes('tipodecompart'));
+  });
+  if (iCab < 0) throw new Error('Não achei as colunas "Perfil do compartimento", "Nº sequência" e "Tipo de Compartimento". Use a exportação da tela Perfis de Compartimento do SAP.');
+  const cab = cabecalhos(linhas[iCab]);
+  const col = {
+    perfil: cab.findIndex((h) => h.includes('perfildocompart')),
+    sequencia: cab.findIndex((h) => h.includes('sequ')),
+    tipo: cab.findIndex((h) => h.includes('tipodecompart')),
+    lacres: cab.findIndex((h) => h.includes('totaldelac')),
+  };
+  const grupos = {}, ignorados = [], perfisInvalidos = new Set();
   let lidas = 0;
   linhas.slice(iCab + 1).forEach((l, i) => {
-    const id = texto(l, 'recurso');
-    if (!id) return; // linha em branco
+    const perfil = String(l[col.perfil] ?? '').trim().toUpperCase();
+    if (!perfil) return;
     lidas++;
-    const linha = iCab + i + 2; // número da linha no Excel
-    const placas = placasDoRecurso(id);
-    if (!placas) { ignorados.push({ linha, id, motivo: 'placa inválida' }); return; }
-    const volumeMax = numeroPlanilha(l[col.volume]);
-    if (!Number.isFinite(volumeMax) || volumeMax < 0) { ignorados.push({ linha, id, motivo: 'volume máximo vazio ou inválido' }); return; }
-    const r = { id, placas, volumeMax };
-    for (const campo of ['tipo', 'perfil', 'proprietario', 'motorista']) {
-      const v = texto(l, campo);
-      if (v) r[campo] = campo === 'tipo' ? v.toUpperCase() : v;
+    const linha = iCab + i + 2;
+    const sequencia = Number(String(l[col.sequencia] ?? '').replace(/\D/g, ''));
+    const capacidade = litrosTipoCompartimento(l[col.tipo]);
+    const lacresTxt = col.lacres < 0 ? '' : String(l[col.lacres] ?? '').replace(/\D/g, '');
+    const lacres = lacresTxt ? Number(lacresTxt) : 3;
+    let motivo = '';
+    if (!Number.isInteger(sequencia) || sequencia < 1 || sequencia > 12) motivo = 'sequência inválida (use 1 a 12)';
+    else if (!capacidade) motivo = 'tipo de compartimento sem capacidade válida (ex.: 5.000L)';
+    else if (!Number.isInteger(lacres) || lacres < 0 || lacres > 10) motivo = 'total de lacres inválido';
+    if (motivo) {
+      perfisInvalidos.add(perfil);
+      ignorados.push({ linha, perfil, motivo });
+      return;
     }
-    const chave = chaveRecurso(placas);
-    (ocorrencias[chave] ||= []).push({ linha, id, volumeMax });
-    // Mesmo veículo em mais de um recurso do SAP (placa antiga × Mercosul, carretas em outra ordem):
-    // vale o de maior volume máximo, para a conferência de capacidade não barrar carga que cabe no veículo
-    if (!recursos[chave] || volumeMax > recursos[chave].volumeMax) recursos[chave] = r;
+    (grupos[perfil] ||= []).push({ linha, sequencia, capacidade, lacres });
   });
-  const repetidos = [];
-  for (const [chave, oc] of Object.entries(ocorrencias)) {
-    if (oc.length < 2) continue;
-    const vale = recursos[chave];
-    vale.outrosIds = oc.filter((o) => o.id !== vale.id).map((o) => o.id);
-    repetidos.push(...oc.filter((o) => o.id !== vale.id).map((o) => ({ ...o, valeId: vale.id, valeVolume: vale.volumeMax })));
+  const perfis = {};
+  for (const [perfil, itens] of Object.entries(grupos)) {
+    itens.sort((a, b) => a.sequencia - b.sequencia);
+    const esperadas = itens.map((_, i) => i + 1);
+    if (perfisInvalidos.has(perfil) || itens.some((item, i) => item.sequencia !== esperadas[i])) {
+      if (!perfisInvalidos.has(perfil)) ignorados.push({ linha: itens[0].linha, perfil, motivo: 'sequências repetidas ou com intervalo' });
+      continue;
+    }
+    perfis[chavePerfilCompartimento(perfil)] = {
+      perfil,
+      capacidadesLitros: itens.map((item) => item.capacidade),
+      lacresPorCompartimento: itens.map((item) => item.lacres),
+      totalLitros: itens.reduce((s, item) => s + item.capacidade, 0),
+    };
   }
-  repetidos.sort((a, b) => a.linha - b.linha);
-  const corrigidos = Object.values(recursos).filter((r) => r.placas.join('+') !== r.id.toUpperCase()).length;
-  return { recursos, ignorados, repetidos, corrigidos, lidas };
+  return { perfis, ignorados, lidas };
 }
 
-function contarPorTipo(recursos) {
-  const porTipo = {};
-  for (const r of Object.values(recursos)) {
-    const t = String(r.tipo || 'sem_tipo').replace(/[.$#[\]/]/g, '_'); // vira chave no Firebase
-    porTipo[t] = (porTipo[t] || 0) + 1;
-  }
-  return porTipo;
-}
 function textoPorTipo(porTipo) {
   return Object.entries(porTipo || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${rotuloTipoRecurso(t)} ${formatNumero(n)}`).join(' · ');
 }
@@ -4662,13 +4769,19 @@ function abrirSubRecursos() {
 
 function renderMetaRecursos() {
   const m = STATE.recursosMeta;
-  document.getElementById('recursosMetaTxt').innerHTML = m?.importadoEm
-    ? `Cadastro atual: <strong>${formatNumero(m.total)} recursos</strong> (${esc(textoPorTipo(m.porTipo))}), importados em ${esc(dataHoraBR(m.importadoEm))} por ${esc(m.importadoPor)} · arquivo ${esc(m.arquivo)}.`
-    : 'Nenhuma planilha importada ainda.';
+  document.getElementById('recursosMetaTxt').innerHTML = m?.sincronizadoEm
+    ? `Cadastro automático: <strong>${formatNumero(m.total)} recursos</strong> (${esc(textoPorTipo(m.porTipo))}), sincronizados do datalake em ${esc(dataHoraBR(m.sincronizadoEm))}. <strong>${formatNumero(m.comPerfilCompartimento)}</strong> possuem perfil de compartimento.`
+    : 'Aguardando a primeira sincronização do datalake.';
+}
+function renderMetaPerfisCompartimento() {
+  const m = STATE.perfisCompartimentoMeta;
+  document.getElementById('perfisCompartimentoMetaTxt').innerHTML = m?.importadoEm
+    ? `Catálogo atual: <strong>${formatNumero(m.total)} perfis</strong> e ${formatNumero(m.compartimentos)} compartimentos, importados em ${esc(dataHoraBR(m.importadoEm))} por ${esc(m.importadoPor)} · arquivo ${esc(m.arquivo)}.`
+    : 'Nenhuma planilha de perfis importada ainda.';
 }
 
 // Cadastros provisórios (feitos no agendamento por quem não achou o veículo): a Nexta confere, cadastra no SAP
-// e importa a planilha — o que aparece nela sai da lista sozinho (confirmarImportacaoRecursos)
+// e o sincronizador do datalake remove o provisório assim que o recurso aparece no SAP.
 function renderRecursosPendentes() {
   const lista = objList(STATE.recursosPendentes).sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
   for (const id of ['pendentesQtd', 'subtabPendentes']) {
@@ -4696,100 +4809,102 @@ async function excluirRecursoPendente(chave) {
   } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
 
-async function lerPlanilhaRecursos(input) {
+async function carregarPerfisCompartimento() {
+  if (STATE.perfisCompartimento !== null) return STATE.perfisCompartimento;
+  STATE.perfisCompartimento = await window._fb.listarPerfisCompartimento();
+  return STATE.perfisCompartimento;
+}
+async function lerPlanilhaPerfisCompartimento(input) {
   const arquivo = input.files[0];
   input.value = ''; // escolher o mesmo arquivo de novo também dispara o onchange
   if (!arquivo) return;
-  const el = document.getElementById('recursosPrevia');
-  STATE.recursosImport = null;
+  const el = document.getElementById('perfisCompartimentoPrevia');
+  STATE.perfisCompartimentoImport = null;
   el.innerHTML = '<div class="previa-importacao chip-empty">Lendo planilha…</div>';
   try {
-    const lidos = lerLinhasRecursos(await lerArquivoPlanilha(arquivo));
-    if (!Object.keys(lidos.recursos).length) throw new Error('Nenhum recurso válido na planilha.');
-    await carregarRecursos(); // o que já está no portal, para mostrar o que muda
-    STATE.recursosImport = {
-      arquivo: arquivo.name, ...lidos, diff: compararCadastro(STATE.recursos, lidos.recursos, CAMPOS_RECURSO),
-      pendentesNaPlanilha: Object.keys(STATE.recursosPendentes).filter((chave) => lidos.recursos[chave]),
+    const lidos = lerLinhasPerfisCompartimento(await lerArquivoPlanilha(arquivo));
+    if (!Object.keys(lidos.perfis).length) throw new Error('Nenhum perfil de compartimento válido na planilha.');
+    const atuais = await carregarPerfisCompartimento();
+    STATE.perfisCompartimentoImport = {
+      arquivo: arquivo.name, ...lidos,
+      diff: compararCadastro(atuais, lidos.perfis, CAMPOS_PERFIL_COMPARTIMENTO),
     };
-    renderPreviaRecursos();
+    renderPreviaPerfisCompartimento();
   } catch (e) {
     console.error(e);
     el.innerHTML = `<div class="previa-importacao form-hint erro">${esc(msgErro(e, 'Não foi possível ler a planilha.'))}</div>`;
   }
 }
 
-function renderPreviaRecursos() {
-  const el = document.getElementById('recursosPrevia');
-  const imp = STATE.recursosImport;
+function renderPreviaPerfisCompartimento() {
+  const el = document.getElementById('perfisCompartimentoPrevia');
+  const imp = STATE.perfisCompartimentoImport;
   if (!imp) { el.innerHTML = ''; return; }
-  const total = Object.keys(imp.recursos).length;
+  const total = Object.keys(imp.perfis).length;
+  const compartimentos = Object.values(imp.perfis).reduce((n, p) => n + p.capacidadesLitros.length, 0);
   const n = (v) => ({ html: formatNumero(v), num: true });
   el.innerHTML = `
     <div class="previa-importacao">
       <div class="form-hint" style="margin:0"><strong>${esc(imp.arquivo)}</strong>: ${formatNumero(imp.lidas)} linhas,
-        ${formatNumero(total)} veículos (${esc(textoPorTipo(contarPorTipo(imp.recursos)))})${imp.repetidos.length ? `, ${formatNumero(imp.repetidos.length)} repetidas` : ''}${imp.ignorados.length ? `, <span class="texto-perigo">${formatNumero(imp.ignorados.length)} não importadas</span>` : ''}.</div>
-      ${htmlDiffImportacao(imp.diff, Object.keys(STATE.recursos || {}).length, 'recursos')}
-      ${imp.pendentesNaPlanilha.length ? `<div class="form-hint ok">${formatNumero(imp.pendentesNaPlanilha.length)} cadastro(s) provisório(s) já estão nesta planilha e saem da lista de pendentes.</div>` : ''}
-      ${imp.corrigidos ? `<div class="form-hint">${formatNumero(imp.corrigidos)} recursos com o ID fora do padrão (hífen, espaço ou "/" entre as placas) foram lidos mesmo assim; o portal guarda o ID como está no SAP.</div>` : ''}
+        ${formatNumero(total)} perfis e ${formatNumero(compartimentos)} compartimentos${imp.ignorados.length ? `, <span class="texto-perigo">${formatNumero(imp.ignorados.length)} linha(s) não importada(s)</span>` : ''}.</div>
+      ${htmlDiffImportacao(imp.diff, Object.keys(STATE.perfisCompartimento || {}).length, 'perfis')}
       ${htmlLinhasPlanilha(`Ver as ${formatNumero(imp.ignorados.length)} linhas não importadas (corrigir no SAP)`, '',
-        ['#Linha', 'Recurso de caminhão', 'Motivo'],
-        imp.ignorados.map((g) => [n(g.linha), { html: esc(g.id), mono: true }, esc(g.motivo)]))}
-      ${htmlLinhasPlanilha(`Ver as ${formatNumero(imp.repetidos.length)} linhas repetidas (mesmo veículo em outro recurso do SAP)`,
-        'Placa antiga × Mercosul ou carretas em outra ordem. Vale o recurso de maior volume máximo; os demais ficam anotados nele.',
-        ['#Linha', 'Recurso de caminhão', '#Volume máx.', 'Vale o recurso', '#Volume máx.'],
-        imp.repetidos.map((g) => [n(g.linha), { html: esc(g.id), mono: true }, { html: formatVolume(g.volumeMax), num: true }, { html: esc(g.valeId), mono: true }, { html: formatVolume(g.valeVolume), num: true }]))}
+        ['#Linha', 'Perfil', 'Motivo'],
+        imp.ignorados.map((g) => [n(g.linha), { html: esc(g.perfil), mono: true }, esc(g.motivo)]))}
       <div class="previa-acoes">
-        <button class="btn btn-primary btn-sm" id="btnImportarRecursos" onclick="confirmarImportacaoRecursos()">Gravar e substituir o cadastro</button>
-        <button class="btn btn-secondary btn-sm" onclick="cancelarImportacaoRecursos()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="btnImportarPerfisCompartimento" onclick="confirmarImportacaoPerfisCompartimento()">Gravar e substituir o catálogo</button>
+        <button class="btn btn-secondary btn-sm" onclick="cancelarImportacaoPerfisCompartimento()">Cancelar</button>
       </div>
     </div>`;
 }
 
-function cancelarImportacaoRecursos() { STATE.recursosImport = null; renderPreviaRecursos(); }
-async function confirmarImportacaoRecursos() {
-  const imp = STATE.recursosImport;
+function cancelarImportacaoPerfisCompartimento() { STATE.perfisCompartimentoImport = null; renderPreviaPerfisCompartimento(); }
+async function confirmarImportacaoPerfisCompartimento() {
+  const imp = STATE.perfisCompartimentoImport;
   if (!imp) return;
-  const total = Object.keys(imp.recursos).length;
-  if (!confirmarSubstituicao('recursos', total, imp.diff.removidos)) return;
-  const btn = document.getElementById('btnImportarRecursos');
+  const total = Object.keys(imp.perfis).length;
+  if (!confirmarSubstituicao('perfis', total, imp.diff.removidos)) return;
+  const btn = document.getElementById('btnImportarPerfisCompartimento');
   btn.disabled = true; btn.textContent = 'Gravando…';
   try {
+    const compartimentos = Object.values(imp.perfis).reduce((n, p) => n + p.capacidadesLitros.length, 0);
     const meta = {
       importadoEm: new Date().toISOString(),
       importadoPor: STATE.usuario.nome || STATE.usuario.email,
       importadoPorUid: STATE.usuario.uid,
       arquivo: imp.arquivo,
       total,
-      porTipo: contarPorTipo(imp.recursos),
-      repetidos: imp.repetidos.length,
+      compartimentos,
       naoImportados: imp.ignorados.length,
     };
-    await window._fb.importarRecursos(imp.recursos, meta, imp.pendentesNaPlanilha);
-    STATE.recursos = imp.recursos; // é exatamente o que foi gravado: não precisa ler de novo
-    STATE.recursosImport = null;
-    STATE.cadastroVeiculos = {}; // cor das placas na lista: provisórios que entraram no SAP passam a verde
-    renderListaAgendamentos();
-    renderPreviaRecursos();
-    renderListaRecursos();
-    toast(`Cadastro de recursos atualizado: ${formatNumero(total)} recursos.`, 'success');
+    await window._fb.importarPerfisCompartimento(imp.perfis, meta);
+    STATE.perfisCompartimento = imp.perfis;
+    STATE.perfisCompartimentoImport = null;
+    renderPreviaPerfisCompartimento();
+    toast(`Catálogo atualizado: ${formatNumero(total)} perfis e ${formatNumero(compartimentos)} compartimentos.`, 'success');
   } catch (e) {
     console.error(e);
-    toast(msgErro(e, 'Não foi possível gravar os recursos.'), 'error');
-    btn.disabled = false; btn.textContent = 'Gravar e substituir o cadastro';
+    toast(msgErro(e, 'Não foi possível gravar os perfis de compartimento.'), 'error');
+    btn.disabled = false; btn.textContent = 'Gravar e substituir o catálogo';
   }
 }
 
 // Busca por placa (antiga ou Mercosul), ID do recurso ou código do proprietário/motorista
+function perfisDoRecurso(r) {
+  const componentes = (r.componentes || []).filter((c) => c.perfil);
+  if (componentes.length) return componentes.map((c) => `${c.placa}: ${c.perfil}`).join(' · ');
+  return r.perfil || '';
+}
 function renderListaRecursos() {
   const el = document.getElementById('listaRecursos');
   if (STATE.recursos === null) { el.innerHTML = '<div class="chip-empty">Carregando recursos…</div>'; return; }
   const lista = Object.values(STATE.recursos);
-  if (!lista.length) { el.innerHTML = '<div class="chip-empty">Nenhum recurso cadastrado. Importe a planilha do SAP TM acima.</div>'; return; }
+  if (!lista.length) { el.innerHTML = '<div class="chip-empty">Nenhum recurso cadastrado. Aguarde a sincronização do datalake.</div>'; return; }
   const q = normalizarPlaca(document.getElementById('recursosBusca').value);
   if (q.length < 3) { el.innerHTML = `<div class="chip-empty">Digite ao menos 3 letras ou números para buscar entre os ${formatNumero(lista.length)} recursos.</div>`; return; }
   const termos = placaValida(q) ? [q, placaMercosul(q)] : [q];
   const achados = lista
-    .filter((r) => { const alvo = [...r.placas, ...r.placas.map(placaMercosul), r.proprietario, r.motorista].join(' '); return termos.some((t) => alvo.includes(t)); })
+    .filter((r) => { const placas = r.placas || []; const alvo = [r.id, ...placas, ...placas.map(placaMercosul), r.proprietario, r.motorista, perfisDoRecurso(r)].join(' ').toUpperCase(); return termos.some((t) => alvo.includes(t)); })
     .sort((a, b) => a.id.localeCompare(b.id));
   if (!achados.length) { el.innerHTML = '<div class="chip-empty">Nenhum recurso encontrado.</div>'; return; }
   el.innerHTML = `
@@ -4798,7 +4913,7 @@ function renderListaRecursos() {
         <thead><tr><th>Recurso (SAP)</th><th>Tipo</th><th class="num">Volume máx.</th><th>Perfil compart.</th><th>Proprietário</th><th>Motorista</th></tr></thead>
         <tbody>${achados.slice(0, MAX_RESULTADOS_RECURSO).map((r) => `<tr>
           <td class="placa">${esc(r.id)}${r.outrosIds ? `<div class="form-hint" style="margin:0">também ${r.outrosIds.map(esc).join(', ')}</div>` : ''}</td><td>${esc(rotuloTipoRecurso(r.tipo))}</td><td class="num">${formatVolume(r.volumeMax)}</td>
-          <td>${esc(r.perfil) || '—'}</td><td>${esc(r.proprietario) || '—'}</td><td>${esc(r.motorista) || '—'}</td></tr>`).join('')}</tbody>
+          <td>${esc(perfisDoRecurso(r)) || '—'}</td><td>${esc(r.proprietario) || '—'}</td><td>${esc(r.motorista) || '—'}</td></tr>`).join('')}</tbody>
       </table>
     </div>
     ${achados.length > MAX_RESULTADOS_RECURSO ? `<div class="form-hint">Mostrando ${MAX_RESULTADOS_RECURSO} de ${formatNumero(achados.length)}. Refine a busca.</div>` : ''}`;
@@ -5363,15 +5478,16 @@ async function trocarSenha() {
     criarCliente: (codigo, dados) => set(ref(db, 'clientes/' + codigo), dados),
     salvarCliente: (codigo, dados) => update(ref(db, 'clientes/' + codigo), dados),
 
-    // recursos/<placas Mercosul em ordem, juntas por "+">: veículos do SAP TM, importados da planilha pelo admin.
+    // recursos/<placas Mercosul em ordem, juntas por "+">: veículos e perfis por placa vindos do datalake.
     // A lista inteira só a equipe interna lê; qualquer usuário consulta um recurso pela chave (capacidade no agendamento)
     listarRecursos: async () => (await get(ref(db, 'recursos'))).val() || {},
     carregarRecurso: async (chave) => (await get(ref(db, 'recursos/' + chave))).val(),
     ouvirRecursosMeta: (cb, onErro) => ouvir('recursosMeta', cb, onErro),
-    // Troca o cadastro inteiro num único update() multi-path: grava tudo ou nada.
-    // Cadastros provisórios que já aparecem na planilha saem da lista de pendentes no mesmo update
-    importarRecursos: (recursos, meta, pendentesNaPlanilha = []) => update(ref(db), {
-      recursos, recursosMeta: meta, ...Object.fromEntries(pendentesNaPlanilha.map((chave) => ['recursosPendentes/' + chave, null])),
+    // perfisCompartimento/<base64url do perfil>: catálogo temporariamente importado da extração SAP.
+    listarPerfisCompartimento: async () => (await get(ref(db, 'perfisCompartimento'))).val() || {},
+    ouvirPerfisCompartimentoMeta: (cb, onErro) => ouvir('perfisCompartimentoMeta', cb, onErro),
+    importarPerfisCompartimento: (perfis, meta) => update(ref(db), {
+      perfisCompartimento: perfis, perfisCompartimentoMeta: meta,
     }),
     // recursosPendentes/<mesma chave>: veículo cadastrado provisoriamente por quem agendou (a Nexta valida depois)
     carregarRecursoPendente: async (chave) => (await get(ref(db, 'recursosPendentes/' + chave))).val(),
