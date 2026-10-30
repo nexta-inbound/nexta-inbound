@@ -154,11 +154,14 @@ button, input { font: inherit; color: inherit; }
 @media (max-width: 560px) { .qtd-opcoes { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .qtd-opcao { height: 64px; border: 2px solid var(--border-dk); border-radius: 12px; background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 26px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
 .qtd-opcao.sel { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.qtd-opcao:disabled { cursor: default; opacity: .6; }
+.qtd-opcao.sel:disabled { opacity: 1; }
 .capacidades-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
 .capacidades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 760px) { .capacidades { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .capacidades .campo label { font-size: 15px; margin-bottom: 6px; }
 .capacidades .campo input { height: 58px; padding: 0 12px; font-size: 22px; letter-spacing: 0; }
+.capacidades .campo input[readonly] { background: var(--panel-soft); cursor: default; }
 .com-sufixo { display: flex; }
 .com-sufixo input { border-radius: 12px 0 0 12px; }
 .com-sufixo span { display: grid; place-items: center; padding: 0 12px; background: var(--panel-soft); border: 2px solid var(--border-dk); border-left: none; border-radius: 0 12px 12px 0; font-size: 17px; color: var(--text-dim); }
@@ -427,7 +430,7 @@ button, input { font: inherit; color: inherit; }
   <!-- Etapa 3: configuração separada por placa do tanque -->
   <section class="tela" id="tela-configuracao">
     <div class="titulo">Compartimentos por placa</div>
-    <div class="sub">Informe separadamente os compartimentos de cada carreta. A numeração CT 01 recomeça em cada placa.</div>
+    <div class="sub">Confira os compartimentos de cada carreta. Quando o perfil está cadastrado no SAP, a configuração aparece automaticamente. A numeração CT 01 recomeça em cada placa.</div>
     <div class="configuracoes-placas" id="configuracoes-placas"></div>
     <div class="config-total-conjunto" id="config-total-conjunto"></div>
     <div class="alerta hidden" id="alerta-config" role="alert"></div>
@@ -583,9 +586,9 @@ button, input { font: inherit; color: inherit; }
 /* ════════════════════════════════════════════════════════════════════
    Quiosque de autoatendimento (tablet no guichê da base).
    O motorista se identifica com protocolo + CPF + placa; se os três batem com um agendamento
-   de hoje desta base, ele confere os dados, informa a configuração do caminhão (quantos
-   compartimentos e quantos litros cada um, separados por placa; cada configuração fica salva em
-   compartimentosVeiculo/<placa do tanque>
+   de hoje desta base, ele confere os dados e o sistema procura a configuração pelo perfil SAP da
+   placa (perfisCompartimento/<perfilChave>). Sem perfil importado, usa a configuração salva em
+   compartimentosVeiculo/<placa do tanque> ou pede os compartimentos como fallback
    e nos próximos check-ins só é confirmada), aloca os pedidos (cada pedido inteiro; se não
    cabe, registra inconsistência para o faturamento) e informa 3 lacres e o envelope de amostra
    de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
@@ -658,6 +661,18 @@ function normalizarPlaca(v) { return String(v || '').toUpperCase().replace(/[^A-
 function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
 // Placa antiga (ABC1234) e Mercosul (ABC1C34) são o mesmo veículo: o 5º caractere vira letra (0 = A … 9 = J)
 function placaMercosul(p) { return /^[A-Z]{3}[0-9]{4}$/.test(p) ? p.slice(0, 4) + 'ABCDEFGHIJ'[p[4]] + p.slice(5) : p; }
+function chavePerfilCompartimento(perfil) {
+  const bytes = new TextEncoder().encode(String(perfil || '').trim().toUpperCase());
+  let binario = '';
+  bytes.forEach((b) => { binario += String.fromCharCode(b); });
+  return btoa(binario).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function perfilDaPlaca(recurso, placa, totalPlacasTanque) {
+  const alvo = placaMercosul(normalizarPlaca(placa));
+  const componente = (recurso?.componentes || []).find((c) => placaMercosul(normalizarPlaca(c.placa)) === alvo);
+  const perfil = componente?.perfil || (totalPlacasTanque === 1 ? recurso?.perfil : '');
+  return perfil ? { perfil, chave: componente?.perfilChave || chavePerfilCompartimento(perfil) } : null;
+}
 function cpfValido(cpf) {
   if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
   const dv = (n) => { let s = 0; for (let i = 0; i < n; i++) s += Number(cpf[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
@@ -1074,15 +1089,18 @@ async function prepararAtendimento(id, a) {
     return guiche('Pedido com pendência', pendentes.map(([nr, s]) => `O pedido ${nr} está ${SITUACOES_REVISAR[s]}`).join('. ') + '. Procure o guichê antes de carregar.');
   }
 
-  // Motorista e veículo provisórios no agendamento podem já ter entrado no SAP: consulta o cadastro atual
+  // Consulta sempre o recurso atual: além de validar provisórios, ele traz o perfil de cada placa do datalake.
   const placasTanque = placasDoTanque(a);
   const [checkin, cadMotorista, recurso, configsSalvas] = await Promise.all([
     window._fb.carregarCheckin(a.protocolo),
     a.motoristaBp ? null : window._fb.carregarMotorista(a.motoristaCpf).catch(() => null),
-    a.recursoSap || !a.recursoChave ? null : window._fb.carregarRecurso(a.recursoChave).catch(() => null),
+    !a.recursoChave ? null : window._fb.carregarRecurso(a.recursoChave).catch(() => null),
     Promise.all(placasTanque.map((placa) =>
       window._fb.carregarConfigVeiculo(placa).catch(() => null))),
   ]);
+  const perfisPlacas = placasTanque.map((placa) => perfilDaPlaca(recurso, placa, placasTanque.length));
+  const configsPerfis = await Promise.all(perfisPlacas.map((perfil) =>
+    perfil ? window._fb.carregarPerfilCompartimento(perfil.chave).catch(() => null) : null));
   // Inconsistência registrada antes (pedido não cabia) não impede tentar de novo: o check-in grava por cima
   if (checkin && ['aguardando', 'processando', 'aguardando_correcao_lacre'].includes(checkin.status)) {
     return { acompanhar: prot };
@@ -1121,7 +1139,8 @@ async function prepararAtendimento(id, a) {
     return guiche('Atendimento no guichê', `Os pedidos do agendamento ${prot} precisam ser conferidos no guichê.`);
   }
   const configuracoes = placasTanque.map((placa, i) => {
-    const configSalva = configValida(configsSalvas[i]);
+    const configPerfil = configValida(configsPerfis[i]);
+    const configSalva = configPerfil || configValida(configsSalvas[i]);
     const caps = Array(MAX_COMPARTIMENTOS).fill('');
     (configSalva?.capacidadesLitros || []).forEach((capacidade, indice) => {
       caps[indice] = String(capacidade);
@@ -1129,6 +1148,8 @@ async function prepararAtendimento(id, a) {
     return {
       placa,
       configSalva,
+      fonteConfig: configPerfil ? 'perfil_sap' : configSalva ? 'placa_salva' : 'informada',
+      perfil: perfisPlacas[i]?.perfil || '',
       qtd: configSalva?.capacidadesLitros.length || 0,
       caps,
     };
@@ -1220,16 +1241,19 @@ function configIgualSalva(config) {
 function renderConfiguracao() {
   document.getElementById('configuracoes-placas').innerHTML = atd.configuracoes.map((config, p) => {
     const salva = config.configSalva;
-    const meta = salva
+    const automatica = config.fonteConfig === 'perfil_sap';
+    const meta = automatica
+      ? `Perfil ${config.perfil} do SAP aplicado automaticamente.`
+      : salva
       ? `Configuração salva${salva.atualizadoEm ? ` em ${formatDataBR(dataLocalISO(new Date(salva.atualizadoEm)))}` : ''}. Confira antes de continuar.`
       : 'Primeiro check-in desta placa: a configuração será salva.';
     const opcoes = Array.from({ length: MAX_COMPARTIMENTOS }, (_, k) => k + 1).map((n) =>
-      `<button type="button" class="qtd-opcao${config.qtd === n ? ' sel' : ''}" aria-pressed="${config.qtd === n}" onclick="escolherQtdPlaca(${p}, ${n})">${n}</button>`).join('');
+      `<button type="button" class="qtd-opcao${config.qtd === n ? ' sel' : ''}" aria-pressed="${config.qtd === n}" onclick="escolherQtdPlaca(${p}, ${n})"${automatica ? ' disabled' : ''}>${n}</button>`).join('');
     const capacidadesHtml = config.qtd ? `
       <div class="config-bloco">
         <div class="capacidades-topo">
           <div class="produto-nome">Capacidade de cada CT da placa ${esc(config.placa)}</div>
-          <button class="btn-link${config.qtd > 1 && litrosDoTexto(config.caps[0]) ? '' : ' hidden'}" type="button" onclick="copiarCapacidadePlaca(${p})">Usar ${formatVolume(litrosDoTexto(config.caps[0]))} em todos</button>
+          <button class="btn-link${!automatica && config.qtd > 1 && litrosDoTexto(config.caps[0]) ? '' : ' hidden'}" type="button" onclick="copiarCapacidadePlaca(${p})">Usar ${formatVolume(litrosDoTexto(config.caps[0]))} em todos</button>
         </div>
         <div class="capacidades" id="capacidades-${p}">${Array.from({ length: config.qtd }, (_, i) => campoCapacidade(p, i)).join('')}</div>
         <div class="total-cap" id="total-cap-${p}"></div>
@@ -1253,9 +1277,10 @@ function escolherQtdPlaca(p, n) {
 }
 function campoCapacidade(p, i) {
   const config = atd.configuracoes[p], chave = `${p}.${i}`, erro = atd.errosCap[chave] || '';
+  const automatica = config.fonteConfig === 'perfil_sap';
   return `<div class="campo${erro ? ' erro' : ''}" id="cap-${p}-${i}">
     <label for="in-cap-${p}-${i}">CT ${pad2(i + 1)}</label>
-    <div class="com-sufixo"><input id="in-cap-${p}-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(config.caps[i])}" oninput="digitarCapacidade(${p}, ${i}, this)"><span>L</span></div>
+    <div class="com-sufixo"><input id="in-cap-${p}-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(config.caps[i])}" oninput="digitarCapacidade(${p}, ${i}, this)"${automatica ? ' readonly' : ''}><span>L</span></div>
     <div class="msg-erro">${esc(erro)}</div>
   </div>`;
 }
@@ -1813,6 +1838,8 @@ function dadosBaseCheckin() {
 function dadosConfiguracao(caps) {
   const configuracoesPlacas = atd.configuracoes.map((config) => ({
     placa: config.placa,
+    origemConfiguracao: config.fonteConfig,
+    ...(config.perfil ? { perfilCompartimento: config.perfil } : {}),
     configuracao: !config.configSalva ? 'informada' : configIgualSalva(config) ? 'salva' : 'alterada',
     compartimentos: config.caps.slice(0, config.qtd).map((capacidade, i) => ({
       placa: config.placa,
@@ -2165,6 +2192,7 @@ setTimeout(() => {
       (await get(query(ref(db, 'agendamentos'), orderByChild('motoristaCpf'), equalTo(cpf)))).val() || {},
     carregarMotorista: (cpf) => ler('motoristas/' + cpf),
     carregarRecurso: (chave) => ler('recursos/' + chave),
+    carregarPerfilCompartimento: (chave) => ler('perfisCompartimento/' + chave),
     // autoatendimento/<protocolo do agendamento>: check-in (ou inconsistência) do motorista
     carregarCheckin: (protocolo) => ler('autoatendimento/' + protocolo),
     salvarCheckin: (protocolo, dados) => set(ref(db, 'autoatendimento/' + protocolo), dados),
