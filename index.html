@@ -326,6 +326,9 @@
   document.querySelectorAll('.card[data-sistema]').forEach(card => {
     card.addEventListener('click', () => {
       try { localStorage.setItem(CHAVE_ULTIMO_SISTEMA, card.dataset.sistema); } catch {}
+      // Com o sistema em outra aba, o menu continua aqui: o selo acompanha o clique
+      document.querySelectorAll('.card.ultimo').forEach(outro => outro.classList.remove('ultimo'));
+      card.classList.add('ultimo');
     });
   });
 
@@ -383,6 +386,10 @@
       if (!card.hidden) visiveis++;
     });
     $('sem-sistemas').hidden = visiveis > 0;
+    // Mais de um sistema: cada um abre em outra aba e o menu fica aberto nesta para abrir os outros
+    document.querySelectorAll('.card[data-sistema]').forEach(card => {
+      if (visiveis > 1) card.target = '_blank'; else card.removeAttribute('target');
+    });
     // O quiosque tem login próprio do tablet; o atalho fica para quem configura os tablets
     $('secao-tablet').hidden = !(cadastro.adminGeral === true || cadastro.keyUser?.agendamento === true);
     const primeiroNome = String(cadastro.nome || '').split(' ')[0];
