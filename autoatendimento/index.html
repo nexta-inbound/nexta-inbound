@@ -95,6 +95,8 @@ button, input { font: inherit; color: inherit; }
 /* Sem espaço para os 6 nomes (tablet em pé, celular): só o da etapa atual */
 @media (max-width: 900px) { .passo .txt { display: none; } .passo.atual .txt { display: inline; } .passo.atual { flex: 3; } }
 @media (max-width: 640px) { .passos { padding: 0 16px; } }
+/* Tela baixa (tablet deitado): menos espaço entre as etapas e o conteúdo */
+@media (max-height: 860px) { .passos { margin-top: 12px; } .conteudo { padding-top: 18px; } }
 
 /* ── CONTEÚDO ── */
 .conteudo { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 28px 24px 32px; }
@@ -118,6 +120,29 @@ button, input { font: inherit; color: inherit; }
 .produto-nome { font-size: 19px; font-weight: 600; }
 .produto-meta { font-size: 15px; color: var(--text-muted); }
 .produto-vol { font-family: var(--mono); font-size: 20px; font-weight: 500; white-space: nowrap; text-align: right; }
+
+/* ── CONFERÊNCIA DO AGENDAMENTO ── cabe numa tela de tablet deitado, sem rolar: dados em 4 colunas, produtos e
+   compartimentos lado a lado; se ainda assim não couber (muitos produtos), os botões ficam presos embaixo */
+.conferencia .sub { margin: 4px 0 14px; }
+.conferencia .cartao { padding: 14px 20px; margin-bottom: 12px; }
+.conferencia .cartao-titulo { margin-bottom: 8px; }
+.conferencia .dados { grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 10px 20px; }
+.conferencia .dado .rot { font-size: 13px; }
+.conferencia .dado .val { font-size: 18px; }
+.conferencia-listas { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 12px; }
+.conferencia .produto-linha { padding: 6px 0; }
+.conferencia .produto-nome { font-size: 17px; line-height: 1.3; }
+.conferencia .produto-meta { font-size: 14px; line-height: 1.35; }
+.conferencia .produto-vol { font-size: 18px; }
+.conferencia .acoes, .alocacao .acoes, .lacres .acoes, .revisao .acoes { position: sticky; bottom: 0; margin-top: 0; padding: 8px 0 calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--bg); }
+@media (max-width: 900px) {
+  .conferencia .dados { grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: normal; }
+  .conferencia-listas { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) { .conferencia .acoes, .alocacao .acoes, .lacres .acoes, .revisao .acoes { position: static; padding-top: 4px; } }
+/* Campo que recebe o foco (leitor de código de barras) não fica atrás da barra de botões presa embaixo */
+@media (min-width: 641px) { html { scroll-padding: 40px 0 104px; } }
+@media (max-width: 560px) { .conferencia .dados { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── CAMPOS ── */
 .campos { display: grid; gap: 22px; }
@@ -147,41 +172,10 @@ button, input { font: inherit; color: inherit; }
 .alerta { padding: 14px 18px; border: 1px solid var(--danger); border-radius: 12px; background: var(--danger-dim); color: var(--danger); font-size: 17px; font-weight: 600; margin-bottom: 20px; }
 .alerta ul { margin: 6px 0 0 22px; font-weight: 500; }
 
-.btn-link { background: none; border: none; min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 16px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
-
-/* ── CONFIGURAÇÃO DO CAMINHÃO (quantidade e capacidade dos compartimentos) ── */
-.qtd-opcoes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 560px) { .qtd-opcoes { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.qtd-opcao { height: 64px; border: 2px solid var(--border-dk); border-radius: 12px; background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 26px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
-.qtd-opcao.sel { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.qtd-opcao:disabled { cursor: default; opacity: .6; }
-.qtd-opcao.sel:disabled { opacity: 1; }
-.capacidades-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
-.capacidades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 760px) { .capacidades { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.capacidades .campo label { font-size: 15px; margin-bottom: 6px; }
-.capacidades .campo input { height: 58px; padding: 0 12px; font-size: 22px; letter-spacing: 0; }
-.capacidades .campo input[readonly] { background: var(--panel-soft); cursor: default; }
-.com-sufixo { display: flex; }
-.com-sufixo input { border-radius: 12px 0 0 12px; }
-.com-sufixo span { display: grid; place-items: center; padding: 0 12px; background: var(--panel-soft); border: 2px solid var(--border-dk); border-left: none; border-radius: 0 12px 12px 0; font-size: 17px; color: var(--text-dim); }
-.campo.erro .com-sufixo span { border-color: var(--danger); }
-.total-cap { margin-top: 16px; font-size: 17px; color: var(--text-dim); }
-.total-cap strong { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.total-cap .aviso { display: block; margin-top: 4px; color: var(--accent2); font-weight: 600; }
-.capacidades-salvas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.cap-chip { padding: 8px 14px; border-radius: 10px; background: var(--panel-soft); font-size: 17px; }
-.cap-chip b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.configuracoes-placas { display: grid; gap: 18px; }
-.config-placa-topo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; margin-bottom: 16px; }
-.config-placa-id { font-family: var(--mono); font-size: 22px; font-weight: 600; color: var(--accent); }
-.config-placa-meta { font-size: 14px; color: var(--text-muted); }
-.config-bloco + .config-bloco { margin-top: 20px; }
-.config-total-conjunto { margin-top: 18px; padding: 14px 18px; border-radius: 12px; background: var(--panel-soft); font-size: 18px; }
-.config-total-conjunto strong { font-variant-numeric: tabular-nums; }
-.config-total-conjunto .aviso { display: block; margin-top: 4px; color: var(--accent2); font-weight: 600; }
 .tanque-grupo + .tanque-grupo { margin-top: 12px; }
 .tanque-placa { margin: 0 0 6px 2px; font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.tanque-total { font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tanque-total::before { content: ' · '; }
 
 /* ── ALOCAÇÃO DOS PEDIDOS ── */
 .linha-aloc { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 16px; padding: 12px 0; border-top: 1px solid var(--border); }
@@ -210,9 +204,9 @@ button, input { font: inherit; color: inherit; }
 .opcao-grande .tag { flex-shrink: 0; padding: 4px 12px; border-radius: 999px; background: var(--success-dim); color: var(--success); font-size: 14px; font-weight: 600; }
 /* Tanque: um segmento por compartimento, largura proporcional à capacidade (respondido = cor do produto) */
 .tanque { display: flex; gap: 6px; margin-bottom: 14px; }
-.tanque-seg { flex: var(--peso, 1) 1 0; min-width: 48px; min-height: 66px; padding: 6px 10px; border: 2px dashed var(--border-dk); border-radius: 10px; background: var(--surface); color: var(--text-muted); display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; overflow: hidden; }
-.tanque-seg .n { font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--text); }
-.tanque-seg .p { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.tanque-seg { flex: var(--peso, 1) 1 0; min-width: 48px; min-height: 54px; padding: 4px 10px; border: 2px dashed var(--border-dk); border-radius: 10px; background: var(--surface); color: var(--text-muted); display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; overflow: hidden; }
+.tanque-seg .n { font-family: var(--mono); font-size: 17px; font-weight: 500; line-height: 1.25; color: var(--text); }
+.tanque-seg .p { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.3; }
 .tanque-seg.cheio { border: 2px solid var(--cor-fg); background: var(--cor-bg); color: var(--cor-fg); }
 .tanque-seg.cheio .n { color: var(--cor-fg); }
 .tanque-seg.vazio { border-style: solid; background: var(--panel-soft); }
@@ -225,55 +219,109 @@ button, input { font: inherit; color: inherit; }
 .cor-4 { --cor-bg: var(--prod-4-bg); --cor-fg: var(--prod-4-fg); }
 .cor-5 { --cor-bg: var(--prod-5-bg); --cor-fg: var(--prod-5-fg); }
 .marca { display: inline-block; width: 16px; height: 16px; margin-right: 10px; border-radius: 50%; background: var(--cor-fg); vertical-align: -1px; flex-shrink: 0; }
-/* Resposta registrada: confirmação verde e o próximo compartimento entrando */
-.confirmado { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 14px; border-radius: 12px; background: var(--success-dim); color: var(--success); font-size: 18px; font-weight: 600; animation: aparecer .3s ease-out; }
+/* Resposta registrada: confirmação verde (no lugar da instrução) e o próximo compartimento entrando */
+.confirmado { display: inline-block; padding: 4px 12px; border-radius: 10px; background: var(--success-dim); color: var(--success); font-size: 17px; font-weight: 600; animation: aparecer .3s ease-out; }
 .opcao-grande .ok { flex-shrink: 0; font-size: 26px; font-weight: 700; }
 @keyframes entrar { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
 @keyframes aparecer { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .pergunta-card.entrando { animation: entrar .3s ease-out; }
 @media (prefers-reduced-motion: reduce) { .pergunta-card.entrando, .confirmado { animation: none; } }
-.resumo-comp { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
-.resumo-comp:first-child, .cartao-titulo + .linha-aloc { border-top: none; padding-top: 0; }
+.cartao-titulo + .linha-aloc { border-top: none; padding-top: 0; }
+/* Resumo da alocação: uma coluna por placa (com uma placa só, os compartimentos dela em 2 colunas) */
+.resumo-placas { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px 28px; }
+.resumo-placa .tanque-placa { margin-bottom: 2px; }
+.uma-placa .resumo-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+.resumo-comp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 7px 0; border-top: 1px solid var(--border); }
+.resumo-comp:first-child, .uma-placa .resumo-comp:nth-child(2) { border-top: none; }
 .resumo-comp:last-child { padding-bottom: 0; }
+.resumo-ct { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.resumo-comp .produto-nome { font-size: 16px; line-height: 1.3; }
+.resumo-comp .produto-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 1.35; }
+.resumo-comp .produto-vol { font-size: 16px; }
+.resumo-comp .produto-vol small { display: block; font-family: var(--font); font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.resumo-vazio { color: var(--text-muted); }
+@media (max-width: 640px) {
+  .uma-placa .resumo-lista { grid-template-columns: minmax(0, 1fr); }
+  .uma-placa .resumo-comp:nth-child(2) { border-top: 1px solid var(--border); }
+}
 .acoes-direita { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; }
 .acoes-direita .btn-primario { margin-left: 0; }
 @media (max-width: 640px) { .acoes-direita { flex: 1 1 100%; } }
-/* Lacres: tabela (uma linha por compartimento) para preencher com o leitor de código de barras */
-.lacres-progresso { margin: -8px 0 14px; font-size: 17px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* Alocação numa tela de tablet deitado: placa ao lado do desenho do tanque, opções em 2 colunas e a
+   confirmação da última resposta no lugar da instrução; os botões ficam presos embaixo */
+.alocacao .sub { display: flex; align-items: center; min-height: 34px; margin: 4px 0 12px; }
+.alocacao .cartao { padding: 14px 20px; margin-bottom: 12px; }
+.alocacao .pergunta-titulo, .alocacao .pergunta-cap { font-size: 26px; line-height: 1.25; }
+.pergunta-q { margin-top: 2px; font-size: 17px; font-weight: 600; color: var(--text-dim); }
+.alocacao .opcoes-lista { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 12px; }
+.alocacao .opcao-grande { min-height: 68px; padding: 10px 16px; }
+.alocacao .opcao-grande small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.alocacao .opcao-vazio { min-height: 52px; }
+.opcao-vazio .opcao-texto { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
+.opcao-vazio small { margin-top: 0; }
+.tudo-certo-nota { font-weight: 500; }
+.opcao-texto { flex: 1; min-width: 0; }
+.opcao-titulo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px; }
+.opcao-falta { font-size: 15px; font-weight: 600; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.opcao-grande.sel .opcao-falta { color: var(--accent); }
+@media (min-width: 901px) {
+  .alocacao .tanque-grupo { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 12px; margin: 0 0 8px; }
+  .alocacao .tanque-grupo .tanque-placa { margin: 0; }
+  .alocacao .tanque-grupo .tanque-total { display: block; font-size: 13px; }
+  .alocacao .tanque-grupo .tanque-total::before { content: none; }
+  .alocacao .tanque { margin-bottom: 0; }
+  .alocacao .opcoes-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Lacres: tabela (uma linha por compartimento) para preencher com o leitor de código de barras. Os nomes dos
+   campos ficam num cabeçalho só (lacre N sempre na coluna N, envelope na última); a contagem de códigos lidos fica
+   na barra de botões, presa embaixo */
+.lacres .sub { margin: 4px 0 8px; }
+.lacres-progresso { font-size: 17px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .lacres-progresso.completo { color: var(--success); }
-.tabela-lacres { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px 10px; }
-.tl-linha { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, minmax(0, 1fr)); gap: 10px; align-items: start; padding: 10px; border-top: 1px solid var(--border); border-radius: 10px; }
-.tl-linha:first-child, .tl-cab + .tl-linha { border-top: none; }
+.lacres .acoes { align-items: center; }
+.lacres .acoes .lacres-progresso { margin-left: auto; }
+.lacres .acoes .lacres-progresso + .btn-primario { margin-left: 0; }
+@media (max-width: 640px) { .lacres .acoes .lacres-progresso { flex: 1 1 100%; order: -2; margin: 0; text-align: center; } }
+.tabela-lacres { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 2px 10px; }
+.tl-cabecalho, .tl-linha { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr); gap: 14px; padding: 3px 10px; }
+.tl-cabecalho { position: sticky; top: 0; z-index: 1; padding-top: 4px; background: var(--surface); font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.tl-linha { align-items: center; border-top: 1px solid var(--border); border-radius: 10px; }
 .tl-linha:focus-within { background: var(--accent-dim); }
-.tl-cab { padding-top: 8px; padding-bottom: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; }
-.tl-comp { display: flex; gap: 10px; align-items: center; min-height: 52px; min-width: 0; }
-.tl-n { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-soft); font-family: var(--mono); font-size: 17px; font-weight: 500; }
+.tl-comp { display: flex; gap: 10px; align-items: center; min-height: 40px; min-width: 0; }
+.tl-codigos { display: grid; grid-template-columns: repeat(var(--colunas, 4), minmax(0, 1fr)); gap: 10px; }
+.tl-codigos > * { grid-column: var(--coluna, auto); }
+.tl-n { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-soft); font-family: var(--mono); font-size: 15px; font-weight: 500; }
 .tl-linha:focus-within .tl-n { background: var(--accent); color: var(--accent-ink); }
 .tl-prod { font-size: 16px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
 .tl-prod .marca { width: 12px; height: 12px; margin-right: 6px; vertical-align: 0; }
 .tl-vol { font-size: 14px; color: var(--text-muted); }
 .tl-campo { min-width: 0; }
-.tl-campo .tl-rot { display: none; }
-.tl-campo input { height: 52px; padding: 0 8px; font-size: 18px; letter-spacing: 0; }
+.tl-campo .tl-rot { display: none; font-size: 13px; margin-bottom: 4px; }
+.tl-campo input { height: 40px; padding: 0 8px; font-size: 18px; letter-spacing: 0; }
 .tl-campo.lido:not(.erro) input:not(:focus) { border-color: var(--success); background: var(--success-dim); }
 .tl-campo.erro input, .tl-campo.erro input:focus { border-color: var(--danger); background: var(--danger-dim); }
 .tl-campo .msg-erro { font-size: 13px; line-height: 1.3; margin-top: 4px; }
-/* Tela estreita: cada compartimento vira um bloco com os 4 campos em 2 colunas */
+/* Tela estreita: cada compartimento vira um bloco, os códigos quebram em 2 colunas e cada um mostra o seu nome */
 @media (max-width: 700px) {
-  .tl-cab { display: none; }
-  .tl-linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tl-comp { grid-column: 1 / -1; min-height: 0; }
-  .tl-campo .tl-rot { display: block; font-size: 14px; margin-bottom: 4px; }
+  .tl-cabecalho { display: none; }
+  .tl-linha { grid-template-columns: 1fr; align-items: start; padding: 12px 10px; }
+  .tl-comp { min-height: 0; }
+  .tl-codigos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tl-codigos > * { grid-column: auto; }
+  .tl-campo .tl-rot { display: block; }
+  .tl-campo input { height: 52px; }
 }
 
-/* ── REVISÃO ── */
-.rev-comp { padding: 12px 0; border-top: 1px solid var(--border); }
-.rev-comp:first-child { border-top: none; padding-top: 0; }
-.rev-comp:last-child { padding-bottom: 0; }
-.rev-comp-topo { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 18px; }
-.rev-comp-topo span { color: var(--text-dim); }
-.rev-comp-codigos { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-top: 4px; font-size: 16px; color: var(--text-muted); }
-.rev-comp-codigos b { color: var(--text); font-size: 19px; }
+/* ── CONFERÊNCIA DOS LACRES (etapa 4, depois da leitura) ── os códigos lidos na mesma tabela, só para ler ── */
+.rev-linha { padding: 6px 10px; }
+.rev-codigo { min-width: 0; font-family: var(--mono); font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+.rev-codigo .tl-rot { display: none; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.rev-vazios { padding: 8px 10px 6px; border-top: 1px solid var(--border); }
+@media (max-width: 700px) { .rev-codigo .tl-rot { display: block; } }
+
+/* ── CONFIRMAÇÃO (etapa 5) ── resumo do carregamento antes de mandar para o faturamento */
+.revisao .sub { margin: 4px 0 12px; }
+.revisao .cartao-titulo + .produto-linha { border-top: none; padding-top: 0; }
 
 /* ── RESULTADO (fim, avisos) ── */
 .resultado { text-align: center; padding: 28px 0 8px; }
@@ -297,16 +345,9 @@ button, input { font: inherit; color: inherit; }
 .processamento-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .processamento-percentual { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--accent); }
 .barra-progresso { height: 18px; overflow: hidden; border-radius: 999px; background: var(--panel-soft); border: 1px solid var(--border); }
-.barra-progresso > div { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
+.barra-progresso > div { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .5s linear; }
 .processamento-msg { min-height: 30px; margin-top: 14px; font-size: 19px; font-weight: 600; color: var(--text); }
 .processamento-msg.erro { color: var(--danger); }
-.historico-progresso { list-style: none; margin-top: 18px; text-align: left; }
-.historico-progresso li { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 15px; }
-.historico-progresso li:first-child { border-top: none; }
-.historico-progresso .marcador { width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; display: grid; place-items: center; background: var(--success-dim); color: var(--success); font-size: 13px; font-weight: 700; }
-.historico-progresso li.atual .marcador { background: var(--accent-dim); color: var(--accent); }
-.historico-progresso li.erro .marcador { background: var(--danger-dim); color: var(--danger); }
-.historico-progresso .hora { font-family: var(--mono); font-size: 13px; color: var(--text-muted); white-space: nowrap; }
 .correcao-lacre { margin-top: 18px; border-color: var(--accent2); background: var(--accent2-dim); }
 .correcao-lacre .cartao-titulo { color: var(--accent2); }
 .correcao-lacre .acoes { margin-top: 16px; }
@@ -350,10 +391,9 @@ button, input { font: inherit; color: inherit; }
 <nav class="passos hidden" id="passos" aria-label="Etapas do check-in">
   <div class="passo"><span class="n">1</span><span class="txt">Identificação</span></div>
   <div class="passo"><span class="n">2</span><span class="txt">Agendamento</span></div>
-  <div class="passo"><span class="n">3</span><span class="txt">Caminhão</span></div>
-  <div class="passo"><span class="n">4</span><span class="txt">Alocação</span></div>
-  <div class="passo"><span class="n">5</span><span class="txt">Lacres</span></div>
-  <div class="passo"><span class="n">6</span><span class="txt">Confirmação</span></div>
+  <div class="passo"><span class="n">3</span><span class="txt">Alocação</span></div>
+  <div class="passo"><span class="n">4</span><span class="txt">Lacres</span></div>
+  <div class="passo"><span class="n">5</span><span class="txt">Confirmação</span></div>
 </nav>
 
 <main class="conteudo">
@@ -396,18 +436,18 @@ button, input { font: inherit; color: inherit; }
     <div class="campos">
       <div class="campo" id="c-protocolo">
         <label for="in-protocolo">Protocolo do agendamento</label>
-        <div class="com-prefixo"><span>AG-</span><input id="in-protocolo" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="78" enterkeyhint="next" oninput="digitarProtocolo(this)"></div>
+        <div class="com-prefixo"><span>AG-</span><input id="in-protocolo" inputmode="numeric" autocomplete="off" maxlength="8" enterkeyhint="next" oninput="digitarProtocolo(this)"></div>
         <div class="dica" id="dica-protocolo"></div>
         <div class="msg-erro"></div>
       </div>
       <div class="campo" id="c-cpf">
         <label for="in-cpf">CPF do motorista</label>
-        <input id="in-cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" enterkeyhint="next" oninput="mascararCpf(this)">
+        <input id="in-cpf" inputmode="numeric" autocomplete="off" maxlength="14" enterkeyhint="next" oninput="mascararCpf(this)">
         <div class="msg-erro"></div>
       </div>
       <div class="campo" id="c-placa">
         <label for="in-placa">Placa do caminhão</label>
-        <input id="in-placa" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="ABC1D23" enterkeyhint="go" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g, '')">
+        <input id="in-placa" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" enterkeyhint="go" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g, '')">
         <div class="dica">Pode ser a placa do cavalo ou de uma das carretas.</div>
         <div class="msg-erro"></div>
       </div>
@@ -416,59 +456,58 @@ button, input { font: inherit; color: inherit; }
   </section>
 
   <!-- Etapa 2: confere os dados do agendamento -->
-  <section class="tela" id="tela-agendamento">
+  <section class="tela conferencia" id="tela-agendamento">
     <div class="titulo">Confira o seu agendamento</div>
     <div class="sub">Se algum dado estiver errado, não continue: procure o guichê.</div>
     <div class="cartao"><div class="dados" id="agendamento-dados"></div></div>
-    <div class="cartao"><div class="cartao-titulo">Produtos deste carregamento</div><div id="agendamento-produtos"></div></div>
+    <div class="conferencia-listas">
+      <div class="cartao"><div class="cartao-titulo">Produtos deste carregamento</div><div id="agendamento-produtos"></div></div>
+      <div class="cartao"><div class="cartao-titulo">Compartimentos do veículo</div><div id="agendamento-compartimentos"></div></div>
+    </div>
     <div class="acoes">
       <button class="btn btn-secundario" type="button" onclick="reiniciar()">Dados errados</button>
-      <button class="btn btn-primario" type="button" onclick="irParaConfiguracao()">Está tudo certo</button>
+      <button class="btn btn-primario" type="button" onclick="irParaAlocacao()">Está tudo certo</button>
     </div>
   </section>
 
-  <!-- Etapa 3: configuração separada por placa do tanque -->
-  <section class="tela" id="tela-configuracao">
-    <div class="titulo">Compartimentos por placa</div>
-    <div class="sub">Confira os compartimentos de cada carreta. Quando o perfil está cadastrado no SAP, a configuração aparece automaticamente. A numeração CT 01 recomeça em cada placa.</div>
-    <div class="configuracoes-placas" id="configuracoes-placas"></div>
-    <div class="config-total-conjunto" id="config-total-conjunto"></div>
-    <div class="alerta hidden" id="alerta-config" role="alert"></div>
-    <div class="acoes">
-      <button class="btn btn-secundario" type="button" onclick="mostrarTela('agendamento')">Voltar</button>
-      <button class="btn btn-primario" id="btn-config-continuar" type="button" onclick="avancarParaAlocacao()">Continuar</button>
-    </div>
-  </section>
-
-  <!-- Etapa 4: alocação dos pedidos, um compartimento por vez (o pedido vai inteiro); no fim, resumo -->
-  <section class="tela" id="tela-alocacao">
+  <!-- Etapa 3: alocação dos pedidos, um compartimento por vez (o pedido vai inteiro); no fim, resumo -->
+  <section class="tela alocacao" id="tela-alocacao">
     <div class="titulo">Onde vai cada produto</div>
     <div class="sub" id="alocacao-sub"></div>
     <div id="alocacao-conteudo"></div>
   </section>
 
-  <!-- Etapa 5: lacres e envelope de amostra de cada compartimento carregado -->
-  <section class="tela" id="tela-lacres">
+  <!-- Etapa 4: lacres e envelope de amostra de cada compartimento carregado; lidos todos, a conferência deles -->
+  <section class="tela lacres" id="tela-lacres">
     <div class="titulo">Lacres e envelopes</div>
-    <div class="sub">Passe o leitor primeiro nos 3 lacres de cada compartimento e depois nos envelopes de amostra. Depois de cada leitura, o próximo campo já fica pronto.</div>
-    <div class="lacres-progresso" id="lacres-progresso" aria-live="polite"></div>
-    <div class="alerta hidden" id="alerta-lacres" role="alert"></div>
-    <div class="tabela-lacres" id="lista-lacres"></div>
-    <div class="acoes">
-      <button class="btn btn-secundario" type="button" onclick="voltarParaAlocacao()">Voltar</button>
-      <button class="btn btn-primario" type="button" onclick="avancarParaRevisao()">Continuar</button>
+    <div id="lacres-leitura">
+      <div class="sub">Passe o leitor nos lacres de cada compartimento e depois nos envelopes de amostra.</div>
+      <div class="alerta hidden" id="alerta-lacres" role="alert"></div>
+      <div class="tabela-lacres" id="lista-lacres"></div>
+      <div class="acoes">
+        <button class="btn btn-secundario" type="button" onclick="voltarParaAlocacao()">Voltar</button>
+        <div class="lacres-progresso" id="lacres-progresso" aria-live="polite"></div>
+        <button class="btn btn-primario" type="button" onclick="concluirLeituraLacres()">Continuar</button>
+      </div>
+    </div>
+    <div class="hidden" id="lacres-conferencia">
+      <div class="sub">Confira os lacres e os envelopes com o veículo. Se algum estiver errado, toque em "Corrigir".</div>
+      <div class="tabela-lacres" id="lacres-lidos"></div>
+      <div class="acoes">
+        <button class="btn btn-secundario" type="button" onclick="corrigirLacres()">Corrigir</button>
+        <button class="btn btn-primario" type="button" onclick="irParaConfirmacao()">Continuar</button>
+      </div>
     </div>
   </section>
 
-  <!-- Etapa 6: revisão e envio -->
-  <section class="tela" id="tela-revisao">
-    <div class="titulo">Revise e confirme</div>
-    <div class="sub">Confira os lacres e os envelopes com o veículo antes de confirmar.</div>
-    <div class="cartao"><div class="dados" id="revisao-dados"></div></div>
-    <div class="cartao"><div class="cartao-titulo">Produtos</div><div id="revisao-produtos"></div></div>
-    <div class="cartao"><div class="cartao-titulo">Lacres e envelopes</div><div id="revisao-comp"></div></div>
+  <!-- Etapa 5: resumo do carregamento e envio para o faturamento -->
+  <section class="tela revisao" id="tela-revisao">
+    <div class="titulo">Confirme o faturamento</div>
+    <div class="sub">Confira o resumo e toque em "Processar faturamento".</div>
+    <div class="cartao"><div class="dados" id="confirmacao-dados"></div></div>
+    <div class="cartao" id="confirmacao-clientes"></div>
     <div class="acoes">
-      <button class="btn btn-secundario" type="button" onclick="mostrarTela('lacres')">Corrigir</button>
+      <button class="btn btn-secundario" type="button" onclick="mostrarTela('lacres')">Voltar</button>
       <button class="btn btn-primario" id="btn-confirmar" type="button" onclick="processarFaturamento()">Processar faturamento</button>
     </div>
   </section>
@@ -476,15 +515,14 @@ button, input { font: inherit; color: inherit; }
   <section class="tela" id="tela-processamento">
     <div class="processamento">
       <div class="titulo">Processando faturamento</div>
-      <div class="sub">Não feche esta tela. O andamento do Cockpit de Transporte aparecerá abaixo.</div>
+      <div class="sub" id="processamento-sub">Não feche esta tela.</div>
       <div class="cartao">
         <div class="processamento-topo">
           <div><div class="cartao-titulo" style="margin:0">Protocolo</div><div class="mono" id="processamento-protocolo"></div></div>
           <div class="processamento-percentual" id="processamento-percentual">1%</div>
         </div>
         <div class="barra-progresso" id="processamento-barra" role="progressbar" aria-label="Progresso do faturamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="1"><div></div></div>
-        <div class="processamento-msg" id="processamento-msg" aria-live="polite">Solicitação enviada. Aguardando o runner…</div>
-        <ol class="historico-progresso" id="processamento-historico"></ol>
+        <div class="processamento-msg" id="processamento-msg" aria-live="polite">Solicitação enviada…</div>
       </div>
       <div class="alerta hidden" id="processamento-erro" role="alert"></div>
       <div class="cartao correcao-lacre hidden" id="correcao-lacre" aria-live="polite">
@@ -535,7 +573,7 @@ button, input { font: inherit; color: inherit; }
     </div>
   </section>
 
-  <!-- Pedido não cabe inteiro nos compartimentos informados: inconsistência registrada para o faturamento -->
+  <!-- Pedido não cabe inteiro nos compartimentos do cadastro: inconsistência registrada para o faturamento -->
   <section class="tela" id="tela-inconsistencia">
     <div class="resultado">
       <div class="selo atencao"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 6.5v7"/><path d="M12 17.5h.01"/></svg></div>
@@ -543,10 +581,7 @@ button, input { font: inherit; color: inherit; }
       <div class="sub" id="inconsistencia-texto"></div>
       <div class="cartao" style="max-width:600px;margin:0 auto;text-align:left"><div class="dados" id="inconsistencia-dados"></div></div>
       <div class="nota" id="inconsistencia-registro" style="margin-top:12px"></div>
-      <div class="acoes">
-        <button class="btn btn-secundario" type="button" onclick="mostrarTela('configuracao')">Corrigir compartimentos</button>
-        <button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button>
-      </div>
+      <div class="acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button></div>
     </div>
   </section>
 
@@ -586,11 +621,11 @@ button, input { font: inherit; color: inherit; }
 /* ════════════════════════════════════════════════════════════════════
    Quiosque de autoatendimento (tablet no guichê da base).
    O motorista se identifica com protocolo + CPF + placa; se os três batem com um agendamento
-   de hoje desta base, ele confere os dados e o sistema procura a configuração pelo perfil SAP da
-   placa (perfisCompartimento/<perfilChave>). Sem perfil importado, usa a configuração salva em
-   compartimentosVeiculo/<placa do tanque> ou pede os compartimentos como fallback
-   e nos próximos check-ins só é confirmada), aloca os pedidos (cada pedido inteiro; se não
-   cabe, registra inconsistência para o faturamento) e informa 3 lacres e o envelope de amostra
+   de hoje desta base, ele confere os dados, inclusive os compartimentos de cada placa do tanque. O motorista
+   não digita compartimentos: vêm do perfil SAP da placa (perfisCompartimento/<perfilChave>, sincronizado do
+   datalake) ou da liberação temporária da equipe Nexta no agendamento (liberacaoCadastro.recurso); sem nenhum
+   dos dois, o motorista é mandado ao guichê para a equipe liberar o cadastro. Depois aloca os pedidos (cada
+   pedido inteiro; se não cabe, registra inconsistência para o faturamento) e informa os lacres do perfil e o envelope de amostra
    de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
    (status "aguardando") com o que o cockpit_transporte.py (nexta_automation/automation/
    autoatendimento) precisa para a Ordem de Frete:
@@ -608,9 +643,8 @@ button, input { font: inherit; color: inherit; }
    ════════════════════════════════════════════════════════════════════ */
 
 const MAX_COMPARTIMENTOS = 12;
-// Tudo no autoatendimento é em litros. Limites por compartimento: barram erro de digitação ("5" pensando em metro
-// cúbico, um zero a mais)
-const CAPACIDADE_MIN_LITROS = 500;
+const MAX_LACRES_POR_COMPARTIMENTO = 10;
+// Tudo no autoatendimento é em litros. Acima disso, o cadastro do compartimento está errado
 const CAPACIDADE_MAX_LITROS = 50000;
 const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
 const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
@@ -621,23 +655,35 @@ const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base e
 // Limites de cockpit_transporte.py (normalizar_*): lacre até 15 dígitos, envelope até 20, motorista até 10,
 // ordem de venda até 20 e produto até 18
 const LIMITES = { lacre: 15, envelope: 20, motorista: 10, ordem: 20, produto: 18 };
-const CAMPOS_COMP = [['lacre1', 'Lacre 1', LIMITES.lacre], ['lacre2', 'Lacre 2', LIMITES.lacre], ['lacre3', 'Lacre 3', LIMITES.lacre], ['envelope', 'Envelope de amostra', LIMITES.envelope, 'Envelope']];
+const CAMPO_ENVELOPE = ['envelope', 'Envelope de amostra', LIMITES.envelope];
+const camposDoCompartimento = (comp) => [
+  ...comp.lacres.map((_, i) => [`lacre${i + 1}`, `Lacre ${i + 1}`, LIMITES.lacre]),
+  CAMPO_ENVELOPE,
+];
 const TIPO_CODIGO = (campo) => (campo === 'envelope' ? 'envelope' : 'lacre'); // repetição é conferida dentro do mesmo tipo
+const indiceDoLacre = (campo) => Number(String(campo).replace('lacre', '')) - 1;
+const valorDoCampo = (comp, campo) => campo === 'envelope' ? comp.envelope : comp.lacres[indiceDoLacre(campo)];
+function definirCampo(comp, campo, valor) {
+  if (campo === 'envelope') comp.envelope = valor; else comp.lacres[indiceDoLacre(campo)] = valor;
+}
 const TIPOS_FRETE = ['CIF', 'FOB'];
 // Situação do pedido (gravada no agendamento pelo robô do datalake) que o portal marca como "Revisar"
 const SITUACOES_REVISAR = { CANCELADO: 'cancelado', BLOQUEADO: 'bloqueado' };
 const TURNO_LABEL = { madrugada: 'Madrugada', manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
-const ETAPA_DA_TELA = { inicio: 1, agendamento: 2, configuracao: 3, alocacao: 4, lacres: 5, revisao: 6 };
+const ETAPA_DA_TELA = { inicio: 1, agendamento: 2, alocacao: 3, lacres: 4, revisao: 5 };
 
 // terminal = baseId que o tablet atende (do cadastro do quiosque ou escolhido no aparelho)
 const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBusca: 0, msgLogin: '' };
 // Check-in em andamento: agendamento (id, a) e o que veio dele (tipoFrete, motoristaBp, recursoSap, linhas);
-// configuração por placa (configuracoes[], qtd total, caps achatadas, errosCap); alocação e lacres por
-// compartimento (comps[i] = { placa, indicePlaca, linha, lacres, envelope }, erros); alocadoCom = capacidades com que a
-// alocação atual foi respondida; alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 4
+// compartimentos do cadastro por placa (configuracoes[] = { placa, config, fonteConfig, perfil }, qtd total, caps
+// achatadas); alocação e lacres por compartimento (comps[i] = { placa, indicePlaca, linha, lacres, envelope }, erros);
+// alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 3
 let atd = null;
 let _cancelarAcompanhamento = null;
 let _registroProcessamento = null;
+// Barra do faturamento: fase atual, quando ela começou (relógio do tablet), pausa (correção de lacre) e o maior
+// percentual já mostrado (a barra nunca volta)
+let _progresso = null;
 let _urlsDocumentos = [];
 
 /* ── UTILITÁRIOS (mesmos do portal de agendamento) ── */
@@ -685,17 +731,42 @@ function mascararCpf(el) {
 // Na tela do quiosque o CPF aparece só em parte (outras pessoas podem estar olhando)
 function cpfParcial(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.***.***-${d.slice(9)}` : '—'; }
 function placasDe(a) { return [a.placaCavalo, a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean); }
+function chaveRecursoDoAgendamento(a) {
+  return a.recursoChave || placasDe(a).map(placaMercosul).sort().join('+');
+}
+function liberacaoMotoristaValida(a) {
+  const m = a?.liberacaoCadastro?.motorista;
+  return m && m.cpf === a.motoristaCpf && /^\d{1,10}$/.test(String(m.bp || '')) ? m : null;
+}
+function liberacaoRecursoValida(a) {
+  const r = a?.liberacaoCadastro?.recurso;
+  return r && r.chave === chaveRecursoDoAgendamento(a) && String(r.id || '').trim() ? r : null;
+}
+function configLiberadaDaPlaca(a, placa) {
+  const recurso = liberacaoRecursoValida(a);
+  const alvo = placaMercosul(normalizarPlaca(placa));
+  return (recurso?.configuracoes || []).find((cfg) => placaMercosul(normalizarPlaca(cfg?.placa)) === alvo) || null;
+}
 // Compartimentos pertencem às carretas; em truck/toco, pertencem ao próprio
 // cavalo. A ordem é a mesma usada em recursoSap e na hierarquia do SAP.
 function placasDoTanque(a) {
   const carretas = [a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean).map(placaMercosul);
   return carretas.length ? carretas : [normalizarPlaca(a.placaCavalo)].filter(Boolean).map(placaMercosul);
 }
-// Configuração salva só vale se estiver inteira (1 a 12 compartimentos com capacidade válida)
+// Configuração salva só vale se estiver inteira. Cadastros antigos, sem a
+// quantidade de lacres do perfil, continuam usando três por compartimento.
 function configValida(cfg) {
   const caps = cfg?.capacidadesLitros;
-  return Array.isArray(caps) && caps.length >= 1 && caps.length <= MAX_COMPARTIMENTOS
-    && caps.every((c) => Number.isInteger(c) && c > 0 && c <= CAPACIDADE_MAX_LITROS) ? cfg : null;
+  const lacres = cfg?.lacresPorCompartimento;
+  const capsValidas = Array.isArray(caps) && caps.length >= 1 && caps.length <= MAX_COMPARTIMENTOS
+    && caps.every((c) => Number.isInteger(c) && c > 0 && c <= CAPACIDADE_MAX_LITROS);
+  const lacresValidos = lacres == null || (Array.isArray(lacres) && lacres.length === caps?.length
+    && lacres.every((qtd) => Number.isInteger(qtd) && qtd >= 0 && qtd <= MAX_LACRES_POR_COMPARTIMENTO));
+  return capsValidas && lacresValidos ? cfg : null;
+}
+function quantidadeLacresDaConfig(cfg, indice) {
+  const qtd = cfg?.lacresPorCompartimento?.[indice];
+  return Number.isInteger(qtd) ? qtd : 3;
 }
 function ehErroPermissao(e) { return e?.code === 'PERMISSION_DENIED' || /permission/i.test(e?.message || ''); }
 function toast(msg, tipo = 'info') {
@@ -752,6 +823,7 @@ function reiniciar() {
   if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
   atd = null;
   _registroProcessamento = null;
+  pararProgresso();
   _urlsDocumentos.forEach((url) => URL.revokeObjectURL(url));
   _urlsDocumentos = [];
   Q.falhasBusca = 0;
@@ -929,7 +1001,7 @@ function mostrarEscolhaTerminal() {
     .sort(([, a], [, b]) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   document.getElementById('lista-terminais').innerHTML = lista.map(([id, b]) => `
     <button type="button" class="opcao-grande${id === Q.terminal ? ' sel' : ''}" aria-pressed="${id === Q.terminal}" onclick="escolherTerminal(${jsArg(id)})">
-      <span>${esc(b.nome)}<small>${b.centro && b.deposito ? `Centro ${esc(b.centro)} · depósito ${esc(b.deposito)}` : ''}</small></span>
+      <span>${esc(b.nome)}<small>${(b.locais ? Object.values(b.locais) : b.centro && b.deposito ? [{ centro: b.centro, deposito: b.deposito }] : []).map((l) => `Centro ${esc(l.centro)} · depósito ${esc(l.deposito)}`).join('; ')}</small></span>
       ${id === Q.terminal ? '<span class="tag">Atual</span>' : ''}
     </button>`).join('');
   mostrarAlerta('alerta-terminal', lista.length ? '' : 'Nenhum terminal encontrado. Confira a conexão do tablet e o cadastro de bases no portal de agendamento.');
@@ -1008,7 +1080,6 @@ async function onSessaoFirebase(user) {
 }
 
 /* ── ETAPA 1: IDENTIFICAÇÃO ── */
-const DICA_PROTOCOLO = 'Está no comprovante. Pode digitar só o número, sem os zeros (ex.: 78 para AG-000078).';
 // Com ou sem os zeros da frente: 78, 000078 e 00000078 viram AG-000078
 function protocoloDoTexto(v) {
   const digitos = soDigitos(v).replace(/^0+(?=\d)/, '');
@@ -1018,7 +1089,7 @@ function protocoloDoTexto(v) {
 function digitarProtocolo(el) {
   el.value = soDigitos(el.value);
   const protocolo = protocoloDoTexto(el.value);
-  document.getElementById('dica-protocolo').innerHTML = protocolo ? `Protocolo <b class="mono">${protocolo}</b>` : DICA_PROTOCOLO;
+  document.getElementById('dica-protocolo').innerHTML = protocolo ? `Protocolo <b class="mono">${protocolo}</b>` : '';
 }
 function lerIdentificacao() {
   return {
@@ -1070,7 +1141,7 @@ async function buscarAgendamento() {
   }
 }
 
-// Só segue para os compartimentos o agendamento que o cockpit consegue faturar sem ajuda do guichê.
+// Só segue para a conferência o agendamento que o cockpit consegue faturar sem ajuda do guichê.
 // Devolve { aviso } (o motorista procura o guichê) ou { atd } (dados do check-in)
 async function prepararAtendimento(id, a) {
   const prot = a.protocolo;
@@ -1091,12 +1162,10 @@ async function prepararAtendimento(id, a) {
 
   // Consulta sempre o recurso atual: além de validar provisórios, ele traz o perfil de cada placa do datalake.
   const placasTanque = placasDoTanque(a);
-  const [checkin, cadMotorista, recurso, configsSalvas] = await Promise.all([
+  const [checkin, cadMotorista, recurso] = await Promise.all([
     window._fb.carregarCheckin(a.protocolo),
     a.motoristaBp ? null : window._fb.carregarMotorista(a.motoristaCpf).catch(() => null),
     !a.recursoChave ? null : window._fb.carregarRecurso(a.recursoChave).catch(() => null),
-    Promise.all(placasTanque.map((placa) =>
-      window._fb.carregarConfigVeiculo(placa).catch(() => null))),
   ]);
   const perfisPlacas = placasTanque.map((placa) => perfilDaPlaca(recurso, placa, placasTanque.length));
   const configsPerfis = await Promise.all(perfisPlacas.map((perfil) =>
@@ -1119,11 +1188,11 @@ async function prepararAtendimento(id, a) {
   if (fretes.length !== 1 || !TIPOS_FRETE.includes(fretes[0])) {
     return guiche('Atendimento no guichê', `O carregamento do agendamento ${prot} precisa ser conferido no guichê (tipo de frete).`);
   }
-  const motoristaBp = String(a.motoristaBp || cadMotorista?.bp || '').trim();
+  const motoristaBp = String(a.motoristaBp || cadMotorista?.bp || liberacaoMotoristaValida(a)?.bp || '').trim();
   if (!new RegExp(`^\\d{1,${LIMITES.motorista}}$`).test(motoristaBp)) {
     return guiche('Cadastro do motorista em validação', 'Seu cadastro de motorista ainda não foi liberado no sistema. Procure o guichê.');
   }
-  const recursoSap = String(a.recursoSap || recurso?.id || '');
+  const recursoSap = String(a.recursoSap || recurso?.id || liberacaoRecursoValida(a)?.id || '');
   if (!recursoSap) return guiche('Cadastro do veículo em validação', 'O cadastro deste veículo ainda não foi liberado no sistema. Procure o guichê.');
 
   // Uma linha por pedido + produto: é a "Ordem original" + "Produto" que o cockpit aloca nos compartimentos
@@ -1138,34 +1207,33 @@ async function prepararAtendimento(id, a) {
   if (!linhas.length || linhas.some(foraDoPadrao)) {
     return guiche('Atendimento no guichê', `Os pedidos do agendamento ${prot} precisam ser conferidos no guichê.`);
   }
+  // Compartimentos só do cadastro: perfil SAP da placa (datalake) ou, enquanto ele não chega, a liberação da
+  // equipe Nexta no agendamento. O motorista não informa compartimentos: sem cadastro, o guichê libera
   const configuracoes = placasTanque.map((placa, i) => {
     const configPerfil = configValida(configsPerfis[i]);
-    const configSalva = configPerfil || configValida(configsSalvas[i]);
-    const caps = Array(MAX_COMPARTIMENTOS).fill('');
-    (configSalva?.capacidadesLitros || []).forEach((capacidade, indice) => {
-      caps[indice] = String(capacidade);
-    });
-    return {
-      placa,
-      configSalva,
-      fonteConfig: configPerfil ? 'perfil_sap' : configSalva ? 'placa_salva' : 'informada',
-      perfil: perfisPlacas[i]?.perfil || '',
-      qtd: configSalva?.capacidadesLitros.length || 0,
-      caps,
-    };
+    const config = configPerfil || configValida(configLiberadaDaPlaca(a, placa));
+    return config && { placa, config, fonteConfig: configPerfil ? 'perfil_sap' : 'liberacao_manual', perfil: perfisPlacas[i]?.perfil || '' };
   });
-  const referencias = configuracoes.flatMap((config) =>
-    Array.from({ length: config.qtd }, (_, i) => ({
-      placa: config.placa,
+  const semCadastro = placasTanque.filter((_, i) => !configuracoes[i]);
+  if (semCadastro.length) {
+    return guiche('Compartimentos sem cadastro', `Os compartimentos da placa ${semCadastro.join(' e ')} ainda não estão cadastrados no sistema. Procure o guichê para a equipe Nexta liberar o cadastro.`);
+  }
+  const referencias = configuracoes.flatMap(({ placa, config }) =>
+    config.capacidadesLitros.map((capacidade, i) => ({
+      placa,
       indicePlaca: i + 1,
-      capacidade: config.caps[i],
+      capacidade,
+      quantidadeLacres: quantidadeLacresDaConfig(config, i),
     })));
+  if (referencias.length > MAX_COMPARTIMENTOS) {
+    return guiche('Atendimento no guichê', `O veículo tem ${referencias.length} compartimentos e o autoatendimento aceita até ${MAX_COMPARTIMENTOS}. Procure o guichê.`);
+  }
   return { atd: {
     id, a, tipoFrete: fretes[0], motoristaBp, recursoSap, linhas,
     configuracoes,
-    qtd: referencias.length, caps: referencias.map((ref) => ref.capacidade), errosCap: {}, alocadoCom: '',
+    qtd: referencias.length, caps: referencias.map((ref) => ref.capacidade),
     // linha: null = compartimento ainda sem resposta, '' = vazio, "<pedido>|<produto>" = linha alocada nele
-    comps: referencias.map((ref) => ({ placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' })),
+    comps: referencias.map((ref) => ({ placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacres: Array(ref.quantidadeLacres).fill(''), envelope: '' })),
     alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false,
     erros: {}, // lacres: "<índice>.<campo>" → mensagem
   } };
@@ -1190,170 +1258,41 @@ function renderAgendamento() {
   ].join('');
   document.getElementById('agendamento-produtos').innerHTML = atd.linhas.map((l) => `
     <div class="produto-linha">
-      <div><div class="produto-nome">${esc(l.descricao)}</div><div class="produto-meta">Pedido ${esc(l.ordemVenda)}${l.clienteNome ? ' · ' + esc(l.clienteNome) : ''}</div></div>
+      <div><div class="produto-nome">${esc(l.descricao)}</div><div class="produto-meta">${esc(textoPedido(l))}</div></div>
       <div class="produto-vol">${formatVolume(l.volume)}</div>
     </div>`).join('');
+  // CT 01 recomeça em cada placa (hierarquia do SAP); compartimento errado é "Dados errados" (guichê)
+  document.getElementById('agendamento-compartimentos').innerHTML = atd.configuracoes.map(({ placa, config }) => {
+    const caps = config.capacidadesLitros;
+    return `<div class="produto-linha">
+      <div><div class="produto-nome mono">${esc(placa)}</div><div class="produto-meta">${caps.length} compartimento${caps.length === 1 ? '' : 's'}: ${caps.map((c) => c.toLocaleString('pt-BR')).join(' + ')} L</div></div>
+      <div class="produto-vol">${formatVolume(somar(caps))}</div>
+    </div>`;
+  }).join('');
 }
-// Cada placa de tanque é configurada separadamente porque CT 01, CT 02 etc.
-// recomeçam em cada carreta na hierarquia do SAP.
-function irParaConfiguracao() {
-  mostrarAlerta('alerta-config', '');
-  renderConfiguracao();
-  mostrarTela('configuracao');
-}
-
-/* ── ETAPA 3: CONFIGURAÇÃO POR PLACA ── */
 function somar(valores) { return valores.reduce((s, v) => s + v, 0); }
-// Litros digitados ("5000" ou "5.000") → número; null se vazio ou fora dos limites
-function litrosDoTexto(txt) {
-  const n = Number(soDigitos(txt));
-  return n >= CAPACIDADE_MIN_LITROS && n <= CAPACIDADE_MAX_LITROS ? n : null;
-}
 // Capacidade do compartimento com o que vai nele: "5.000 L" se enche, "3.000 L de 5.000 L" se sobra espaço
 function textoOcupacao(previsto, capacidade) {
   return previsto === capacidade ? formatVolume(capacidade) : `${formatVolume(previsto)} de ${formatVolume(capacidade)}`;
-}
-function sincronizarCompartimentos() {
-  const anteriores = new Map((atd.comps || []).map((c) => [`${c.placa}|${c.indicePlaca}`, c]));
-  const referencias = atd.configuracoes.flatMap((config) =>
-    Array.from({ length: config.qtd }, (_, i) => ({
-      placa: config.placa,
-      indicePlaca: i + 1,
-      capacidade: config.caps[i],
-    })));
-  atd.qtd = referencias.length;
-  atd.caps = referencias.map((ref) => ref.capacidade);
-  atd.comps = referencias.map((ref) => {
-    const anterior = anteriores.get(`${ref.placa}|${ref.indicePlaca}`);
-    return anterior || { placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacre1: '', lacre2: '', lacre3: '', envelope: '' };
-  });
 }
 function referenciaCompartimento(i) {
   const c = atd.comps[i];
   return c ? `${c.placa} · CT ${pad2(c.indicePlaca)}` : `Compartimento ${i + 1}`;
 }
-function capacidades() { return atd.caps.slice(0, atd.qtd).map(litrosDoTexto); }
-function configIgualSalva(config) {
-  const salva = config.configSalva?.capacidadesLitros;
-  const caps = config.caps.slice(0, config.qtd).map(litrosDoTexto);
-  return !!salva && salva.length === caps.length && salva.every((c, i) => c === caps[i]);
-}
-function renderConfiguracao() {
-  document.getElementById('configuracoes-placas').innerHTML = atd.configuracoes.map((config, p) => {
-    const salva = config.configSalva;
-    const automatica = config.fonteConfig === 'perfil_sap';
-    const meta = automatica
-      ? `Perfil ${config.perfil} do SAP aplicado automaticamente.`
-      : salva
-      ? `Configuração salva${salva.atualizadoEm ? ` em ${formatDataBR(dataLocalISO(new Date(salva.atualizadoEm)))}` : ''}. Confira antes de continuar.`
-      : 'Primeiro check-in desta placa: a configuração será salva.';
-    const opcoes = Array.from({ length: MAX_COMPARTIMENTOS }, (_, k) => k + 1).map((n) =>
-      `<button type="button" class="qtd-opcao${config.qtd === n ? ' sel' : ''}" aria-pressed="${config.qtd === n}" onclick="escolherQtdPlaca(${p}, ${n})"${automatica ? ' disabled' : ''}>${n}</button>`).join('');
-    const capacidadesHtml = config.qtd ? `
-      <div class="config-bloco">
-        <div class="capacidades-topo">
-          <div class="produto-nome">Capacidade de cada CT da placa ${esc(config.placa)}</div>
-          <button class="btn-link${!automatica && config.qtd > 1 && litrosDoTexto(config.caps[0]) ? '' : ' hidden'}" type="button" onclick="copiarCapacidadePlaca(${p})">Usar ${formatVolume(litrosDoTexto(config.caps[0]))} em todos</button>
-        </div>
-        <div class="capacidades" id="capacidades-${p}">${Array.from({ length: config.qtd }, (_, i) => campoCapacidade(p, i)).join('')}</div>
-        <div class="total-cap" id="total-cap-${p}"></div>
-      </div>` : '';
-    return `<div class="cartao">
-      <div class="config-placa-topo"><div><div class="cartao-titulo">Tanque / carreta</div><div class="config-placa-id">${esc(config.placa)}</div></div><div class="config-placa-meta">${esc(meta)}</div></div>
-      <div class="config-bloco"><div class="produto-nome" style="margin-bottom:12px">Quantos compartimentos existem nesta placa?</div>
-      <div class="qtd-opcoes" role="group" aria-label="Quantidade de compartimentos da placa ${esc(config.placa)}">${opcoes}</div></div>
-      ${capacidadesHtml}
-    </div>`;
-  }).join('');
-  sincronizarCompartimentos();
-  atualizarTotaisConfiguracao();
-}
-function escolherQtdPlaca(p, n) {
-  atd.configuracoes[p].qtd = n;
-  sincronizarCompartimentos();
-  mostrarAlerta('alerta-config', '');
-  renderConfiguracao();
-  [...document.querySelectorAll(`#capacidades-${p} input`)].find((el) => !el.value)?.focus();
-}
-function campoCapacidade(p, i) {
-  const config = atd.configuracoes[p], chave = `${p}.${i}`, erro = atd.errosCap[chave] || '';
-  const automatica = config.fonteConfig === 'perfil_sap';
-  return `<div class="campo${erro ? ' erro' : ''}" id="cap-${p}-${i}">
-    <label for="in-cap-${p}-${i}">CT ${pad2(i + 1)}</label>
-    <div class="com-sufixo"><input id="in-cap-${p}-${i}" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="5000" enterkeyhint="next" value="${esc(config.caps[i])}" oninput="digitarCapacidade(${p}, ${i}, this)"${automatica ? ' readonly' : ''}><span>L</span></div>
-    <div class="msg-erro">${esc(erro)}</div>
-  </div>`;
-}
-// Só números (o ponto de milhar digitado some); digitar não redesenha a lista, só o total
-function digitarCapacidade(p, i, el) {
-  const v = soDigitos(el.value).slice(0, 5);
-  el.value = v;
-  atd.configuracoes[p].caps[i] = v;
-  sincronizarCompartimentos();
-  const chave = `${p}.${i}`;
-  if (atd.errosCap[chave]) {
-    delete atd.errosCap[chave];
-    document.getElementById(`cap-${p}-${i}`).classList.remove('erro');
-    if (!Object.keys(atd.errosCap).length) mostrarAlerta('alerta-config', '');
-  }
-  atualizarTotaisConfiguracao();
-}
-function copiarCapacidadePlaca(p) {
-  const config = atd.configuracoes[p];
-  for (let i = 1; i < config.qtd; i++) { config.caps[i] = config.caps[0]; delete atd.errosCap[`${p}.${i}`]; }
-  sincronizarCompartimentos();
-  renderConfiguracao();
-}
-function atualizarTotaisConfiguracao() {
-  atd.configuracoes.forEach((config, p) => {
-    const caps = config.caps.slice(0, config.qtd).map(litrosDoTexto);
-    const el = document.getElementById(`total-cap-${p}`);
-    if (el) el.innerHTML = `Total da placa: <strong>${formatVolume(somar(caps.filter(Boolean)))}</strong>`;
-  });
-  const caps = capacidades(), total = somar(caps.filter(Boolean));
-  const cadastrada = Number(atd.a.capacidadeVeiculo) || 0;
-  const completa = caps.length > 0 && caps.every(Boolean);
-  document.getElementById('config-total-conjunto').innerHTML = `Total do conjunto: <strong>${atd.qtd} compartimento${atd.qtd === 1 ? '' : 's'} · ${formatVolume(total)}</strong>`
-    + (cadastrada ? ` · capacidade cadastrada do veículo: <strong>${formatVolume(cadastrada)}</strong>` : '')
-    + (completa && cadastrada && total !== cadastrada ? '<span class="aviso">A soma é diferente da capacidade cadastrada. Confira os valores.</span>' : '');
-}
-function avancarParaAlocacao() {
-  sincronizarCompartimentos();
-  const semQuantidade = atd.configuracoes.filter((config) => !config.qtd).map((config) => config.placa);
-  if (semQuantidade.length) { mostrarAlerta('alerta-config', `Escolha quantos compartimentos existem na placa ${semQuantidade.join(', ')}.`); return; }
-  if (atd.qtd > MAX_COMPARTIMENTOS) { mostrarAlerta('alerta-config', `O conjunto informou ${atd.qtd} compartimentos. O autoatendimento aceita até ${MAX_COMPARTIMENTOS}; procure o guichê.`); return; }
+function capacidades() { return atd.caps.slice(); }
+// Os compartimentos vêm do cadastro: confirmada a conferência, vai direto para a alocação
+function irParaAlocacao() {
   const caps = capacidades();
-  atd.errosCap = {};
-  caps.forEach((c, i) => {
-    if (c) return;
-    const n = Number(soDigitos(atd.caps[i]));
-    const comp = atd.comps[i], p = atd.configuracoes.findIndex((config) => config.placa === comp.placa);
-    atd.errosCap[`${p}.${comp.indicePlaca - 1}`] = !n ? 'Obrigatório' : n > CAPACIDADE_MAX_LITROS ? `Até ${formatVolume(CAPACIDADE_MAX_LITROS)}` : `Mínimo ${formatVolume(CAPACIDADE_MIN_LITROS)}`;
-  });
-  const invalidas = Object.keys(atd.errosCap).length;
-  if (invalidas) {
-    renderConfiguracao();
-    mostrarAlerta('alerta-config', invalidas === 1 ? 'Informe a capacidade do compartimento marcado em vermelho.' : `Informe a capacidade dos ${invalidas} compartimentos marcados em vermelho.`);
-    return;
-  }
-  mostrarAlerta('alerta-config', '');
   // O pedido vai inteiro: se nenhuma divisão cabe, é inconsistência (o faturamento resolve)
   const vols = atd.linhas.map((l) => l.volume);
   const totalPedidos = somar(vols), totalCaps = somar(caps);
   let motivo = '';
   if (totalCaps < totalPedidos) {
-    motivo = `Os pedidos somam ${formatVolume(totalPedidos)}, mas os ${caps.length} compartimentos informados somam ${formatVolume(totalCaps)}.`;
+    motivo = `Os pedidos somam ${formatVolume(totalPedidos)}, mas os ${caps.length} compartimentos do veículo somam ${formatVolume(totalCaps)}.`;
   } else if (!planejarAlocacao(caps, vols)) {
-    motivo = `Os pedidos somam ${formatVolume(totalPedidos)} e não há como dividi-los inteiros nos ${caps.length} compartimentos informados (cada compartimento leva um só produto).`;
+    motivo = `Os pedidos somam ${formatVolume(totalPedidos)} e não há como dividi-los inteiros nos ${caps.length} compartimentos do veículo (cada compartimento leva um só produto).`;
   }
   if (motivo) { registrarInconsistencia(motivo, caps); return; }
-  // Configuração mudou desde a última alocação: as respostas antigas não valem mais, pergunta tudo de novo
-  const assinatura = atd.comps.map((c, i) => `${c.placa}:${c.indicePlaca}:${caps[i]}`).join('|');
-  if (atd.alocadoCom !== assinatura) {
-    atd.comps.forEach((c) => { c.linha = null; });
-    atd.alocadoCom = assinatura;
-    atd.alocNota = '';
-  }
   if (document.activeElement) document.activeElement.blur();
   const pendentes = semResposta();
   atd.alocModo = pendentes.length ? 'pergunta' : 'resumo';
@@ -1363,12 +1302,12 @@ function avancarParaAlocacao() {
   mostrarTela('alocacao');
 }
 
-/* ── ETAPA 4: ALOCAÇÃO DOS PEDIDOS — um compartimento por vez, depois o resumo ── */
+/* ── ETAPA 3: ALOCAÇÃO DOS PEDIDOS — um compartimento por vez, depois o resumo ── */
 // Divisão em que cada linha (pedido + produto) cabe inteira, cada compartimento leva uma linha só e nenhum
 // compartimento sobra (tirar qualquer um deixaria a linha sem caber). Entre as possíveis, a de menos espaço
 // vazio e, empatado, menos compartimentos. Programação dinâmica sobre os subconjuntos de compartimentos
 // (até 12 = 4096). Devolve, por linha, os índices (0…) dos compartimentos, ou null se não há divisão.
-// Usada na configuração para saber se os pedidos cabem (senão, inconsistência)
+// Usada antes da alocação para saber se os pedidos cabem (senão, inconsistência)
 function planejarAlocacao(caps, vols) {
   const n = caps.length, todos = (1 << n) - 1;
   const soma = new Array(todos + 1).fill(0), menor = new Array(todos + 1).fill(Infinity), qtd = new Array(todos + 1).fill(0);
@@ -1464,9 +1403,11 @@ function faltaPorLinha(exceto = -1) {
   for (let i = 0; i < atd.qtd; i++) if (i !== exceto && atd.comps[i].linha) falta[atd.comps[i].linha] -= caps[i];
   return falta;
 }
-// Nome do produto para o motorista; o número do pedido só entra quando o mesmo produto vem em mais de um pedido
+// "Pedido 920124 · Cliente": com clientes diferentes no caminhão, o nome ajuda a separar os pedidos
+function textoPedido(l) { return `Pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''}`; }
+// Nome do produto para o motorista, sempre com o pedido e o cliente
 function nomeLinha(l) {
-  return atd.linhas.filter((o) => o.descricao === l.descricao).length > 1 ? `${l.descricao} (pedido ${l.ordemVenda})` : l.descricao;
+  return `${l.descricao} (pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''})`;
 }
 // O que impede seguir para os lacres, em frases para o motorista (vazio = tudo certo)
 function problemasAlocacao() {
@@ -1490,7 +1431,11 @@ function nomeCurto(l) {
 // Pergunta (um compartimento por vez) ou resumo (todos respondidos)
 function renderAlocacao() {
   const resumo = atd.alocModo === 'resumo';
-  document.getElementById('alocacao-sub').textContent = resumo
+  // Depois da 1ª resposta, a confirmação dela fica no lugar da instrução (a tela muda pouco de um compartimento para o outro)
+  const confirmado = resumo ? '' : htmlConfirmado();
+  const sub = document.getElementById('alocacao-sub');
+  if (confirmado) sub.innerHTML = confirmado;
+  else sub.textContent = resumo
     ? 'Confira. Se algo estiver errado, toque em "Começar alocação de novo".'
     : 'Toque no produto que vai em cada compartimento.';
   document.getElementById('alocacao-conteudo').innerHTML = resumo ? htmlResumoAlocacao() : htmlPerguntaAlocacao();
@@ -1501,7 +1446,8 @@ function htmlTanque() {
   const caps = capacidades();
   return atd.configuracoes.map((config) => {
     const indices = atd.comps.map((c, i) => c.placa === config.placa ? i : -1).filter((i) => i >= 0);
-    return `<div class="tanque-grupo"><div class="tanque-placa">${esc(config.placa)}</div><div class="tanque" aria-hidden="true">${indices.map((i) => {
+    const total = somar(indices.map((i) => caps[i]));
+    return `<div class="tanque-grupo"><div class="tanque-placa">${esc(config.placa)}<span class="tanque-total">${indices.length} CT · ${formatVolume(total)}</span></div><div class="tanque" aria-hidden="true">${indices.map((i) => {
       const c = atd.comps[i], l = c.linha ? linhaDaChave(c.linha) : null;
       const [classe, rotulo] = i === atd.alocAtual ? ['atual', 'agora']
         : c.linha === null ? ['', '—'] : l ? ['cheio ' + corDaLinha(c.linha), nomeCurto(l)] : ['vazio', 'vazio'];
@@ -1509,33 +1455,33 @@ function htmlTanque() {
     }).join('')}</div></div>`;
   }).join('');
 }
+// Confirma a resposta que acabou de ser dada
+function htmlConfirmado() {
+  const u = atd.alocUltima;
+  if (u === null || u === atd.alocAtual || atd.comps[u].linha === null) return '';
+  const l = atd.comps[u].linha ? linhaDaChave(atd.comps[u].linha) : null;
+  return `<span class="confirmado" role="status">✓ ${esc(referenciaCompartimento(u))}: ${l ? `${esc(nomeLinha(l))} · ${formatVolume(volumesPrevistos()[u])}` : 'vazio'}</span>`;
+}
 function htmlPerguntaAlocacao() {
   const i = atd.alocAtual, caps = capacidades(), atual = atd.comps[i].linha;
   const falta = faltaPorLinha(i);
-  const opcao = (chave, titulo, detalhe) => `
+  // Nome do produto e quanto falta dele na 1ª linha; pedido e cliente na 2ª
+  const opcao = (chave, titulo, detalhe, resto = '') => `
     <button type="button" class="opcao-grande${atual === chave ? ' sel' : ''}${chave ? ' ' + corDaLinha(chave) : ' opcao-vazio'}" aria-pressed="${atual === chave}" onclick="escolherProduto(${i}, ${jsArg(chave)}, this)">
-      <span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}<small>${esc(detalhe)}</small></span>
+      <span class="opcao-texto"><span class="opcao-titulo"><span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}</span>${resto ? `<span class="opcao-falta">${esc(resto)}</span>` : ''}</span><small>${esc(detalhe)}</small></span>
     </button>`;
   // Só os produtos que ainda faltam: o que já coube inteiro nos outros compartimentos sai da lista
   const opcoes = atd.linhas.filter((l) => falta[l.chave] > 0)
-    .map((l) => opcao(l.chave, l.descricao, `Pedido ${l.ordemVenda} · faltam ${formatVolume(falta[l.chave])}`));
-  // Confirma a resposta que acabou de ser dada (a tela muda pouco de um compartimento para o outro)
-  let confirmado = '';
-  const u = atd.alocUltima;
-  if (u !== null && u !== i && atd.comps[u].linha !== null) {
-    const l = atd.comps[u].linha ? linhaDaChave(atd.comps[u].linha) : null;
-    confirmado = `<div class="confirmado" role="status">✓ ${esc(referenciaCompartimento(u))}: ${l ? `${esc(nomeLinha(l))} · ${formatVolume(volumesPrevistos()[u])}` : 'vazio'}</div>`;
-  }
+    .map((l) => opcao(l.chave, l.descricao, textoPedido(l), `faltam ${formatVolume(falta[l.chave])}`));
   const algumaResposta = atd.comps.slice(0, atd.qtd).some((c) => c.linha !== null);
   return `
     ${htmlTanque()}
-    ${confirmado}
     <div class="cartao pergunta-card${atd.alocAnimar ? ' entrando' : ''}">
       <div class="pergunta-topo">
         <div class="pergunta-titulo">${esc(referenciaCompartimento(i))} <span class="de">${i + 1} de ${atd.qtd}</span></div>
         <div class="pergunta-cap">${formatVolume(caps[i])}</div>
       </div>
-      <div class="produto-nome" style="margin-top:8px">Qual produto vai neste compartimento?</div>
+      <div class="pergunta-q">Qual produto vai neste compartimento?</div>
       <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', 'Não vai carregar')}</div>
     </div>
     <div class="acoes">
@@ -1545,21 +1491,28 @@ function htmlPerguntaAlocacao() {
 }
 function htmlResumoAlocacao() {
   const caps = capacidades(), previstos = volumesPrevistos(), problemas = problemasAlocacao();
+  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha === '' ? referenciaCompartimento(i) : '')).filter(Boolean);
+  const textoVazios = vazios.length > 1 ? `${vazios.join(', ')} ficam vazios.` : vazios.length ? `${vazios[0]} fica vazio.` : '';
   const situacao = problemas.length
-    ? `<div class="alerta" id="alerta-alocacao" role="alert">Assim não dá para continuar:<ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>Toque em "Começar alocação de novo".</div>`
-    : `<div class="tudo-certo" id="alerta-alocacao">✓ Tudo certo: todos os produtos couberam.</div>`;
-  const comps = atd.comps.slice(0, atd.qtd).map((c, i) => {
-    const l = c.linha ? linhaDaChave(c.linha) : null;
-    return `<div class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}">
-      <div>
-        <div class="produto-nome">${esc(referenciaCompartimento(i))} <span class="comp-cap">· ${formatVolume(caps[i])}</span></div>
-        <div class="produto-meta">${l ? `<span class="marca"></span>${esc(nomeLinha(l))} · ${formatVolume(previstos[i])}` : 'Vazio'}</div>
-      </div>
-    </div>`;
-  }).join('');
-  return `${atd.alocNota ? `<div class="nota-sugestao">${esc(atd.alocNota)}</div>` : ''}
-    ${situacao}
-    <div class="cartao">${comps}</div>
+    ? `${atd.alocNota ? `<div class="nota-sugestao">${esc(atd.alocNota)}</div>` : ''}<div class="alerta" id="alerta-alocacao" role="alert">Assim não dá para continuar:<ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>Toque em "Começar alocação de novo".</div>`
+    : `<div class="tudo-certo" id="alerta-alocacao">✓ Tudo certo: todos os produtos couberam.${textoVazios ? ` <span class="tudo-certo-nota">${esc(textoVazios)}</span>` : ''}</div>`;
+  // Uma coluna por placa (CT 01 recomeça em cada uma); o volume é o que vai no compartimento
+  const placas = [...new Set(atd.comps.slice(0, atd.qtd).map((c) => c.placa))];
+  const grupos = placas.map((placa) => {
+    const indices = atd.comps.slice(0, atd.qtd).map((c, i) => (c.placa === placa ? i : -1)).filter((i) => i >= 0);
+    const linhas = indices.map((i) => {
+      const c = atd.comps[i], l = c.linha ? linhaDaChave(c.linha) : null;
+      return `<div class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}">
+        <div class="resumo-ct">CT ${pad2(c.indicePlaca)}</div>
+        ${l ? `<div><div class="produto-nome"><span class="marca"></span>${esc(l.descricao)}</div><div class="produto-meta">${esc(textoPedido(l))}</div></div>
+        <div class="produto-vol">${formatVolume(previstos[i])}${previstos[i] < caps[i] ? `<small>de ${formatVolume(caps[i])}</small>` : ''}</div>`
+          : `<div class="produto-nome resumo-vazio">Vazio</div><div class="produto-vol resumo-vazio">—</div>`}
+      </div>`;
+    }).join('');
+    return `<div class="resumo-placa"><div class="tanque-placa">${esc(placa)}<span class="tanque-total">${indices.length} CT · ${formatVolume(somar(indices.map((i) => caps[i])))}</span></div><div class="resumo-lista">${linhas}</div></div>`;
+  });
+  return `${situacao}
+    <div class="cartao resumo-placas${grupos.length === 1 ? ' uma-placa' : ''}">${grupos.join('')}</div>
     <div class="acoes">
       <div class="acoes-direita">
         <button class="btn btn-secundario" type="button" onclick="limparAlocacao()">Começar alocação de novo</button>
@@ -1607,10 +1560,10 @@ function irParaCompartimento(i) {
   renderAlocacao();
   window.scrollTo(0, 0);
 }
-// Voltar (só na pergunta): o compartimento anterior; no 1º, a configuração do caminhão
+// Voltar (só na pergunta): o compartimento anterior; no 1º, a conferência do agendamento
 function voltarAlocacao() {
   if (atd.alocAtual > 0) { irParaCompartimento(atd.alocAtual - 1); return; }
-  mostrarTela('configuracao');
+  mostrarTela('agendamento');
 }
 function limparAlocacao() {
   atd.comps.forEach((c) => { c.linha = null; });
@@ -1630,29 +1583,42 @@ function avancarParaLacres() {
   atd.erros = {};
   mostrarAlerta('alerta-lacres', '');
   renderLacres();
+  modoLacres(false);
   mostrarTela('lacres');
   proximoLacreVazio()?.focus(); // o leitor já pode começar pelo lacre 1 do primeiro compartimento
 }
 
-/* ── ETAPA 5: LACRES E ENVELOPES ── */
-// Tabela com uma linha por compartimento carregado. O leitor de código de barras preenche primeiro os lacres
-// (1, 2, 3 de cada compartimento, linha a linha) e depois os envelopes, de cima para baixo (camposNaOrdemDeLeitura)
+/* ── ETAPA 4: LACRES E ENVELOPES ── */
+// Uma linha por compartimento carregado. Cada perfil define quantos lacres a
+// linha possui; o envelope continua sendo lido por último.
+// Lacre N sempre na coluna N e o envelope na última (perfis diferentes podem ter quantidades diferentes de lacres):
+// os nomes dos campos ficam num cabeçalho só, na etapa de lacres e na revisão
+function colunasDosCodigos(usados) {
+  const colunas = Math.max(0, ...usados.map(({ c }) => c.lacres.length)) + 1;
+  const rotulos = Array.from({ length: colunas - 1 }, (_, k) => `Lacre ${k + 1}`).concat(CAMPO_ENVELOPE[1]);
+  return {
+    colunas,
+    coluna: (campo) => (campo === 'envelope' ? colunas : indiceDoLacre(campo) + 1),
+    cabecalho: `<div class="tl-cabecalho" aria-hidden="true"><div>Compartimento</div><div class="tl-codigos" style="--colunas:${colunas}">${rotulos.map((r) => `<div>${esc(r)}</div>`).join('')}</div></div>`,
+  };
+}
 function renderLacres() {
-  const caps = capacidades(), previstos = volumesPrevistos();
-  const cabecalho = `<div class="tl-linha tl-cab" aria-hidden="true"><span>Compartimento</span>${CAMPOS_COMP.map(([, rotulo, , curto]) => `<span>${esc(curto || rotulo)}</span>`).join('')}</div>`;
-  document.getElementById('lista-lacres').innerHTML = cabecalho + compartimentosUsados().map(({ indicePlaca, placa, i, c }) => `
+  const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
+  const { colunas, coluna, cabecalho } = colunasDosCodigos(usados);
+  document.getElementById('lista-lacres').innerHTML = cabecalho
+    + usados.map(({ indicePlaca, placa, i, c }) => `
     <div class="tl-linha">
       <div class="tl-comp">
         <span class="tl-n">${pad2(indicePlaca)}</span>
         <div><div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}</div><div class="tl-vol">${esc(nomeCurto(linhaDaChave(c.linha)))} · ${textoOcupacao(previstos[i], caps[i])}</div></div>
       </div>
-      ${CAMPOS_COMP.map(([campo, rotulo]) => campoLacre(i, `${placa} · CT ${pad2(indicePlaca)}`, campo, rotulo)).join('')}
+      <div class="tl-codigos" style="--colunas:${colunas}">${camposDoCompartimento(c).map(([campo, rotulo]) => campoLacre(i, `${placa} · CT ${pad2(indicePlaca)}`, campo, rotulo, coluna(campo))).join('')}</div>
     </div>`).join('');
   atualizarProgressoLacres();
 }
-function campoLacre(i, indice, campo, rotulo) {
-  const erro = atd.erros[`${i}.${campo}`] || '', valor = atd.comps[i][campo];
-  return `<div class="campo tl-campo${erro ? ' erro' : ''}${valor ? ' lido' : ''}" id="cc-${i}-${campo}">
+function campoLacre(i, indice, campo, rotulo, coluna) {
+  const erro = atd.erros[`${i}.${campo}`] || '', valor = valorDoCampo(atd.comps[i], campo);
+  return `<div class="campo tl-campo${erro ? ' erro' : ''}${valor ? ' lido' : ''}" id="cc-${i}-${campo}" style="--coluna:${coluna}">
     <label class="tl-rot" for="in-${i}-${campo}">${esc(rotulo)}</label>
     <input id="in-${i}-${campo}" data-i="${i}" data-campo="${campo}" aria-label="Compartimento ${indice}, ${esc(rotulo.toLowerCase())}" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="40" enterkeyhint="next" value="${esc(valor)}" onfocus="this.select()" onclick="this.select()" oninput="digitarLacre(this)" onchange="conferirLacre(this)">
     <div class="msg-erro">${esc(erro)}</div>
@@ -1666,24 +1632,24 @@ function digitarLacre(el) {
   let valor = el.value.replace(/\s/g, '');
   if (TIPO_CODIGO(campo) === 'lacre') valor = valor.replace(/^0+(?=\d)/, '');
   if (el.value !== valor) el.value = valor;
-  atd.comps[i][campo] = valor;
+  definirCampo(atd.comps[i], campo, valor);
   marcarErroLacre(i, campo, '');
   atualizarProgressoLacres();
 }
 function marcarErroLacre(i, campo, msg) {
   if (msg) atd.erros[`${i}.${campo}`] = msg; else delete atd.erros[`${i}.${campo}`];
   marcarErro(`cc-${i}-${campo}`, msg);
-  document.getElementById(`cc-${i}-${campo}`).classList.toggle('lido', !!atd.comps[i][campo]);
+  document.getElementById(`cc-${i}-${campo}`).classList.toggle('lido', !!valorDoCampo(atd.comps[i], campo));
 }
 // Problema de um código já lido, comparado com todos os outros campos (vazio só é cobrado ao continuar)
 function erroDoLacre(i, campo) {
-  const v = atd.comps[i][campo], max = CAMPOS_COMP.find(([c]) => c === campo)[2];
+  const v = valorDoCampo(atd.comps[i], campo), max = campo === 'envelope' ? LIMITES.envelope : LIMITES.lacre;
   if (!v) return '';
   if (!/^\d+$/.test(v)) return 'Só números';
   if (v.length > max) return `Até ${max} números`;
   for (const u of compartimentosUsados()) {
-    for (const [outro, rotulo] of CAMPOS_COMP) {
-      if ((u.i !== i || outro !== campo) && TIPO_CODIGO(outro) === TIPO_CODIGO(campo) && u.c[outro] === v) {
+    for (const [outro, rotulo] of camposDoCompartimento(u.c)) {
+      if ((u.i !== i || outro !== campo) && TIPO_CODIGO(outro) === TIPO_CODIGO(campo) && valorDoCampo(u.c, outro) === v) {
         return `Repetido (${u.placa} · CT ${pad2(u.indicePlaca)}, ${rotulo.toLowerCase()})`;
       }
     }
@@ -1714,7 +1680,7 @@ function enterNoLacre(el) {
   if (!el.value) return;
   if (!conferirLacre(el)) { el.select(); sinalDeErro(); return; }
   const proximo = proximoLacreVazio(el);
-  if (proximo) proximo.focus(); else avancarParaRevisao();
+  if (proximo) proximo.focus(); else concluirLeituraLacres();
 }
 // Campos na ordem do leitor: todos os lacres (linha a linha) e só depois todos os envelopes
 function camposNaOrdemDeLeitura() {
@@ -1730,8 +1696,8 @@ function proximoLacreVazio(atual = null) {
 }
 function atualizarProgressoLacres() {
   const usados = compartimentosUsados();
-  const total = usados.length * CAMPOS_COMP.length;
-  const lidos = usados.reduce((n, { c }) => n + CAMPOS_COMP.filter(([campo]) => c[campo]).length, 0);
+  const total = usados.reduce((n, { c }) => n + camposDoCompartimento(c).length, 0);
+  const lidos = usados.reduce((n, { c }) => n + camposDoCompartimento(c).filter(([campo]) => valorDoCampo(c, campo)).length, 0);
   const el = document.getElementById('lacres-progresso');
   el.textContent = lidos === total ? `✓ Todos os ${total} códigos lidos` : `${lidos} de ${total} códigos lidos`;
   el.classList.toggle('completo', lidos === total);
@@ -1751,14 +1717,14 @@ function sinalDeErro() {
   } catch (e) { /* aparelho sem som: o campo em vermelho já avisa */ }
   navigator.vibrate?.(200);
 }
-// Mesmas regras do cockpit: todo compartimento carregado tem os 3 lacres e o envelope, e lacres e envelopes
+// Mesmas regras do cockpit: todo compartimento carregado tem os lacres definidos pelo perfil e o envelope; os códigos
 // não se repetem no carregamento (validar_unicidade_dados_compartimentos)
 function validarLacres() {
   const erros = {};
   const vistos = { lacre: new Map(), envelope: new Map() };
   for (const { indicePlaca, placa, i, c } of compartimentosUsados()) {
-    for (const [campo, rotulo, max] of CAMPOS_COMP) {
-      const v = c[campo];
+    for (const [campo, rotulo, max] of camposDoCompartimento(c)) {
+      const v = valorDoCampo(c, campo);
       const tipo = TIPO_CODIGO(campo);
       if (!v) erros[`${i}.${campo}`] = 'Obrigatório';
       else if (!/^\d+$/.test(v)) erros[`${i}.${campo}`] = 'Só números';
@@ -1769,7 +1735,12 @@ function validarLacres() {
   }
   return erros;
 }
-function avancarParaRevisao() {
+// A etapa 4 tem dois momentos, como a alocação: a leitura dos códigos e, com todos lidos, a conferência deles
+function modoLacres(conferencia) {
+  document.getElementById('lacres-leitura').classList.toggle('hidden', conferencia);
+  document.getElementById('lacres-conferencia').classList.toggle('hidden', !conferencia);
+}
+function concluirLeituraLacres() {
   atd.erros = validarLacres();
   renderLacres();
   if (atualizarAlertaLacres()) {
@@ -1779,36 +1750,59 @@ function avancarParaRevisao() {
     return;
   }
   if (document.activeElement) document.activeElement.blur();
-  renderRevisao();
-  mostrarTela('revisao');
+  renderConferenciaLacres();
+  modoLacres(true);
+  window.scrollTo(0, 0);
+}
+function corrigirLacres() {
+  modoLacres(false);
+  window.scrollTo(0, 0);
+}
+// Os códigos lidos, para conferir com o veículo (o produto de cada compartimento já foi confirmado na alocação)
+function renderConferenciaLacres() {
+  const usados = compartimentosUsados();
+  const { colunas, coluna, cabecalho } = colunasDosCodigos(usados);
+  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : referenciaCompartimento(i))).filter(Boolean);
+  document.getElementById('lacres-lidos').innerHTML = cabecalho
+    + usados.map(({ indicePlaca, placa, c }) => `
+    <div class="tl-linha rev-linha">
+      <div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}</div>
+      <div class="tl-codigos" style="--colunas:${colunas}">${camposDoCompartimento(c).map(([campo, rotulo]) => `
+        <div class="rev-codigo" style="--coluna:${coluna(campo)}"><span class="tl-rot">${esc(rotulo)}</span>${esc(valorDoCampo(c, campo))}</div>`).join('')}</div>
+    </div>`).join('')
+    + (vazios.length ? `<div class="nota rev-vazios">Vazio${vazios.length > 1 ? 's' : ''} (sem lacres): ${vazios.map(esc).join(', ')}.</div>` : '');
 }
 
-/* ── ETAPA 6: REVISÃO E ENVIO ── */
-function renderRevisao() {
-  const { a } = atd;
-  const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
-  document.getElementById('revisao-dados').innerHTML = [
-    dado('Protocolo', a.protocolo, true),
-    dado('Motorista', a.motorista),
+/* ── ETAPA 5: CONFIRMAÇÃO E ENVIO ── */
+// Agendamento, alocação e lacres já foram conferidos: aqui só o resumo do carregamento
+function irParaConfirmacao() {
+  renderConfirmacao();
+  mostrarTela('revisao');
+}
+// Um cliente por linha, com os pedidos dele e o volume total (na ordem dos pedidos)
+function clientesDeEntrega() {
+  const grupos = new Map();
+  for (const l of atd.linhas) {
+    const chave = l.clienteCodigo || l.clienteNome || 'pedido ' + l.ordemVenda;
+    const g = grupos.get(chave) || { nome: l.clienteNome || 'Cliente não informado', pedidos: [], volume: 0 };
+    if (!g.pedidos.includes(l.ordemVenda)) g.pedidos.push(l.ordemVenda);
+    g.volume += l.volume;
+    grupos.set(chave, g);
+  }
+  return [...grupos.values()];
+}
+function renderConfirmacao() {
+  const { a } = atd, clientes = clientesDeEntrega();
+  document.getElementById('confirmacao-dados').innerHTML = [
     dado('Placas', placasDe(a).join(' + '), true),
-    dado('Tipo de frete', atd.tipoFrete),
-    dado('Compartimentos', `${caps.length} · ${formatVolume(somar(caps))}`),
+    dado('Motorista', a.motorista),
   ].join('');
-  document.getElementById('revisao-produtos').innerHTML = situacaoDasLinhas().map((s) => `
+  document.getElementById('confirmacao-clientes').innerHTML = `<div class="cartao-titulo">${clientes.length > 1 ? 'Clientes de entrega' : 'Cliente de entrega'}</div>`
+    + clientes.map((g) => `
     <div class="produto-linha">
-      <div><div class="produto-nome">${esc(s.l.descricao)}</div><div class="produto-meta">Pedido ${esc(s.l.ordemVenda)} · ${formatVolume(s.l.volume)}</div></div>
-      <div class="produto-vol">${s.idx.map(referenciaCompartimento).map(esc).join('<br>')}</div>
+      <div><div class="produto-nome">${esc(g.nome)}</div><div class="produto-meta">Pedido${g.pedidos.length > 1 ? 's' : ''} ${g.pedidos.map(esc).join(', ')}</div></div>
+      <div class="produto-vol">${formatVolume(g.volume)}</div>
     </div>`).join('');
-  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : referenciaCompartimento(i))).filter(Boolean);
-  document.getElementById('revisao-comp').innerHTML = usados.map(({ indicePlaca, placa, i, c }) => `
-    <div class="rev-comp">
-      <div class="rev-comp-topo"><strong>${esc(placa)} · CT ${pad2(indicePlaca)}</strong><span>${esc(linhaDaChave(c.linha).descricao)} · ${textoOcupacao(previstos[i], caps[i])}</span></div>
-      <div class="rev-comp-codigos">
-        <span>Lacres <b class="mono">${esc(c.lacre1)}</b> · <b class="mono">${esc(c.lacre2)}</b> · <b class="mono">${esc(c.lacre3)}</b></span>
-        <span>Envelope <b class="mono">${esc(c.envelope)}</b></span>
-      </div>
-    </div>`).join('')
-    + (vazios.length ? `<div class="nota" style="margin-top:12px">Vazio${vazios.length > 1 ? 's' : ''}: ${vazios.map(esc).join(', ')}.</div>` : '');
 }
 // Campos comuns ao check-in e à inconsistência (autoatendimento/<protocolo>)
 function dadosBaseCheckin() {
@@ -1834,30 +1828,28 @@ function dadosBaseCheckin() {
     quiosqueNome: Q.usuario.nome,
   };
 }
-// Configuração informada (todos os compartimentos do tanque, inclusive os vazios) e de onde veio
+// Compartimentos do cadastro (todos os do tanque, inclusive os vazios) e de onde vieram
 function dadosConfiguracao(caps) {
-  const configuracoesPlacas = atd.configuracoes.map((config) => ({
-    placa: config.placa,
-    origemConfiguracao: config.fonteConfig,
-    ...(config.perfil ? { perfilCompartimento: config.perfil } : {}),
-    configuracao: !config.configSalva ? 'informada' : configIgualSalva(config) ? 'salva' : 'alterada',
-    compartimentos: config.caps.slice(0, config.qtd).map((capacidade, i) => ({
-      placa: config.placa,
+  const configuracoesPlacas = atd.configuracoes.map(({ placa, config, fonteConfig, perfil }) => ({
+    placa,
+    origemConfiguracao: fonteConfig,
+    ...(perfil ? { perfilCompartimento: perfil } : {}),
+    compartimentos: config.capacidadesLitros.map((capacidadeLitros, i) => ({
+      placa,
       indice: i + 1,
-      capacidadeLitros: litrosDoTexto(capacidade),
+      capacidadeLitros,
+      quantidadeLacres: quantidadeLacresDaConfig(config, i),
     })),
   }));
-  const estados = configuracoesPlacas.map((config) => config.configuracao);
   return {
     chaveTanque: atd.configuracoes.map((config) => config.placa).join('+'),
-    configuracaoCompartimentos: estados.every((estado) => estado === 'salva') ? 'salva'
-      : estados.some((estado) => estado === 'alterada') ? 'alterada' : 'informada',
     configuracoesPlacas,
     compartimentosVeiculo: atd.comps.map((comp, i) => ({
       placa: comp.placa,
       indice: comp.indicePlaca,
       indiceGlobal: i + 1,
       capacidadeLitros: caps[i],
+      quantidadeLacres: comp.lacres.length,
     })),
   };
 }
@@ -1884,14 +1876,17 @@ function montarCheckin() {
       return {
         placa, indice: indicePlaca, indiceGlobal,
         ordemVenda: l.ordemVenda, produto: l.produto, capacidadeLitros: caps[i], volumePrevistoLitros: previstos[i],
-        lacre1: c.lacre1, lacre2: c.lacre2, lacre3: c.lacre3, envelopeAmostra: c.envelope,
+        quantidadeLacres: c.lacres.length,
+        lacres: c.lacres.slice(),
+        // Campos legados mantidos durante a transição dos consumidores antigos.
+        lacre1: c.lacres[0] || '', lacre2: c.lacres[1] || '', lacre3: c.lacres[2] || '', envelopeAmostra: c.envelope,
       };
     }),
     status: 'aguardando',
   };
 }
 // Pedido não cabe inteiro: registra para o faturamento (status "inconsistente"). Um check-in completo depois
-// (motorista corrigiu os compartimentos ou o faturamento ajustou o pedido) grava por cima
+// (o faturamento ajustou o pedido ou o cadastro do veículo) grava por cima
 async function registrarInconsistencia(motivo, caps) {
   const { a } = atd;
   if (document.activeElement) document.activeElement.blur();
@@ -1923,18 +1918,80 @@ function listaHistorico(valor) {
   if (Array.isArray(valor)) return valor.filter(Boolean);
   return valor && typeof valor === 'object' ? Object.values(valor).filter(Boolean) : [];
 }
-function renderHistoricoProcessamento(historico, status) {
-  const eventos = listaHistorico(historico);
-  document.getElementById('processamento-historico').innerHTML = eventos.map((evento, i) => {
-    const erro = evento.etapa === 'erro' || evento.etapa === 'revisao_manual';
-    const atual = i === eventos.length - 1 && status !== 'concluido';
-    const classe = erro ? 'erro' : atual ? 'atual' : '';
-    const marcador = erro ? '!' : atual ? '•' : '✓';
-    return `<li class="${classe}"><span class="marcador">${marcador}</span><span>${esc(evento.mensagem || evento.etapa || 'Etapa concluída')}</span><span class="hora">${evento.em ? horaBR(evento.em) : ''}</span></li>`;
-  }).join('');
+/* ── PROCESSAMENTO: o motorista vê só a fase e a barra; o passo a passo do SAP fica no portal de agendamento ── */
+// Fases e tempo típico de cada uma (s), medidos no histórico do runner_faturamento.py (nov/2026: faturamentos
+// completos de 2 a 3 min). Cada etapa publicada pelo cockpit cai numa fase; alocação e lacres crescem com o
+// check-in (pedido/produto alocado: ~10 s; compartimento carregado: ~5,5 s). Não precisa ser exato
+const FASES_FATURAMENTO = [
+  // SAP já aberto: ~25 s; navegador novo + login + Cockpit: ~60 s
+  { texto: 'Preparando o sistema', segundos: (c) => (c.sessaoNova ? 60 : 25),
+    etapas: ['solicitacao_recebida', 'validando_dados', 'reutilizando_sessao_sap', 'abrindo_navegador', 'autenticando_sap', 'abrindo_cockpit', 'cockpit_reutilizado_sem_renovar', 'cockpit_renovado'] },
+  { texto: 'Criando a ordem de frete', segundos: () => 15,
+    etapas: ['localizando_veiculo', 'capturando_remessas_originais', 'veiculo_selecionado', 'criando_ordem_temporaria', 'ordem_temporaria_criada', 'abrindo_equipamento', 'equipamento_aberto', 'filtrando_etapas_sem_alocar'] },
+  { texto: 'Alocando os produtos nos compartimentos', segundos: (c) => 10 * Math.max(1, c.alocacoes),
+    etapas: ['alocando_', 'alocacao_'] }, // alocando_1_de_2, alocacao_1_concluida…
+  { texto: 'Registrando lacres e envelopes', segundos: (c) => 5 + 5.5 * Math.max(1, c.compartimentos),
+    etapas: ['preenchendo_lacres', 'corrigindo_lacre', 'correcao_lacre_recebida', 'aguardando_correcao_lacre'] },
+  { texto: 'Gravando a ordem de frete', segundos: () => 15,
+    etapas: ['preenchendo_motorista', 'gravando_ordem_frete', 'ordem_frete_gravada', 'motorista_gravado'] },
+  { texto: 'Registrando a saída da mercadoria', segundos: () => 37, etapas: ['saida_mercadoria'] },
+  { texto: 'Emitindo a nota fiscal', segundos: () => 18, etapas: ['faturando_remessas'] },
+  { texto: 'Preparando os documentos para impressão', segundos: () => 22,
+    etapas: ['gerando_documentos_carregamento', 'gerando_danfes', 'salvando_evidencia', 'publicando_documentos'] },
+];
+const ETAPAS_SESSAO_NOVA = ['abrindo_navegador', 'autenticando_sap', 'abrindo_cockpit'];
+function faseDaEtapa(etapa) {
+  const e = String(etapa || '');
+  return FASES_FATURAMENTO.findIndex((f) => f.etapas.some((x) => (x.endsWith('_') ? e.startsWith(x) : e === x)));
+}
+function duracoesFases() { return FASES_FATURAMENTO.map((f) => f.segundos(_progresso.contexto)); }
+// Percentual pelo tempo: as fases já feitas contam inteiras; na atual, a barra anda no ritmo típico até 90% dela e,
+// se demorar mais que o normal, continua devagar sem chegar à próxima fase
+function percentualEstimado() {
+  const dur = duracoesFases(), total = somar(dur), d = dur[_progresso.fase];
+  const decorrido = Math.max(0, ((_progresso.pausadoEm ?? Date.now()) - _progresso.inicioFase) / 1000);
+  const fracao = decorrido <= d ? 0.9 * decorrido / d : 0.9 + 0.09 * (1 - Math.exp(-(decorrido - d) / d));
+  return Math.min(99, Math.max(1, Math.floor(100 * (somar(dur.slice(0, _progresso.fase)) + fracao * d) / total)));
+}
+function desenharBarra(percentual) {
+  const barra = document.getElementById('processamento-barra');
+  _progresso.exibido = Math.max(_progresso.exibido, percentual);
+  document.getElementById('processamento-percentual').textContent = `${_progresso.exibido}%`;
+  barra.setAttribute('aria-valuenow', _progresso.exibido);
+  barra.firstElementChild.style.width = `${_progresso.exibido}%`;
+}
+function tickProgresso() {
+  if (!_progresso || Q.tela !== 'processamento') { pararProgresso(); return; }
+  if (!_progresso.encerrado) desenharBarra(percentualEstimado());
+}
+function pararProgresso() { clearInterval(_progresso?.timer); if (_progresso) _progresso.timer = null; }
+// Avança a fase pelo registro do runner. O início da fase vem do histórico (diferença entre horários do próprio
+// runner, sem depender do relógio do tablet): reabrir a tela no meio do faturamento não volta a barra para trás
+function acompanharFase(registro) {
+  const p = registro.processamento || {};
+  const historico = listaHistorico(p.historico);
+  _progresso.contexto = {
+    sessaoNova: historico.some((ev) => ETAPAS_SESSAO_NOVA.includes(ev.etapa)) || ETAPAS_SESSAO_NOVA.includes(p.etapa),
+    alocacoes: listaHistorico(registro.alocacoes).length,
+    compartimentos: listaHistorico(registro.compartimentos).length,
+  };
+  const pausado = registro.status === 'aguardando_correcao_lacre';
+  if (pausado && _progresso.pausadoEm == null) _progresso.pausadoEm = Date.now();
+  if (!pausado && _progresso.pausadoEm != null) { _progresso.inicioFase += Date.now() - _progresso.pausadoEm; _progresso.pausadoEm = null; }
+  const fase = faseDaEtapa(p.etapa);
+  if (fase > _progresso.fase) {
+    const primeiro = historico.find((ev) => faseDaEtapa(ev.etapa) === fase);
+    const jaPassou = primeiro?.em && p.em ? Math.max(0, Date.parse(p.em) - Date.parse(primeiro.em)) : 0;
+    _progresso.fase = fase;
+    _progresso.inicioFase = Date.now() - jaPassou;
+  }
+  const dur = duracoesFases();
+  const minutos = Math.max(1, Math.round(somar(dur) / 60));
+  document.getElementById('processamento-sub').textContent = `Não feche esta tela. Costuma levar cerca de ${minutos} minuto${minutos === 1 ? '' : 's'}.`;
 }
 function lacresDoRegistro(registro) {
-  return listaHistorico(registro?.compartimentos).flatMap((c) => [c?.lacre1, c?.lacre2, c?.lacre3]).filter(Boolean).map(String);
+  return listaHistorico(registro?.compartimentos).flatMap((c) => Array.isArray(c?.lacres)
+    ? c.lacres : [c?.lacre1, c?.lacre2, c?.lacre3]).filter(Boolean).map(String);
 }
 function renderCorrecaoLacre(registro) {
   const caixa = document.getElementById('correcao-lacre');
@@ -2001,20 +2058,20 @@ function atualizarProcessamento(registro) {
   if (!registro) return;
   _registroProcessamento = registro;
   const status = registro.status || 'aguardando';
-  const p = registro.processamento || {};
-  const percentual = Math.max(1, Math.min(100, Number(p.percentual) || (status === 'concluido' ? 100 : 1)));
-  const barra = document.getElementById('processamento-barra');
-  const preenchimento = barra.firstElementChild;
-  document.getElementById('processamento-percentual').textContent = `${percentual}%`;
-  barra.setAttribute('aria-valuenow', percentual);
-  preenchimento.style.width = `${percentual}%`;
-  preenchimento.style.background = ['erro', 'revisao_manual'].includes(status)
+  const falhou = ['erro', 'revisao_manual'].includes(status);
+  acompanharFase(registro);
+  if (status === 'concluido' || falhou) { _progresso.encerrado = true; pararProgresso(); }
+  if (status === 'concluido') desenharBarra(100);
+  else if (!falhou) desenharBarra(percentualEstimado());
+  document.getElementById('processamento-barra').firstElementChild.style.background = falhou
     ? 'var(--danger)'
     : status === 'aguardando_correcao_lacre' ? 'var(--accent2)' : '';
   const msg = document.getElementById('processamento-msg');
-  msg.textContent = p.mensagem || (status === 'aguardando' ? 'Na fila. Aguardando o runner de faturamento…' : 'Processando…');
-  msg.classList.toggle('erro', ['erro', 'revisao_manual'].includes(status));
-  renderHistoricoProcessamento(p.historico, status);
+  msg.textContent = falhou ? 'Faturamento não concluído'
+    : status === 'aguardando' ? 'Na fila do faturamento…'
+    : status === 'aguardando_correcao_lacre' ? 'Aguardando a leitura de outro lacre'
+    : status === 'concluido' ? 'Faturamento concluído' : FASES_FATURAMENTO[_progresso.fase].texto + '…';
+  msg.classList.toggle('erro', falhou);
   renderCorrecaoLacre(registro);
 
   if (status === 'concluido') {
@@ -2028,7 +2085,10 @@ function atualizarProcessamento(registro) {
     mostrarTela('fim');
     iniciarContagem('fim-contagem', TEMPO_TELA_FIM);
   } else if (status === 'erro' || status === 'revisao_manual') {
-    document.getElementById('processamento-erro').textContent = p.mensagem || `Não foi possível concluir. Procure o faturamento com o protocolo ${registro.protocolo}.`;
+    // Código e motivo técnico ficam no histórico do portal de agendamento; o motorista só precisa do caminho
+    document.getElementById('processamento-erro').textContent = status === 'revisao_manual'
+      ? `O faturamento precisa ser conferido pela equipe Nexta. Procure o faturamento com o protocolo ${registro.protocolo} e não refaça o check-in.`
+      : `Não foi possível concluir o faturamento automático. Procure o faturamento com o protocolo ${registro.protocolo}.`;
     document.getElementById('processamento-erro').classList.remove('hidden');
     document.getElementById('processamento-acoes').classList.remove('hidden');
     if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
@@ -2037,14 +2097,15 @@ function atualizarProcessamento(registro) {
 }
 function acompanharFaturamento(protocolo) {
   if (_cancelarAcompanhamento) _cancelarAcompanhamento();
+  pararProgresso();
+  _progresso = { fase: 0, inicioFase: Date.now(), pausadoEm: null, exibido: 0, encerrado: false,
+    contexto: { sessaoNova: false, alocacoes: 1, compartimentos: 1 }, timer: null };
   document.getElementById('processamento-protocolo').textContent = protocolo;
-  document.getElementById('processamento-percentual').textContent = '1%';
-  document.getElementById('processamento-barra').setAttribute('aria-valuenow', '1');
-  document.getElementById('processamento-barra').firstElementChild.style.width = '1%';
+  document.getElementById('processamento-sub').textContent = 'Não feche esta tela.';
   document.getElementById('processamento-barra').firstElementChild.style.background = '';
-  document.getElementById('processamento-msg').textContent = 'Solicitação enviada. Aguardando o runner…';
+  desenharBarra(1);
+  document.getElementById('processamento-msg').textContent = 'Solicitação enviada…';
   document.getElementById('processamento-msg').classList.remove('erro');
-  document.getElementById('processamento-historico').innerHTML = '';
   document.getElementById('processamento-erro').classList.add('hidden');
   document.getElementById('correcao-lacre').classList.add('hidden');
   document.getElementById('correcao-lacre-valor').value = '';
@@ -2052,6 +2113,7 @@ function acompanharFaturamento(protocolo) {
   document.getElementById('processamento-acoes').classList.add('hidden');
   document.getElementById('processamento-contagem').textContent = '';
   mostrarTela('processamento');
+  _progresso.timer = setInterval(tickProgresso, 500);
   _cancelarAcompanhamento = window._fb.acompanharCheckin(
     protocolo,
     atualizarProcessamento,
@@ -2070,18 +2132,6 @@ async function processarFaturamento() {
     const registro = montarCheckin();
     const protocolo = registro.protocolo;
     await window._fb.salvarCheckin(protocolo, registro);
-    // Cada placa mantém sua própria configuração; CT 01 de uma carreta não
-    // se mistura com CT 01 da outra. Falha aqui não desfaz o check-in.
-    registro.configuracoesPlacas.filter((config) => config.configuracao !== 'salva').forEach((config) => {
-      window._fb.salvarConfigVeiculo(config.placa, {
-        placas: [config.placa],
-        capacidadesLitros: config.compartimentos.map((c) => c.capacidadeLitros),
-        atualizadoEm: registro.criadoEm,
-        protocolo: registro.protocolo,
-        quiosqueUid: registro.quiosqueUid,
-        quiosqueNome: registro.quiosqueNome,
-      }).catch((e) => console.warn(`Configuração da placa ${config.placa} não foi salva`, e));
-    });
     atd = null;
     acompanharFaturamento(protocolo);
   } catch (e) {
@@ -2106,7 +2156,7 @@ async function processarFaturamento() {
 /* ── INATIVIDADE: motorista foi embora no meio do check-in → apaga e volta ao início ── */
 let _ultimoToque = Date.now();
 function emAtendimento() {
-  if (['agendamento', 'configuracao', 'alocacao', 'lacres', 'revisao', 'inconsistencia'].includes(Q.tela)) return true;
+  if (['agendamento', 'alocacao', 'lacres', 'revisao', 'inconsistencia'].includes(Q.tela)) return true;
   return Q.tela === 'inicio' && ['in-protocolo', 'in-cpf', 'in-placa'].some((id) => document.getElementById(id).value);
 }
 function fecharInatividade() { document.getElementById('inatividade').classList.remove('aberta'); }
@@ -2200,9 +2250,6 @@ setTimeout(() => {
     acompanharCheckin: (protocolo, aoMudar, aoErro) =>
       onValue(ref(db, 'autoatendimento/' + protocolo), (snapshot) => aoMudar(snapshot.val()), aoErro),
     carregarDocumento: (storagePath) => getBlob(storageRef(storage, storagePath)),
-    // compartimentosVeiculo/<placa do tanque>: configuração própria de cada carreta
-    carregarConfigVeiculo: (chave) => ler('compartimentosVeiculo/' + chave),
-    salvarConfigVeiculo: (chave, dados) => set(ref(db, 'compartimentosVeiculo/' + chave), dados),
   };
 
   onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
