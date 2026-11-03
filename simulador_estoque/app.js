@@ -276,7 +276,8 @@ function select(){
  const registros=registrosSelecionados();
  avisosSugestao={};
  modoCombinado=registros.length>1;
- somenteLeitura=!$('cidade').value||new Set(registros.map(r=>r.product)).size>1;
+ // Mais de um recorte somado (produto, deposito ou empresa) = so' o grafico (usuaria, 2026-11-03: "n deixa fazer a simulacao").
+ somenteLeitura=!$('cidade').value||registros.length>1;
  if(!registros.length)record=undefined;
  else if(!modoCombinado)record=registros[0];
  // Filtro de regiao pode deixar a lista de bases vazia (ex.: nao ha base dessa regiao pra este login);
@@ -631,9 +632,13 @@ const movSeries=[
  ['cif','Trânsito CIF','#F4F08A',i=>i>=0?state.movements.cif[i]:recebidoPassado(i)!=null?null:transitoPassado(i,'cif')],
  // Linhas de venda/Disp. MIS tambem nos 5 dias passados, como no grafico do BI (usuaria, 2026-10-27).
  ['vmd','VMD reprojetada','#FFFFFF',i=>record?.bi?.days?.[day(i)]?.vmd??null],
- ['plannedSales','Vendas Planejadas','#D9F99D',i=>{const d=record?.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??record?.bi?.semana?.porDia?.[day(i)]?.le:null)??null;}],
- ['actualSales','Faturamento','#C8C8C8',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.Real?.actualSales??null):vendaRealPassado(i)],
- ['availability','Disp. MIS','#39FF14',i=>i>=0?(record?.bi?.days[day(i)]?.scenarios?.['Disp MIS']?.availability??null):somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
+ // Somadas registro a registro no modo combinado (usuaria, 2026-11-03: "somar os dados de venda ... so no grafico").
+ // A semana por cidade e' a mesma em cada deposito: so' entra com 1 registro, senao contaria a cidade varias vezes.
+ ['plannedSales','Vendas Planejadas','#D9F99D',i=>somaOuNula(registrosReais().map(r=>{const d=r?.bi?.days?.[day(i)];return d?.scenarios?.LE?.plannedSales??(i<0?d?.le??(modoCombinado?null:r?.bi?.semana?.porDia?.[day(i)]?.le):null)??null;}))],
+ // Mesmo numero da linha Faturamento da tabela, sem venda para empresas do grupo (usuaria, 2026-11-03: LIDERPETRO
+ // Gasolina subia a ~148 com os 124 m3 da SIM pra propria Nexta; actualSales/billing contam o pedido inteiro).
+ ['actualSales','Faturamento','#C8C8C8',i=>somaOuNula(registrosReais().map(r=>r?.bi?.days?.[day(i)]?.vendaReal))],
+ ['availability','Disp. MIS','#39FF14',i=>somaOuNula(registrosReais().map(r=>r?.bi?.days?.[day(i)]?.scenarios?.['Disp MIS']?.availability))],
 ];
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
 const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','planned','fob','cif'];
@@ -736,7 +741,10 @@ function chart(result,original,offsets){
  for(const [k,cor,traco,nome] of [['min','#FF4D4D','3 4','Estoque mínimo'],['mid','#9CA3AF','3 4','Estoque médio'],['max','#4CAF1F','3 4','Estoque máximo'],['capacity','#38BDF8','','Capacidade']])if(state[k]!==null)politica+=`<path d="M${L} ${y(state[k])}H${fim}" stroke="${cor}" stroke-width="${k==='capacity'?2:1.5}" stroke-dasharray="${traco}"><title>${nome}: ${fmt(state[k])} m³</title></path>`;
  // Linhas de venda/Disp. MIS por cima das barras.
  let linhas='';
- for(const [,nome,cor,valorEm] of movSeries.filter(m=>!ENTRADAS_BLOCO.includes(m[0]))){const pontos=offsets.map(i=>[i,valorEm(i)]).filter(([,v])=>v!=null);if(!pontos.length)continue;linhas+=`<polyline points="${pontos.map(([i,v])=>`${x(i)},${y(v)}`).join(' ')}" fill="none" stroke="${cor}" stroke-width="2"/>`;for(const [i,v] of pontos)linhas+=`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³</title></circle>`;}
+ for(const [,nome,cor,valorEm] of movSeries.filter(m=>!ENTRADAS_BLOCO.includes(m[0]))){
+  // Dia sem valor no meio da serie desce a zero em vez de a linha ligar direto no proximo ponto (usuaria, 2026-11-03);
+  // antes do 1o e depois do ultimo valor a linha nao aparece (ex.: Faturado de dia futuro nao existe, nao e' zero).
+  const todos=offsets.map(i=>[i,valorEm(i)]),comValor=todos.flatMap(([,v],j)=>v!=null?[j]:[]);if(!comValor.length)continue;const pontos=todos.slice(comValor[0],comValor.at(-1)+1).map(([i,v])=>[i,v??0]);linhas+=`<polyline points="${pontos.map(([i,v])=>`${x(i)},${y(v)}`).join(' ')}" fill="none" stroke="${cor}" stroke-width="2"/>`;for(const [i,v] of pontos)linhas+=`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${cor}"><title>${label(i)} · ${nome}: ${fmt(v)} m³</title></circle>`;}
  // Area invisivel por dia, por cima de tudo, pra abrir o popup com o detalhamento completo do dia.
  let alvos='';
  for(const i of offsets)alvos+=`<rect x="${x(i)-cw/2}" y="0" width="${cw}" height="${H-B}" fill="transparent" data-chart-day="${i}" tabindex="0" aria-label="Detalhes de ${esc(label(i))}"/>`;

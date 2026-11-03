@@ -41,7 +41,7 @@
     $('cloud-save').disabled = !podeSalvarEquipe || busy;
     if (context !== identity()) {
       context = identity(); currentId = null; expected = null;
-      note(somenteLeitura ? 'Visão somada (todas as bases ou mais de um produto): só o gráfico. Escolha 1 cidade e 1 produto para simular na tabela.' : modoCombinado ? 'Modo combinado: edição liberada, mas não dá pra salvar na equipe (não existe uma base só pra registrar).' : allowed ? 'Rascunho local. Use Salvar na equipe para compartilhar.' : 'Consulta: edição desta base não liberada para seu perfil.');
+      note(somenteLeitura ? 'Visão somada: só o gráfico. Para simular na tabela, escolha 1 cidade, 1 depósito, 1 empresa e 1 produto.' : modoCombinado ? 'Modo combinado: edição liberada, mas não dá pra salvar na equipe (não existe uma base só pra registrar).' : allowed ? 'Rascunho local. Use Salvar na equipe para compartilhar.' : 'Consulta: edição desta base não liberada para seu perfil.');
     }
   }
   const previousRender = render;

@@ -1,8 +1,7 @@
 import { firebaseAuth as auth, firebaseDatabase as db } from './firebase.js';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
-  browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential,
-  updatePassword } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { ref, get, set, update, push, runTransaction, serverTimestamp, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { entrarPeloCentral, sairDeTudo, irParaLogin, irParaTrocarSenha, gerenciaUsuarios } from '/central/sso.js';
 
 const el = id => document.getElementById(id);
 let started = false;
@@ -17,7 +16,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '97e98e4adf';
+const VERSAO_SITE = '0a13d6acd0';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -28,181 +27,28 @@ function script(name) {
 }
 const hex = text => Array.from(new TextEncoder().encode(text), b => b.toString(16).padStart(2, '0')).join('');
 
-// ── Logout por inatividade (pedido da usuaria, 2026-10-10: "tem como fazer isso no simulador tbm?", igual
-// ao portal inbound). Apos 2h sem mouse/teclado/rolagem/toque em QUALQUER aba do simulador (a ultima
-// atividade fica em localStorage, compartilhada entre abas), sai e volta pra tela de login. Nada se perde:
-// o rascunho do simulador ja' e' gravado no navegador a cada edicao e o "Salvar na equipe" e' manual.
-const INATIVIDADE_LIMITE_MS = 2 * 60 * 60 * 1000;
-const ULTIMA_ATIVIDADE_KEY = 'simEstoqueUltimaAtividade';
-const LOGOUT_INATIVIDADE_FLAG = 'simEstoqueLogoutInatividade';
-const MSG_INATIVIDADE = 'Sessão encerrada após 2h sem uso. Entre novamente.';
-let ultimaAtividadeGravada = 0, encerrando = false;
-function registrarAtividade(forcar = false) {
-  const agora = Date.now();
-  if (!forcar && agora - ultimaAtividadeGravada < 30 * 1000) return;  // mousemove dispara dezenas de vezes/s
-  ultimaAtividadeGravada = agora;
-  try { localStorage.setItem(ULTIMA_ATIVIDADE_KEY, String(agora)); } catch {}
-}
-function inativoHaMuitoTempo() {
-  let salvo = NaN;
-  try { salvo = parseInt(localStorage.getItem(ULTIMA_ATIVIDADE_KEY), 10); } catch {}
-  const ultima = Math.max(Number.isFinite(salvo) ? salvo : 0, ultimaAtividadeGravada);
-  return ultima > 0 && Date.now() - ultima > INATIVIDADE_LIMITE_MS;
-}
-async function encerrarPorInatividade() {
-  if (encerrando || !auth.currentUser) return;
-  encerrando = true;
-  try { sessionStorage.setItem(LOGOUT_INATIVIDADE_FLAG, '1'); } catch {}
-  try { await signOut(auth); } catch {}
-  location.reload();  // o reload ja' traz a versao publicada mais recente do site
-}
-function verificarInatividade() { if (started && inativoHaMuitoTempo()) encerrarPorInatividade(); }
-['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(evento =>
-  document.addEventListener(evento, () => { if (started) registrarAtividade(); }, {capture: true, passive: true}));
-// Voltar pra aba / desbloquear o PC: confere ANTES de contar a volta como atividade.
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') verificarInatividade(); });
-setInterval(verificarInatividade, 60 * 1000);
-el('login-show').onchange = () => { el('login-password').type = el('login-show').checked ? 'text' : 'password'; };
-el('login-form').onsubmit = async event => {
-  event.preventDefault(); el('login-submit').disabled = true; status('Entrando…');
-  registrarAtividade(true);  // zera o relogio: uma marca antiga nao pode derrubar a sessao recem-aberta
-  try { await signInWithEmailAndPassword(auth, el('login-email').value.trim(), el('login-password').value); }
-  catch (error) { status(errorText(error)); }
-  finally { el('login-password').value = ''; el('login-submit').disabled = false; }
-};
-el('login-reset').onclick = async () => {
-  if (!el('login-email').reportValidity()) return;
-  try { await sendPasswordResetEmail(auth, el('login-email').value.trim()); status('Solicitação enviada. Confira seu e-mail.'); }
-  catch (error) { status(errorText(error)); }
-};
-el('logout').onclick = async () => { await signOut(auth); location.reload(); };
-// Trocar a propria senha (pedido da usuaria, 2026-10-14, igual ao portal inbound): reautentica com a
-// senha atual e grava a nova no Firebase Auth. Nada passa por servidor nosso.
-const dialogoSenha = el('senha-dialogo');
-function limparSenha() { for (const id of ['senha-atual', 'senha-nova', 'senha-confirma']) el(id).value = ''; el('senha-info').textContent = ''; }
-el('trocar-senha').onclick = () => { limparSenha(); dialogoSenha.showModal(); el('senha-atual').focus(); };
-el('senha-cancelar').onclick = () => { if (!senhaObrigatoria) dialogoSenha.close(); };
-el('senha-form').onsubmit = async event => {
-  event.preventDefault();
-  const info = el('senha-info'), atual = el('senha-atual').value, nova = el('senha-nova').value;
-  if (!atual) { info.textContent = 'Informe a senha atual.'; return; }
-  if (nova.length < 6) { info.textContent = 'A nova senha deve ter pelo menos 6 caracteres.'; return; }
-  if (nova !== el('senha-confirma').value) { info.textContent = 'A confirmação não corresponde à nova senha.'; return; }
-  if (nova === atual) { info.textContent = 'A nova senha deve ser diferente da atual.'; return; }
-  const user = auth.currentUser; if (!user) { info.textContent = 'Sessão encerrada. Entre novamente.'; return; }
-  el('senha-salvar').disabled = true; info.textContent = 'Atualizando senha…';
-  try {
-    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, atual));
-    await updatePassword(user, nova);
-    info.textContent = 'Senha atualizada com sucesso.';
-    senhaTrocada();
-    setTimeout(() => dialogoSenha.close(), 1200);
-    if (aguardarLiberacao) setTimeout(() => esperarLiberacao(auth.currentUser), 1300);
-  } catch (error) {
-    info.textContent = ({'auth/wrong-password': 'Senha atual incorreta.', 'auth/invalid-credential': 'Senha atual incorreta.',
-      'auth/weak-password': 'A nova senha é muito fraca.', 'auth/too-many-requests': 'Muitas tentativas. Aguarde antes de tentar novamente.',
-      'auth/requires-recent-login': 'Sessão expirada. Saia e entre novamente antes de trocar a senha.'})[error.code] || errorText(error);
-  } finally { el('senha-salvar').disabled = false; }
-};
-
-// ── Validade da senha (pedido da usuaria, 2026-10-14) ──
-// Senha temporaria (a da criacao da conta, nunca trocada): 72h pra trocar, depois o login e' bloqueado e
-// so' "Esqueci minha senha" resolve. Senha propria: vale 90 dias; avisa nos 5 ultimos; vencida, a pessoa
-// so' usa o portal depois de trocar. A data vem do proprio Firebase Auth (passwordUpdatedAt, que tambem
-// muda quando a senha e' redefinida pelo "Esqueci minha senha"). Prazos de quem ja tinha conta contam a
-// partir da entrada da regra, pra ninguem ser bloqueado de surpresa. E' regra do portal, nao do banco.
-const HORA = 3600 * 1000, DIA = 24 * HORA;
-const SENHA_TEMPORARIA_MS = 72 * HORA, SENHA_VALIDADE_MS = 90 * DIA, SENHA_AVISO_MS = 5 * DIA;
-const POLITICA_SENHA_DESDE = Date.parse('2026-10-14T18:00:00-03:00');
-let senhaObrigatoria = false, aguardarLiberacao = false;
-// Depois da troca, o script da maquina logistica tira o bloqueio do banco em ate' ~1 min; a tela confere
-// o proprio perfil a cada 10 s e recarrega quando liberar.
-async function esperarLiberacao(user) {
-  if (!user) return;
-  status('Senha em dia. Liberando seu acesso… isso leva até 2 minutos.');
-  const limite = Date.now() + 10 * 60 * 1000;
-  while (Date.now() < limite) {
-    try { if ((await get(ref(db, `perfis/${user.uid}/acessoBloqueado`))).val() !== true) { location.reload(); return; } } catch {}
-    await new Promise(r => setTimeout(r, 10000));
-  }
-  status('O acesso ainda não foi liberado. Tente entrar de novo em alguns minutos ou avise o administrador do simulador.');
-}
-async function senhaAtualizadaEm(user) {
-  const direto = Number(user.reloadUserInfo?.passwordUpdatedAt);
-  if (direto) return direto;
-  try {
-    const resposta = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${auth.app.options.apiKey}`,
-      {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({idToken: await user.getIdToken()})});
-    return Number((await resposta.json()).users?.[0]?.passwordUpdatedAt) || null;
-  } catch { return null; }
-}
-async function situacaoSenha(user, profile) {
-  const atualizada = await senhaAtualizadaEm(user);
-  if (!atualizada) return {tipo: 'ok'};  // sem a data, nao bloqueia ninguem
-  const agora = Date.now(), criada = Date.parse(user.metadata.creationTime);
-  const temporaria = Math.abs(atualizada - criada) < 2 * 60 * 1000
-    || (profile.senhaTemporariaEm && atualizada <= profile.senhaTemporariaEm + 2 * 60 * 1000);
-  if (temporaria) {
-    const prazo = Math.max(atualizada, POLITICA_SENHA_DESDE) + SENHA_TEMPORARIA_MS;
-    return agora > prazo ? {tipo: 'bloqueada'} : {tipo: 'temporaria', prazo, atualizada};
-  }
-  const vence = Math.max(atualizada, POLITICA_SENHA_DESDE) + SENHA_VALIDADE_MS;
-  if (agora > vence) return {tipo: 'vencida', vence};
-  return vence - agora <= SENHA_AVISO_MS ? {tipo: 'aviso', vence} : {tipo: 'ok', vence};
-}
-const quando = t => new Date(t).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-function mostrarAvisoSenha(senha) {
-  const aviso = el('aviso-senha');
-  if (senha.tipo === 'temporaria') {
-    aviso.querySelector('span').textContent = `Você está usando a senha inicial. Troque agora: no próximo login a troca será obrigatória, e sem troca até ${quando(senha.prazo)} o acesso fica bloqueado (só volta com “Esqueci minha senha”).`;
-  } else if (senha.tipo === 'aviso') {
-    const dias = Math.max(1, Math.ceil((senha.vence - Date.now()) / DIA));
-    aviso.querySelector('span').textContent = `Sua senha vence em ${dias} dia(s), em ${quando(senha.vence)}. Troque agora para não perder o acesso.`;
-  } else { aviso.hidden = true; return; }
-  aviso.dataset.tipo = senha.tipo; aviso.hidden = false;
-}
-// Troca obrigatoria (a janela nao fecha): senha vencida, ou senha inicial no primeiro acesso — igual ao
-// gerenciador de adicionais ("Defina sua nova senha", pedido da usuaria 2026-10-14).
-function abrirTrocaObrigatoria(motivo = 'vencida') {
-  senhaObrigatoria = true;
-  limparSenha();
-  el('senha-titulo').textContent = motivo === 'inicial' ? 'Defina sua nova senha' : 'Sua senha venceu';
-  el('senha-explica').textContent = motivo === 'inicial'
-    ? 'Por segurança, troque a senha inicial (a que você recebeu do administrador) antes de continuar.'
-    : 'A senha do simulador vale 3 meses. Crie uma nova senha para continuar.';
-  // Obrigatorio de verdade (usuaria, 2026-10-14): sem Cancelar nem Sair, so' Salvar.
-  el('senha-cancelar').hidden = true;
-  el('aviso-senha').hidden = true;
-  dialogoSenha.showModal(); el('senha-atual').focus();
-}
-function senhaTrocada() {
-  senhaObrigatoria = false;
-  el('aviso-senha').hidden = true;
-  el('senha-cancelar').hidden = false;
-  el('senha-titulo').textContent = 'Trocar senha';
-  el('senha-explica').textContent = 'Informe sua senha atual e a nova senha (mínimo de 6 caracteres).';
-}
-dialogoSenha.addEventListener('cancel', event => { if (senhaObrigatoria) event.preventDefault(); });
-// O Chrome deixa o Esc fechar o <dialog> mesmo com preventDefault (sem interacao recente na pagina);
-// na troca obrigatoria a janela reabre na hora.
-dialogoSenha.addEventListener('close', () => { if (senhaObrigatoria) dialogoSenha.showModal(); });
-el('aviso-senha-trocar').onclick = () => el('trocar-senha').click();
+// Login pela tela inicial do site (login unico dos portais, 2026-11-03): a pessoa entra uma vez la' e
+// central/sso.js troca aquela sessao por uma deste projeto, com o mesmo uid de sempre. Senha, troca de senha,
+// saida e o logout apos 2h sem uso ficam no central; a validade de 72h/90 dias da senha (2026-10-14) saiu junto.
+// Os campos do formulario de login do index.html ficam so' para a versao local (login.js).
+document.body.classList.add('login-central');
+el('trocar-senha').onclick = irParaTrocarSenha;  // a tela inicial troca e devolve a pessoa para ca'
+el('logout').onclick = () => sairDeTudo(auth);    // sai tambem do login central
 el('login-switch').onclick = el('logout').onclick;
-await setPersistence(auth, browserSessionPersistence);
-el('login-submit').disabled = el('login-reset').disabled = false;
-status('Entre com o e-mail liberado para o simulador.');
-try {
-  if (sessionStorage.getItem(LOGOUT_INATIVIDADE_FLAG)) { sessionStorage.removeItem(LOGOUT_INATIVIDADE_FLAG); status(MSG_INATIVIDADE); }
-} catch {}
-onAuthStateChanged(auth, async user => {
+function falhaEntrada(texto) { status(texto); el('login-switch').hidden = false; el('login-inicio').hidden = false; }
+status('Entrando com o seu login Nexta…');
+// Entra pelo login central e so' entao acompanha a sessao deste projeto (o SDK daqui e' o 12.x: vai a propria
+// signInWithCustomToken)
+entrarPeloCentral('simulador', auth, {entrarComToken: signInWithCustomToken})
+  .then(() => onAuthStateChanged(auth, aoMudarSessao))
+  .catch(error => { console.error(error); falhaEntrada(error.message); });
+async function aoMudarSessao(user) {
   const version = ++generation;
   document.body.classList.add('auth-pending');
   el('login-screen').hidden = false;
   el('account-bar').hidden = true;
-  if (!user) { if (started) location.reload(); return; }
+  if (!user) { irParaLogin(); return; }  // sessao encerrada por fora (ex.: acesso tirado no central)
   if (started) return;
-  // F5 numa aba que ficou mais de 2h parada (a sessao do Firebase sobrevive ao F5 na mesma aba).
-  if (inativoHaMuitoTempo()) { try { await signOut(auth); } catch {} status(MSG_INATIVIDADE); return; }
   try {
     status('Conferindo acesso e carregando estoques…');
     const profile = (await get(ref(db, `perfis/${user.uid}`))).val();
@@ -212,22 +58,9 @@ onAuthStateChanged(auth, async user => {
     }
     // Desativado pela aba Usuarios (2026-10-29); as regras do banco tambem negam os dados.
     if (profile.desativado === true) throw new Error('Seu acesso ao simulador foi desativado. Fale com a gestão.');
-    const senha = await situacaoSenha(user, profile);
-    if (senha.tipo === 'bloqueada') {
-      try { await signOut(auth); } catch {}
-      status('Sua senha temporária expirou (prazo de 72 horas sem troca). Clique em “Esqueci minha senha” para criar uma nova.');
-      return;
-    }
-    // Protecao no banco (2026-10-14): com acessoBloqueado, o banco nega os dados. Troca a senha antes de
-    // carregar (se ela for o motivo) e espera o script da maquina logistica liberar o perfil.
-    if (profile.acessoBloqueado === true) {
-      if (senha.tipo === 'vencida' || senha.tipo === 'temporaria') {
-        status('Troque sua senha para continuar.');
-        aguardarLiberacao = true;
-        abrirTrocaObrigatoria(senha.tipo === 'vencida' ? 'vencida' : 'inicial');
-      } else esperarLiberacao(user);
-      return;
-    }
+    // Marca da antiga validade de senha (validade_senhas.py, desligado em 2026-11-03): as regras do banco ainda
+    // negam os dados a quem ficou com ela.
+    if (profile.acessoBloqueado === true) throw new Error('Seu acesso ao Nextoques está bloqueado. Fale com o administrador.');
     // Aba Aberturas (2026-10-16): as bases preenchem a abertura do dia no portal, no lugar da planilha.
     // Layout (cidades > terminais > produtos) vem de cadastros/aberturas, gerado da planilha por
     // gerar_layout_aberturas.py. Valores em aberturas/<dia>/<empDep>/<produtoHex>; cada alteracao vira
@@ -274,20 +107,9 @@ onAuthStateChanged(auth, async user => {
     // Fim comum do login (os dois caminhos: completo e so' Aberturas).
     const concluirEntrada = async () => {
       started = true;
-      registrarAtividade(true);
       document.body.classList.remove('auth-pending'); el('login-screen').hidden = true;
       el('account-bar').hidden = false;
       el('account-email').textContent = `${profile.nome || user.email} · ${profile.perfil}`;
-      mostrarAvisoSenha(senha);
-      if (senha.tipo === 'vencida') abrirTrocaObrigatoria('vencida');
-      else if (senha.tipo === 'temporaria') {
-        // Senha inicial (regra da usuaria, 2026-10-14): o 1o login com ela e' livre (so' fica o aviso); a
-        // partir do 2o, a troca e' obrigatoria. "1o login" = ainda nao ha primeiroAcessoEm desta senha inicial.
-        if (!profile.primeiroAcessoEm || profile.primeiroAcessoEm < senha.atualizada) {
-          try { await set(ref(db, `perfis/${user.uid}/primeiroAcessoEm`), serverTimestamp()); }
-          catch (e) { console.warn('Não foi possível registrar o primeiro acesso', e); }
-        } else abrirTrocaObrigatoria('inicial');
-      }
     };
     // Perfil 'base': ate' 2026-10-21 so' via a aba Aberturas; agora ve todas as abas do simulador como consulta
     // (usuaria: "deixa as outras abas pra eles verem tambem, como Alertas, Cenario") — edita so' as aberturas
@@ -360,22 +182,9 @@ onAuthStateChanged(auth, async user => {
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
       ...aberturasApi,
-      // Aba Usuarios (usuaria, 2026-10-29: so' ela e o Matheus Sanches): lista/edita perfis direto; criar login e
-      // resetar senha viram pedido em pedidosUsuarios, executado pela maquina logistica (pedidos_usuarios.py).
-      gerenciaUsuarios() { return profile.gerenciaUsuarios === true; },
-      async listarPerfis() { return (await get(ref(db, 'perfis'))).val() || {}; },
-      async salvarPerfil(uid, campos) {
-        const caminhos = {};
-        for (const [campo, valor] of Object.entries(campos)) caminhos[`perfis/${uid}/${campo}`] = valor;
-        await update(ref(db), caminhos);
-      },
-      async pedirUsuario(dados) {
-        const novo = push(ref(db, 'pedidosUsuarios'));
-        await set(novo, {...dados, por: user.uid, porNome: profile.nome || user.email, em: serverTimestamp(), status: 'pendente'});
-        return novo.key;
-      },
-      acompanharPedido(id, aoMudar) { return onValue(ref(db, `pedidosUsuarios/${id}`), s => aoMudar(s.val())); },
-      async enviarRedefinicao(email) { await sendPasswordResetEmail(auth, email); },
+      // Aba Usuarios: desde o login central (2026-11-03) so' leva a' tela de Usuarios do portal; aparece para o
+      // admin geral e o key user do Nextoques.
+      gerenciaUsuarios,
       // Dias 15..29 sob demanda (botao "+ fim do LE", 2026-10-19): {record_id: {iso: dia}} das 3 regioes.
       async carregarExtensao() {
         const partes = await Promise.all(visibleRegions.map(r => get(ref(db, `fontes/extensao/${r}`)).then(s => s.val()).catch(() => null)));
@@ -471,5 +280,5 @@ onAuthStateChanged(auth, async user => {
     onValue(ref(db, 'fontes/atual/meta'), snap => aoMudarMeta(snap.val()));
     document.addEventListener('visibilitychange', () => { if (!document.hidden && metaPendente) aoMudarMeta(metaPendente); });
     textoSync();
-  } catch (error) { status(errorText(error)); el('login-switch').hidden = false; }
-});
+  } catch (error) { falhaEntrada(errorText(error)); }
+}
