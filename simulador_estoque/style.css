@@ -6,11 +6,6 @@
 .login-box .brand{font-size:42px}.login-box .brand-mark{width:50px;height:50px}
 .login-box button{min-height:42px}
 #login-status{margin:0;min-height:24px;color:#f3c787;overflow-wrap:anywhere}
-/* Site: login pelo central (online.js); os campos e botoes do formulario sao so' da versao local (login.js) */
-.login-central #login-form label,.login-central #login-form button{display:none}
-#login-inicio{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:10px;background:var(--accent);color:#111A0A;font:600 14px var(--font);text-decoration:none}
-#login-inicio[hidden]{display:none}
-.login-central #login-form #login-switch:not([hidden]){display:inline-block}
 #account-bar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:8px 24px;background:#223528}
 #account-email{overflow-wrap:anywhere;min-width:0}
 /* Cores dos movimentos, independentes das faixas de saldo. */
@@ -269,6 +264,8 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 /* Trocar senha */
 #trocar-senha{display:inline-flex;align-items:center;gap:6px}
 #trocar-senha .aba-icone{width:16px;height:16px;opacity:.85}
+.senha-dialogo{width:min(420px,calc(100vw - 32px));padding:24px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px #000a}
+.senha-dialogo::backdrop{background:#0009}
 .hist-dialogo{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:20px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px #000a}
 .hist-dialogo::backdrop{background:#0009}
 .hist-dialogo header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
@@ -285,6 +282,11 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .hist-tabela .hist-abertura,.hist-tabela .hist-final{font-weight:700}
 .hist-tabela .hist-critico{background:#7f1d1d;color:#fff}.hist-tabela .hist-atencao{background:#78350f;color:#fff}
 .hist-tabela .hist-ok{background:#14532d;color:#fff}.hist-tabela .hist-alto{background:#1e3a8a;color:#fff}
+.senha-dialogo h2{margin:0 0 6px}
+.senha-dialogo form{display:flex;flex-direction:column;gap:12px}
+.senha-dialogo p{margin:0}
+#senha-info{min-height:18px;font-size:13px;color:#f3c787}
+.senha-acoes{display:flex;justify-content:flex-end;gap:8px}
 /* Legenda com as regras da matriz */
 .matriz-legenda{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 8px}
 @media(max-width:1000px){.matriz-legenda{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -305,6 +307,10 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 @media(max-width:560px){.regras-cenario dl{grid-template-columns:1fr}}
 .regras-cenario dt{color:#EEFE7A;font-weight:700;font-size:12px;margin-bottom:2px}
 .regras-cenario dd{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+/* Aviso de senha (temporaria ou perto de vencer) */
+.aviso-senha{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 16px 0;padding:10px 14px;border-radius:10px;background:#3a2a0a;border:1px solid #FACC15;color:#FDE68A;font-size:13px}
+.aviso-senha[data-tipo="temporaria"]{background:#3b1210;border-color:#FF6B5F;color:#FFD0CC}
+.aviso-senha button{flex:none;padding:6px 12px;font-size:12px}
 /* Ajuste de largura: quadro com 7 colunas nao pode empurrar a pagina (2026-10-14) */
 .ranking-corpo{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
 .ranking-corpo>*{min-width:0}
@@ -413,3 +419,29 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .filtro-deposito{flex:1 1 300px}.filtro-deposito .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 .filtro-product{flex:1 1 300px}.filtro-product .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:700px){.filtros-grade{gap:14px}.filtro-bloco{flex:1 1 100%}.filtro-cidade .chips{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-deposito .chips,.filtro-product .chips{grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-empresa .chips{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* Aba Usuarios (2026-10-29): so' quem gerencia usuarios ve */
+.us-form{border:1px solid var(--border);border-radius:12px;padding:16px;margin:8px 0 22px;display:grid;gap:10px}
+.us-form h3,.us-lista-topo h3{margin:0;font-size:16px}
+.us-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.us-campos label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.us-campos input,#us-busca{padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:#ffffff08;color:inherit;font:inherit}
+.us-campos input[readonly]{opacity:.6}
+.us-chips{margin-top:2px}
+.us-bases{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.us-cidade strong{font-size:13px}
+.us-acoes-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.us-status{font-size:13px;color:var(--muted)}
+.us-status[data-tipo="ok"]{color:#4ADE80}.us-status[data-tipo="erro"]{color:#FF8A7F}.us-status[data-tipo="aviso"]{color:#FBBF24}
+.us-lista-topo{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:8px}
+#us-busca{min-width:240px;max-width:100%}
+.us-tabela-wrap{overflow-x:auto}
+.us-tabela{width:100%;border-collapse:collapse;font-size:13px}
+.us-tabela th,.us-tabela td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.us-tabela th{color:var(--muted);font-weight:600;white-space:nowrap}
+.us-det{max-width:320px}
+.us-acoes{white-space:nowrap}.us-acoes button{padding:5px 9px;font-size:12px;margin:0 4px 4px 0}
+.us-perigo{border-color:#FF6B5F66!important;color:#FF8A7F!important}
+.us-tag{font-size:11px;padding:1px 6px;border-radius:999px;background:#8dc8302b;color:#EEFE7A;white-space:nowrap}
+.us-sit{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.us-ok{background:#16653433;color:#4ADE80}.us-temp{background:#FBBF2422;color:#FBBF24}.us-bloq,.us-off{background:#B91C1C33;color:#FF8A7F}
+.us-campos input:invalid:placeholder-shown{border-color:var(--border);box-shadow:none}
