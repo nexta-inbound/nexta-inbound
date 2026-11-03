@@ -1,0 +1,205 @@
+/* Base visual da tela inicial e da tela de usuários: a mesma identidade do agendamento e das solicitações
+   (paleta clara/escura conforme o computador, IBM Plex e barra azul-marinho no topo). */
+:root {
+  color-scheme: light;
+  --bg: #F2F4F3;
+  --surface: #FCFDFC;
+  --panel: #FCFDFC;        /* fundo dos campos */
+  --panel-soft: #E9EEEF;   /* fundo secundário */
+  --border: #D5DCDF;
+  --border-dk: #B4C0C6;
+  --text: #10283A;
+  --text-dim: #46586A;
+  --text-muted: #6E7F8C;
+  --accent: #1F6F95;
+  --accent-ink: #F5F8F9;
+  --accent-dim: #DDEBF2;
+  --warn: #9A6212;    --warn-dim: #F7EBD6;
+  --success: #2B7352; --success-dim: #DDEFE5;
+  --danger: #B8412F;  --danger-dim: #F7E4E0;
+  --barra: #10283A;   --barra-texto: #F2F5F6;
+  --marca: #EEFE7A;        /* amarelo do logo, na barra do topo */
+  --scrim: rgba(8, 20, 30, .45);
+  --sombra: 0 1px 2px rgba(16, 40, 58, .06);
+  --sombra-forte: 0 12px 40px rgba(16, 40, 58, .18);
+  /* Cor de cada sistema nos cards (mais escuras no claro, para contrastar com o fundo) */
+  --pet-green: #4D8A17;
+  --pet-blue: #2F64C8;
+  --pet-orange: #C2570C;
+  --pet-purple: #6D4FC4;
+  --pet-teal: #0F7F72;
+  --font: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0D1820; --surface: #13222D; --panel: #13222D; --panel-soft: #1A2D3A; --border: #2A3F4D; --border-dk: #3B5566;
+    --text: #E6EDF1; --text-dim: #B3C2CC; --text-muted: #8599A6;
+    --accent: #5BA8CF; --accent-ink: #0D1820; --accent-dim: #16303F;
+    --warn: #E3B266; --warn-dim: #362A17; --success: #7CCBA2; --success-dim: #173228; --danger: #EE8A78; --danger-dim: #3A1F1B;
+    --barra: #1D3A50; --barra-texto: #E6EDF1; --scrim: rgba(0, 0, 0, .55);
+    --sombra: 0 1px 2px rgba(0, 0, 0, .3); --sombra-forte: 0 12px 40px rgba(0, 0, 0, .5);
+    --pet-green: #8DC830; --pet-blue: #5B8CFF; --pet-orange: #F97316; --pet-purple: #A78BFA; --pet-teal: #2DD4BF;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+body { min-height: 100vh; font-family: var(--font); font-size: 14px; line-height: 1.45; color: var(--text); background: var(--bg); }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Topo: mesmo desenho do topo do agendamento (logo | nome da tela ... pessoa ▾ e botões) ── */
+.topo { position: relative; z-index: 2; background: var(--barra); color: var(--barra-texto); }
+.topo-in { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 24px; }
+.marca { display: flex; align-items: center; gap: 18px; margin-right: auto; min-width: 0; color: inherit; text-decoration: none; }
+.marca-logo { height: 26px; width: auto; display: block; flex-shrink: 0; color: var(--marca); }
+.marca-texto { padding-left: 18px; border-left: 1px solid rgba(255,255,255,0.2); font-size: 20px; font-weight: 600; letter-spacing: 0.2px; }
+.topo .sessao { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; }
+.quem { display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; text-align: right; background: none; border: none; padding: 4px 8px; border-radius: 6px; color: inherit; }
+.quem small { opacity: 0.75; font-size: 12px; }
+.quem small:empty { display: none; }
+button.quem { cursor: pointer; }
+button.quem:hover { background: rgba(255,255,255,0.08); }
+button.quem .nome::after { content: " ▾"; font-size: 11px; opacity: 0.7; }
+.topo .botao { background: transparent; border-color: rgba(255,255,255,0.3); color: inherit; }
+.topo .botao:hover { background: rgba(255,255,255,0.08); }
+.topo :focus-visible { outline-color: var(--marca); }
+
+/* ── Botões ── */
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.botao:hover { background: var(--panel-soft); }
+.botao:disabled { opacity: 0.5; cursor: not-allowed; }
+.botao.primario { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.botao.primario:hover { filter: brightness(0.95); }
+.botao.perigo { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.botao.perigo:hover { background: var(--danger-dim); }
+.botao.fantasma { border-color: transparent; color: var(--text-dim); }
+.botao.fantasma:hover { background: var(--panel-soft); }
+.botao.pequeno { padding: 5px 10px; font-size: 13px; }
+.link-botao { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 13px; text-decoration: underline; }
+
+/* ── Campos ── */
+.campo { display: flex; flex-direction: column; gap: 5px; }
+.campo > span, .rotulo { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.campo input:not([type=checkbox]):not([type=radio]), .campo select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.campo input:focus, .campo select:focus { border-color: var(--accent); }
+.campo input[readonly] { color: var(--text-muted); background: var(--panel-soft); }
+.marcacao { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--text); }
+.marcacao input { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+
+.mensagem { font-size: 13px; line-height: 1.5; border-radius: 8px; padding: 9px 12px; }
+.mensagem.erro { color: var(--danger); background: var(--danger-dim); }
+.mensagem.ok { color: var(--success); background: var(--success-dim); }
+.mensagem.info { color: var(--text-dim); background: var(--panel-soft); border: 1px solid var(--border); }
+.mensagem.alerta { color: var(--warn); background: var(--warn-dim); }
+
+/* ── Telas de login e de troca de senha: abaixo da barra do topo, como o login do agendamento ── */
+.sobreposicao {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 16px 24px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.sobreposicao.translucida { background: var(--scrim); }
+.cartao-login {
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--sombra-forte);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cartao-login h2 { font-size: 20px; font-weight: 600; }
+.cartao-login .sub { color: var(--text-dim); font-size: 14px; margin-top: -8px; }
+.cartao-login .botao.primario { width: 100%; padding: 10px 16px; font-size: 15px; }
+.cartao-login .rodape-cartao { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
+
+/* ── Aviso flutuante ── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 80;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 11px 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-dk);
+  box-shadow: var(--sombra-forte);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.toast.erro { border-color: var(--danger); color: var(--danger); }
+
+/* ── Etiquetas ── */
+.etiqueta {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+.etiqueta.destaque { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.etiqueta.alerta { color: var(--warn); background: var(--warn-dim); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.etiqueta.perigo { color: var(--danger); background: var(--danger-dim); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.etiqueta.verde { color: var(--success); background: var(--success-dim); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+
+@media (max-width: 640px) {
+  /* Topo compacto: logo + nome da tela numa linha; pessoa e botões na outra */
+  .topo-in { gap: 8px 12px; padding: 10px 16px; }
+  .marca { gap: 10px; }
+  .marca-logo { height: 20px; }
+  .marca-texto { font-size: 15px; padding-left: 10px; }
+  .topo .sessao { width: 100%; gap: 8px; }
+  .topo .quem { margin-right: auto; text-align: left; padding-left: 0; }
+  .topo .botao { padding: 6px 12px; font-size: 13px; }
+  .sobreposicao { padding-top: 112px; }
+}
+@media (max-width: 600px) {
+  .cartao-login { padding: 24px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .botao { transition: none; }
+}

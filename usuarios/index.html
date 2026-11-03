@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Usuários · Nexta</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI3OSIgdmlld0JveD0iMCAwIDgwIDc5IiBmaWxsPSJub25lIj48ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzcyMTBfNjc0OSkiPjxwYXRoIGQ9Ik02NC4zOTg4IDEuNTI1OTVWNjAuOTQ0OEM2NC4zOTg4IDYxLjYxNjggNjMuODcgNjIuMjk0NCA2My4wNDkyIDYyLjI5NDRDNjIuNzE4NiA2Mi4yOTQ0IDYyLjMgNjIuMTc4OCA2MS45OTE1IDYxLjc4NzZMMzEuMjE4OCA4LjQzNDA5QzI5Ljc0MjUgNS44NzI0NiAyNy42ODIxIDMuNjUyMzggMjUuMTA5NSAyLjE5ODAzQzIyLjgyODggMC45MDg5NTMgMTkuOTk3MiAwLjAwNTQ5NjIyIDE2LjY2OTkgMC4wMDU0OTYyMkM3LjQzMTQ4IC0xLjI2NTgxZS0wNSAwIDcuNDMxNDcgMCAxNy4yMjYzVjc2Ljc0OTdIMTUuNTk1NlYxNy4zMzA5QzE1LjU5NTYgMTYuNjU4OCAxNi4xMjQ1IDE1Ljk4MTMgMTYuOTQ1MyAxNS45ODEzQzE3LjI3NTkgMTUuOTgxMyAxNy42OTQ1IDE2LjA5NjkgMTguMDAzIDE2LjQ4ODFMNDYuMzg0OCA2Ni4yMDAyQzQ3LjUxOTYgNjguMTgzNCA0OC42NTQ1IDcwLjAwNjkgNDkuNzc4MyA3MS41NjU5QzUyLjAwMzkgNzQuNjY3NCA1Ni42ODY0IDc4LjI4MTIgNjMuMzQxMSA3OC4yODEyQzcyLjU3OTUgNzguMjgxMiA4MC4wMDU1IDcwLjg0OTcgODAuMDA1NSA2MS4wNTQ5VjEuNTI1OTVINjQuNDA5OUg2NC4zOTg4WiIgZmlsbD0iI0VFRkU3QSI+PC9wYXRoPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9ImNsaXAwXzM3MjEwXzY3NDkiPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI3OC4yODEyIiBmaWxsPSJ3aGl0ZSI+PC9yZWN0PjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../central/estilo.css">
+<style>
+  body { display: flex; flex-direction: column; }
+  .pagina { position: relative; z-index: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 28px 24px 40px; flex: 1; }
+
+  .carregando { color: var(--text-muted); font-size: 14px; }
+
+  .area { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .painel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+
+  /* ── Lista ── */
+  .lista-painel { position: sticky; top: 16px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+  .lista-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .lista-topo h1 { font-size: 18px; font-weight: 600; }
+  .papel-eu { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 12px; line-height: 1.45; }
+  .filtros { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .filtros input[type=search], .filtros select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); font-size: 14px; outline: none;
+  }
+  .filtros input[type=search]:focus, .filtros select:focus { border-color: var(--accent); }
+  .contagem { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .lista { list-style: none; overflow-y: auto; margin: 0 -8px; padding: 0 8px; flex: 1; min-height: 120px; }
+  .lista button {
+    width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 9px;
+    padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  }
+  .lista button:hover { background: var(--panel-soft); }
+  .lista button:focus-visible { outline-offset: 1px; }
+  .lista button.selecionado { background: var(--accent-dim); border-color: var(--accent); }
+  .lista .nome { font-weight: 600; font-size: 14px; }
+  .lista .email { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+  .lista .etiquetas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .lista .resumo { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lista li.desativado .nome { color: var(--text-muted); text-decoration: line-through; }
+  .lista .vazio { color: var(--text-muted); font-size: 13px; padding: 12px 10px; }
+
+  /* ── Ficha ── */
+  .ficha-vazia { color: var(--text-muted); padding: 48px 12px; text-align: center; font-size: 14px; }
+  .ficha { display: flex; flex-direction: column; gap: 16px; }
+  .ficha-cabecalho { display: flex; flex-direction: column; gap: 6px; }
+  .ficha-cabecalho h2 { font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .ficha-etiquetas { display: flex; gap: 6px; flex-wrap: wrap; }
+  .grade-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .linha { display: flex; gap: 8px; }
+  .linha input { flex: 1; min-width: 0; }
+  .nota { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+  .ficha-secao { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); margin-top: 6px; }
+  .bloco-sistema { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-soft); }
+  .bloco-sistema.ativo { border-color: var(--border-dk); }
+  .bloco-topo { padding: 14px 16px; width: 100%; }
+  .bloco-topo strong { font-size: 15px; }
+  .bloco-campos { padding: 0 16px 16px 40px; display: flex; flex-direction: column; gap: 12px; }
+  .opcoes-linha { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .checklist { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 4px; }
+  .checklist label { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .checklist label:hover { background: var(--panel-soft); }
+  .checklist input { accent-color: var(--accent); margin-top: 3px; }
+  .checklist small { display: block; color: var(--text-muted); font-size: 12px; }
+  .checklist .vazio { padding: 8px; font-size: 13px; color: var(--text-muted); }
+  .selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
+  .selecionados:empty { display: none; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text);
+    background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; padding: 2px 4px 2px 10px;
+  }
+  .chip button { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 0 5px; }
+  .ficha-acoes { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .ficha-acoes.secundarias { border-top: 1px solid var(--border); padding-top: 14px; }
+  .so-celular { display: none; }
+  #ficha-voltar { align-self: flex-start; }
+
+  dialog {
+    margin: auto; border: 1px solid var(--border-dk); border-radius: 14px; background: var(--surface); color: var(--text);
+    padding: 22px; width: min(460px, calc(100vw - 32px)); box-shadow: var(--sombra-forte);
+  }
+  dialog::backdrop { background: var(--scrim); }
+  dialog form { display: flex; flex-direction: column; gap: 14px; }
+  dialog h3 { font-size: 18px; font-weight: 600; }
+  .texto-copiar {
+    width: 100%; min-height: 130px; resize: vertical; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px; font-size: 13.5px; line-height: 1.5;
+  }
+
+  @media (max-width: 960px) {
+    .area { grid-template-columns: 1fr; }
+    .lista-painel { position: static; max-height: none; }
+    .lista { max-height: none; }
+    body.com-ficha .lista-painel { display: none; }
+    body:not(.com-ficha) .ficha-painel { display: none; }
+    .so-celular { display: inline-flex; }
+  }
+  @media (max-width: 600px) {
+    .pagina { padding: 20px 16px 32px; }
+    .painel { padding: 14px; }
+    .grade-campos { grid-template-columns: 1fr; }
+    .bloco-campos { padding-left: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo-in">
+    <a class="marca" href="../" title="Tela inicial">
+      <svg class="marca-logo" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="NEXTA">
+        <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="currentColor"/>
+      </svg>
+      <span class="marca-texto">Usuários</span>
+    </a>
+    <div class="sessao">
+      <button type="button" class="quem" id="botao-trocar-senha" title="Minha conta: trocar senha"><span class="nome" id="sessao-nome"></span><small id="sessao-papel"></small></button>
+      <a class="botao" href="../">Tela inicial</a>
+    </div>
+  </div>
+</header>
+
+<div class="pagina">
+
+  <p class="carregando" id="carregando">Carregando…</p>
+  <div class="mensagem erro" id="erro-geral" hidden></div>
+
+  <div class="area" id="area" hidden>
+    <section class="painel lista-painel" aria-label="Pessoas">
+      <div class="lista-topo">
+        <h1>Pessoas</h1>
+        <button type="button" class="botao primario pequeno" id="botao-nova">+ Nova pessoa</button>
+      </div>
+      <p class="papel-eu" id="papel-eu"></p>
+      <div class="filtros">
+        <input type="search" id="busca" placeholder="Buscar por nome ou e-mail" aria-label="Buscar por nome ou e-mail">
+        <select id="filtro-sistema" aria-label="Filtrar por sistema"><option value="">Todos os sistemas</option></select>
+        <label class="marcacao"><input type="checkbox" id="filtro-desativados"> Mostrar desativados</label>
+      </div>
+      <p class="contagem" id="contagem"></p>
+      <ul class="lista" id="lista"></ul>
+    </section>
+
+    <section class="painel ficha-painel" aria-label="Cadastro da pessoa">
+      <div class="ficha-vazia" id="ficha-vazia">Escolha uma pessoa na lista ou cadastre uma nova.</div>
+
+      <form class="ficha" id="ficha" hidden novalidate>
+        <button type="button" class="botao pequeno fantasma so-celular" id="ficha-voltar">← Lista</button>
+        <div class="ficha-cabecalho">
+          <h2 id="ficha-titulo">Nova pessoa</h2>
+          <div class="ficha-etiquetas" id="ficha-etiquetas"></div>
+        </div>
+
+        <div class="grade-campos">
+          <label class="campo"><span>Nome completo</span><input id="f-nome" autocomplete="off" maxlength="120"></label>
+          <label class="campo"><span>E-mail de login</span><input id="f-email" type="email" autocomplete="off"></label>
+        </div>
+        <p class="nota" id="nota-nome" hidden>O nome só pode ser alterado por quem gerencia todos os sistemas desta pessoa.</p>
+        <p class="mensagem info" id="nota-somente-leitura" hidden>Cadastro de administrador geral: só outro administrador geral altera.</p>
+        <div id="bloco-senha-nova">
+          <div class="campo"><span>Senha provisória</span>
+            <div class="linha"><input id="f-senha" autocomplete="off" aria-label="Senha provisória"><button type="button" class="botao pequeno" id="gerar-senha">Gerar outra</button></div>
+          </div>
+          <p class="nota" style="margin-top:6px">Depois de salvar, envie a senha para a pessoa. Ela cria a própria senha no primeiro acesso.</p>
+        </div>
+
+        <h3 class="ficha-secao">Sistemas</h3>
+        <p class="nota" id="nota-outros" hidden>Esta pessoa também usa sistemas que você não gerencia.</p>
+
+        <section class="bloco-sistema" data-sistema="inbound" hidden>
+          <label class="bloco-topo marcacao"><input type="checkbox" class="acesso"> <strong></strong></label>
+          <div class="bloco-campos">
+            <div class="opcoes-linha" role="radiogroup" aria-label="Tipo no Inbound">
+              <label class="marcacao"><input type="radio" name="inb-tipo" value="staff"> Equipe interna</label>
+              <label class="marcacao"><input type="radio" name="inb-tipo" value="transportador"> Transportador</label>
+            </div>
+            <label class="campo" data-se="transportador"><span>Transportador</span><select id="inb-transportador"></select></label>
+            <label class="marcacao" data-se="staff"><input type="checkbox" id="inb-admin"> Admin do Inbound</label>
+            <p class="mensagem alerta" data-aviso hidden></p>
+          </div>
+        </section>
+
+        <section class="bloco-sistema" data-sistema="agendamento" hidden>
+          <label class="bloco-topo marcacao"><input type="checkbox" class="acesso"> <strong></strong></label>
+          <div class="bloco-campos">
+            <p class="mensagem alerta" id="ag-gerenciado" hidden>Este login é de quiosque e continua sendo cuidado no próprio Agendamento.</p>
+            <p class="mensagem info" id="ag-robo" hidden>Este login também é usado pelo robô do datalake: continua Interno e não pode perder o acesso.</p>
+            <label class="campo"><span>Tipo</span>
+              <select id="ag-tipo"><option value="interno">Interno</option><option value="cliente">Cliente</option><option value="transportadora">Transportadora</option></select></label>
+            <div class="campo" data-se="externo"><span id="ag-clientes-rotulo">Clientes</span>
+              <input type="search" id="ag-busca" placeholder="Buscar cliente por nome, código ou cidade" aria-label="Buscar cliente">
+              <div class="selecionados" id="ag-selecionados"></div>
+              <div class="checklist" id="ag-lista"></div>
+            </div>
+            <label class="marcacao" data-se="interno"><input type="checkbox" id="ag-admin"> Admin do Agendamento</label>
+            <p class="mensagem alerta" data-aviso hidden></p>
+          </div>
+        </section>
+
+        <section class="bloco-sistema" data-sistema="solicitacoes" hidden>
+          <label class="bloco-topo marcacao"><input type="checkbox" class="acesso"> <strong></strong></label>
+          <div class="bloco-campos">
+            <span class="rotulo">Papéis</span>
+            <div class="opcoes-linha" id="sol-papeis">
+              <label class="marcacao"><input type="checkbox" value="comercial"> Comercial</label>
+              <label class="marcacao"><input type="checkbox" value="demanda"> Time Demanda</label>
+              <label class="marcacao"><input type="checkbox" value="logistica"> Time Logística</label>
+              <label class="marcacao"><input type="checkbox" value="backoffice"> Time Backoffice</label>
+            </div>
+            <p class="nota">Sem nenhum papel marcado, a pessoa fica como somente consulta.</p>
+            <label class="campo"><span>WhatsApp (opcional)</span><input id="sol-telefone" inputmode="tel" placeholder="(31) 99999-9999"></label>
+            <label class="marcacao"><input type="checkbox" id="sol-admin"> Admin das Solicitações</label>
+            <p class="mensagem alerta" data-aviso hidden></p>
+          </div>
+        </section>
+
+        <section class="bloco-sistema" data-sistema="simulador" hidden>
+          <label class="bloco-topo marcacao"><input type="checkbox" class="acesso"> <strong></strong></label>
+          <div class="bloco-campos">
+            <p class="nota">Só aceita e-mail @nexta.com.br ou @simcombustiveis.com.br.</p>
+            <label class="campo"><span>Perfil</span>
+              <select id="sim-perfil">
+                <option value="">Escolha o perfil…</option>
+                <option value="administrador">Administrador</option>
+                <option value="regional">Regional</option>
+                <option value="leitura">Leitura</option>
+                <option value="base">Base (responsável pela abertura dos terminais)</option>
+              </select></label>
+            <label class="campo" data-se="regional"><span>Região</span>
+              <select id="sim-regiao"><option value="">Escolha a região…</option><option value="SP">SP</option><option value="MG_RJ">MG/RJ</option><option value="CO">CO</option></select></label>
+            <div class="campo" data-se="base"><span>Terminais</span>
+              <input type="search" id="sim-busca" placeholder="Buscar terminal por nome, código ou cidade" aria-label="Buscar terminal">
+              <div class="selecionados" id="sim-selecionados"></div>
+              <div class="checklist" id="sim-lista"></div>
+            </div>
+            <label class="marcacao"><input type="checkbox" id="sim-edita"> Edita as aberturas de todos os terminais</label>
+            <p class="mensagem alerta" data-aviso hidden></p>
+          </div>
+        </section>
+
+        <section id="bloco-admin" hidden>
+          <h3 class="ficha-secao">Administração do portal</h3>
+          <div class="campo" style="margin-top:10px"><span>Key user de</span><div class="opcoes-linha" id="key-user"></div></div>
+          <label class="marcacao" style="margin-top:12px"><input type="checkbox" id="f-admin-geral"> Administrador geral (cadastra em todos os sistemas e nomeia key users)</label>
+        </section>
+
+        <div class="mensagem erro" id="ficha-erro" role="alert" hidden></div>
+        <div class="ficha-acoes">
+          <button type="submit" class="botao primario" id="salvar">Salvar</button>
+          <button type="button" class="botao fantasma" id="cancelar">Cancelar</button>
+        </div>
+        <div class="ficha-acoes secundarias" id="acoes-existente" hidden>
+          <button type="button" class="botao pequeno" id="acao-senha">Definir senha provisória</button>
+          <button type="button" class="botao pequeno perigo" id="acao-ativo">Desativar</button>
+          <p class="nota" id="nota-senha" hidden>Esta pessoa também usa sistemas que você não gerencia: para uma senha
+            provisória, fale com o administrador geral.</p>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<dialog id="dialogo-senha">
+  <form method="dialog">
+    <h3>Definir senha provisória</h3>
+    <p class="nota" id="d-senha-pessoa"></p>
+    <div class="campo"><span>Senha provisória</span>
+      <div class="linha"><input id="d-senha" autocomplete="off" aria-label="Senha provisória"><button type="button" class="botao pequeno" id="d-gerar">Gerar outra</button></div>
+    </div>
+    <p class="nota">A pessoa cria uma senha nova no próximo acesso, e as sessões abertas dela são encerradas.</p>
+    <div class="mensagem erro" id="d-erro" hidden></div>
+    <div class="ficha-acoes">
+      <button type="button" class="botao primario" id="d-confirmar">Definir senha</button>
+      <button class="botao fantasma" value="cancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogo-acesso">
+  <form method="dialog">
+    <h3 id="acesso-titulo">Acesso criado</h3>
+    <p class="nota">Envie esta mensagem para a pessoa (WhatsApp ou e-mail):</p>
+    <textarea class="texto-copiar" id="acesso-texto" readonly aria-label="Mensagem para enviar"></textarea>
+    <div class="ficha-acoes">
+      <button type="button" class="botao primario" id="acesso-copiar">Copiar mensagem</button>
+      <button class="botao fantasma" value="fechar">Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script type="module">
+  import { SISTEMAS, configPronta } from '../central/config.js';
+
+  const $ = id => document.getElementById(id);
+  const normalizar = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const PADRAO = {
+    inbound: { tipo: 'staff', transportadorNome: '', admin: false },
+    agendamento: { tipo: 'interno', clientes: [], admin: false },
+    solicitacoes: { papeis: [], admin: false, telefone: '' },
+    simulador: { perfil: '', regiao: '', bases: [], editaAberturas: false },
+  };
+  // eu: quem está usando a tela; ficha: pessoa aberta; sujos: sistemas mexidos (só eles vão para o servidor)
+  const E = { eu: null, usuarios: [], opcoes: {}, ficha: null, sujos: new Set(), papeisSujos: false, alterado: false };
+  let cliente = null;
+
+  function el(tag, atributos = {}, ...filhos) {
+    const no = document.createElement(tag);
+    for (const [chave, valor] of Object.entries(atributos)) {
+      if (valor === undefined || valor === null || valor === false) continue;
+      if (chave === 'class') no.className = valor;
+      else if (chave === 'text') no.textContent = valor;
+      else if (chave.startsWith('on')) no.addEventListener(chave.slice(2), valor);
+      else no.setAttribute(chave, valor === true ? '' : valor);
+    }
+    no.append(...filhos.flat().filter(f => f !== null && f !== undefined && f !== false));
+    return no;
+  }
+
+  let temporizadorToast = 0;
+  function toast(texto, erro = false) {
+    const caixa = $('toast');
+    caixa.textContent = texto;
+    caixa.classList.toggle('erro', erro);
+    caixa.hidden = false;
+    clearTimeout(temporizadorToast);
+    temporizadorToast = setTimeout(() => { caixa.hidden = true; }, 6000);
+  }
+  function mensagem(id, texto, tipo = 'erro') {
+    const caixa = $(id);
+    caixa.textContent = texto || '';
+    caixa.className = 'mensagem ' + tipo;
+    caixa.hidden = !texto;
+  }
+
+  // Fácil de ditar por telefone: sem letras/números que se confundem (l/1, o/0)
+  function gerarSenha() {
+    const pega = (alfabeto, n) => Array.from(crypto.getRandomValues(new Uint32Array(n)), v => alfabeto[v % alfabeto.length]).join('');
+    return `${pega('abcdefghjkmnpqrstuvwxyz', 5)}-${pega('23456789', 4)}`;
+  }
+  function formatarTelefone(t) {
+    const d = String(t || '').replace(/\D/g, '');
+    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    return d;
+  }
+
+  // ── Lista com busca e caixas de marcação (clientes do agendamento, terminais do Nextoques) ──
+  class ListaMarcavel {
+    constructor({ lista, busca, selecionados, vazio, aoMudar }) {
+      Object.assign(this, { lista, busca, selecionados, vazio, aoMudar, itens: [], sel: new Set() });
+      busca.addEventListener('input', () => this.render());
+    }
+    definirItens(itens) { this.itens = itens; this.render(); }
+    definir(valores) { this.sel = new Set(valores || []); this.busca.value = ''; this.render(); }
+    valores() { return [...this.sel]; }
+    alternar(id, marcado) {
+      if (marcado) this.sel.add(id); else this.sel.delete(id);
+      this.render();
+      this.aoMudar();
+    }
+    render() {
+      const porId = new Map(this.itens.map(i => [i.id, i]));
+      // Marcado que sumiu do cadastro continua aparecendo, para dar para desmarcar
+      const sumidos = [...this.sel].filter(id => !porId.has(id)).map(id => ({ id, nome: id, detalhe: 'não encontrado no cadastro' }));
+      const todos = [...this.itens.filter(i => !i.inativo || this.sel.has(i.id)), ...sumidos]
+        .sort((a, b) => (this.sel.has(b.id) - this.sel.has(a.id)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+      const termo = normalizar(this.busca.value.trim());
+      const achados = termo ? todos.filter(i => normalizar(`${i.id} ${i.nome} ${i.detalhe}`).includes(termo)) : todos;
+      const LIMITE = 80;
+      this.lista.replaceChildren(...[
+        ...achados.slice(0, LIMITE).map(i => el('label', {},
+          el('input', { type: 'checkbox', checked: this.sel.has(i.id), onchange: ev => this.alternar(i.id, ev.target.checked) }),
+          el('span', {}, i.nome, el('small', { text: i.detalhe })))),
+        achados.length > LIMITE && el('div', { class: 'vazio', text: `Mais ${achados.length - LIMITE}: refine a busca.` }),
+        !achados.length && el('div', { class: 'vazio', text: this.vazio }),
+      ].filter(Boolean));
+      this.selecionados.replaceChildren(...[...this.sel].map(id => el('span', { class: 'chip' }, porId.get(id)?.nome || id,
+        el('button', { type: 'button', title: 'Tirar', 'aria-label': `Tirar ${porId.get(id)?.nome || id}`, text: '✕',
+          onclick: () => this.alternar(id, false) }))));
+    }
+  }
+  const listaClientes = new ListaMarcavel({ lista: $('ag-lista'), busca: $('ag-busca'), selecionados: $('ag-selecionados'),
+    vazio: 'Nenhum cliente encontrado.', aoMudar: () => marcarSujo('agendamento') });
+  const listaTerminais = new ListaMarcavel({ lista: $('sim-lista'), busca: $('sim-busca'), selecionados: $('sim-selecionados'),
+    vazio: 'Nenhum terminal encontrado.', aoMudar: () => marcarSujo('simulador') });
+
+  // ── Opções de cada sistema (transportadores, clientes, terminais), carregadas uma vez ──
+  const promessasOpcoes = {};
+  function opcoesDe(sistema) {
+    promessasOpcoes[sistema] ??= cliente.chamar('opcoesPerfil', { sistema })
+      .then(opcoes => { E.opcoes[sistema] = opcoes; aplicarOpcoes(sistema); return opcoes; })
+      .catch(erro => { delete promessasOpcoes[sistema]; throw erro; });
+    return promessasOpcoes[sistema];
+  }
+  function aplicarOpcoes(sistema) {
+    const opcoes = E.opcoes[sistema] || {};
+    if (sistema === 'agendamento') {
+      listaClientes.definirItens((opcoes.clientes || []).map(c => ({
+        id: c.id, nome: c.nome || c.id, detalhe: [c.id, c.cidade, c.ativo ? '' : 'inativo'].filter(Boolean).join(' · '), inativo: !c.ativo })));
+    }
+    if (sistema === 'simulador') {
+      listaTerminais.definirItens((opcoes.terminais || []).map(t => ({ id: t.empDep, nome: t.nome, detalhe: [t.empDep, t.cidade].filter(Boolean).join(' · ') })));
+    }
+  }
+  function preencherTransportadores(atual) {
+    const select = $('inb-transportador');
+    const nomes = E.opcoes.inbound?.transportadores || [];
+    select.replaceChildren(el('option', { value: '', text: 'Escolha o transportador…' }),
+      ...nomes.map(n => el('option', { value: n, text: n })));
+    if (atual && !nomes.includes(atual)) select.append(el('option', { value: atual, text: `${atual} (não cadastrado)` }));
+    select.value = atual || '';
+  }
+
+  // ── Lista de pessoas ──
+  async function carregarLista() {
+    const resposta = await cliente.chamar('listarUsuarios');
+    E.eu = resposta.eu;
+    E.usuarios = resposta.usuarios;
+    renderLista();
+  }
+
+  function etiquetasDe(u) {
+    return [
+      !u.ativo && el('span', { class: 'etiqueta perigo', text: 'Desativada' }),
+      u.trocarSenha && el('span', { class: 'etiqueta alerta', text: 'Senha provisória' }),
+      u.adminGeral && el('span', { class: 'etiqueta destaque', text: 'Admin geral' }),
+      u.keyUser?.length > 0 && el('span', { class: 'etiqueta verde', text: 'Key user: ' + u.keyUser.map(s => SISTEMAS[s]?.curto || s).join(', ') }),
+      ...u.sistemas.map(s => el('span', { class: 'etiqueta', title: u.resumos?.[s] || '', text: SISTEMAS[s]?.curto || s })),
+    ];
+  }
+
+  function renderLista() {
+    const termo = normalizar($('busca').value.trim());
+    const sistema = $('filtro-sistema').value;
+    const desativados = $('filtro-desativados').checked;
+    const itens = E.usuarios.filter(u => (desativados || u.ativo)
+      && (!sistema || u.sistemas.includes(sistema))
+      && (!termo || normalizar(`${u.nome} ${u.email}`).includes(termo)));
+    $('contagem').textContent = `${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'}`;
+    $('lista').replaceChildren(...itens.map(u => {
+      const resumo = Object.entries(u.resumos || {}).map(([s, r]) => `${SISTEMAS[s]?.curto || s}: ${r}`).join(' · ');
+      return el('li', { class: u.ativo ? '' : 'desativado' },
+        el('button', { type: 'button', class: E.ficha?.uid === u.uid ? 'selecionado' : '', onclick: () => abrirFicha(u.uid) },
+          el('span', { class: 'nome', text: u.nome || u.email }),
+          el('span', { class: 'email', text: u.email }),
+          resumo && el('span', { class: 'resumo', title: resumo, text: resumo }),
+          el('span', { class: 'etiquetas' }, etiquetasDe(u))));
+    }));
+    if (!itens.length) $('lista').append(el('li', { class: 'vazio', text: 'Ninguém encontrado com esse filtro.' }));
+  }
+
+  // ── Ficha ──
+  const blocoDe = sistema => document.querySelector(`.bloco-sistema[data-sistema="${sistema}"]`);
+  // Nome de cada sistema: o de central/config.js
+  document.querySelectorAll('.bloco-sistema').forEach(bloco => {
+    bloco.querySelector('.bloco-topo strong').textContent = SISTEMAS[bloco.dataset.sistema].nome;
+  });
+  const valorRadio = nome => document.querySelector(`input[name="${nome}"]:checked`)?.value || '';
+
+  function marcarSujo(sistema) { E.sujos.add(sistema); E.alterado = true; }
+  function podeDescartar() {
+    return !E.alterado || confirm('Descartar as alterações que ainda não foram salvas?');
+  }
+
+  function atualizarBloco(sistema) {
+    const bloco = blocoDe(sistema);
+    const marcado = bloco.querySelector('.acesso').checked;
+    bloco.classList.toggle('ativo', marcado);
+    bloco.querySelector('.bloco-campos').hidden = !marcado;
+    const mostrarSe = (chave, visivel) => bloco.querySelectorAll(`[data-se="${chave}"]`).forEach(n => { n.hidden = !visivel; });
+    if (sistema === 'inbound') {
+      const tipo = valorRadio('inb-tipo');
+      mostrarSe('transportador', tipo === 'transportador');
+      mostrarSe('staff', tipo !== 'transportador');
+    } else if (sistema === 'agendamento') {
+      const tipo = $('ag-tipo').value;
+      mostrarSe('externo', tipo !== 'interno');
+      mostrarSe('interno', tipo === 'interno');
+      $('ag-clientes-rotulo').textContent = tipo === 'transportadora' ? 'Clientes atendidos por esta transportadora' : 'Clientes (filiais) desta pessoa';
+    } else if (sistema === 'simulador') {
+      const perfil = $('sim-perfil').value;
+      mostrarSe('regional', perfil === 'regional');
+      mostrarSe('base', perfil === 'base');
+    }
+  }
+
+  function preencherPerfil(sistema, perfil) {
+    const p = { ...PADRAO[sistema], ...(perfil || {}) };
+    const bloco = blocoDe(sistema);
+    if (sistema === 'inbound') {
+      bloco.querySelectorAll('input[name="inb-tipo"]').forEach(r => { r.checked = r.value === p.tipo; });
+      preencherTransportadores(p.transportadorNome);
+      $('inb-admin').checked = p.admin;
+    } else if (sistema === 'agendamento') {
+      $('ag-tipo').value = ['interno', 'cliente', 'transportadora'].includes(p.tipo) ? p.tipo : 'interno';
+      listaClientes.definir(p.clientes);
+      $('ag-admin').checked = p.admin;
+      // Quiosque: o central não mexe. Login usado pelo robô: segue Interno e com acesso (o servidor também recusa)
+      const gerenciado = perfil?.gerenciadoNoSistema === true;
+      const robo = perfil?.robo === true;
+      $('ag-gerenciado').hidden = !gerenciado;
+      $('ag-robo').hidden = !robo;
+      bloco.querySelectorAll('input, select').forEach(campo => { campo.disabled = gerenciado; });
+      if (robo) { $('ag-tipo').disabled = true; bloco.querySelector('.acesso').disabled = true; }
+    } else if (sistema === 'solicitacoes') {
+      $('sol-papeis').querySelectorAll('input').forEach(c => { c.checked = p.papeis.includes(c.value); });
+      $('sol-admin').checked = p.admin;
+      $('sol-telefone').value = formatarTelefone(p.telefone);
+    } else if (sistema === 'simulador') {
+      $('sim-perfil').value = p.perfil || '';
+      $('sim-regiao').value = p.regiao || '';
+      listaTerminais.definir(p.bases);
+      $('sim-edita').checked = p.editaAberturas;
+    }
+  }
+
+  function lerPerfil(sistema) {
+    if (sistema === 'inbound') {
+      return { tipo: valorRadio('inb-tipo') || 'staff', transportadorNome: $('inb-transportador').value, admin: $('inb-admin').checked };
+    }
+    if (sistema === 'agendamento') return { tipo: $('ag-tipo').value, clientes: listaClientes.valores(), admin: $('ag-admin').checked };
+    if (sistema === 'solicitacoes') {
+      return { papeis: [...$('sol-papeis').querySelectorAll('input:checked')].map(c => c.value),
+        admin: $('sol-admin').checked, telefone: $('sol-telefone').value };
+    }
+    return { perfil: $('sim-perfil').value, regiao: $('sim-regiao').value, bases: listaTerminais.valores(), editaAberturas: $('sim-edita').checked };
+  }
+
+  function preencherFicha(ficha) {
+    E.ficha = ficha;
+    E.sujos.clear();
+    E.papeisSujos = false;
+    E.alterado = false;
+    const novo = !ficha.uid;
+    $('ficha-titulo').textContent = novo ? 'Nova pessoa' : (ficha.nome || ficha.email);
+    $('ficha-etiquetas').replaceChildren(...(novo ? [] : etiquetasDe({ ...ficha, sistemas: [], resumos: {} }).filter(Boolean)));
+    $('f-nome').value = ficha.nome || '';
+    $('f-nome').readOnly = !novo && !ficha.podeEditarNome;
+    $('nota-nome').hidden = novo || ficha.podeEditarNome;
+    $('f-email').value = ficha.email || '';
+    $('f-email').readOnly = !novo;
+    $('bloco-senha-nova').hidden = !novo;
+    $('f-senha').value = novo ? gerarSenha() : '';
+    $('nota-outros').hidden = !ficha.outrosSistemas;
+    for (const sistema of Object.keys(SISTEMAS)) {
+      const bloco = blocoDe(sistema);
+      bloco.hidden = !E.eu.gerencia.includes(sistema);
+      if (bloco.hidden) continue;
+      const tem = ficha.sistemas.includes(sistema);
+      bloco.querySelector('.acesso').checked = tem;
+      bloco.querySelectorAll('input, select').forEach(campo => { campo.disabled = false; });
+      preencherPerfil(sistema, ficha.perfis?.[sistema]);
+      const aviso = bloco.querySelector('[data-aviso]');
+      aviso.textContent = 'Perfil não encontrado neste sistema: confira os campos e salve para gravar de novo.';
+      aviso.hidden = !(tem && !ficha.perfis?.[sistema]);
+      atualizarBloco(sistema);
+    }
+    $('bloco-admin').hidden = !E.eu.adminGeral;
+    if (E.eu.adminGeral) {
+      $('key-user').querySelectorAll('input').forEach(c => { c.checked = (ficha.keyUser || []).includes(c.value); });
+      $('f-admin-geral').checked = ficha.adminGeral === true;
+      $('f-admin-geral').disabled = ficha.uid === E.eu.uid;  // ninguém tira o próprio acesso de admin
+    }
+    // Key user não altera o cadastro do admin geral (o servidor também recusa): ficha só para consulta
+    const somenteLeitura = !novo && ficha.adminGeral === true && !E.eu.adminGeral;
+    $('nota-somente-leitura').hidden = !somenteLeitura;
+    if (somenteLeitura) $('ficha').querySelectorAll('.bloco-sistema input, .bloco-sistema select').forEach(campo => { campo.disabled = true; });
+    $('salvar').hidden = somenteLeitura;
+    mensagem('ficha-erro', '');
+    $('acoes-existente').hidden = novo;
+    $('acao-senha').hidden = novo || !ficha.podeDefinirSenha;
+    $('nota-senha').hidden = novo || ficha.podeDefinirSenha;
+    $('acao-ativo').hidden = novo || !E.eu.adminGeral || ficha.uid === E.eu.uid;
+    $('acao-ativo').textContent = ficha.ativo ? 'Desativar em todos os sistemas' : 'Reativar';
+    $('acao-ativo').classList.toggle('perigo', ficha.ativo);
+    $('ficha-vazia').hidden = true;
+    $('ficha').hidden = false;
+    document.body.classList.add('com-ficha');
+    renderLista();
+  }
+
+  function fecharFicha() {
+    E.ficha = null;
+    E.alterado = false;
+    $('ficha').hidden = true;
+    $('ficha-vazia').hidden = false;
+    document.body.classList.remove('com-ficha');
+    renderLista();
+  }
+
+  async function abrirFicha(uid, { semConfirmar = false } = {}) {
+    if (!semConfirmar && !podeDescartar()) return;
+    try {
+      const [ficha] = await Promise.all([cliente.chamar('carregarUsuario', { uid }), opcoesParaFicha()]);
+      preencherFicha(ficha);
+    } catch (erro) {
+      toast(cliente.mensagemErro(erro), true);
+    }
+  }
+
+  async function novaFicha() {
+    if (!podeDescartar()) return;
+    await opcoesParaFicha();
+    preencherFicha({ uid: '', nome: '', email: '', ativo: true, sistemas: [], perfis: {}, keyUser: [], adminGeral: false,
+      podeEditarNome: true, podeDefinirSenha: false, outrosSistemas: false });
+    $('f-nome').focus();
+  }
+
+  async function opcoesParaFicha() {
+    const resultados = await Promise.allSettled(E.eu.gerencia.map(opcoesDe));
+    if (resultados.some(r => r.status === 'rejected')) toast('Algumas listas (transportadores, clientes ou terminais) não carregaram. Tente de novo.', true);
+  }
+
+  function montarPedido() {
+    const ficha = E.ficha;
+    const dados = { email: $('f-email').value.trim().toLowerCase(), nome: $('f-nome').value.trim() };
+    if (ficha.uid) dados.uid = ficha.uid; else dados.senhaProvisoria = $('f-senha').value.trim();
+    dados.sistemas = {};
+    for (const sistema of E.eu.gerencia) {
+      const marcado = blocoDe(sistema).querySelector('.acesso').checked;
+      const tinha = ficha.sistemas.includes(sistema);
+      if (!E.sujos.has(sistema) && !(marcado && !tinha)) continue;  // nada mudou neste sistema
+      if (!marcado && !tinha) continue;
+      dados.sistemas[sistema] = marcado ? { acesso: true, perfil: lerPerfil(sistema) } : { acesso: false };
+    }
+    if (E.eu.adminGeral && E.papeisSujos) {
+      dados.keyUser = Object.fromEntries([...$('key-user').querySelectorAll('input')].map(c => [c.value, c.checked]));
+      dados.adminGeral = $('f-admin-geral').checked;
+    }
+    return dados;
+  }
+
+  $('ficha').addEventListener('submit', async evento => {
+    evento.preventDefault();
+    const dados = montarPedido();
+    if (!dados.nome) { mensagem('ficha-erro', 'Informe o nome completo.'); $('f-nome').focus(); return; }
+    if (!EMAIL.test(dados.email)) { mensagem('ficha-erro', 'Informe um e-mail válido.'); $('f-email').focus(); return; }
+    if (!dados.uid && (dados.senhaProvisoria || '').length < 6) { mensagem('ficha-erro', 'A senha provisória precisa ter pelo menos 6 caracteres.'); return; }
+    if (!dados.uid && !Object.values(dados.sistemas).some(s => s.acesso)) {
+      mensagem('ficha-erro', 'Marque pelo menos um sistema para a pessoa.');
+      return;
+    }
+    mensagem('ficha-erro', '');
+    const botao = $('salvar');
+    botao.disabled = true;
+    botao.textContent = 'Salvando…';
+    try {
+      const resposta = await cliente.chamar('salvarUsuario', dados);
+      E.alterado = false;
+      await carregarLista();
+      await abrirFicha(resposta.uid, { semConfirmar: true });
+      const avisos = (resposta.avisos || []).join(' ');
+      if (resposta.novo) mostrarMensagemAcesso('Acesso criado', dados.nome, dados.email, dados.senhaProvisoria);
+      else toast(('Alterações salvas. ' + avisos).trim());
+    } catch (erro) {
+      mensagem('ficha-erro', cliente.mensagemErro(erro));
+    } finally {
+      botao.disabled = false;
+      botao.textContent = 'Salvar';
+    }
+  });
+
+  // ── Senha, link e desativação ──
+  function mostrarMensagemAcesso(titulo, nome, email, senha) {
+    const primeiroNome = String(nome || '').split(' ')[0];
+    $('acesso-titulo').textContent = titulo;
+    $('acesso-texto').value = [
+      `Olá${primeiroNome ? ', ' + primeiroNome : ''}! Seu acesso aos sistemas Nexta está pronto.`,
+      `Site: ${location.origin}/`,
+      `Login: ${email}`,
+      `Senha provisória: ${senha}`,
+      'No primeiro acesso você vai criar a sua própria senha.',
+    ].join('\n');
+    $('dialogo-acesso').showModal();
+  }
+  $('acesso-copiar').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('acesso-texto').value); toast('Mensagem copiada.'); }
+    catch { $('acesso-texto').select(); toast('Selecione o texto e copie com Ctrl+C.'); }
+  });
+
+  $('acao-senha').addEventListener('click', () => {
+    $('d-senha-pessoa').textContent = `${E.ficha.nome} (${E.ficha.email})`;
+    $('d-senha').value = gerarSenha();
+    mensagem('d-erro', '');
+    $('dialogo-senha').showModal();
+  });
+  $('d-gerar').addEventListener('click', () => { $('d-senha').value = gerarSenha(); });
+  $('d-confirmar').addEventListener('click', async () => {
+    const senha = $('d-senha').value.trim();
+    if (senha.length < 6) { mensagem('d-erro', 'Use pelo menos 6 caracteres.'); return; }
+    $('d-confirmar').disabled = true;
+    try {
+      await cliente.chamar('definirSenha', { uid: E.ficha.uid, senha });
+      $('dialogo-senha').close();
+      mostrarMensagemAcesso('Senha provisória definida', E.ficha.nome, E.ficha.email, senha);
+      await carregarLista();
+    } catch (erro) {
+      mensagem('d-erro', cliente.mensagemErro(erro));
+    } finally {
+      $('d-confirmar').disabled = false;
+    }
+  });
+
+  $('acao-ativo').addEventListener('click', async () => {
+    const ativar = !E.ficha.ativo;
+    const pergunta = ativar
+      ? `Reativar ${E.ficha.nome}? A pessoa volta a entrar nos sistemas que já estavam liberados.`
+      : `Desativar ${E.ficha.nome}? A pessoa perde o acesso a todos os sistemas e as sessões abertas são encerradas.`;
+    if (!confirm(pergunta)) return;
+    try {
+      await cliente.chamar('definirAtivo', { uid: E.ficha.uid, ativo: ativar });
+      toast(ativar ? 'Pessoa reativada.' : 'Pessoa desativada em todos os sistemas.');
+      await carregarLista();
+      await abrirFicha(E.ficha.uid, { semConfirmar: true });
+    } catch (erro) {
+      toast(cliente.mensagemErro(erro), true);
+    }
+  });
+
+  // ── Eventos da ficha ──
+  document.querySelectorAll('.bloco-sistema').forEach(bloco => {
+    const sistema = bloco.dataset.sistema;
+    // A busca das listas não conta como alteração
+    bloco.addEventListener('change', evento => {
+      if (evento.target.type === 'search') return;
+      marcarSujo(sistema);
+      atualizarBloco(sistema);
+    });
+    bloco.addEventListener('input', evento => { if (evento.target.type !== 'search') marcarSujo(sistema); });
+  });
+  $('bloco-admin').addEventListener('change', () => { E.papeisSujos = true; E.alterado = true; });
+  $('f-nome').addEventListener('input', () => { E.alterado = true; });
+  $('f-email').addEventListener('input', () => { E.alterado = true; });
+  // A troca de senha é na tela inicial; depois ela devolve para cá
+  $('botao-trocar-senha').addEventListener('click', () => {
+    location.assign('../?senha&voltar=' + encodeURIComponent('/usuarios/'));
+  });
+  $('gerar-senha').addEventListener('click', () => { $('f-senha').value = gerarSenha(); });
+  $('cancelar').addEventListener('click', () => { if (podeDescartar()) fecharFicha(); });
+  $('ficha-voltar').addEventListener('click', () => { if (podeDescartar()) fecharFicha(); });
+  $('botao-nova').addEventListener('click', novaFicha);
+  $('busca').addEventListener('input', renderLista);
+  $('filtro-sistema').addEventListener('change', renderLista);
+  $('filtro-desativados').addEventListener('change', renderLista);
+  window.addEventListener('beforeunload', evento => { if (E.alterado) evento.preventDefault(); });
+
+  // ── Início ──
+  function erroGeral(texto) {
+    $('carregando').hidden = true;
+    mensagem('erro-geral', texto);
+  }
+
+  async function iniciar() {
+    if (!configPronta()) { erroGeral('O projeto central ainda não foi configurado (central/config.js).'); return; }
+    try {
+      cliente = await import('../central/cliente.js');
+    } catch (erro) {
+      console.error(erro);
+      erroGeral('Não foi possível conectar ao login central. Confira a internet e recarregue a página.');
+      return;
+    }
+    const usuario = await cliente.usuarioAtual();
+    if (!usuario) { location.replace('../?entrar&voltar=' + encodeURIComponent('/usuarios/')); return; }
+    // Prazo sem uso vencido (relógio em central/cliente.js): o login avisa o motivo e devolve para cá
+    const encerrar = async () => {
+      E.alterado = false;  // sem a pergunta de "sair da página?": a sessão já acabou
+      await cliente.sair().catch(() => {});
+      location.replace('../?entrar&inativo&voltar=' + encodeURIComponent('/usuarios/'));
+    };
+    if (!cliente.vigiarInatividade(encerrar)) return;
+    const cadastro = await cliente.meuCadastro().catch(() => null);
+    if (!cadastro || cadastro.ativo === false || cadastro.trocarSenha === true) {
+      location.replace('../?voltar=' + encodeURIComponent('/usuarios/'));
+      return;
+    }
+    $('sessao-nome').textContent = cadastro.nome || usuario.email;
+    try {
+      await carregarLista();
+    } catch (erro) {
+      erroGeral(cliente.mensagemErro(erro));
+      return;
+    }
+    $('sessao-papel').textContent = E.eu.adminGeral
+      ? 'Administrador geral' : `Key user · ${E.eu.gerencia.map(s => SISTEMAS[s]?.curto || s).join(', ')}`;
+    $('papel-eu').textContent = E.eu.adminGeral
+      ? 'Você é administrador geral: cadastra em todos os sistemas e nomeia key users.'
+      : `Você é key user de: ${E.eu.gerencia.map(s => SISTEMAS[s]?.nome || s).join(', ')}.`;
+    $('filtro-sistema').append(...E.eu.gerencia.map(s => el('option', { value: s, text: SISTEMAS[s]?.nome || s })));
+    $('key-user').replaceChildren(...Object.entries(SISTEMAS).map(([s, info]) =>
+      el('label', { class: 'marcacao' }, el('input', { type: 'checkbox', value: s }), ' ' + info.curto)));
+    $('carregando').hidden = true;
+    $('area').hidden = false;
+    E.eu.gerencia.forEach(s => opcoesDe(s).catch(() => {}));  // adianta as listas do formulário
+  }
+  iniciar();
+</script>
+</body>
+</html>

@@ -307,17 +307,10 @@ tbody tr:hover td { background: var(--panel-soft); }
 .login-card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg); }
 .login-title { font-size: 20px; font-weight: 600; }
 .login-desc { font-size: 14px; color: var(--text-dim); }
-#login-form { display: flex; flex-direction: column; gap: 14px; }
-.login-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
-.login-field input { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-size: 15px; color: var(--text); outline: none; }
-.login-field input:focus { border-color: var(--accent); }
-.login-btn { width: 100%; border: 1px solid transparent; border-radius: 8px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.login-btn { display: block; width: 100%; border: 1px solid transparent; border-radius: 8px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); font-size: 15px; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
 .login-btn:hover { filter: brightness(.97); }
-.login-btn:disabled { opacity: .5; cursor: not-allowed; }
-.login-error { color: var(--danger); font-size: 13px; display: none; margin-top: 10px; }
+.login-error { color: var(--danger); font-size: 13px; display: none; }
 .login-error.visible { display: block; }
-.login-link { background: none; border: none; padding: 0; color: var(--accent); font-size: 14px; text-align: left; cursor: pointer; }
-#modalTrocarSenha { z-index: 10000; } /* troca obrigatória da senha inicial abre por cima de tudo */
 
 /* ── USUÁRIOS (admin) ── */
 .login-admin-modal { display: none; position: fixed; inset: 0; z-index: 9998; background: var(--scrim); align-items: center; justify-content: center; padding: 20px; }
@@ -341,21 +334,9 @@ tbody tr:hover td { background: var(--panel-soft); }
 .login-admin-info { min-height: 18px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
 .login-admin-separator { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
 /* Seleção de vários clientes (filiais) para um usuário */
-.cli-multi { margin-bottom: 10px; }
-.cli-multi-topo { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
-.cli-multi-topo #admin-cli-contagem { font-weight: 400; color: var(--text-muted); }
-.cli-multi input#admin-cli-busca { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; outline: none; }
-.cli-multi input#admin-cli-busca:focus { border-color: var(--accent); }
 .cli-multi-sel { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .cli-multi-sel .chip { cursor: default; }
 .cli-multi-sel .chip button { background: none; border: none; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 13px; }
-.cli-multi-lista { max-height: 210px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; background: var(--surface); }
-.cli-multi-opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; cursor: pointer; font-size: 13px; color: var(--text); }
-.cli-multi-opt + .cli-multi-opt { border-top: 1px solid var(--border); }
-.cli-multi-opt:hover { background: var(--panel-soft); }
-.cli-multi-opt input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
-.cli-multi-opt small { display: block; color: var(--text-muted); font-size: 12px; }
-.cli-multi-vazio { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
 .login-admin-box { background: var(--panel-soft); border-radius: 10px; padding: 16px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
 
 /* ── AVISOS ── */
@@ -516,85 +497,42 @@ tbody tr:hover td { background: var(--panel-soft); }
 </head>
 <body>
 
-<!-- MODAL ADMIN: Usuários -->
+<!-- MODAL ADMIN: logins de quiosque (tablets do autoatendimento, testes/portal_autoatendimento), que entram com
+     senha própria. As pessoas (equipe interna, clientes, transportadoras) são cadastradas na tela de Usuários do
+     portal central (/usuarios/), que grava o perfil delas em usuarios/<uid> aqui. -->
 <div class="login-admin-modal" id="adminModal">
   <div class="login-admin-panel">
     <div class="login-admin-head">
-      <div class="login-admin-title">Gerenciar Usuários</div>
+      <div class="login-admin-title">Logins de quiosque</div>
       <button class="login-admin-close" onclick="fecharModal('adminModal')" title="Fechar">✕</button>
     </div>
-    <div class="login-admin-subtitle">Usuários cadastrados</div>
+    <div class="form-hint" style="margin-bottom:12px">Pessoas (equipe interna, clientes e transportadoras) são cadastradas na <a href="/usuarios/">tela de Usuários do portal</a>, com um login só para todos os sistemas.</div>
+    <div class="login-admin-subtitle">Quiosques cadastrados</div>
     <div class="login-admin-users" id="adminUsersList"></div>
 
     <hr class="login-admin-separator">
-    <div class="login-admin-subtitle" id="adminFormTitulo">Adicionar novo usuário</div>
+    <div class="login-admin-subtitle" id="adminFormTitulo">Adicionar login de quiosque</div>
     <div class="login-admin-box" style="margin-bottom:0">
       <div class="login-admin-row">
-        <input id="admin-new-nome" placeholder="Nome completo" autocomplete="off">
+        <input id="admin-new-nome" placeholder="Nome (ex.: Tablet guichê)" autocomplete="off">
         <input id="admin-new-email" type="email" placeholder="E-mail de login" autocomplete="off">
       </div>
       <div class="login-admin-row">
-        <input id="admin-new-senha" type="text" placeholder="Senha inicial (mín. 6 caracteres)" autocomplete="off">
+        <input id="admin-new-senha" type="text" placeholder="Senha (mín. 6 caracteres)" autocomplete="off">
         <input id="admin-new-uid" placeholder="UID (só se o login já existir)" autocomplete="off" style="font-family:monospace;font-size:11px">
       </div>
+      <!-- Com base, o tablet só faz check-in dos agendamentos dela; sem base, o terminal é escolhido no próprio
+           tablet (fica salvo no aparelho) -->
       <div class="login-admin-row">
-        <select id="admin-new-tipo" onchange="onAdminTipoChange()">
-          <option value="interno">Equipe interna</option>
-          <option value="cliente">Cliente</option>
-          <option value="transportadora">Transportadora</option>
-          <option value="quiosque">Quiosque (autoatendimento)</option>
-        </select>
-        <label class="login-admin-check" id="admin-new-admin-wrap">
-          <input id="admin-new-admin" type="checkbox"> Administrador
-        </label>
-      </div>
-      <!-- Quiosque: tablet do guichê (testes/portal_autoatendimento); com base, só faz check-in dos agendamentos dela;
-           sem base, o terminal é escolhido no próprio tablet (fica salvo no aparelho) -->
-      <div class="login-admin-row" id="admin-new-base-wrap" style="display:none">
         <select id="admin-new-base" title="Base onde fica o tablet"></select>
       </div>
-      <!-- Usuário cliente pode ter vários códigos (filiais): enxerga pedidos e agendamentos de todos -->
-      <div class="cli-multi" id="admin-new-cliente-wrap" style="display:none">
-        <div class="cli-multi-topo"><span id="admin-cli-titulo">Clientes (filiais) deste usuário</span><span id="admin-cli-contagem"></span></div>
-        <input id="admin-cli-busca" placeholder="Buscar por nome, código ou cidade" autocomplete="off" oninput="renderListaClientesAdmin()">
-        <div class="cli-multi-sel" id="admin-cli-sel"></div>
-        <div class="cli-multi-lista" id="admin-cli-lista"></div>
-      </div>
-      <label class="login-admin-check">
-        <input id="admin-new-trocar" type="checkbox" checked> Exigir troca de senha no próximo login
-      </label>
-      <div class="form-hint" style="margin-top:8px">Sem UID, o portal cria o login no Firebase com a senha inicial. Passe a senha para a pessoa: no primeiro acesso ela define a própria.</div>
+      <div class="form-hint" style="margin-top:8px">Sem UID, o portal cria o login no Firebase com essa senha. Ela fica valendo no tablet (o quiosque não troca senha) e é pedida para trocar o terminal ou sair dele.</div>
     </div>
     <div class="login-admin-actions">
-      <button class="btn btn-primary" id="btnSalvarUsuario" onclick="adminSalvarUsuario()">Salvar usuário</button>
+      <button class="btn btn-primary" id="btnSalvarUsuario" onclick="adminSalvarUsuario()">Salvar quiosque</button>
       <button class="btn btn-secondary" onclick="limparFormUsuario()">Limpar</button>
     </div>
     <div class="login-admin-info" id="adminInfo"></div>
-  </div>
-</div>
-
-<!-- MODAL: Trocar Senha -->
-<div class="modal-overlay" id="modalTrocarSenha">
-  <div class="modal" style="width:420px">
-    <div class="modal-title" id="trocaSenhaTitulo">Trocar Senha</div>
-    <div class="modal-sub" id="trocaSenhaSub">Informe sua senha atual e a nova senha.</div>
-    <div class="form-field" style="margin-bottom:14px">
-      <label>Senha atual</label>
-      <input id="senha-atual" type="password" autocomplete="current-password">
-    </div>
-    <div class="form-field" style="margin-bottom:14px">
-      <label>Nova senha</label>
-      <input id="senha-nova" type="password" autocomplete="new-password">
-    </div>
-    <div class="form-field">
-      <label>Confirmar nova senha</label>
-      <input id="senha-nova-confirma" type="password" autocomplete="new-password">
-    </div>
-    <div class="login-error" id="senha-erro"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" id="btnCancelarTrocaSenha" onclick="cancelarTrocaSenha()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSalvarSenha" onclick="trocarSenha()">Salvar nova senha</button>
-    </div>
   </div>
 </div>
 
@@ -859,7 +797,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     </div>
     <div class="sessao" id="headerUser" style="display:none">
       <button class="quem" id="btnTrocarSenha" type="button" onclick="abrirTrocaSenha()" title="Minha conta: trocar senha"><span class="nome" id="headerUserName">Usuário</span><small id="headerUserTipo"></small></button>
-      <button class="btn btn-secondary" id="btnAdmin" type="button" onclick="abrirAdminModal()" style="display:none">Usuários</button>
+      <button class="btn btn-secondary" id="btnAdmin" type="button" onclick="abrirAdminModal()" style="display:none">Quiosques</button>
       <!-- Só equipe interna: viagens salvas pelo roteirizador da logística viram agendamentos -->
       <input type="file" id="roteirizacaoArquivo" class="hidden" accept=".json,application/json" onchange="lerArquivoRoteirizacao(this)">
       <button class="btn btn-secondary" id="btnImportarRoteirizacao" type="button" onclick="document.getElementById('roteirizacaoArquivo').click()" style="display:none">Importar roteirização</button>
@@ -869,26 +807,13 @@ tbody tr:hover td { background: var(--panel-soft); }
   </div>
 </header>
 
-<!-- LOGIN -->
+<!-- LOGIN: pelo login central da tela inicial (central/sso.js); aqui só aparece o andamento ou o motivo de não entrar -->
 <div id="login-overlay">
   <div class="login-card">
     <div class="login-title">Entrar</div>
-    <div class="login-desc" id="login-carregando">Verificando sessão…</div>
-    <div id="login-form" class="hidden">
-      <div class="login-field">
-        <label>E-mail</label>
-        <input id="login-usuario" type="email" placeholder="seu@email.com" autocomplete="username"
-          onkeydown="if(event.key==='Enter')document.getElementById('login-senha').focus()">
-      </div>
-      <div class="login-field">
-        <label>Senha</label>
-        <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password"
-          onkeydown="if(event.key==='Enter')fazerLogin()">
-      </div>
-      <button class="login-btn" id="btnLogin" onclick="fazerLogin()">Entrar</button>
-      <button class="login-link" type="button" onclick="esqueciSenha()">Esqueci minha senha</button>
-    </div>
+    <div class="login-desc" id="login-carregando">Entrando com o seu login Nexta…</div>
     <div class="login-error" id="login-erro"></div>
+    <a class="login-btn hidden" id="login-inicio" href="/?menu">Ir para a tela inicial</a>
   </div>
 </div>
 
@@ -1196,14 +1121,11 @@ const STATE = {
   slotsAdmin: { baseId: '', baseSlots: {}, ocupados: {} },
   // unsubscribe dos listeners que dependem da base/data escolhida — trocar a seleção desliga o anterior
   unsub: { novoBaseSlots: null, novoOcupados: null, adminBaseSlots: null, adminOcupados: null, agendamentos: null, pedidosCarteira: null },
-  trocaSenhaPendente: null, // sessão aguardando a troca obrigatória da senha inicial
   ultimoAgendamento: null,  // dados do agendamento que acabou de ser criado (comprovante em PDF)
   importacao: null,         // roteirização (JSON do roteirizador) aberta na janela de importação
   troca: null,              // trocar pedidos: { id do agendamento, saem: Set(nr), novos: [pedidosSap] }
   alteracao: null,          // alterar veículo e motorista: { id do agendamento, recurso, motoristaCad } (consultas como em STATE.novo)
   liberacao: null,          // liberação temporária de cadastro enquanto o datalake ainda não refletiu o SAP
-  adminClientesSel: new Set(), // códigos marcados no formulário de usuário (admin)
-  msgLogin: '',
 };
 
 function esc(s) {
@@ -1244,105 +1166,64 @@ function msgErro(e, padrao = 'Não foi possível salvar. Verifique a conexão e 
   return e?.message || padrao;
 }
 function erroListener(oque) {
-  return (e) => { console.error(e); toast(`Não foi possível carregar ${oque}: ${msgErro(e, 'sem conexão')}`, 'error'); };
+  return (e) => {
+    if (window._fb?.saindo()) return; // ao sair, o banco corta as leituras abertas antes de a página trocar
+    console.error(e);
+    toast(`Não foi possível carregar ${oque}: ${msgErro(e, 'sem conexão')}`, 'error');
+  };
 }
 
 /* ── LOGIN / SESSÃO ── */
-const MSGS_AUTH = {
-  'auth/user-not-found': 'E-mail ou senha incorretos.',
-  'auth/wrong-password': 'E-mail ou senha incorretos.',
-  'auth/invalid-credential': 'E-mail ou senha incorretos.',
-  'auth/invalid-email': 'E-mail inválido.',
-  'auth/user-disabled': 'Este usuário foi desativado.',
-  'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
-  'auth/network-request-failed': 'Sem conexão com o servidor.',
-};
-
+// A pessoa entra pela tela inicial (login central): central/sso.js troca aquela sessão por uma deste projeto,
+// com o mesmo uid de sempre. Senha, troca de senha e saída ficam na tela inicial; aqui só aparece o andamento
+// ou o motivo de não entrar.
 function mostrarErroLogin(msg) {
   const el = document.getElementById('login-erro');
   el.textContent = msg || '';
   el.classList.toggle('visible', !!msg);
 }
-function mostrarTelaLogin() {
+function mostrarFalhaLogin(msg) {
   document.getElementById('login-overlay').style.display = '';
   document.getElementById('login-carregando').classList.add('hidden');
-  document.getElementById('login-form').classList.remove('hidden');
-  const btn = document.getElementById('btnLogin');
-  btn.disabled = false; btn.textContent = 'Entrar';
-  mostrarErroLogin(STATE.msgLogin);
+  document.getElementById('login-inicio').classList.remove('hidden');
+  mostrarErroLogin(msg);
 }
 function mostrarCarregandoLogin(texto) {
   document.getElementById('login-overlay').style.display = '';
   const el = document.getElementById('login-carregando');
   el.textContent = texto;
   el.classList.remove('hidden');
-  document.getElementById('login-form').classList.add('hidden');
+  document.getElementById('login-inicio').classList.add('hidden');
   mostrarErroLogin('');
 }
 
-async function fazerLogin() {
-  const email = document.getElementById('login-usuario').value.trim().toLowerCase();
-  const senha = document.getElementById('login-senha').value;
-  const btn = document.getElementById('btnLogin');
-  STATE.msgLogin = '';
-  mostrarErroLogin('');
-  if (!email || !senha) { mostrarErroLogin('Preencha o e-mail e a senha.'); return; }
-  btn.disabled = true; btn.textContent = 'Entrando...';
-  try {
-    await window._fb.login(email, senha); // o resto segue em onSessaoFirebase()
-  } catch (e) {
-    mostrarErroLogin(MSGS_AUTH[e.code] || ('Erro ao autenticar: ' + e.message));
-    btn.disabled = false; btn.textContent = 'Entrar';
-  }
-}
-
-async function esqueciSenha() {
-  const email = document.getElementById('login-usuario').value.trim().toLowerCase();
-  if (!email) { mostrarErroLogin('Digite seu e-mail no campo acima e clique de novo em "Esqueci minha senha".'); return; }
-  try {
-    await window._fb.resetarSenha(email);
-  } catch (e) {
-    if (e.code === 'auth/invalid-email') { mostrarErroLogin('E-mail inválido.'); return; }
-    console.error(e);
-  }
-  // Mesma mensagem com ou sem conta — não revela quais e-mails estão cadastrados
-  toast('Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha.', 'info');
-}
-
-function fazerLogout() {
-  // Recarregar zera estado e listeners de uma vez
-  window._fb.logout().catch(() => {}).finally(() => location.reload());
-}
+// Sai também do login central e volta à tela inicial
+function fazerLogout() { window._fb.sairDeTudo(); }
+// A troca de senha é na tela inicial, que depois devolve a pessoa para cá
+function abrirTrocaSenha() { window._fb.irParaTrocarSenha(); }
 
 async function onSessaoFirebase(user) {
-  if (!user) { mostrarTelaLogin(); return; }
-  if (STATE.usuario || STATE.trocaSenhaPendente) return;
+  if (!user) { window._fb.irParaLogin(); return; } // sessão encerrada por fora (ex.: acesso desativado)
+  if (STATE.usuario) return;
   mostrarCarregandoLogin('Carregando seu perfil…');
   let perfil = null, erro = null;
   try { perfil = await window._fb.carregarPerfil(user.uid); } catch (e) { erro = e; console.error(e); }
   if (!perfil) {
-    STATE.msgLogin = erro
+    mostrarFalhaLogin(erro
       ? `O banco recusou a leitura do seu perfil (${erro.code || erro.message}). Confira se as regras do Realtime Database foram publicadas.`
-      : `O login ${user.email} ainda não tem acesso a este portal. Peça a um administrador para liberar (UID: ${user.uid}).`;
-    await window._fb.logout().catch(() => {});
-    mostrarTelaLogin();
+      : 'Seu login ainda não tem perfil neste portal. Fale com o key user do Agendamento.');
     return;
   }
   if (perfil.tipo === 'quiosque') {
-    STATE.msgLogin = 'Este login é do quiosque de autoatendimento (tablet do guichê), não do portal de agendamento.';
-    await window._fb.logout().catch(() => {});
-    mostrarTelaLogin();
+    mostrarFalhaLogin('Este login é do quiosque de autoatendimento (tablet do guichê), não do portal de agendamento.');
     return;
   }
-  const sessao = {
+  entrarNoApp({
     uid: user.uid, email: user.email, nome: perfil.nome || user.email, admin: perfil.admin === true,
     tipo: TIPOS_EXTERNOS.includes(perfil.tipo) ? perfil.tipo : 'interno',
     clienteCodigo: perfil.clienteCodigo || '',
     clientes: TIPOS_EXTERNOS.includes(perfil.tipo) ? codigosClientePerfil(perfil) : [], // clientes (filiais) vinculados ao cadastro
-  };
-  // Senha inicial definida pelo admin: só entra depois de trocar
-  if (perfil.trocarSenha === true) { abrirTrocaSenhaObrigatoria(sessao); return; }
-  entrarNoApp(sessao);
+  });
 }
 
 function entrarNoApp(sessao) {
@@ -1369,12 +1250,9 @@ function aplicarSessaoUsuario(usuario) {
   document.querySelectorAll('.admin-only').forEach((el) => el.classList.toggle('hidden', !usuario.admin));
 }
 
-// Se o módulo do Firebase não carregar (sem internet, CDN bloqueado), não deixa a tela presa em "Verificando sessão…"
+// Se o módulo do Firebase ou do login central não carregar (sem internet, CDN bloqueado), não deixa a tela presa
 setTimeout(() => {
-  if (!window._fb) {
-    STATE.msgLogin = 'Não foi possível carregar o Firebase. Verifique a conexão e recarregue a página.';
-    mostrarTelaLogin();
-  }
+  if (!window._fb) mostrarFalhaLogin('Não foi possível carregar o login. Verifique a conexão e recarregue a página.');
 }, 15000);
 
 /* ── ABAS ── */
@@ -1413,12 +1291,11 @@ function iniciarApp() {
     atualizarBaseDosPedidos(); // pedidos já adicionados podem ganhar (ou perder) a base
     if (STATE.pedidosCarteira) renderPedidosCarteira();
   }, erroListener('as bases'));
-  // Clientes: só o admin usa (cadastro e vínculo de usuário cliente); no agendamento o cliente vem do pedido
+  // Clientes: só o admin usa (Cadastros → Clientes); no agendamento o cliente vem do pedido
   if (usuario.admin) {
     window._fb.ouvirClientes((clientes) => {
       STATE.clientes = clientes;
       renderCadastroClientes();
-      renderSelectClienteAdmin();
     }, erroListener('os clientes'));
     window._fb.ouvirPerfis((perfis) => {
       STATE.perfis = perfis;
@@ -5789,98 +5666,51 @@ async function toggleAtivo(tipo, id, novoValor) {
   catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
 
-/* ── ADMIN: GERENCIAR USUÁRIOS ── */
+/* ── ADMIN: LOGINS DE QUIOSQUE ── */
+// As pessoas são cadastradas na tela de Usuários do portal central (/usuarios/), que grava usuarios/<uid> aqui.
+// Nesta tela ficam só os logins de quiosque dos tablets do autoatendimento, que entram com senha própria.
 function abrirAdminModal() { limparFormUsuario(); renderAdminUsuarios(); abrirModal('adminModal'); }
 function renderAdminUsuarios() {
   const el = document.getElementById('adminUsersList');
-  const lista = objList(STATE.perfis).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  const lista = objList(STATE.perfis).filter((u) => u.tipo === 'quiosque')
+    .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   el.innerHTML = lista.length ? lista.map((u) => `
     <div class="login-admin-user">
       <div>
-        <strong>${esc(u.nome)} ${u.admin ? '<span class="badge badge-accent">admin</span>' : ''} ${u.robo ? '<span class="badge badge-muted" title="Usuário do script que publica os pedidos do datalake">robô datalake</span>' : ''} ${u.trocarSenha ? '<span class="badge badge-warn">troca de senha pendente</span>' : ''}</strong>
-        <span>${esc(u.email)} · ${TIPOS_EXTERNOS.includes(u.tipo) ? textoClientesPerfil(u)
-          : u.tipo === 'quiosque' ? `Quiosque de autoatendimento · ${esc(STATE.bases[u.baseId]?.nome || 'terminal escolhido no tablet')}` : 'Equipe interna'}</span>
+        <strong>${esc(u.nome)}</strong>
+        <span>${esc(u.email)} · ${esc(STATE.bases[u.baseId]?.nome || 'terminal escolhido no tablet')}</span>
       </div>
       <div class="list-item-actions">
         <button class="btn btn-secondary btn-sm" onclick="editarUsuario(${jsArg(u.id)})">Editar</button>
-        <button class="btn btn-secondary btn-sm" onclick="adminRedefinirSenha(${jsArg(u.id)})" title="Envia para o e-mail da pessoa um link para ela mesma criar uma nova senha">Redefinir senha</button>
-        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario(${jsArg(u.id)})" ${u.id === STATE.usuario?.uid ? 'disabled title="Você não pode remover o próprio acesso"' : ''}>Remover</button>
+        <button class="btn btn-secondary btn-sm" onclick="adminRedefinirSenha(${jsArg(u.id)})" title="Envia para o e-mail do login um link para criar uma nova senha">Redefinir senha</button>
+        <button class="btn btn-danger btn-sm" onclick="adminRemoverUsuario(${jsArg(u.id)})">Remover</button>
       </div>
-    </div>`).join('') : '<div class="chip-empty">Nenhum usuário cadastrado ainda.</div>';
+    </div>`).join('') : '<div class="chip-empty">Nenhum login de quiosque cadastrado ainda.</div>';
 }
 // Códigos de cliente de um perfil: clientes/<código> = true (vários) + clienteCodigo (perfis antigos, só um)
 function codigosClientePerfil(perfil) {
   return [...new Set([perfil?.clienteCodigo, ...Object.keys(perfil?.clientes || {})].filter(Boolean))];
 }
-function textoClientesPerfil(perfil) {
-  const cods = codigosClientePerfil(perfil);
-  const nomes = cods.map((cd) => `${cd} — ${STATE.clientes[cd]?.nome || '?'}`).join('\n');
-  const resumo = cods.length > 3 ? cods.slice(0, 3).join(', ') + ` +${cods.length - 3}` : cods.join(', ');
-  if (perfil.tipo === 'transportadora') {
-    return `<span title="${esc(nomes)}">Transportadora · clientes ${esc(resumo)}${cods.length > 1 ? ` (${cods.length})` : ''}</span>`;
-  }
-  return `<span title="${esc(nomes)}">Cliente ${esc(resumo)}${cods.length > 1 ? ` (${cods.length} filiais)` : ''}</span>`;
-}
-// Seleção de clientes do formulário de usuário (busca + caixas de marcação; marcados ficam no topo)
-function renderSelectClienteAdmin() { renderListaClientesAdmin(); }
 function normalizarBusca(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
-function renderListaClientesAdmin() {
-  const sel = STATE.adminClientesSel;
-  const termo = normalizarBusca(document.getElementById('admin-cli-busca').value.trim());
-  const todos = objList(STATE.clientes)
-    .filter((c) => c.ativo !== false || sel.has(c.id))
-    .sort((a, b) => (sel.has(b.id) - sel.has(a.id)) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
-  const achados = termo ? todos.filter((c) => normalizarBusca(`${c.id} ${c.nome} ${c.cidade || ''}`).includes(termo)) : todos;
-  const LIMITE = 80; // a lista completa tem ~200 clientes; a busca encontra o resto
-  document.getElementById('admin-cli-lista').innerHTML = achados.slice(0, LIMITE).map((c) => `
-    <label class="cli-multi-opt"><input type="checkbox" ${sel.has(c.id) ? 'checked' : ''} onchange="marcarClienteAdmin(${jsArg(c.id)}, this.checked)">
-      <span>${esc(c.nome)}<small>${[esc(c.id), esc(c.cidade)].filter(Boolean).join(' · ')}</small></span></label>`).join('') +
-    (achados.length > LIMITE ? `<div class="cli-multi-vazio">Mais ${achados.length - LIMITE} clientes: refine a busca.</div>` : '') +
-    (!achados.length ? '<div class="cli-multi-vazio">Nenhum cliente encontrado. Cadastre em Cadastros → Clientes.</div>' : '');
-  document.getElementById('admin-cli-sel').innerHTML = [...sel].map((cd) =>
-    `<span class="chip active" title="${esc(STATE.clientes[cd]?.nome || '')}">${esc(cd)} · ${esc(STATE.clientes[cd]?.nome || '?')}<button type="button" onclick="marcarClienteAdmin(${jsArg(cd)}, false)" title="Tirar">✕</button></span>`).join('');
-  document.getElementById('admin-cli-contagem').textContent = sel.size ? `${sel.size} selecionado${sel.size > 1 ? 's' : ''}` : 'nenhum selecionado';
-}
-function marcarClienteAdmin(codigo, marcado) {
-  if (marcado) STATE.adminClientesSel.add(codigo); else STATE.adminClientesSel.delete(codigo);
-  renderListaClientesAdmin();
-}
-function onAdminTipoChange() {
-  const tipo = document.getElementById('admin-new-tipo').value;
-  const externo = TIPOS_EXTERNOS.includes(tipo);
-  const quiosque = tipo === 'quiosque';
-  document.getElementById('admin-new-cliente-wrap').style.display = externo ? '' : 'none';
-  document.getElementById('admin-new-admin-wrap').style.display = externo || quiosque ? 'none' : '';
-  document.getElementById('admin-new-base-wrap').style.display = quiosque ? '' : 'none';
-  document.getElementById('admin-cli-titulo').textContent = tipo === 'transportadora' ? 'Clientes atendidos por esta transportadora' : 'Clientes (filiais) deste usuário';
-  if (externo || quiosque) document.getElementById('admin-new-admin').checked = false; // não pode ser admin (regra do banco)
-  if (quiosque) {
-    const sel = document.getElementById('admin-new-base');
-    const atual = sel.value;
-    sel.innerHTML = '<option value="">Base do tablet: escolhida no tablet</option>' + objList(STATE.bases)
-      .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
-      .map((b) => `<option value="${esc(b.id)}">Base do tablet: ${esc(b.nome)}</option>`).join('');
-    sel.value = atual;
-  }
+function preencherBasesQuiosque(baseId) {
+  const sel = document.getElementById('admin-new-base');
+  sel.innerHTML = '<option value="">Base do tablet: escolhida no tablet</option>' + objList(STATE.bases)
+    .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
+    .map((b) => `<option value="${esc(b.id)}">Base do tablet: ${esc(b.nome)}</option>`).join('');
+  sel.value = baseId;
 }
 function limparFormUsuario() {
-  document.getElementById('adminFormTitulo').textContent = 'Adicionar novo usuário';
-  for (const id of ['admin-new-nome', 'admin-new-email', 'admin-new-senha', 'admin-new-uid', 'admin-cli-busca']) document.getElementById(id).value = '';
-  STATE.adminClientesSel = new Set();
-  renderListaClientesAdmin();
+  document.getElementById('adminFormTitulo').textContent = 'Adicionar login de quiosque';
+  for (const id of ['admin-new-nome', 'admin-new-email', 'admin-new-senha', 'admin-new-uid']) document.getElementById(id).value = '';
   document.getElementById('admin-new-uid').readOnly = false;
   document.getElementById('admin-new-email').readOnly = false;
   document.getElementById('admin-new-senha').disabled = false;
-  document.getElementById('admin-new-tipo').value = 'interno';
-  document.getElementById('admin-new-base').value = '';
-  document.getElementById('admin-new-admin').checked = false;
-  document.getElementById('admin-new-trocar').checked = true; // usuário novo troca a senha inicial no 1º login
+  preencherBasesQuiosque('');
   document.getElementById('adminInfo').textContent = '';
-  onAdminTipoChange();
 }
 function editarUsuario(uid) {
   const p = STATE.perfis[uid];
-  if (!p) return;
+  if (p?.tipo !== 'quiosque') return;
   limparFormUsuario();
   document.getElementById('adminFormTitulo').textContent = 'Editando ' + (p.nome || p.email);
   document.getElementById('admin-new-uid').value = uid;
@@ -5889,14 +5719,7 @@ function editarUsuario(uid) {
   document.getElementById('admin-new-email').value = p.email || '';
   document.getElementById('admin-new-email').readOnly = true; // e-mail de login não muda por aqui
   document.getElementById('admin-new-senha').disabled = true;
-  // Tipo fora da lista viraria "Equipe interna" ao salvar (e enxergaria tudo): quiosque tem opção própria
-  document.getElementById('admin-new-tipo').value = [...TIPOS_EXTERNOS, 'quiosque'].includes(p.tipo) ? p.tipo : 'interno';
-  onAdminTipoChange();
-  document.getElementById('admin-new-base').value = p.baseId || '';
-  STATE.adminClientesSel = new Set(codigosClientePerfil(p));
-  renderListaClientesAdmin();
-  document.getElementById('admin-new-admin').checked = p.admin === true;
-  document.getElementById('admin-new-trocar').checked = p.trocarSenha === true;
+  preencherBasesQuiosque(p.baseId || '');
   document.getElementById('admin-new-nome').focus();
 }
 async function adminSalvarUsuario() {
@@ -5905,17 +5728,15 @@ async function adminSalvarUsuario() {
   const nome = document.getElementById('admin-new-nome').value.trim();
   const email = document.getElementById('admin-new-email').value.trim().toLowerCase();
   const senha = document.getElementById('admin-new-senha').value;
-  const tipo = document.getElementById('admin-new-tipo').value;
-  const codigosCliente = [...STATE.adminClientesSel];
-  const admin = tipo === 'interno' && document.getElementById('admin-new-admin').checked;
-  const trocarSenha = document.getElementById('admin-new-trocar').checked;
   const info = document.getElementById('adminInfo');
   const btn = document.getElementById('btnSalvarUsuario');
   info.textContent = '';
   if (!nome || !email) { info.textContent = 'Preencha nome e e-mail.'; return; }
-  if (!uid && senha.length < 6) { info.textContent = 'A senha inicial precisa ter pelo menos 6 caracteres.'; return; }
-  if (TIPOS_EXTERNOS.includes(tipo) && !codigosCliente.length) { info.textContent = 'Marque ao menos um cliente deste usuário (cadastre antes em Cadastros → Clientes).'; return; }
-  if (uid === STATE.usuario.uid && !admin) { info.textContent = 'Você não pode tirar o próprio acesso de admin.'; return; }
+  if (!uid && senha.length < 6) { info.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+  if (uid && STATE.perfis[uid] && STATE.perfis[uid].tipo !== 'quiosque') {
+    info.textContent = 'Esse UID é de uma pessoa, não de um quiosque. Pessoas são cadastradas na tela de Usuários do portal.';
+    return;
+  }
 
   btn.disabled = true;
   try {
@@ -5933,26 +5754,20 @@ async function adminSalvarUsuario() {
         return;
       }
     }
-    // Parte do perfil já gravado: o set() substitui tudo, e campos fora do formulário (ex.: robo) precisam ficar
-    const perfil = { ...(STATE.perfis[uid] || {}), nome, email, tipo, admin, atualizadoEm: new Date().toISOString() };
-    if (TIPOS_EXTERNOS.includes(tipo)) {
-      perfil.clientes = Object.fromEntries(codigosCliente.map((cd) => [cd, true]));
-      // clienteCodigo = principal (mantém o anterior se continuar marcado); as regras antigas e o índice por cliente usam ele
-      perfil.clienteCodigo = codigosCliente.includes(perfil.clienteCodigo) ? perfil.clienteCodigo : codigosCliente[0];
-    } else {
-      delete perfil.clienteCodigo;
-      delete perfil.clientes;
-    }
+    // Parte do perfil já gravado: o set() substitui tudo, e campos fora do formulário precisam ficar.
+    // O quiosque não troca senha (a inicial fica valendo) e não é admin (regra do banco).
+    const perfil = { ...(STATE.perfis[uid] || {}), nome, email, tipo: 'quiosque', admin: false, atualizadoEm: new Date().toISOString() };
+    delete perfil.clienteCodigo;
+    delete perfil.clientes;
+    delete perfil.trocarSenha;
     const baseQuiosque = document.getElementById('admin-new-base').value;
-    if (tipo === 'quiosque' && baseQuiosque) perfil.baseId = baseQuiosque; else delete perfil.baseId;
-    // O quiosque não tem tela de troca de senha: a senha inicial fica valendo
-    if (trocarSenha && tipo !== 'quiosque') perfil.trocarSenha = true; else delete perfil.trocarSenha;
+    if (baseQuiosque) perfil.baseId = baseQuiosque; else delete perfil.baseId;
     await window._fb.salvarPerfil(uid, perfil);
-    toast(`Usuário ${nome} salvo.`, 'success');
+    toast(`Quiosque ${nome} salvo.`, 'success');
     limparFormUsuario();
   } catch (e) {
     console.error(e);
-    info.textContent = 'Erro ao salvar o perfil: ' + msgErro(e);
+    info.textContent = 'Erro ao salvar o quiosque: ' + msgErro(e);
   } finally {
     btn.disabled = false;
   }
@@ -5976,92 +5791,17 @@ async function adminRemoverUsuario(uid) {
     if (document.getElementById('admin-new-uid').value === uid) limparFormUsuario();
   } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
-
-/* ── TROCAR SENHA ── */
-function limparCamposSenha() {
-  for (const id of ['senha-atual', 'senha-nova', 'senha-nova-confirma']) document.getElementById(id).value = '';
-  document.getElementById('senha-erro').classList.remove('visible');
-}
-function abrirTrocaSenha() {
-  document.getElementById('trocaSenhaTitulo').textContent = 'Trocar Senha';
-  document.getElementById('trocaSenhaSub').textContent = 'Informe sua senha atual e a nova senha.';
-  document.getElementById('btnCancelarTrocaSenha').textContent = 'Cancelar';
-  limparCamposSenha();
-  abrirModal('modalTrocarSenha');
-}
-// Primeiro login com a senha inicial definida pelo admin: só entra no app depois de trocar
-function abrirTrocaSenhaObrigatoria(sessao) {
-  STATE.trocaSenhaPendente = sessao;
-  mostrarCarregandoLogin('Troca de senha pendente.');
-  document.getElementById('trocaSenhaTitulo').textContent = 'Defina sua nova senha';
-  document.getElementById('trocaSenhaSub').textContent = 'Seu acesso foi criado com uma senha inicial. Troque por uma senha só sua para continuar.';
-  document.getElementById('btnCancelarTrocaSenha').textContent = 'Sair';
-  limparCamposSenha();
-  abrirModal('modalTrocarSenha');
-}
-function cancelarTrocaSenha() {
-  if (STATE.trocaSenhaPendente) { fazerLogout(); return; }
-  fecharModal('modalTrocarSenha');
-}
-async function trocarSenha() {
-  const atual = document.getElementById('senha-atual').value;
-  const nova = document.getElementById('senha-nova').value;
-  const confirma = document.getElementById('senha-nova-confirma').value;
-  const erroEl = document.getElementById('senha-erro');
-  const btn = document.getElementById('btnSalvarSenha');
-  const erro = (msg) => { erroEl.textContent = msg; erroEl.classList.add('visible'); };
-  erroEl.classList.remove('visible');
-  if (!atual || !nova) { erro('Preencha todos os campos.'); return; }
-  if (nova.length < 6) { erro('A nova senha deve ter ao menos 6 caracteres.'); return; }
-  if (nova !== confirma) { erro('A confirmação não confere com a nova senha.'); return; }
-  if (nova === atual) { erro('A nova senha precisa ser diferente da atual.'); return; }
-  btn.disabled = true;
-  try {
-    try {
-      await window._fb.trocarSenha(atual, nova);
-    } catch (e) {
-      console.error(e);
-      erro({
-        'auth/invalid-credential': 'Senha atual incorreta.',
-        'auth/wrong-password': 'Senha atual incorreta.',
-        'auth/weak-password': 'Senha fraca: use pelo menos 6 caracteres.',
-        'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
-        'auth/network-request-failed': 'Sem conexão com o servidor.',
-      }[e.code] || ('Não foi possível trocar a senha: ' + e.message));
-      return;
-    }
-    const pendente = STATE.trocaSenhaPendente;
-    if (pendente) {
-      try {
-        await window._fb.liberarTrocaSenha(pendente.uid);
-      } catch (e) {
-        console.error(e);
-        erro('Sua senha foi trocada, mas o banco recusou liberar o acesso (regras do Firebase desatualizadas). Avise o administrador.');
-        return;
-      }
-      STATE.trocaSenhaPendente = null;
-      fecharModal('modalTrocarSenha');
-      limparCamposSenha();
-      toast('Senha trocada. Bem-vindo!', 'success');
-      entrarNoApp(pendente);
-      return;
-    }
-    fecharModal('modalTrocarSenha');
-    limparCamposSenha();
-    toast('Senha alterada com sucesso.', 'success');
-  } finally {
-    btn.disabled = false;
-  }
-}
 </script>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction, query, orderByValue, startAt, orderByChild, equalTo, limitToFirst }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-    sendPasswordResetEmail, createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
+  import { getAuth, initializeAuth, inMemoryPersistence, signOut, onAuthStateChanged,
+    sendPasswordResetEmail, createUserWithEmailAndPassword }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  // Login pela tela inicial do site (portal central): mesma origem, então a sessão de lá vale aqui
+  import { entrarPeloCentral, sairDeTudo, irParaLogin, irParaTrocarSenha, saindo } from "/central/sso.js";
   import { getStorage, ref as storageRef, getBlob }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
@@ -6075,7 +5815,9 @@ async function trocarSenha() {
     messagingSenderId: "806131011718",
     appId:             "1:806131011718:web:2c439446fbd62c2fb18107",
   };
-  const app  = initializeApp(firebaseConfig);
+  // Nome próprio: a sessão deste portal (vinda do login central) fica separada da do quiosque, que usa o app
+  // padrão do mesmo projeto em /autoatendimento/; senão, abrir o agendamento no tablet trocaria o login dele
+  const app  = initializeApp(firebaseConfig, "agendamento");
   const db   = getDatabase(app);
   const auth = getAuth(app);
   const storage = getStorage(app);
@@ -6086,18 +5828,12 @@ async function trocarSenha() {
   const ouvir = (caminho, cb, onErro) => onValue(ref(db, caminho), (snap) => cb(snap.val() || {}), onErro);
 
   window._fb = {
-    /* Auth */
-    login: (email, senha) => signInWithEmailAndPassword(auth, email, senha),
-    logout: () => signOut(auth),
+    /* Auth: entrada, senha e saída pelo login central (central/sso.js); aqui só os logins de quiosque */
+    sairDeTudo: () => sairDeTudo(auth),
+    irParaLogin,
+    irParaTrocarSenha,
+    saindo,
     resetarSenha: (email) => sendPasswordResetEmail(auth, email),
-    // updatePassword exige login recente: reautentica com a senha atual antes (também confirma que é a própria pessoa)
-    trocarSenha: async (atual, nova) => {
-      const u = auth.currentUser;
-      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, atual));
-      await updatePassword(u, nova);
-    },
-    // A regra do banco só deixa o próprio usuário gravar trocarSenha = false
-    liberarTrocaSenha: (uid) => set(ref(db, `usuarios/${uid}/trocarSenha`), false),
     criarLogin: async (email, senha) => {
       const cred = await createUserWithEmailAndPassword(authCadastro, email, senha);
       await signOut(authCadastro).catch(() => {});
@@ -6271,7 +6007,10 @@ async function trocarSenha() {
     },
   };
 
-  onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
+  // Entra pelo login central e só então acompanha a sessão deste projeto
+  entrarPeloCentral("agendamento", auth)
+    .then(() => onAuthStateChanged(auth, (user) => onSessaoFirebase(user)))
+    .catch((e) => { console.error(e); mostrarFalhaLogin(e.message); });
 </script>
 </body>
 </html>

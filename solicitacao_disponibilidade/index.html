@@ -72,7 +72,7 @@
   .role select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); color: var(--navy-ink); border-radius: 8px; padding: 8px 10px; }
   .role select option { color: #10283A; }
 
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--surface-2); color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--surface-2); color: var(--ink); text-decoration: none; }
   .btn:hover { filter: brightness(.97); }
   .btn.primary { background: var(--accent); color: var(--accent-ink); }
   .btn.ghost { background: transparent; border-color: var(--line); }
@@ -195,15 +195,6 @@
   .action { background: var(--surface-2); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   .action p { margin: 0; color: var(--ink-2); font-size: 14px; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; }
-
-  /* Usuários (admin) */
-  .ulist { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; }
-  .urow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; }
-  .urow + .urow { border-top: 1px solid var(--line); }
-  .urow .who { flex: 1 1 200px; min-width: 0; }
-  .urow .who div { overflow-wrap: anywhere; }
-  .urow .pills { display: flex; flex-wrap: wrap; gap: 6px; }
-  .checks { display: flex; flex-wrap: wrap; gap: 10px 20px; }
 
   /* Abas (Chamados / Cadastros) */
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 20px; border-bottom: 1px solid var(--line); }
@@ -401,18 +392,15 @@
   </div>
 </div>
 
-<!-- Carregando / login / sem perfil -->
-<section class="gate" id="tela-carregando"><p class="sub">Conectando…</p></section>
+<!-- Carregando / falha ao entrar / sem perfil: o login é o central, da tela inicial (central/sso.js) -->
+<section class="gate" id="tela-carregando"><p class="sub">Entrando com o seu login Nexta…</p></section>
 
 <section class="gate" id="tela-login" hidden>
-  <form class="card" id="form-login" novalidate>
-    <h2>Entrar</h2>
-    <label class="f" for="l-email">E-mail <input type="email" id="l-email" autocomplete="username" required></label>
-    <label class="f" for="l-senha">Senha <input type="password" id="l-senha" autocomplete="current-password" required></label>
+  <div class="card">
+    <h2>Não foi possível entrar</h2>
     <div class="err" id="l-err" role="alert"></div>
-    <button class="btn primary" type="submit" id="l-btn">Entrar</button>
-    <button class="linkbtn" type="button" id="l-esqueci">Esqueci minha senha</button>
-  </form>
+    <a class="btn primary" href="/?menu">Ir para a tela inicial</a>
+  </div>
 </section>
 
 <section class="gate" id="tela-sem-perfil" hidden>
@@ -423,19 +411,6 @@
     <div class="uid" id="sp-uid"></div>
     <button class="btn ghost" type="button" id="sp-sair">Sair</button>
   </div>
-</section>
-
-<section class="gate" id="tela-trocar-senha" hidden>
-  <form class="card" id="form-troca" novalidate>
-    <h2>Defina sua nova senha</h2>
-    <p>Por segurança, troque a senha inicial (a que você recebeu do administrador) antes de continuar.</p>
-    <label class="f" for="ts-atual">Senha atual <input type="password" id="ts-atual" autocomplete="current-password" required></label>
-    <label class="f" for="ts-nova">Nova senha <input type="password" id="ts-nova" autocomplete="new-password" placeholder="Mínimo 6 caracteres" required></label>
-    <label class="f" for="ts-conf">Confirme a nova senha <input type="password" id="ts-conf" autocomplete="new-password" required></label>
-    <div class="err" id="ts-err" role="alert"></div>
-    <button class="btn primary" type="submit" id="ts-btn">Salvar e entrar</button>
-    <button class="linkbtn" type="button" id="ts-sair">Sair</button>
-  </form>
 </section>
 
 <main class="wrap" id="app" hidden>
@@ -500,9 +475,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, get, set, update, push, remove, onValue, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-    sendPasswordResetEmail, createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updatePassword }
-    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  // Login pela tela inicial do site (portal central): mesma origem, então a sessão de lá vale aqui
+  import { entrarPeloCentral, sairDeTudo, irParaLogin, irParaTrocarSenha, gerenciaUsuarios } from "/central/sso.js";
 
   // ---------- Firebase ----------
   // Config pública (não é segredo): o acesso aos dados é protegido pelas regras em firebase_database.rules.json
@@ -518,8 +493,6 @@
   const app  = initializeApp(firebaseConfig);
   const db   = getDatabase(app);
   const auth = getAuth(app);
-  // Instância auxiliar só para o admin criar usuários sem perder a própria sessão
-  const authCadastro = initializeAuth(initializeApp(firebaseConfig, "cadastro"), { persistence: inMemoryPersistence });
 
   // ---------- Regras da política (ajuste aqui) ----------
   const REGRAS = {
@@ -853,7 +826,6 @@
     $("tela-carregando").hidden = t !== "carregando";
     $("tela-login").hidden = t !== "login";
     $("tela-sem-perfil").hidden = t !== "sem-perfil";
-    $("tela-trocar-senha").hidden = t !== "trocar-senha";
     $("app").hidden = t !== "app";
     $("sessao").hidden = t !== "app";
   }
@@ -876,7 +848,7 @@
     $("papel-wrap").hidden = ps.length < 2;
     $("papel-fixo").textContent = [ps.length < 2 ? PAPEIS[S.papel] : null, S.me.admin ? "Administrador" : null].filter(Boolean).join(" · ");
     $("quem").textContent = S.me.nome;
-    $("usuarios").hidden = !S.me.admin;
+    $("usuarios").hidden = !gerenciaUsuarios(); // cadastro de pessoas: tela de Usuários do portal central
     $("config").hidden = !S.me.admin;
     $("nav").hidden = false;
     $("nav-cad").hidden = !S.me.admin;
@@ -895,15 +867,21 @@
     if (v === "mis") renderMis();
   }
 
+  // Falha ao entrar pelo login central (sem acesso, desativado, servidor fora...)
+  function mostrarFalhaLogin(msg) {
+    $("l-err").textContent = msg || "Não foi possível entrar.";
+    mostrarTela("login");
+  }
+
   let parar = [];
-  onAuthStateChanged(auth, async user => {
+  async function aoMudarSessao(user) {
     for (const p of parar) p();
     parar = [];
     S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
     NOTIF.chave = ""; NOTIF.lista = []; atualizarSino();
     S.cad = { bases: [], produtos: [] }; S.cadCarregado = false; S.diretorio = []; S.mis = { lotes: [], lancados: {} };
     S.config = {}; S.configCarregada = false;
-    if (!user) { mostrarTela("login"); return; }
+    if (!user) { mostrarTela("carregando"); irParaLogin(); return; } // sessão encerrada por fora (ex.: acesso tirado)
 
     mostrarTela("carregando");
     S.meuId = user.uid;
@@ -918,18 +896,12 @@
       mostrarTela("sem-perfil");
       return;
     }
-
-    // Senha inicial definida pelo admin: só entra depois de trocar
-    if (perfil.trocarSenha === true) {
-      S.trocaPendente = { user, perfil };
-      for (const id of ["ts-atual", "ts-nova", "ts-conf"]) $(id).value = "";
-      $("ts-err").textContent = "";
-      mostrarTela("trocar-senha");
-      setTimeout(() => $("ts-atual").focus(), 0);
-      return;
-    }
     iniciarApp(user, perfil);
-  });
+  }
+  // Entra pelo login central e só então acompanha a sessão deste projeto
+  entrarPeloCentral("solicitacoes", auth)
+    .then(() => onAuthStateChanged(auth, aoMudarSessao))
+    .catch(e => { console.error(e); mostrarFalhaLogin(e.message); });
 
   function iniciarApp(user, perfil) {
     S.me = { uid: user.uid, nome: perfil.nome || user.email, email: user.email, admin: perfil.admin === true, papeis: papeisDe(perfil), telefone: perfil.telefone || "" };
@@ -994,88 +966,17 @@
   }
   // Time Demanda (e admin) pode registrar o chamado em nome de outra pessoa (ex.: pedido que chegou por telefone)
   const podeAbrirParaOutro = () => !!S.me && (S.me.admin || S.me.papeis.includes("demanda"));
-  // Diretório (diretorio/<uid>: { nome, papeis }): perfis só o admin lê, então o admin mantém esta cópia só com
-  // nome e papéis — ao salvar/remover usuário e ressincronizando sempre que abre a tela Usuários
-  function entradaDiretorio(p) {
-    if (!p) return null;
-    const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(k => p.papeis?.[k] === true).map(k => [k, true]));
-    return { nome: p.nome || p.email || "—", ...(Object.keys(papeis).length ? { papeis } : {}) }; // o banco descarta objeto vazio
-  }
-
-  // ---------- Senha ----------
-  // Troca a senha do usuário logado. O Firebase exige login recente para updatePassword, então
-  // reautentica com a senha atual antes (também confirma que é a própria pessoa).
-  async function trocarSenha(atual, nova, conf) {
-    if (!atual || !nova) throw new Error("Preencha a senha atual e a nova senha.");
-    if (nova.length < 6) throw new Error("A nova senha precisa ter pelo menos 6 caracteres.");
-    if (nova !== conf) throw new Error("A confirmação não confere com a nova senha.");
-    if (nova === atual) throw new Error("A nova senha precisa ser diferente da atual.");
-    const u = auth.currentUser;
-    try {
-      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, atual));
-      await updatePassword(u, nova);
-    } catch (e) {
-      console.error(e);
-      throw new Error({
-        "auth/invalid-credential": "Senha atual incorreta.",
-        "auth/wrong-password": "Senha atual incorreta.",
-        "auth/weak-password": "Senha fraca: use pelo menos 6 caracteres.",
-        "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos.",
-        "auth/network-request-failed": "Sem conexão com o servidor.",
-      }[e?.code] || "Não foi possível trocar a senha. Tente de novo.");
-    }
-  }
-
-  // Tela de troca obrigatória (primeiro login ou troca exigida pelo admin)
-  $("form-troca").addEventListener("submit", async e => {
-    e.preventDefault();
-    const err = $("ts-err"), btn = $("ts-btn"); err.textContent = "";
-    const { user, perfil } = S.trocaPendente || {};
-    if (!user) return;
-    btn.disabled = true;
-    try {
-      await trocarSenha($("ts-atual").value, $("ts-nova").value, $("ts-conf").value);
-    } catch (e2) { err.textContent = e2.message; btn.disabled = false; return; }
-    try {
-      // Libera o acesso: a regra do banco só deixa o próprio usuário gravar trocarSenha = false
-      await set(ref(db, `perfis/${user.uid}/trocarSenha`), false);
-    } catch (e3) {
-      console.error(e3);
-      err.textContent = "Sua senha foi trocada, mas o banco recusou liberar o acesso (regras do Firebase desatualizadas). Avise o administrador.";
-      btn.disabled = false; return;
-    }
-    btn.disabled = false;
-    S.trocaPendente = null;
-    toast("Senha trocada. Bem-vindo!");
-    iniciarApp(user, { ...perfil, trocarSenha: false });
-  });
-  $("ts-sair").addEventListener("click", () => signOut(auth));
-
-  // Minha conta: dados do usuário + trocar senha
+  // Minha conta: dados do usuário, WhatsApp e troca de senha (na tela inicial, que depois devolve a pessoa para cá)
   function abrirMinhaConta() {
     S.abertoId = null;
     abrirDrawer("Minha conta", `${S.me.nome} · ${S.me.email}`);
     const body = $("dr-body"); body.replaceChildren();
-    const atual = el("input", { type: "password", id: "mc-atual", autocomplete: "current-password" });
-    const nova = el("input", { type: "password", id: "mc-nova", autocomplete: "new-password", placeholder: "Mínimo 6 caracteres" });
-    const conf = el("input", { type: "password", id: "mc-conf", autocomplete: "new-password" });
-    const err = el("div", { class: "err", role: "alert" });
-    const btn = el("button", { class: "btn primary", type: "submit" }, "Trocar senha");
-    const form = el("form", { novalidate: true },
-      el("p", { class: "section-t", style: "margin:0", text: "Trocar senha" }),
-      el("label", { class: "f", for: "mc-atual" }, "Senha atual", atual),
-      el("div", { class: "grid2" },
-        el("label", { class: "f", for: "mc-nova" }, "Nova senha", nova),
-        el("label", { class: "f", for: "mc-conf" }, "Confirme a nova senha", conf)),
-      err, el("div", { class: "row" }, btn));
-    form.addEventListener("submit", async e => {
-      e.preventDefault(); err.textContent = ""; btn.disabled = true;
-      try {
-        await trocarSenha(atual.value, nova.value, conf.value);
-        toast("Senha trocada"); fechar();
-      } catch (e2) { err.textContent = e2.message; }
-      finally { btn.disabled = false; }
-    });
+    const btnSenha = el("button", { class: "btn ghost", type: "button" }, "Trocar senha");
+    btnSenha.addEventListener("click", irParaTrocarSenha);
+    const senha = el("div", {},
+      el("p", { class: "section-t", style: "margin:0", text: "Senha" }),
+      el("p", { class: "sub", style: "margin:0", text: "É a senha do login Nexta, a mesma de todos os sistemas: a troca é feita na tela inicial." }),
+      el("div", { class: "row" }, btnSenha));
     // WhatsApp para o robô avisar quando um chamado aberto pela pessoa for concluído ou recusado (vazio = não recebe)
     const tel = el("input", { type: "tel", id: "mc-tel", inputmode: "tel", autocomplete: "tel", placeholder: "Ex.: (31) 99999-9999", value: fmtTelefone(S.me.telefone) });
     const errTel = el("div", { class: "err", role: "alert" });
@@ -1101,39 +1002,14 @@
     body.append(
       el("dl", { class: "kv" }, kv("Nome", S.me.nome), kv("E-mail", S.me.email),
         kv("Papéis", S.me.papeis.map(x => PAPEIS[x]).join(", ")), kv("Administrador", S.me.admin ? "Sim" : "Não")),
-      formTel, form);
-    setTimeout(() => atual.focus(), 50);
+      formTel, senha);
   }
   $("minha-conta").addEventListener("click", abrirMinhaConta);
 
-  // ---------- Login ----------
-  $("form-login").addEventListener("submit", async e => {
-    e.preventDefault();
-    const email = $("l-email").value.trim(), senha = $("l-senha").value;
-    const err = $("l-err"); err.textContent = "";
-    if (!email || !senha) { err.textContent = "Informe e-mail e senha."; return; }
-    const btn = $("l-btn"); btn.disabled = true;
-    try {
-      await signInWithEmailAndPassword(auth, email, senha);
-      $("l-senha").value = "";
-    } catch (e2) {
-      err.textContent = {
-        "auth/invalid-credential": "E-mail ou senha incorretos.",
-        "auth/invalid-email": "E-mail inválido.",
-        "auth/user-disabled": "Usuário desativado.",
-        "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos ou redefina a senha.",
-        "auth/network-request-failed": "Sem conexão com o servidor.",
-      }[e2?.code] || "Não foi possível entrar. Tente de novo.";
-    } finally { btn.disabled = false; }
-  });
-  $("l-esqueci").addEventListener("click", async () => {
-    const email = $("l-email").value.trim(), err = $("l-err");
-    if (!email) { err.textContent = "Digite seu e-mail acima e clique de novo em “Esqueci minha senha”."; return; }
-    try { await sendPasswordResetEmail(auth, email); err.textContent = ""; toast("Se o e-mail estiver cadastrado, você vai receber um link para criar nova senha."); }
-    catch (e2) { err.textContent = e2?.code === "auth/invalid-email" ? "E-mail inválido." : "Não foi possível enviar o e-mail agora."; }
-  });
-  $("sair").addEventListener("click", () => signOut(auth));
-  $("sp-sair").addEventListener("click", () => signOut(auth));
+  // ---------- Saída ----------
+  // Sai também do login central e volta à tela inicial
+  $("sair").addEventListener("click", () => sairDeTudo(auth));
+  $("sp-sair").addEventListener("click", () => sairDeTudo(auth));
 
   // ---------- Render principal ----------
   // Chamados que passam nos filtros de Base/Cidade/UF/Região/Produto/Aberto por/Atendido por
@@ -2056,7 +1932,7 @@
       itens: outros.map(u => ({ valor: u.uid, texto: u.nome, sub: papeisDe(u).map(p => PAPEIS[p]).join(" · "), busca: semAcento(u.nome) })) });
     const boxSolic = el("div", { hidden: true }, campo("n-solic", "Para quem é o chamado?", cSolic),
       outros.length ? null : el("p", { class: "sub", style: "margin:6px 0 0",
-        text: "Lista de usuários vazia: o administrador precisa abrir a tela Usuários uma vez para montá-la." }));
+        text: "Lista de usuários vazia: as pessoas aparecem aqui quando são salvas na tela de Usuários do portal." }));
     chkOutro.addEventListener("change", () => {
       boxSolic.hidden = !chkOutro.checked;
       if (chkOutro.checked) setTimeout(() => $("n-solic").focus(), 0);
@@ -2257,148 +2133,6 @@
     body.append(form);
     atualizarAvisoCad();
     atualizarAviso();
-  }
-
-  // ---------- Usuários (admin) ----------
-  // Reconstrói diretorio/ a partir dos perfis quando difere (usuários antigos, edições feitas direto no console)
-  async function sincronizarDiretorio(perfis) {
-    const alvo = Object.fromEntries(Object.entries(perfis).map(([uid, p]) => [uid, entradaDiretorio(p)]).filter(([, e]) => e));
-    try {
-      const atual = (await get(ref(db, "diretorio"))).val() || {};
-      if (JSON.stringify(atual) !== JSON.stringify(alvo)) await set(ref(db, "diretorio"), alvo);
-    } catch (e) { console.error("Diretório de usuários não sincronizado (regras do banco atualizadas?)", e); }
-  }
-  function abrirUsuarios() {
-    S.abertoId = null;
-    abrirDrawer("Usuários", "Quem acessa o portal e o que cada um pode fazer.");
-    const body = $("dr-body"); body.replaceChildren();
-
-    const fUid = el("input", { id: "u-uid", placeholder: "Deixe vazio para criar um usuário novo" });
-    const fNome = el("input", { id: "u-nome", autocomplete: "off" });
-    const fEmail = el("input", { id: "u-email", type: "email", autocomplete: "off" });
-    const fSenha = el("input", { id: "u-senha", type: "text", autocomplete: "off", placeholder: "Mínimo 6 caracteres" });
-    const chk = Object.fromEntries(PAPEIS_ATIVOS.map(p => [p, el("input", { type: "checkbox", id: "u-p-" + p })]));
-    const fTel = el("input", { id: "u-tel", type: "tel", inputmode: "tel", autocomplete: "off", placeholder: "Opcional · ex.: (31) 99999-9999" });
-    const adm = el("input", { type: "checkbox", id: "u-adm" });
-    const fTrocar = el("input", { type: "checkbox", id: "u-trocar" });
-    const err = el("div", { class: "err", role: "alert" });
-    const tituloForm = el("p", { class: "section-t", style: "margin:0" });
-    const lista = el("div", { class: "ulist" });
-    const btnSalvar = el("button", { class: "btn primary", type: "submit" }, "Salvar usuário");
-    let editando = {}; // perfil em edição: campos que o formulário não mostra são mantidos ao salvar
-
-    function limpar() {
-      tituloForm.textContent = "Novo usuário";
-      editando = {};
-      for (const i of [fUid, fNome, fEmail, fSenha, fTel]) i.value = "";
-      fUid.readOnly = false; fSenha.disabled = false; fEmail.readOnly = false;
-      for (const c of Object.values(chk)) c.checked = false;
-      adm.checked = false; fTrocar.checked = true; err.textContent = ""; // usuário novo: troca a senha inicial no 1º login
-    }
-    function editar(uid, p) {
-      tituloForm.textContent = `Editando ${p.nome || p.email || uid}`;
-      editando = p;
-      fUid.value = uid; fUid.readOnly = true;
-      fNome.value = p.nome || ""; fEmail.value = p.email || ""; fEmail.readOnly = true;
-      fSenha.value = ""; fSenha.disabled = true;
-      fTel.value = fmtTelefone(p.telefone);
-      for (const [k, c] of Object.entries(chk)) c.checked = p.papeis?.[k] === true;
-      adm.checked = p.admin === true; fTrocar.checked = p.trocarSenha === true; err.textContent = "";
-      fNome.focus();
-    }
-
-    async function carregar() {
-      lista.replaceChildren(el("div", { class: "urow sub", text: "Carregando…" }));
-      let perfis;
-      try { perfis = (await get(ref(db, "perfis"))).val() || {}; }
-      catch (e) { console.error(e); lista.replaceChildren(el("div", { class: "urow err", text: "Não foi possível carregar os usuários." })); return; }
-      sincronizarDiretorio(perfis);
-      const itens = Object.entries(perfis).sort((a, b) => (a[1].nome || "").localeCompare(b[1].nome || "", "pt-BR"));
-      if (!itens.length) { lista.replaceChildren(el("div", { class: "urow sub", text: "Nenhum usuário cadastrado." })); return; }
-      lista.replaceChildren(...itens.map(([uid, p]) => el("div", { class: "urow" },
-        el("div", { class: "who" }, el("div", { text: p.nome || "—" }), el("div", { class: "sub", text: p.email || uid })),
-        el("div", { class: "pills" },
-          papeisDe(p).map(x => el("span", { class: "pill " + (x === "consulta" ? "t-wait" : "t-info"), text: PAPEIS[x] })),
-          p.admin ? el("span", { class: "pill t-warn", text: "Admin" }) : null,
-          p.telefone ? el("span", { class: "pill t-ok", title: "Recebe os avisos dos próprios chamados no WhatsApp", text: "WhatsApp " + fmtTelefone(p.telefone) }) : null,
-          p.trocarSenha ? el("span", { class: "pill t-wait", text: "Troca de senha pendente" }) : null),
-        el("div", { class: "row" },
-          el("button", { class: "btn ghost sm", type: "button", onclick: () => editar(uid, p) }, "Editar"),
-          el("button", { class: "btn ghost sm", type: "button", title: "Envia para o e-mail da pessoa um link para ela mesma criar uma nova senha",
-            onclick: async () => {
-              if (!p.email) { toast("Esse usuário não tem e-mail cadastrado no perfil."); return; }
-              if (!confirm(`Enviar para ${p.email} um link de redefinição de senha?`)) return;
-              try { await sendPasswordResetEmail(auth, p.email); toast(`Link de redefinição enviado para ${p.email}`); }
-              catch (e) { console.error(e); toast("Não foi possível enviar o e-mail agora."); }
-            } }, "Redefinir senha"),
-          el("button", { class: "btn ghost sm", type: "button", disabled: uid === S.meuId, title: uid === S.meuId ? "Você não pode remover o próprio acesso" : null,
-            onclick: async () => {
-              if (!confirm(`Remover o acesso de ${p.nome || p.email}? O login continua existindo, mas a pessoa não verá mais o portal.`)) return;
-              try { await update(ref(db), { ["perfis/" + uid]: null, ["diretorio/" + uid]: null }); toast("Acesso removido"); if (fUid.value === uid) limpar(); carregar(); }
-              catch (e) { console.error(e); toast(msgErro(e)); }
-            } }, "Remover")))));
-    }
-
-    const form = el("form", { novalidate: true },
-      tituloForm,
-      el("div", { class: "grid2" },
-        el("label", { class: "f", for: "u-nome" }, "Nome", fNome),
-        el("label", { class: "f", for: "u-email" }, "E-mail", fEmail)),
-      el("div", { class: "grid2" },
-        el("label", { class: "f", for: "u-senha" }, "Senha inicial", fSenha),
-        el("label", { class: "f", for: "u-uid" }, "UID (se o login já existir)", fUid)),
-      el("label", { class: "f", for: "u-tel" }, "WhatsApp (recebe aviso quando os próprios chamados forem concluídos ou recusados)", fTel),
-      el("div", {}, el("p", { class: "section-t", text: "Papéis" }),
-        el("div", { class: "checks" },
-          PAPEIS_ATIVOS.map(p => el("label", { class: "check", for: "u-p-" + p }, chk[p], PAPEIS[p])),
-          el("label", { class: "check", for: "u-adm" }, adm, "Administrador"))),
-      el("p", { class: "sub", style: "margin:0", text: "Sem nenhum papel marcado, o usuário fica como somente consulta." }),
-      el("label", { class: "check", for: "u-trocar" }, fTrocar, "Exigir troca de senha no próximo login"),
-      err,
-      el("div", { class: "row" }, btnSalvar, el("button", { class: "btn ghost", type: "button", onclick: limpar }, "Limpar")),
-    );
-
-    form.addEventListener("submit", async e => {
-      e.preventDefault(); err.textContent = "";
-      const nome = fNome.value.trim(), email = fEmail.value.trim().toLowerCase();
-      let uid = fUid.value.trim();
-      if (!nome || !email) { err.textContent = "Preencha nome e e-mail."; return; }
-      if (!uid && fSenha.value.length < 6) { err.textContent = "A senha inicial precisa ter pelo menos 6 caracteres."; return; }
-      const telefone = normTelefone(fTel.value);
-      if (telefone && !telefoneValido(telefone)) { err.textContent = "WhatsApp inválido. Use DDD + número, ex.: (31) 99999-9999."; fTel.focus(); return; }
-      btnSalvar.disabled = true;
-      try {
-        if (!uid) {
-          try {
-            const cred = await createUserWithEmailAndPassword(authCadastro, email, fSenha.value);
-            uid = cred.user.uid;
-            await signOut(authCadastro);
-          } catch (e2) {
-            err.textContent = {
-              "auth/email-already-in-use": "Esse e-mail já tem login. Copie o UID dele no console do Firebase (Authentication → Usuários) e cole no campo UID.",
-              "auth/invalid-email": "E-mail inválido.",
-              "auth/weak-password": "Senha fraca: use pelo menos 6 caracteres.",
-            }[e2?.code] || "Não foi possível criar o login.";
-            return;
-          }
-        }
-        const papeis = Object.fromEntries(PAPEIS_ATIVOS.filter(p => chk[p].checked).map(p => [p, true]));
-        // Parte do que já estava gravado (editando): o set() substitui o perfil inteiro
-        const perfil = { ...editando, nome, email, papeis, admin: adm.checked, atualizadoEm: new Date().toISOString() };
-        for (const [campo, valor] of [["trocarSenha", fTrocar.checked], ["telefone", telefone]]) {
-          if (valor) perfil[campo] = valor; else delete perfil[campo];
-        }
-        await update(ref(db), { ["perfis/" + uid]: perfil, ["diretorio/" + uid]: entradaDiretorio(perfil) }); // perfil e diretório juntos
-        toast(`Usuário ${nome} salvo`);
-        if (uid === S.meuId) { S.me = { ...S.me, nome, admin: perfil.admin, papeis: papeisDe(perfil), telefone }; configurarSessao(); render(); }
-        limpar(); carregar();
-      } catch (e3) {
-        console.error(e3); err.textContent = msgErro(e3);
-      } finally { btnSalvar.disabled = false; }
-    });
-
-    body.append(form, el("div", {}, el("p", { class: "section-t", text: "Cadastrados" }), lista));
-    limpar(); carregar();
   }
 
   // ---------- Configurações (admin) ----------
@@ -2832,7 +2566,7 @@
     S.filtro = filtroPadrao(); S.abertoVer = null; render();
   });
   $("novo").addEventListener("click", abrirNovo);
-  $("usuarios").addEventListener("click", abrirUsuarios);
+  $("usuarios").addEventListener("click", () => location.assign("/usuarios/"));
   $("config").addEventListener("click", abrirConfig);
   $("sino").addEventListener("click", abrirNotifs);
   for (const b of $("nav").querySelectorAll("[data-view]")) b.addEventListener("click", () => mostrarView(b.dataset.view));
