@@ -172,6 +172,14 @@ button, input { font: inherit; color: inherit; }
 .alerta { padding: 14px 18px; border: 1px solid var(--danger); border-radius: 12px; background: var(--danger-dim); color: var(--danger); font-size: 17px; font-weight: 600; margin-bottom: 20px; }
 .alerta ul { margin: 6px 0 0 22px; font-weight: 500; }
 
+/* ── CRIAR AGENDAMENTO ── */
+.campo-com-botao { display: flex; gap: 12px; }
+.campo-com-botao .btn { flex-shrink: 0; }
+.campos-placas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 640px) { .campos-placas { grid-template-columns: minmax(0, 1fr); } }
+.novo-pedido { flex: 1; min-width: 0; }
+.btn-tirar { flex-shrink: 0; min-height: 48px; padding: 0 16px; font-size: 16px; }
+
 .tanque-grupo + .tanque-grupo { margin-top: 12px; }
 .tanque-placa { margin: 0 0 6px 2px; font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
 .tanque-total { font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -452,7 +460,94 @@ button, input { font: inherit; color: inherit; }
         <div class="msg-erro"></div>
       </div>
     </div>
-    <div class="acoes"><button class="btn btn-primario" id="btn-buscar" type="button" onclick="buscarAgendamento()">Continuar</button></div>
+    <div class="acoes">
+      <button class="btn btn-secundario hidden" id="btn-criar-agendamento" type="button" onclick="iniciarNovoAgendamento()">Sem agendamento? Clique para criar</button>
+      <button class="btn btn-primario" id="btn-buscar" type="button" onclick="buscarAgendamento()">Continuar</button>
+    </div>
+  </section>
+
+  <!-- Criar agendamento (motorista sem protocolo). 1: pedidos, só pelo número: o quiosque não mostra lista nenhuma -->
+  <section class="tela" id="tela-novo-pedidos">
+    <div class="titulo">Criar agendamento</div>
+    <div class="sub">Obrigatório informar os números dos pedidos! Se não possui, solicite ao cliente.</div>
+    <div class="campos">
+      <div class="campo" id="c-novo-pedido">
+        <label for="in-novo-pedido">Número do pedido</label>
+        <div class="campo-com-botao">
+          <input id="in-novo-pedido" inputmode="numeric" autocomplete="off" maxlength="20" enterkeyhint="go" oninput="this.value = soDigitos(this.value)">
+          <button class="btn btn-primario" id="btn-novo-pedido" type="button" onclick="adicionarPedidoNovo()">Adicionar</button>
+        </div>
+        <div class="msg-erro"></div>
+      </div>
+    </div>
+    <div class="cartao hidden" id="novo-pedidos-lista" style="margin-top:22px"></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="reiniciar()">Cancelar</button>
+      <button class="btn btn-primario" id="btn-novo-pedidos-continuar" type="button" onclick="irParaVeiculoNovo()">Continuar</button>
+    </div>
+  </section>
+
+  <!-- Criar agendamento. 2: motorista e veículo, que precisam já estar liberados no cadastro -->
+  <section class="tela" id="tela-novo-veiculo">
+    <div class="titulo">Motorista e veículo</div>
+    <div class="sub">Informe o CPF do motorista e todas as placas do conjunto.</div>
+    <div class="alerta hidden" id="alerta-novo-veiculo" role="alert"></div>
+    <div class="campos">
+      <div class="campo" id="c-novo-cpf">
+        <label for="in-novo-cpf">CPF do motorista</label>
+        <input id="in-novo-cpf" inputmode="numeric" autocomplete="off" maxlength="14" enterkeyhint="next" oninput="mascararCpf(this)">
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campos-placas">
+        <div class="campo" id="c-novo-cavalo">
+          <label for="in-novo-cavalo">Placa do cavalo</label>
+          <input id="in-novo-cavalo" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" enterkeyhint="next" oninput="digitarPlaca(this)">
+          <div class="msg-erro"></div>
+        </div>
+        <div class="campo" id="c-novo-carreta">
+          <label for="in-novo-carreta">Carreta 1 (se tiver)</label>
+          <input id="in-novo-carreta" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" enterkeyhint="next" oninput="digitarPlaca(this)">
+          <div class="msg-erro"></div>
+        </div>
+        <div class="campo" id="c-novo-carreta2">
+          <label for="in-novo-carreta2">Carreta 2 (se tiver)</label>
+          <input id="in-novo-carreta2" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" enterkeyhint="go" oninput="digitarPlaca(this)">
+          <div class="msg-erro"></div>
+        </div>
+      </div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="mostrarTela('novo-pedidos')">Voltar</button>
+      <button class="btn btn-primario" id="btn-novo-veiculo" type="button" onclick="conferirMotoristaVeiculo()">Continuar</button>
+    </div>
+  </section>
+
+  <!-- Criar agendamento. 3: resumo -->
+  <section class="tela conferencia" id="tela-novo-confirmar">
+    <div class="titulo">Confirme o agendamento</div>
+    <div class="sub">Depois de criado, qualquer correção é feita no guichê.</div>
+    <div class="alerta hidden" id="alerta-novo-confirmar" role="alert"></div>
+    <div class="cartao"><div class="dados" id="novo-dados"></div></div>
+    <div class="cartao" id="novo-confirmar-pedidos"></div>
+    <div class="acoes">
+      <button class="btn btn-secundario" type="button" onclick="mostrarTela('novo-veiculo')">Voltar</button>
+      <button class="btn btn-primario" id="btn-novo-criar" type="button" onclick="criarNovoAgendamento()">Criar agendamento</button>
+    </div>
+  </section>
+
+  <!-- Criar agendamento. 4: protocolo criado; o check-in segue sem digitar de novo -->
+  <section class="tela" id="tela-novo-criado">
+    <div class="resultado">
+      <div class="selo ok"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <div class="titulo">Agendamento criado!</div>
+      <div class="protocolo-grande" id="novo-protocolo"></div>
+      <div class="sub">Anote o protocolo e siga para o check-in.</div>
+      <div class="alerta hidden" id="alerta-novo-criado" role="alert"></div>
+      <div class="acoes">
+        <button class="btn btn-secundario" type="button" onclick="reiniciar()">Voltar ao início</button>
+        <button class="btn btn-primario" id="btn-novo-checkin" type="button" onclick="checkinDoNovo()">Fazer o check-in</button>
+      </div>
+    </div>
   </section>
 
   <!-- Etapa 2: confere os dados do agendamento -->
@@ -612,7 +707,7 @@ button, input { font: inherit; color: inherit; }
   <div class="caixa">
     <div class="titulo" id="inatividade-titulo" style="font-size:26px">Ainda está aí?</div>
     <div class="sub" id="inatividade-texto"></div>
-    <button class="btn btn-primario" type="button" onclick="continuarAtendimento()">Continuar o check-in</button>
+    <button class="btn btn-primario" type="button" onclick="continuarAtendimento()">Continuar</button>
   </div>
 </div>
 <div id="toastContainer"></div>
@@ -638,6 +733,10 @@ button, input { font: inherit; color: inherit; }
    não vê nada disso; tocar no nome do terminal (topo) abre o menu para trocar o terminal ou sair, que pede
    a senha do login do quiosque (conferida no Firebase). As regras do banco
    exigem o login (sem ele, qualquer um com a URL leria agendamentos por CPF e dispararia faturamento).
+   Motorista sem protocolo: "Criar agendamento" na tela inicial, só pelo número dos pedidos (o quiosque lê um pedido
+   por vez e nunca lista a carteira). Só em base de fila, no turno da hora: base com horários marcados exige agendar
+   antes. Vale pedido com entrega hoje nesta base, com motorista e veículo já liberados no SAP; o registro é o mesmo do
+   portal (criadoPorUid = login do quiosque) e o check-in segue sem digitar o protocolo.
    Mesmo Firebase do portal de agendamento (projeto nexta-agendamento);
    regras em testes/portal_agendamento/firebase_database.rules.json.
    ════════════════════════════════════════════════════════════════════ */
@@ -670,6 +769,8 @@ const TIPOS_FRETE = ['CIF', 'FOB'];
 // Situação do pedido (gravada no agendamento pelo robô do datalake) que o portal marca como "Revisar"
 const SITUACOES_REVISAR = { CANCELADO: 'cancelado', BLOQUEADO: 'bloqueado' };
 const TURNO_LABEL = { madrugada: 'Madrugada', manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
+const MAX_CLIENTES_CARRETA = 10; // igual ao número de posições de clientesLista que a regra de leitura confere
+const CAPACIDADE_MINIMA_VALIDA = 1000; // o SAP tem recursos com volume 0/1 (cavalo sozinho): não vale como capacidade
 const ETAPA_DA_TELA = { inicio: 1, agendamento: 2, alocacao: 3, lacres: 4, revisao: 5 };
 
 // terminal = baseId que o tablet atende (do cadastro do quiosque ou escolhido no aparelho)
@@ -679,6 +780,9 @@ const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBu
 // achatadas); alocação e lacres por compartimento (comps[i] = { placa, indicePlaca, linha, lacres, envelope }, erros);
 // alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 3
 let atd = null;
+// Agendamento sendo criado no quiosque: pedidos adicionados, motorista { nome, cpf, bp }, veiculo { placas, chave, id,
+// volume }, dados = registro depois de criado
+let novo = null;
 let _cancelarAcompanhamento = null;
 let _registroProcessamento = null;
 // Barra do faturamento: fase atual, quando ela começou (relógio do tablet), pausa (correção de lacre) e o maior
@@ -707,6 +811,9 @@ function normalizarPlaca(v) { return String(v || '').toUpperCase().replace(/[^A-
 function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
 // Placa antiga (ABC1234) e Mercosul (ABC1C34) são o mesmo veículo: o 5º caractere vira letra (0 = A … 9 = J)
 function placaMercosul(p) { return /^[A-Z]{3}[0-9]{4}$/.test(p) ? p.slice(0, 4) + 'ABCDEFGHIJ'[p[4]] + p.slice(5) : p; }
+// Chave de recursos/<chave>: placas na forma Mercosul, em ordem alfabética (a ordem em que foram digitadas não importa)
+function chaveRecurso(placas) { return placas.map(placaMercosul).sort().join('+'); }
+function digitarPlaca(el) { el.value = el.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); }
 function chavePerfilCompartimento(perfil) {
   const bytes = new TextEncoder().encode(String(perfil || '').trim().toUpperCase());
   let binario = '';
@@ -822,6 +929,7 @@ function mostrarAviso({ titulo, texto, tipo = 'atencao' }) {
 function reiniciar() {
   if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
   atd = null;
+  limparNovoAgendamento();
   _registroProcessamento = null;
   pararProgresso();
   _urlsDocumentos.forEach((url) => URL.revokeObjectURL(url));
@@ -831,6 +939,8 @@ function reiniciar() {
   digitarProtocolo(document.getElementById('in-protocolo'));
   for (const id of ['c-protocolo', 'c-cpf', 'c-placa']) marcarErro(id, '');
   mostrarAlerta('alerta-inicio', '');
+  // Base com horários marcados: o agendamento é feito antes, no portal
+  document.getElementById('btn-criar-agendamento').classList.toggle('hidden', Q.bases[Q.terminal]?.tipo !== 'fila');
   fecharInatividade();
   fecharMenuQuiosque();
   if (document.activeElement) document.activeElement.blur(); // fecha o teclado do tablet
@@ -1112,7 +1222,7 @@ async function buscarAgendamento() {
   const btn = document.getElementById('btn-buscar');
   btn.disabled = true; btn.textContent = 'Consultando…';
   try {
-    // Os agendamentos do CPF digitado (a regra não libera outra consulta ao quiosque); protocolo e placa conferem aqui
+    // Os agendamentos do CPF digitado; protocolo e placa conferem aqui
     const agendamentos = await window._fb.agendamentosDoMotorista(cpf);
     const placaM = placaMercosul(placa);
     const achado = Object.entries(agendamentos)
@@ -1124,13 +1234,7 @@ async function buscarAgendamento() {
         + (Q.falhasBusca >= 2 ? ' Se não conseguir, procure o guichê.' : ''));
       return;
     }
-    const r = await prepararAtendimento(achado[0], achado[1]);
-    if (r.acompanhar) { acompanharFaturamento(r.acompanhar); return; }
-    if (r.aviso) { mostrarAviso(r.aviso); return; }
-    atd = r.atd;
-    if (document.activeElement) document.activeElement.blur();
-    renderAgendamento();
-    mostrarTela('agendamento');
+    await seguirParaCheckin(achado[0], achado[1]);
   } catch (e) {
     console.error(e);
     mostrarAlerta('alerta-inicio', ehErroPermissao(e)
@@ -1139,6 +1243,16 @@ async function buscarAgendamento() {
   } finally {
     btn.disabled = false; btn.textContent = 'Continuar';
   }
+}
+
+async function seguirParaCheckin(id, a) {
+  const r = await prepararAtendimento(id, a);
+  if (r.acompanhar) { acompanharFaturamento(r.acompanhar); return; }
+  if (r.aviso) { mostrarAviso(r.aviso); return; }
+  atd = r.atd;
+  if (document.activeElement) document.activeElement.blur();
+  renderAgendamento();
+  mostrarTela('agendamento');
 }
 
 // Só segue para a conferência o agendamento que o cockpit consegue faturar sem ajuda do guichê.
@@ -1237,6 +1351,298 @@ async function prepararAtendimento(id, a) {
     alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false,
     erros: {}, // lacres: "<índice>.<campo>" → mensagem
   } };
+}
+
+/* ── CRIAR AGENDAMENTO: motorista sem protocolo ── */
+// Mesmo registro e mesmas conferências do portal de agendamento (adicionarPedido, montarAgendamento), mais o que o
+// check-in exige para faturar sem o guichê: entrega hoje, nesta base, um tipo de frete só e motorista e veículo
+// liberados no SAP. Quem não passa vai ao guichê: o cadastro provisório continua só no portal.
+// Só em base de fila, e sem perguntar o turno: quem está no quiosque carrega agora.
+const CAMPOS_NOVO = { 'c-novo-pedido': 'in-novo-pedido', 'c-novo-cpf': 'in-novo-cpf', 'c-novo-cavalo': 'in-novo-cavalo', 'c-novo-carreta': 'in-novo-carreta', 'c-novo-carreta2': 'in-novo-carreta2' };
+function limparNovoAgendamento() {
+  novo = null;
+  for (const [campo, input] of Object.entries(CAMPOS_NOVO)) {
+    document.getElementById(input).value = '';
+    marcarErro(campo, '');
+  }
+  for (const id of ['alerta-novo-veiculo', 'alerta-novo-confirmar', 'alerta-novo-criado']) mostrarAlerta(id, '');
+}
+function iniciarNovoAgendamento() {
+  limparNovoAgendamento();
+  if (!baseAtendeAgora()) { mostrarAviso({ titulo: 'Fora do horário de atendimento', texto: msgForaDoTurno() }); return; }
+  novo = { pedidos: [], motorista: null, veiculo: null, dados: null };
+  // O tablet fica dias aberto: o cadastro da base pode ter mudado desde o login
+  window._fb.carregarBases().then((bases) => { Q.bases = bases; }, console.error);
+  renderPedidosNovo();
+  mostrarTela('novo-pedidos');
+}
+// Locais da base: bases/<id>/locais/<centro>|<depósito>; base antiga guarda um só, em centro/deposito na raiz
+function locaisDaBase(b) {
+  if (b?.locais) return Object.values(b.locais);
+  return b?.centro && b?.deposito ? [{ centro: b.centro, deposito: b.deposito }] : [];
+}
+function baseTemLocal(b, centro, deposito) { return locaisDaBase(b).some((l) => l.centro === centro && l.deposito === deposito); }
+// Mesmas faixas do portal (turnoDoHorario)
+function turnoAgora() {
+  const hora = new Date().getHours();
+  return hora < 6 ? 'madrugada' : hora < 12 ? 'manha' : hora < 18 ? 'tarde' : 'noite';
+}
+// Base cadastrada antes da parametrização (sem a lista de turnos) atende em todos
+function baseAtendeAgora() {
+  const turnos = Q.bases[Q.terminal]?.turnos;
+  return !turnos || !!turnos[turnoAgora()];
+}
+function msgForaDoTurno() { return `A base ${Q.bases[Q.terminal]?.nome || ''} não atende no turno ${TURNO_LABEL[turnoAgora()]}. Procure o guichê.`; }
+function itensDe(p) { return Object.values(p?.itens || {}); }
+function volumeDoPedido(p) { return somar(itensDe(p).map((i) => Number(i.volume) || 0)); }
+function freteDe(p) { return String(p.tipoFrete || '').toUpperCase(); }
+function erroConsultaNovo(e) {
+  return ehErroPermissao(e)
+    ? 'O quiosque não tem permissão para esta consulta. Chame a equipe Nexta (regras do Firebase).'
+    : 'Sem conexão com o sistema. Tente de novo em instantes.';
+}
+
+/* Etapa 1: pedidos, só pelo número */
+// O SAP fatura o pedido inteiro num carregamento só: pedido em agendamento ativo não entra em outro.
+// A janela é a do robô do datalake (ontem em diante), que cobre o pedido com entrega remarcada
+async function protocolosPorPedido() {
+  const ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+  const agendamentos = await window._fb.agendamentosDesde(dataLocalISO(ontem));
+  const protocolos = {};
+  for (const a of Object.values(agendamentos)) {
+    if (a.status === 'cancelado') continue;
+    for (const nr of Object.keys(a.pedidos || {})) protocolos[nr] = a.protocolo;
+  }
+  return protocolos;
+}
+// Problema que impede o pedido de entrar ('' quando está tudo certo)
+function erroDoPedido(nr, p, protocolos) {
+  if (!p) return `Pedido ${nr} não encontrado ou indisponível (faturado, bloqueado ou cancelado). Confira o número. Pedido novo leva até 30 minutos para aparecer aqui.`;
+  if (!baseTemLocal(Q.bases[Q.terminal], p.centro, p.depositoCodigo)) return `O pedido ${nr} é de outra base. Confira o local do carregamento com a transportadora.`;
+  if (p.dataEntrega !== hoje()) {
+    return `O pedido ${nr} ${p.dataEntrega ? `tem entrega em ${formatDataBR(p.dataEntrega)}` : 'está sem data de entrega'}. Aqui só dá para agendar pedido de hoje: procure o guichê.`;
+  }
+  if (protocolos[nr]) return `O pedido ${nr} já está no agendamento ${protocolos[nr]}. Volte ao início e faça o check-in com esse protocolo.`;
+  if (volumeDoPedido(p) <= 0) return `O pedido ${nr} está sem volume para carregar. Procure o guichê.`;
+  if (!TIPOS_FRETE.includes(freteDe(p))) return `O pedido ${nr} precisa ser conferido no guichê (tipo de frete).`;
+  if (novo.pedidos.length && freteDe(p) !== freteDe(novo.pedidos[0])) {
+    return `O pedido ${nr} é ${freteDe(p)} e este carregamento é ${freteDe(novo.pedidos[0])}: não podem ir juntos. Procure o guichê.`;
+  }
+  if (new Set([...novo.pedidos.map((x) => x.clienteCodigo), p.clienteCodigo]).size > MAX_CLIENTES_CARRETA) {
+    return `Um agendamento junta pedidos de no máximo ${MAX_CLIENTES_CARRETA} clientes.`;
+  }
+  return '';
+}
+async function adicionarPedidoNovo() {
+  const btn = document.getElementById('btn-novo-pedido');
+  if (btn.disabled) return false;
+  const campo = document.getElementById('in-novo-pedido');
+  const nr = campo.value.replace(/^0+(?=\d)/, ''); // o número vem do SAP sem os zeros da frente
+  marcarErro('c-novo-pedido', '');
+  if (!nr) { marcarErro('c-novo-pedido', 'Digite o número do pedido.'); return false; }
+  if (novo.pedidos.some((p) => p.nrPedido === nr)) { marcarErro('c-novo-pedido', `O pedido ${nr} já está neste agendamento.`); return false; }
+  const atual = novo;
+  btn.disabled = true; btn.textContent = 'Buscando…';
+  try {
+    const [pedido, protocolos] = await Promise.all([window._fb.carregarPedido(nr), protocolosPorPedido()]);
+    if (novo !== atual) return false; // a tela voltou ao início durante a consulta
+    const msg = erroDoPedido(nr, pedido, protocolos);
+    if (msg) { marcarErro('c-novo-pedido', msg); return false; }
+    novo.pedidos.push(pedido);
+    campo.value = '';
+    if (document.activeElement) document.activeElement.blur(); // fecha o teclado: a lista fica à vista
+    renderPedidosNovo();
+    return true;
+  } catch (e) {
+    console.error(e);
+    marcarErro('c-novo-pedido', erroConsultaNovo(e));
+    return false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Adicionar';
+  }
+}
+function tirarPedidoNovo(nr) {
+  novo.pedidos = novo.pedidos.filter((p) => p.nrPedido !== nr);
+  renderPedidosNovo();
+}
+function htmlPedidosNovo(comTirar) {
+  const total = somar(novo.pedidos.map(volumeDoPedido));
+  return `<div class="cartao-titulo">Pedidos deste carregamento · ${formatVolume(total)}</div>` + novo.pedidos.map((p) => `
+    <div class="produto-linha">
+      <div class="novo-pedido">
+        <div class="produto-nome">Pedido ${esc(p.nrPedido)}</div>
+        <div class="produto-meta">${esc([p.clienteNome, ...itensDe(p).map((i) => i.descricao)].filter(Boolean).join(' · '))}</div>
+      </div>
+      <div class="produto-vol">${formatVolume(volumeDoPedido(p))}</div>
+      ${comTirar ? `<button class="btn btn-secundario btn-tirar" type="button" onclick="tirarPedidoNovo(${jsArg(p.nrPedido)})">Tirar</button>` : ''}
+    </div>`).join('');
+}
+function renderPedidosNovo() {
+  const el = document.getElementById('novo-pedidos-lista');
+  el.classList.toggle('hidden', !novo.pedidos.length);
+  el.innerHTML = novo.pedidos.length ? htmlPedidosNovo(true) : '';
+}
+async function irParaVeiculoNovo() {
+  // Número digitado sem tocar em "Adicionar"
+  if (document.getElementById('in-novo-pedido').value && !(await adicionarPedidoNovo())) return;
+  if (!novo) return;
+  if (!novo.pedidos.length) { marcarErro('c-novo-pedido', 'Adicione ao menos um pedido.'); return; }
+  marcarErro('c-novo-pedido', '');
+  mostrarTela('novo-veiculo');
+}
+
+/* Etapa 2: motorista e veículo */
+async function conferirMotoristaVeiculo() {
+  const btn = document.getElementById('btn-novo-veiculo');
+  if (btn.disabled) return;
+  const cpf = soDigitos(document.getElementById('in-novo-cpf').value);
+  const placas = ['in-novo-cavalo', 'in-novo-carreta', 'in-novo-carreta2'].map((id) => normalizarPlaca(document.getElementById(id).value));
+  const [cavalo, carreta1, carreta2] = placas;
+  const erroPlaca = (p) => !p || placaValida(p) ? '' : 'Placa inválida. Use o formato ABC1D23 ou ABC1234.';
+  const erros = {
+    'c-novo-cpf': cpfValido(cpf) ? '' : cpf.length < 11 ? 'Digite os 11 números do CPF.' : 'CPF inválido. Confira os números.',
+    'c-novo-cavalo': cavalo ? erroPlaca(cavalo) : 'Digite a placa do cavalo.',
+    'c-novo-carreta': erroPlaca(carreta1),
+    'c-novo-carreta2': carreta2 && !carreta1 ? 'Preencha antes a carreta 1.' : erroPlaca(carreta2),
+  };
+  for (const [id, msg] of Object.entries(erros)) marcarErro(id, msg);
+  mostrarAlerta('alerta-novo-veiculo', '');
+  if (Object.values(erros).some(Boolean)) return;
+
+  const atual = novo;
+  const chave = chaveRecurso(placas.filter(Boolean));
+  btn.disabled = true; btn.textContent = 'Consultando…';
+  try {
+    const [motorista, recurso] = await Promise.all([window._fb.carregarMotorista(cpf), window._fb.carregarRecurso(chave)]);
+    if (novo !== atual) return;
+    // Sem BP ou sem recurso o check-in não fatura
+    if (!motorista?.bp) { marcarErro('c-novo-cpf', 'Motorista sem cadastro liberado no sistema. Confira o CPF; se estiver certo, procure o guichê.'); return; }
+    if (!recurso?.id) {
+      mostrarAlerta('alerta-novo-veiculo', `Não há veículo liberado no sistema com as placas ${placas.filter(Boolean).join(' + ')}. Confira todas as placas do conjunto; se estiverem certas, procure o guichê.`);
+      return;
+    }
+    const capacidade = recurso.volumeMax >= CAPACIDADE_MINIMA_VALIDA ? recurso.volumeMax : null;
+    const total = somar(novo.pedidos.map(volumeDoPedido));
+    if (capacidade && total > capacidade) {
+      mostrarAlerta('alerta-novo-veiculo', `Os pedidos somam ${formatVolume(total)} e o veículo leva ${formatVolume(capacidade)}. O pedido vai inteiro: volte e tire um pedido ou procure o guichê.`);
+      return;
+    }
+    // Cavalo e carreta trocados dão o mesmo recurso, mas o tanque é a carreta: sem perfil nela o check-in para
+    const tanque = placasDoTanque({ placaCavalo: cavalo, placaCarreta: carreta1, placaCarreta2: carreta2 });
+    const semPerfil = tanque.filter((p) => !perfilDaPlaca(recurso, p, tanque.length));
+    if (semPerfil.length) {
+      mostrarAlerta('alerta-novo-veiculo', `A placa ${semPerfil.join(' e ')} está sem compartimentos no cadastro. Confira se o cavalo e a carreta estão nos campos certos; se estiverem, procure o guichê.`);
+      return;
+    }
+    novo.motorista ={ nome: motorista.nome, cpf, bp: motorista.bp };
+    novo.veiculo = { placas, chave, id: recurso.id, volume: capacidade };
+    renderConfirmacaoNovo();
+    if (document.activeElement) document.activeElement.blur();
+    mostrarTela('novo-confirmar');
+  } catch (e) {
+    console.error(e);
+    mostrarAlerta('alerta-novo-veiculo', erroConsultaNovo(e));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Continuar';
+  }
+}
+
+/* Etapa 3: resumo */
+function renderConfirmacaoNovo() {
+  const { pedidos, motorista, veiculo } = novo;
+  document.getElementById('novo-dados').innerHTML = [
+    dado('Carregamento', `${formatDataBR(hoje())} · ${TURNO_LABEL[turnoAgora()]}`),
+    dado('Base', Q.bases[Q.terminal].nome),
+    dado('Motorista', motorista.nome),
+    dado('CPF', cpfParcial(motorista.cpf), true),
+    dado('Placas', veiculo.placas.filter(Boolean).join(' + '), true),
+    dado('Tipo de frete', freteDe(pedidos[0])),
+  ].join('');
+  document.getElementById('novo-confirmar-pedidos').innerHTML = htmlPedidosNovo(false);
+  mostrarAlerta('alerta-novo-confirmar', '');
+}
+// Registro igual ao do portal (montarAgendamento), com o pedido inteiro: pedido já agendado nem entra aqui
+function montarNovoAgendamento(protocolo) {
+  const base = Q.bases[Q.terminal];
+  const clientes = {}, pedidos = {};
+  for (const p of novo.pedidos) {
+    clientes[p.clienteCodigo] = { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}) };
+    const itens = {};
+    for (const i of itensDe(p)) {
+      if (Number(i.volume) > 0) itens[i.codigo] = { codigo: i.codigo, descricao: i.descricao, volumePedido: i.volume, volume: Number(i.volume) };
+    }
+    pedidos[p.nrPedido] = {
+      nrPedido: p.nrPedido, clienteCodigo: p.clienteCodigo, clienteNome: p.clienteNome, tipoFrete: p.tipoFrete || null, dataEntrega: p.dataEntrega || null,
+      centro: p.centro || null, depositoCodigo: p.depositoCodigo || null, itens,
+    };
+  }
+  const { motorista, veiculo } = novo;
+  const [placaCavalo, placaCarreta, placaCarreta2] = veiculo.placas;
+  return {
+    protocolo,
+    criadoPorUid: Q.usuario.uid,
+    criadoPorNome: Q.usuario.nome,
+    criadoEm: new Date().toISOString(),
+    dataCarregamento: hoje(),
+    baseId: Q.terminal, baseNome: base.nome, baseTipo: base.tipo,
+    turno: turnoAgora(),
+    placaCavalo, placaCarreta: placaCarreta || null, placaCarreta2: placaCarreta2 || null,
+    recursoChave: veiculo.chave, recursoSap: veiculo.id, recursoProvisorio: false, capacidadeVeiculo: veiculo.volume,
+    motorista: motorista.nome, motoristaCpf: motorista.cpf, motoristaBp: motorista.bp, motoristaProvisorio: false,
+    clientes,
+    clientesLista: Object.keys(clientes),
+    pedidos,
+    volumeTotal: somar(novo.pedidos.map(volumeDoPedido)),
+    status: 'agendado',
+  };
+}
+async function criarNovoAgendamento() {
+  const btn = document.getElementById('btn-novo-criar');
+  if (btn.disabled) return;
+  // A tela pode ter ficado aberta até o turno virar
+  if (!baseAtendeAgora()) { mostrarAlerta('alerta-novo-confirmar', msgForaDoTurno()); return; }
+  const atual = novo;
+  btn.disabled = true; btn.textContent = 'Criando…';
+  mostrarAlerta('alerta-novo-confirmar', '');
+  try {
+    // O robô pode ter tirado o pedido do portal, e outro agendamento pode ter levado o pedido, desde que ele entrou aqui
+    const [pedidos, protocolos] = await Promise.all([
+      Promise.all(novo.pedidos.map((p) => window._fb.carregarPedido(p.nrPedido))),
+      protocolosPorPedido(),
+    ]);
+    if (novo !== atual) return;
+    const problema = novo.pedidos.map((p, i) => erroDoPedido(p.nrPedido, pedidos[i], protocolos)).find(Boolean);
+    if (problema) { mostrarAlerta('alerta-novo-confirmar', esc(problema)); return; }
+    novo.pedidos = pedidos;
+    // Se a gravação falhar depois daqui, esse número de protocolo fica pulado (sem problema)
+    const dados = montarNovoAgendamento(await window._fb.gerarProtocolo());
+    await window._fb.criarAgendamento(dados);
+    if (novo !== atual) return;
+    novo.dados = dados;
+    document.getElementById('novo-protocolo').textContent = dados.protocolo;
+    mostrarTela('novo-criado');
+  } catch (e) {
+    console.error(e);
+    mostrarAlerta('alerta-novo-confirmar', ehErroPermissao(e) ? 'O sistema recusou o agendamento. Procure o guichê.' : 'Sem conexão com o sistema. Tente de novo em instantes.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Criar agendamento';
+  }
+}
+
+/* Etapa 4: segue para o check-in do agendamento criado */
+async function checkinDoNovo() {
+  const btn = document.getElementById('btn-novo-checkin');
+  btn.disabled = true; btn.textContent = 'Abrindo…';
+  mostrarAlerta('alerta-novo-criado', '');
+  try {
+    await seguirParaCheckin(novo.dados.protocolo, novo.dados);
+  } catch (e) {
+    console.error(e);
+    mostrarAlerta('alerta-novo-criado', 'Sem conexão com o sistema. Tente de novo em instantes.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Fazer o check-in';
+  }
 }
 
 /* ── ETAPA 2: CONFERÊNCIA ── */
@@ -2156,7 +2562,7 @@ async function processarFaturamento() {
 /* ── INATIVIDADE: motorista foi embora no meio do check-in → apaga e volta ao início ── */
 let _ultimoToque = Date.now();
 function emAtendimento() {
-  if (['agendamento', 'alocacao', 'lacres', 'revisao', 'inconsistencia'].includes(Q.tela)) return true;
+  if (['agendamento', 'alocacao', 'lacres', 'revisao', 'inconsistencia', 'novo-pedidos', 'novo-veiculo', 'novo-confirmar', 'novo-criado'].includes(Q.tela)) return true;
   return Q.tela === 'inicio' && ['in-protocolo', 'in-cpf', 'in-placa'].some((id) => document.getElementById(id).value);
 }
 function fecharInatividade() { document.getElementById('inatividade').classList.remove('aberta'); }
@@ -2173,7 +2579,7 @@ function verificarInatividade() {
   if (parado >= TEMPO_INATIVIDADE + TEMPO_RESPOSTA_INATIVIDADE) { reiniciar(); return; }
   if (parado < TEMPO_INATIVIDADE) { fecharInatividade(); return; } // qualquer toque responde à pergunta
   const resta = Math.ceil(TEMPO_INATIVIDADE + TEMPO_RESPOSTA_INATIVIDADE - parado);
-  document.getElementById('inatividade-texto').textContent = `Sem resposta, o check-in é cancelado e a tela volta ao início em ${resta} s.`;
+  document.getElementById('inatividade-texto').textContent = `Sem resposta, o que foi preenchido é apagado e a tela volta ao início em ${resta} s.`;
   caixa.classList.add('aberta');
 }
 for (const ev of ['pointerdown', 'keydown', 'input']) document.addEventListener(ev, () => { _ultimoToque = Date.now(); }, true);
@@ -2186,6 +2592,8 @@ document.addEventListener('keydown', (ev) => {
   if (ev.target.id === 'login-senha') { fazerLogin(); return; }
   if (ev.target.id === 'menu-senha') { ev.target.blur(); return; } // duas ações no menu: a equipe toca na que quer
   if (ev.target.id === 'in-placa') { buscarAgendamento(); return; }
+  if (ev.target.id === 'in-novo-pedido') { adicionarPedidoNovo(); return; }
+  if (ev.target.id === 'in-novo-carreta2') { conferirMotoristaVeiculo(); return; }
   if (ev.target.id === 'correcao-lacre-valor') { enviarCorrecaoLacre(); return; }
   if (ev.target.closest('#lista-lacres')) { enterNoLacre(ev.target); return; }
   const campos = [...document.querySelectorAll('.tela.ativa input')];
@@ -2207,7 +2615,7 @@ setTimeout(() => {
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, get, set, query, orderByChild, equalTo, onValue }
+  import { getDatabase, ref, get, set, update, query, orderByChild, equalTo, startAt, onValue, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -2237,12 +2645,28 @@ setTimeout(() => {
     confirmarSenha: (senha) => reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, senha)),
     carregarPerfil: (uid) => ler('usuarios/' + uid),
     carregarBases: async () => (await ler('bases')) || {},
-    // Única leitura de agendamentos liberada ao quiosque: os do CPF digitado (agendamentos/ inteiro é negado)
+    // Leituras de agendamentos liberadas ao quiosque (agendamentos/ inteiro é negado): os do CPF digitado e,
+    // para não agendar duas vezes o mesmo pedido, os de uma data em diante
     agendamentosDoMotorista: async (cpf) =>
       (await get(query(ref(db, 'agendamentos'), orderByChild('motoristaCpf'), equalTo(cpf)))).val() || {},
+    agendamentosDesde: async (data) =>
+      (await get(query(ref(db, 'agendamentos'), orderByChild('dataCarregamento'), startAt(data)))).val() || {},
     carregarMotorista: (cpf) => ler('motoristas/' + cpf),
     carregarRecurso: (chave) => ler('recursos/' + chave),
     carregarPerfilCompartimento: (chave) => ler('perfisCompartimento/' + chave),
+    // Um pedido por vez, pelo número: a regra não libera a lista (pedidosSap/ inteiro é negado ao quiosque)
+    carregarPedido: (nr) => ler('pedidosSap/' + nr),
+    gerarProtocolo: async () => {
+      const r = await runTransaction(ref(db, 'contadores/protocolo'), (atual) => (atual || 0) + 1);
+      if (!r.committed) throw new Error('Não foi possível gerar o protocolo. Tente de novo.');
+      return 'AG-' + String(r.snapshot.val()).padStart(6, '0');
+    },
+    // Agendamento + índice por cliente num único update() multi-path, como no portal: grava tudo ou nada
+    criarAgendamento: (dados) => {
+      const updates = { ['agendamentos/' + dados.protocolo]: dados };
+      for (const codigo of Object.keys(dados.clientes)) updates[`agendamentosPorCliente/${codigo}/${dados.protocolo}`] = dados.dataCarregamento;
+      return update(ref(db), updates);
+    },
     // autoatendimento/<protocolo do agendamento>: check-in (ou inconsistência) do motorista
     carregarCheckin: (protocolo) => ler('autoatendimento/' + protocolo),
     salvarCheckin: (protocolo, dados) => set(ref(db, 'autoatendimento/' + protocolo), dados),
