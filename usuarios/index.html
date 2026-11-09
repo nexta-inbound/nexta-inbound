@@ -67,6 +67,13 @@
   .checklist input { accent-color: var(--accent); margin-top: 3px; }
   .checklist small { display: block; color: var(--text-muted); font-size: 12px; }
   .checklist .vazio { padding: 8px; font-size: 13px; color: var(--text-muted); }
+  .abas-lista { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 4px; display: flex; flex-direction: column; }
+  .aba-linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 8px; border-radius: 6px; min-height: 38px; }
+  .aba-linha:hover { background: var(--panel-soft); }
+  .aba-linha .marcacao { flex: 1; min-width: 0; }
+  .campo .aba-linha select { width: auto; padding: 5px 8px; font-size: 13px; }
+  .campo .aba-linha select:disabled { opacity: 0.45; }
+  .aba-linha .so-completo { font-size: 13px; color: var(--text-muted); padding-right: 4px; white-space: nowrap; }
   .selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
   .selecionados:empty { display: none; }
   .chip {
@@ -180,6 +187,14 @@
             </div>
             <label class="campo" data-se="transportador"><span>Transportador</span><select id="inb-transportador"></select></label>
             <label class="marcacao" data-se="staff"><input type="checkbox" id="inb-admin"> Admin do Inbound</label>
+            <div class="campo" data-se="abas"><span>Abas do portal</span>
+              <div class="opcoes-linha" role="radiogroup" aria-label="Abas do Inbound">
+                <label class="marcacao"><input type="radio" name="inb-abas-modo" value="todas"> Todas as abas</label>
+                <label class="marcacao"><input type="radio" name="inb-abas-modo" value="personalizado"> Personalizado</label>
+              </div>
+              <div class="abas-lista" id="inb-abas" data-se="abas-personalizado"></div>
+              <p class="nota" data-se="abas-personalizado">Só visualização: a pessoa vê a aba, mas os botões de incluir, editar, importar e remover ficam escondidos. Importar Cadência e Gerir Viagens só têm acesso completo por enquanto.</p>
+            </div>
             <p class="mensagem alerta" data-aviso hidden></p>
           </div>
         </section>
@@ -301,7 +316,7 @@
   const normalizar = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const PADRAO = {
-    inbound: { tipo: 'staff', transportadorNome: '', admin: false },
+    inbound: { tipo: 'staff', transportadorNome: '', admin: false, abas: null },
     agendamento: { tipo: 'interno', clientes: [], admin: false },
     solicitacoes: { papeis: [], admin: false, telefone: '' },
     simulador: { perfil: '', regiao: '', bases: [], editaAberturas: false },
@@ -418,6 +433,32 @@
     select.value = atual || '';
   }
 
+  // Abas do inbound: a lista vem do servidor (opcoesPerfil). Servidor antigo, sem a lista: a seção
+  // some e o campo não é enviado (o servidor mantém o que estiver gravado).
+  const abasInbound = () => E.opcoes.inbound?.abas || [];
+  function preencherAbasInbound(abas) {
+    $('inb-abas').replaceChildren(...abasInbound().map(a => {
+      const nivel = abas?.[a.id];
+      const caixa = el('input', { type: 'checkbox', value: a.id });
+      caixa.checked = !!nivel;
+      let seletor = null;
+      if (a.leitura) {
+        seletor = el('select', { 'data-aba': a.id, 'aria-label': `Acesso à aba ${a.nome}` },
+          el('option', { value: 'completo', text: 'Completo' }), el('option', { value: 'leitura', text: 'Só visualização' }));
+        seletor.value = nivel === 'leitura' ? 'leitura' : 'completo';
+      }
+      return el('div', { class: 'aba-linha' },
+        el('label', { class: 'marcacao' }, caixa, a.nome),
+        seletor || el('span', { class: 'so-completo', text: 'Completo' }));
+    }));
+  }
+  function lerAbasInbound() {
+    return Object.fromEntries([...$('inb-abas').querySelectorAll('input[type=checkbox]:checked')].map(caixa => {
+      const seletor = $('inb-abas').querySelector(`select[data-aba="${caixa.value}"]`);
+      return [caixa.value, seletor?.value === 'leitura' ? 'leitura' : 'completo'];
+    }));
+  }
+
   // ── Lista de pessoas ──
   async function carregarLista() {
     const resposta = await cliente.chamar('listarUsuarios');
@@ -479,6 +520,14 @@
       const tipo = valorRadio('inb-tipo');
       mostrarSe('transportador', tipo === 'transportador');
       mostrarSe('staff', tipo !== 'transportador');
+      // Admin vê sempre todas as abas; transportador só tem a dele
+      mostrarSe('abas', tipo !== 'transportador' && !$('inb-admin').checked && abasInbound().length > 0);
+      mostrarSe('abas-personalizado', valorRadio('inb-abas-modo') === 'personalizado');
+      $('inb-abas').querySelectorAll('.aba-linha').forEach(linha => {
+        const caixa = linha.querySelector('input[type=checkbox]');
+        const seletor = linha.querySelector('select');
+        if (seletor) seletor.disabled = !caixa.checked || caixa.disabled;
+      });
     } else if (sistema === 'agendamento') {
       const tipo = $('ag-tipo').value;
       mostrarSe('externo', tipo !== 'interno');
@@ -498,6 +547,8 @@
       bloco.querySelectorAll('input[name="inb-tipo"]').forEach(r => { r.checked = r.value === p.tipo; });
       preencherTransportadores(p.transportadorNome);
       $('inb-admin').checked = p.admin;
+      bloco.querySelectorAll('input[name="inb-abas-modo"]').forEach(r => { r.checked = r.value === (p.abas ? 'personalizado' : 'todas'); });
+      preencherAbasInbound(p.abas);
     } else if (sistema === 'agendamento') {
       $('ag-tipo').value = ['interno', 'cliente', 'transportadora'].includes(p.tipo) ? p.tipo : 'interno';
       listaClientes.definir(p.clientes);
@@ -523,7 +574,12 @@
 
   function lerPerfil(sistema) {
     if (sistema === 'inbound') {
-      return { tipo: valorRadio('inb-tipo') || 'staff', transportadorNome: $('inb-transportador').value, admin: $('inb-admin').checked };
+      const perfil = { tipo: valorRadio('inb-tipo') || 'staff', transportadorNome: $('inb-transportador').value, admin: $('inb-admin').checked };
+      if (abasInbound().length) {  // null = todas (também para admin e transportador, que não usam o campo)
+        const personalizado = perfil.tipo === 'staff' && !perfil.admin && valorRadio('inb-abas-modo') === 'personalizado';
+        perfil.abas = personalizado ? lerAbasInbound() : null;
+      }
+      return perfil;
     }
     if (sistema === 'agendamento') return { tipo: $('ag-tipo').value, clientes: listaClientes.valores(), admin: $('ag-admin').checked };
     if (sistema === 'solicitacoes') {
