@@ -152,6 +152,13 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .cp-titulo { font-weight: 600; color: var(--accent2); }
 .cad-provisorio .form-hint { color: var(--text-dim); }
 .cad-provisorio input { background: var(--surface); }
+/* Documentos que a Nexta pede para o cadastro definitivo (DOCS_CADASTRO) */
+.docs-cadastro { margin-top: 12px; font-size: 13px; color: var(--text-dim); }
+.docs-cadastro .docs-titulo { font-weight: 600; color: var(--text); }
+.docs-cadastro ul { margin: 4px 0 0 18px; padding: 0; }
+.docs-cadastro li { margin: 2px 0; }
+#confirmacaoDocs .cad-provisorio { margin: 0 0 16px; }
+#confirmacaoDocs .docs-cadastro:first-child { margin-top: 0; }
 /* Alterar pedidos: pedido que sai do agendamento fica riscado (o botão Manter não) */
 .troca-sai td:not(:last-child) { color: var(--text-muted); text-decoration: line-through; }
 .troca-sai td .badge { text-decoration: none; }
@@ -545,6 +552,7 @@ tbody tr:hover td { background: var(--panel-soft); }
       <div class="num" id="confirmacaoProtocolo">AG-000000</div>
       <div class="lbl">Protocolo de Agendamento</div>
     </div>
+    <div id="confirmacaoDocs"></div> <!-- veículo/motorista com cadastro provisório: documentos para enviar à Nexta -->
     <div class="modal-actions">
       <button class="btn btn-secondary" style="flex:1" onclick="baixarPdfAgendamento('', this)">Baixar comprovante (PDF)</button>
       <button class="btn btn-primary" style="flex:1" onclick="fecharModal('modalConfirmacao')">Fechar</button>
@@ -589,6 +597,7 @@ tbody tr:hover td { background: var(--panel-soft); }
             <label>Capacidade total do veículo (litros)</label>
             <input type="number" id="f-capacidade-prov" min="1000" max="100000" step="500" placeholder="ex: 45000" inputmode="numeric" autocomplete="off">
           </div>
+          <div data-docs="veiculo"></div>
         </div>
       </div>
 
@@ -610,6 +619,7 @@ tbody tr:hover td { background: var(--panel-soft); }
         <div class="cad-provisorio hidden" id="motoristaProvisorio">
           <div class="cp-titulo">Motorista sem cadastro</div>
           <div class="form-hint" id="motoristaProvisorioTxt"></div>
+          <div data-docs="motorista"></div>
         </div>
       </div>
 
@@ -740,6 +750,7 @@ tbody tr:hover td { background: var(--panel-soft); }
         <label>Capacidade total do veículo (litros)</label>
         <input type="number" id="alt-f-capacidade-prov" min="1000" max="100000" step="500" placeholder="ex: 45000" inputmode="numeric" autocomplete="off">
       </div>
+      <div data-docs="veiculo"></div>
     </div>
     <div class="card-title" style="margin-top:22px">Motorista</div>
     <div class="form-row">
@@ -757,6 +768,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     <div class="cad-provisorio hidden" id="alt-motoristaProvisorio">
       <div class="cp-titulo">Motorista sem cadastro</div>
       <div class="form-hint" id="alt-motoristaProvisorioTxt"></div>
+      <div data-docs="motorista"></div>
     </div>
     <div class="wizard-erro hidden" id="alt-erro"></div>
     <div class="modal-actions">
@@ -833,7 +845,7 @@ tbody tr:hover td { background: var(--panel-soft); }
       <div class="stat-card"><div class="stat-label">Total</div><div class="stat-val" id="statTotal">0</div></div>
       <div class="stat-card"><div class="stat-label">Hoje</div><div class="stat-val" id="statHoje">0</div></div>
       <div class="stat-card"><div class="stat-label">Próximos 7 dias</div><div class="stat-val" id="statSemana">0</div></div>
-      <div class="stat-card" id="statRevisarCard" title="Agendamentos abertos com pedido cancelado ou bloqueado depois do agendamento"><div class="stat-label">A revisar</div><div class="stat-val" id="statRevisar">0</div></div>
+      <div class="stat-card" id="statRevisarCard" title="Agendamentos abertos com pedido cancelado ou bloqueado"><div class="stat-label">A revisar</div><div class="stat-val" id="statRevisar">0</div></div>
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
@@ -1360,7 +1372,10 @@ function reiniciarListenerAgendamentos() {
 // Um agendamento (uma carreta) junta um ou mais pedidos da MESMA base (de qualquer centro + depósito dela), de um ou
 // mais clientes, e leva todo o saldo de cada pedido (o que ainda não está em outro agendamento).
 // A única conferência de volume é o total contra a capacidade do veículo (Cadastros → Recursos).
-const MSG_PEDIDO_NAO_ENCONTRADO = 'Pedido não encontrado ou indisponível para agendamento (faturado, bloqueado ou cancelado). Pedidos novos aparecem aqui em até 30 minutos.';
+const MSG_PEDIDO_NAO_ENCONTRADO = 'Pedido não encontrado ou indisponível para agendamento (faturado ou cancelado). Pedidos novos aparecem aqui em até 30 minutos.';
+// Pedido bloqueado no SAP vem na carteira só para acompanhamento: não agenda (a regra do banco também barra)
+function pedidoBloqueado(p) { return p?.situacao === 'BLOQUEADO'; }
+function msgPedidoBloqueado(nr) { return `O pedido ${nr} está bloqueado no SAP e não pode ser agendado. Quando for liberado, ele fica disponível aqui em até 30 minutos.`; }
 const MSG_PEDIDO_NAO_VINCULADO_TRANSP = 'Pedido não encontrado ou não vinculado aos clientes do seu cadastro de transportadora. Confira o número; se o pedido for de outro cliente, peça à Nexta para vincular o cliente ao seu cadastro.';
 const TIPOS_EXTERNOS = ['cliente', 'transportadora']; // perfis ligados a códigos de cliente (não são equipe interna)
 const TURNO_DO_PEDIDO = { MADRUGADA: 'madrugada', MANHA: 'manha', TARDE: 'tarde', NOITE: 'noite' };
@@ -1386,6 +1401,8 @@ function cpfValido(cpf) {
   return dv(9) === Number(cpf[9]) && dv(10) === Number(cpf[10]);
 }
 function formatCpf(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : (cpf || ''); }
+// CPF no comprovante em PDF (circula impresso e por e-mail/WhatsApp): só os 6 dígitos do meio, como no padrão gov.br
+function cpfOculto(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**` : '-'; }
 function mascararCpf(el) {
   const d = soDigitos(el.value).slice(0, 11);
   el.value = [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9)].filter(Boolean).join('.') + (d.length > 9 ? '-' + d.slice(9) : '');
@@ -1462,6 +1479,7 @@ const STATUS_PEDIDO = {
   disponivel: { rotulo: 'Disponível', badge: 'badge-accent' },
   parcial: { rotulo: 'Parcialmente agendado', badge: 'badge-warn' },
   agendado: { rotulo: 'Agendado', badge: 'badge-success' },
+  bloqueado: { rotulo: 'Bloqueado', badge: 'badge-warn', dica: 'Bloqueado no SAP: só pode ser agendado depois de liberado' },
   vencido: { rotulo: 'Entrega vencida', badge: 'badge-danger' },
   sembase: { rotulo: 'Base não cadastrada', badge: 'badge-muted' },
 };
@@ -1501,7 +1519,9 @@ function situacaoPedidos() {
     const soma = (campo) => itens.reduce((s, i) => s + i[campo], 0);
     const volume = soma('volume'), agendado = soma('agendado'), disponivel = soma('disponivel');
     const base = baseDoPedido(p);
-    const status = disponivel <= 0 ? 'agendado'
+    // Bloqueado vale antes de tudo (também o já agendado: o agendamento dele aparece como "Revisar")
+    const status = pedidoBloqueado(p) ? 'bloqueado'
+      : disponivel <= 0 ? 'agendado'
       : (!base || base.ativo === false) ? 'sembase'
       : (!p.dataEntrega || p.dataEntrega < hoje()) ? 'vencido'
       : agendado > 0 ? 'parcial' : 'disponivel';
@@ -1651,7 +1671,7 @@ function renderPedidosCarteira() {
     (!termos.length || termos.every((t) => normalizarBusca(`${s.p.nrPedido} ${s.p.clienteNome} ${s.p.clienteCodigo} ${s.itens.map((i) => i.descricao).join(' ')}`).includes(t))));
 
   document.getElementById('statPedQtd').textContent = lista.length;
-  document.getElementById('statPedDisp').textContent = formatVolume(lista.reduce((t, s) => t + s.disponivel, 0));
+  document.getElementById('statPedDisp').textContent = formatVolume(lista.reduce((t, s) => t + (s.status === 'bloqueado' ? 0 : s.disponivel), 0));
   document.getElementById('statPedAgend').textContent = formatVolume(lista.reduce((t, s) => t + s.agendado, 0));
 
   const vazio = 'Nenhum pedido encontrado com esses filtros.';
@@ -1688,7 +1708,10 @@ function resumoProdutos(s) {
   const nomes = produtosDoPedido(s);
   return nomes.length > 1 ? `${nomes[0]} +${nomes.length - 1}` : (nomes[0] || '—');
 }
-function seloPedido(s) { return `<span class="badge ${STATUS_PEDIDO[s.status].badge}">${STATUS_PEDIDO[s.status].rotulo}</span>`; }
+function seloPedido(s) {
+  const st = STATUS_PEDIDO[s.status];
+  return `<span class="badge ${st.badge}"${st.dica ? ` title="${esc(st.dica)}"` : ''}>${st.rotulo}</span>`;
+}
 // Links e botão ficam dentro da linha clicável: event.stopPropagation() evita abrir o detalhe do pedido junto
 function linksAgendamentos(s) {
   return s.ags.map((a) => `<button type="button" class="link-ag" onclick="event.stopPropagation(); abrirDetalheAgendamento(${jsArg(a.id)})" title="Carregamento em ${formatDataBR(a.dataCarregamento)}">${esc(a.protocolo)}</button>`).join(' ') || '<span class="text-muted">—</span>';
@@ -1708,6 +1731,7 @@ function abrirDetalhePedido(nr) {
   document.getElementById('modalPedidoConteudo').innerHTML = `
     <div class="modal-title">Pedido ${esc(nr)}</div>
     <div class="modal-sub">${seloPedido(s)}</div>
+    ${s.status === 'bloqueado' ? `<div class="form-hint" style="margin:0 0 12px">${esc(STATUS_PEDIDO.bloqueado.dica)}. Ele aparece aqui só para acompanhamento.</div>` : ''}
     <div class="info-row">
       <div class="info-item"><div class="info-lbl">Cliente</div><div class="info-val">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${esc(p.clienteCodigo)}</div></div></div>
       <div class="info-item"><div class="info-lbl">Cidade</div><div class="info-val">${esc(p.clienteCidade) || '—'}</div></div>
@@ -1869,6 +1893,7 @@ async function adicionarPedido(nrDaLista) {
     mostrarStatusPedido(STATE.usuario.tipo === 'transportadora' ? MSG_PEDIDO_NAO_VINCULADO_TRANSP : `O pedido ${nr} não é de um cliente vinculado ao seu cadastro.`, 'erro');
     return;
   }
+  if (pedidoBloqueado(pedido)) { mostrarStatusPedido(msgPedidoBloqueado(nr), 'erro'); return; }
 
   const primeiro = STATE.novo.pedidos[0];
   if (primeiro && grupoDoPedido(pedido) !== grupoDoPedido(primeiro)) {
@@ -2134,6 +2159,43 @@ function veiculoDasPlacas(form = FORM_NOVO) {
   const volume = capacidadeProvisoriaDigitada(form);
   return volume ? { chave: r.chave, origem: 'novo', id: null, volume } : null;
 }
+// Documentos que a Nexta pede para o cadastro definitivo. Veículo/motorista sem cadastro agenda como provisório, e a
+// lista aparece no quadro "sem cadastro" (assistente e Alterar veículo e motorista), na revisão e na confirmação.
+const DOCS_CADASTRO = {
+  veiculo: [
+    ['CRLV', 'CRLV do veículo e das carretas'],
+    ['CIV', 'CIV: Certificado de Inspeção Veicular'],
+    ['CIPP', 'CIPP: Certificado de Inspeção para o Transporte de Produtos Perigosos'],
+    ['CTPP', 'CTPP: Certificado para o Transporte de Produtos Perigosos'],
+    ['Cronotacógrafo', 'Certificado do Cronotacógrafo'],
+    ['CVV', 'CVV: Certificado de Verificação Volumétrica (aferição INMETRO)'],
+  ],
+  motorista: [
+    ['CNH', 'CNH válida do motorista'],
+    ['MOPP', 'Treinamento MOPP: Movimentação e Operação de Produtos Perigosos'],
+    ['NR20', 'Treinamento NR20: trabalho com líquidos inflamáveis'],
+    ['NR35', 'Treinamento NR35: trabalho em altura'],
+  ],
+};
+function htmlDocsCadastro(tipo, titulo = 'Para o cadastro definitivo, envie estes documentos à equipe Nexta:') {
+  return `<div class="docs-cadastro"><div class="docs-titulo">${esc(titulo)}</div>
+    <ul>${DOCS_CADASTRO[tipo].map(([, texto]) => `<li>${esc(texto)}</li>`).join('')}</ul></div>`;
+}
+// "CRLV, CIV, CIPP e CTPP": versão curta, para as linhas de status
+function siglasDocsCadastro(tipo) {
+  const s = DOCS_CADASTRO[tipo].map(([sigla]) => sigla);
+  return s.slice(0, -1).join(', ') + ' e ' + s[s.length - 1];
+}
+document.querySelectorAll('[data-docs]').forEach((el) => { el.innerHTML = htmlDocsCadastro(el.dataset.docs); });
+// Veículo/motorista que entrou no agendamento com cadastro provisório (janela de confirmação e comprovante em PDF)
+function cadastrosProvisoriosDoAgendamento(a) {
+  if (a.status !== 'agendado') return [];
+  return [
+    a.recursoProvisorio && { tipo: 'veiculo', titulo: `Veículo ${[a.placaCavalo, a.placaCarreta, a.placaCarreta2].filter(Boolean).join(' + ')}` },
+    a.motoristaProvisorio && { tipo: 'motorista', titulo: `Motorista ${a.motorista}` },
+  ].filter(Boolean);
+}
+
 // Etapa Veículo: cadastrado no SAP, provisório ou sem cadastro (abre o cadastro provisório)
 function renderStatusVeiculo(form = FORM_NOVO) {
   const r = form.estado().recurso;
@@ -2146,7 +2208,8 @@ function renderStatusVeiculo(form = FORM_NOVO) {
     texto = `Veículo cadastrado: recurso ${atual.dados.id} do SAP` + (v >= CAPACIDADE_MINIMA_VALIDA ? ` · capacidade ${formatVolume(v)}` : ' (sem volume máximo no SAP: confira se faltou a placa da carreta)');
     cls = v >= CAPACIDADE_MINIMA_VALIDA ? 'ok' : 'aviso';
   } else if (atual?.origem === 'provisorio') {
-    texto = `Veículo com cadastro provisório, aguardando validação da Nexta · capacidade ${formatVolume(atual.dados.volumeMax)}`;
+    texto = `Veículo com cadastro provisório, aguardando validação da Nexta · capacidade ${formatVolume(atual.dados.volumeMax)}. `
+      + `Se ainda não enviou, envie à Nexta: ${siglasDocsCadastro('veiculo')}.`;
     cls = 'aviso';
   }
   status.textContent = texto;
@@ -2208,10 +2271,13 @@ function renderStatusMotorista(form = FORM_NOVO) {
   if (atual && atual.dados === undefined) texto = 'Consultando o cadastro de motoristas…';
   else if (atual?.origem === 'sap') {
     const d = atual.dados;
-    texto = `Motorista cadastrado no SAP` + (d.bp ? ` · BP ${d.bp}` : '') + (d.categoriaCnh ? ` · CNH ${d.categoriaCnh}` : '');
+    // BP e categoria da CNH só para a equipe interna; cliente e transportadora veem só que o motorista tem cadastro
+    texto = STATE.usuario?.tipo === 'interno'
+      ? `Motorista cadastrado no SAP` + (d.bp ? ` · BP ${d.bp}` : '') + (d.categoriaCnh ? ` · CNH ${d.categoriaCnh}` : '')
+      : 'Motorista cadastrado';
     cls = 'ok';
   } else if (atual?.origem === 'provisorio') {
-    texto = 'Motorista com cadastro provisório, aguardando validação da Nexta';
+    texto = `Motorista com cadastro provisório, aguardando validação da Nexta. Se ainda não enviou, envie à Nexta: ${siglasDocsCadastro('motorista')}.`;
     cls = 'aviso';
   }
   status.textContent = texto;
@@ -2457,9 +2523,11 @@ function renderRevisaoAgendamento() {
   const { nome, cpf } = lerMotorista();
   const item = (rotulo, valor, etapa) => `<div class="info-item"><div class="info-lbl">${rotulo}<button type="button" class="link-alterar" onclick="irParaEtapa(${etapa})">alterar</button></div><div class="info-val">${valor}</div></div>`;
   document.getElementById('wizardRevisao').innerHTML = `<div class="info-row">
-    ${item('Veículo', placas.map(esc).join(' / ') + (veiculo && veiculo.origem !== 'sap' ? '<div class="form-hint aviso">cadastro provisório</div>' : ''), ETAPA.veiculo)}
+    ${item('Veículo', placas.map(esc).join(' / ') + (veiculo && veiculo.origem !== 'sap'
+      ? `<div class="form-hint aviso">cadastro provisório · enviar à Nexta: ${siglasDocsCadastro('veiculo')}</div>` : ''), ETAPA.veiculo)}
     ${item('Motorista', `${esc(nome)}<div class="form-hint">CPF ${esc(formatCpf(cpf))}</div>`
-      + (motoristaDoCadastro() && motoristaDoCadastro().origem !== 'sap' ? '<div class="form-hint aviso">cadastro provisório</div>' : ''), ETAPA.motorista)}
+      + (motoristaDoCadastro() && motoristaDoCadastro().origem !== 'sap'
+        ? `<div class="form-hint aviso">cadastro provisório · enviar à Nexta: ${siglasDocsCadastro('motorista')}</div>` : ''), ETAPA.motorista)}
     ${item('Pedidos', STATE.novo.pedidos.map((p) => esc(p.nrPedido)).join(', '), ETAPA.pedidos)}
     ${item('Volume', `<span class="${veiculo?.volume && total > veiculo.volume ? 'texto-perigo' : ''}">${formatVolume(total)}</span>`
       + (veiculo?.volume ? `<div class="form-hint">capacidade do veículo ${formatVolume(veiculo.volume)}</div>` : ''), ETAPA.pedidos)}
@@ -2506,6 +2574,10 @@ async function confirmarAgendamento() {
     document.getElementById('filtroData').value = data; // a lista abre no dia do agendamento recém-criado
     switchTab('lista');
     document.getElementById('confirmacaoProtocolo').textContent = protocolo;
+    // Cadastro provisório (feito agora ou já existente): lembra os documentos que a Nexta precisa para o definitivo
+    const docs = cadastrosProvisoriosDoAgendamento(dadosAgendamento)
+      .map(({ tipo, titulo }) => htmlDocsCadastro(tipo, `${titulo} com cadastro provisório. Envie à equipe Nexta:`));
+    document.getElementById('confirmacaoDocs').innerHTML = docs.length ? `<div class="cad-provisorio">${docs.join('')}</div>` : '';
     abrirModal('modalConfirmacao');
     toast('Agendamento criado com sucesso.', 'success');
   } catch (e) {
@@ -2535,7 +2607,7 @@ async function confirmarAgendamento() {
       const indisponiveis = [], dataMudou = [];
       for (const p of pedidos) {
         const atual = await window._fb.carregarPedido(p.nrPedido).catch(() => null);
-        if (!atual) indisponiveis.push(p.nrPedido);
+        if (!atual || pedidoBloqueado(atual)) indisponiveis.push(p.nrPedido);
         else if (atual.dataEntrega !== data) dataMudou.push(`${p.nrPedido} (agora ${formatDataBR(atual.dataEntrega)})`);
       }
       if (indisponiveis.length) {
@@ -3053,6 +3125,7 @@ function abrirDetalheAgendamento(id) {
   // Faturado não cancela (a carga já saiu); a regra do banco só aceita agendado → cancelado
   const podeCancel = a.status === 'agendado' && (STATE.usuario.admin || a.criadoPorUid === STATE.usuario.uid);
   const motivo = motivoRevisar(a);
+  const temBloqueado = pedidosParaRevisar(a).some((nr) => a.situacaoPedidos[nr] === 'BLOQUEADO');
   const podeTrocar = podeTrocarPedidos(a);
   const podeAlterar = podeAlterarVeiculoMotorista(a);
   const podeLiberar = a.status === 'agendado' && STATE.usuario.tipo === 'interno';
@@ -3062,7 +3135,7 @@ function abrirDetalheAgendamento(id) {
     <div class="modal-sub">Criado por ${esc(a.criadoPorNome)} em ${new Date(a.criadoEm).toLocaleString('pt-BR')}${a.editadoEm
       ? ` · alterado por ${esc(a.editadoPor)} em ${new Date(a.editadoEm).toLocaleString('pt-BR')}` : ''}</div>
     ${motivo ? `<div class="aviso-revisar"><div class="cp-titulo">Revisar este agendamento</div>
-      <div class="form-hint">${esc(motivo)}. ${podeTrocar
+      <div class="form-hint">${esc(motivo)}. ${temBloqueado ? 'Quando o pedido for liberado no SAP, a marcação sai sozinha em até 30 minutos; enquanto estiver bloqueado, o quiosque manda o motorista ao guichê. ' : ''}${podeTrocar
         ? `Em Alterar pedidos, troque o pedido para manter o agendamento (mesmo protocolo, ${a.baseTipo === 'agendamento' ? 'horário' : 'turno'}, veículo e motorista) ou, se a carga não vai sair, cancele para liberar ${a.baseTipo === 'agendamento' ? 'o horário' : 'a vaga'}.`
         : `Confira com o cliente; se a carga não vai sair, cancele o agendamento para liberar ${a.baseTipo === 'agendamento' ? 'o horário' : 'a vaga'}.`}</div></div>` : ''}
     <div class="info-row">
@@ -3343,7 +3416,7 @@ async function cancelarAgendamento(id) {
 }
 
 /* ── ALTERAR PEDIDOS (equipe interna): tirar e pôr pedidos do mesmo cliente num agendamento aberto ── */
-// Casos: pedido cancelado/bloqueado depois do agendamento (Revisar: a janela já abre com ele saindo) ou incompatibilidade
+// Casos: pedido cancelado/bloqueado (Revisar: a janela já abre com o cancelado saindo) ou incompatibilidade
 // de compartimentos no quiosque (check-in "inconsistente": depois da alteração o motorista refaz o check-in).
 // O agendamento continua o mesmo (protocolo, data, horário/turno, veículo e motorista): muda só a lista de pedidos.
 // Entra só pedido vigente (na carteira, em nenhum outro agendamento) de um cliente que já está no agendamento, com as
@@ -3393,8 +3466,9 @@ function abrirTrocaPedidos(id) {
   const a = STATE.agendamentos[id];
   if (!a || !podeTrocarPedidos(a)) return;
   ouvirCarteira(); // a lista de pedidos vigentes sai da carteira (a mesma da aba Pedidos)
-  // Começa tirando os pedidos cancelados/bloqueados; quem troca pode manter ou tirar os outros
-  STATE.troca = { id, saem: new Set(pedidosParaRevisar(a)), novos: [] };
+  // Começa tirando os pedidos cancelados; o bloqueado fica (pode ser liberado, e a importação agenda bloqueado de propósito).
+  // Quem troca pode manter ou tirar qualquer um.
+  STATE.troca = { id, saem: new Set(pedidosParaRevisar(a).filter((nr) => a.situacaoPedidos[nr] === 'CANCELADO')), novos: [] };
   document.getElementById('trocaPedidosConteudo').innerHTML = `
     <div class="modal-title">Alterar pedidos · ${esc(a.protocolo)}</div>
     <div class="modal-sub">${esc([a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`, a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`,
@@ -3450,7 +3524,7 @@ function renderTrocaPedidos() {
   });
   const entram = [
     ...novos.map((p) => linha(p, 'entra', '—', volumeComTotal(saldoDoPedido(p, agendados), p), desistir(p.nrPedido))),
-    ...foraDaCarteira.map((nr) => `<tr><td><strong>${esc(nr)}</strong></td><td colspan="5" class="texto-perigo">Saiu da carteira (faturado, bloqueado ou cancelado): tire e escolha outro.</td><td>${desistir(nr)}</td></tr>`),
+    ...foraDaCarteira.map((nr) => `<tr><td><strong>${esc(nr)}</strong></td><td colspan="5" class="texto-perigo">Saiu da carteira (faturado ou cancelado): tire e escolha outro.</td><td>${desistir(nr)}</td></tr>`),
   ];
   const capacidade = a.capacidadeVeiculo;
   document.getElementById('trocaLista').innerHTML = `
@@ -3514,6 +3588,7 @@ function adicionarPedidoTroca(nr) {
 function erroPedidoNaTroca(t, a, p) {
   const nr = p.nrPedido;
   if (!a.clientes?.[p.clienteCodigo]) return `O pedido ${nr} é de outro cliente (${p.clienteNome || p.clienteCodigo}); a troca só aceita pedidos dos clientes deste agendamento.`;
+  if (pedidoBloqueado(p)) return `O pedido ${nr} está bloqueado no SAP e não pode entrar no agendamento.`;
   // Mesma conferência da regra do banco: o centro + depósito do pedido é um dos locais da base do agendamento
   if (!baseTemLocal(STATE.bases[a.baseId], p.centro, p.depositoCodigo)) {
     return `O pedido ${nr} é de outra base (${nomeBaseDoPedido(p)}); este agendamento é da base ${a.baseNome}.`;
@@ -3544,7 +3619,7 @@ async function salvarTrocaPedidos() {
   const { agendados, ficam, novos, foraDaCarteira, total } = resultadoTroca(t, a);
   const sairam = Object.keys(a.pedidos || {}).filter((nr) => t.saem.has(nr));
   if (a.status !== 'agendado') return mostrarErroTroca('Este agendamento não está mais aberto (foi cancelado ou faturado).');
-  if (foraDaCarteira.length) return mostrarErroTroca(`O pedido ${foraDaCarteira.join(', ')} saiu da carteira (faturado, bloqueado ou cancelado). Tire e escolha outro.`);
+  if (foraDaCarteira.length) return mostrarErroTroca(`O pedido ${foraDaCarteira.join(', ')} saiu da carteira (faturado ou cancelado). Tire e escolha outro.`);
   if (!sairam.length && !novos.length) return mostrarErroTroca('Nada mudou: tire um pedido ou adicione um da lista.');
   if (!ficam.length && !novos.length) return mostrarErroTroca('O agendamento precisa de ao menos um pedido. Se a carga não vai sair, cancele o agendamento.');
   // Outro agendamento pode ter levado o saldo do pedido novo enquanto a janela estava aberta
@@ -4114,7 +4189,9 @@ function avaliarViagem(imp, v, agendados, porPetId) {
       bloqueios.push(`Pedido ${nr} também está na viagem ${outras.join(', ')}. ${MSG_SAP_NAO_QUEBRA}`);
     }
     const p = imp.pedidos[nr];
-    if (!p) { bloqueios.push(`Pedido ${nr} não está na carteira do portal (faturado, bloqueado, cancelado ou ainda não sincronizado: pedidos novos aparecem em até 30 minutos).`); continue; }
+    if (!p) { bloqueios.push(`Pedido ${nr} não está na carteira do portal (faturado, cancelado ou ainda não sincronizado: pedidos novos aparecem em até 30 minutos).`); continue; }
+    // Bloqueado no SAP entra (a logística roteiriza contando com a liberação): o agendamento nasce como "Revisar"
+    // (situacaoPedidos gravado em criarAgendamentoDaViagem) e o aviso aparece na linha da viagem
     pedidos.push(p);
     // Pedido que já está (todo ou em parte) em outro agendamento não entra em mais um
     const jaAgendado = pedidoJaAgendado(nr);
@@ -4287,6 +4364,8 @@ function linhaViagemImportacao(imp, v) {
     ...(v.erroEnvio ? [['erro', v.erroEnvio]] : []),
     ...v.bloqueios.map((m) => ['erro', m]),
     ...v.ajustes.map((m) => ['aviso', m]),
+    ...(v.agendado ? [] : v.pedidos.filter(pedidoBloqueado).map((p) => ['aviso', `Pedido ${p.nrPedido} bloqueado no SAP: o agendamento `
+      + `${v.estado === 'criada' ? 'foi criado' : 'é criado'} como Revisar até o pedido ser liberado (enquanto estiver bloqueado, o quiosque manda ao guichê).`])),
     ...(v.partes > 1 ? [['aviso', alertaCarregamentos(imp, v)]] : []),
     ...v.avisos.map((m) => ['', m]),
   ];
@@ -4613,6 +4692,9 @@ async function criarAgendamentoDaViagem(imp, v) {
       if (saldo > 0) neste[refItem(p.nrPedido, i.codigo)] = saldo;
     }
   }
+  // Pedido bloqueado no SAP: a situação vai junto, para o agendamento já nascer como "Revisar" (sem esperar o robô).
+  // A regra do banco só aceita pedido bloqueado assim: equipe interna, importação (roteirizacao) e situação gravada.
+  const bloqueados = v.pedidos.filter(pedidoBloqueado).map((p) => p.nrPedido);
   // Se a gravação falhar depois daqui, esse número de protocolo fica pulado (sem problema)
   const protocolo = await window._fb.gerarProtocolo();
   const { dados, provisorios } = montarAgendamento({
@@ -4620,7 +4702,8 @@ async function criarAgendamentoDaViagem(imp, v) {
     placas: [v.placas[0], v.placas[1] || '', v.placas[2] || ''], veiculo: v.veiculo,
     motorista: v.motoristaCad.nome, motoristaCpf: v.cpf, motoristaCad: v.motoristaCad,
     extras: { roteirizacao: { petId: v.petId || null, arquivo: imp.arquivo, salvaEm: imp.salvoEm || null, terminal: v.terminal || null,
-      ...(v.partes > 1 ? { carregamento: v.parte, carregamentos: v.partes } : {}) } },
+      ...(v.partes > 1 ? { carregamento: v.parte, carregamentos: v.partes } : {}) },
+      ...(bloqueados.length ? { situacaoPedidos: Object.fromEntries(bloqueados.map((nr) => [nr, 'BLOQUEADO'])) } : {}) },
   });
   await window._fb.criarAgendamento(dados, provisorios);
   v.protocolo = protocolo;
@@ -4745,7 +4828,7 @@ async function gerarPdfAgendamento(a) {
     [['Data de carregamento', formatDataBR(a.dataCarregamento)], ['Base', a.baseNome],
       [a.baseTipo === 'agendamento' ? 'Horário' : 'Turno', a.baseTipo === 'agendamento' ? a.slotHorario : labelTurno(a.turno)]],
     [['Placa do cavalo', a.placaCavalo], ['Placa da carreta 1', a.placaCarreta], ['Placa da carreta 2', a.placaCarreta2]],
-    [['Motorista', a.motorista], ['CPF do motorista', formatCpf(a.motoristaCpf)], ['Volume total', formatVolume(a.volumeTotal)]],
+    [['Motorista', a.motorista], ['CPF do motorista', cpfOculto(a.motoristaCpf)], ['Volume total', formatVolume(a.volumeTotal)]],
   ];
   const altLinha = 14, topo = y + 6, col = larg / 3;
   doc.setDrawColor(...LINHA); doc.setLineWidth(0.25);
@@ -4761,7 +4844,43 @@ async function gerarPdfAgendamento(a) {
       doc.text(doc.splitTextToSize(pdfTxt(valor || '-'), col - 8)[0], x, yl + 11);
     });
   });
-  y = topo + altLinha * linhasDados.length + 9;
+  y = topo + altLinha * linhasDados.length; // base do quadro
+
+  // Veículo/motorista com cadastro provisório: quadro com os documentos que a Nexta precisa (cores --accent2),
+  // uma coluna para cada um
+  const pendentes = cadastrosProvisoriosDoAgendamento(a);
+  if (pendentes.length) {
+    const pad = 5, gap = 8, LH = 4.1;
+    const colW = (larg - 2 * pad - gap * (pendentes.length - 1)) / pendentes.length;
+    doc.setFontSize(9);
+    const colunas = pendentes.map(({ tipo, titulo }) => {
+      doc.setFont('helvetica', 'bold');
+      const cab = doc.splitTextToSize(pdfTxt(titulo), colW);
+      doc.setFont('helvetica', 'normal');
+      return { cab, itens: DOCS_CADASTRO[tipo].map(([, texto]) => doc.splitTextToSize(pdfTxt(texto), colW - 4)) };
+    });
+    const altCol = (c) => c.cab.length * LH + 1.5 + c.itens.reduce((s, linhas) => s + linhas.length * LH + 0.8, 0);
+    const topoDocs = y + 5, altura = 11 + Math.max(...colunas.map(altCol)) + 2;
+    doc.setFillColor(247, 235, 214); doc.setDrawColor(154, 98, 18); doc.setLineWidth(0.3);
+    doc.roundedRect(M, topoDocs, larg, altura, 2.5, 2.5, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(154, 98, 18);
+    doc.text(pdfTxt('CADASTRO PROVISÓRIO: ENVIE ESTES DOCUMENTOS À EQUIPE NEXTA PARA O CADASTRO DEFINITIVO'), M + pad, topoDocs + 6);
+    colunas.forEach((c, j) => {
+      const x = M + pad + j * (colW + gap);
+      let yc = topoDocs + 12;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY);
+      for (const linha of c.cab) { doc.text(linha, x, yc); yc += LH; }
+      yc += 1.5;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...INK2); doc.setFillColor(...INK2);
+      for (const linhas of c.itens) {
+        doc.circle(x + 1, yc - 1.1, 0.55, 'F');
+        for (const linha of linhas) { doc.text(linha, x + 4, yc); yc += LH; }
+        yc += 0.8;
+      }
+    });
+    y = topoDocs + altura;
+  }
+  y += 9;
 
   const tabela = (titulo, head, body, extra = {}) => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...INK3);
@@ -5037,7 +5156,8 @@ async function carregarDepositosSemBase() {
   el.innerHTML = '<span class="chip-empty">Lendo pedidos…</span>';
   try {
     const pedidos = await window._fb.listarPedidos();
-    STATE.pedidosDepositos = Object.values(pedidos).map((p) => ({
+    // Bloqueado não agenda: fica fora do resumo, como antes de a carteira mostrá-lo
+    STATE.pedidosDepositos = Object.values(pedidos).filter((p) => !pedidoBloqueado(p)).map((p) => ({
       centro: p.centro || '', deposito: p.depositoCodigo || '', nome: p.depositoNome || '', dataEntrega: p.dataEntrega || '',
       volume: itensDe(p).reduce((s, i) => s + (Number(i.volume) || 0), 0),
     }));
