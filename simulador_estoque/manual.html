@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Nextoques · Manual de uso e regras do simulador de estoques</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#111B15;--surface:#1A2A20;--panel:#223528;--border:#314A32;--accent:#8DC830;--lime:#EEFE7A;--text:#F4F8EE;--dim:#BFD4A8;--muted:#7FA069;--danger:#FF6B5F;--orange:#F97316;--roxo:#C084FC}
+@page{size:A4;margin:15mm 0 16mm 0;
+ @top-center{content:"";background:#111B15;width:100%;height:100%}
+ @bottom-center{content:"Nextoques · Manual de uso e regras  ·  " counter(page);font:500 8pt 'Barlow',Arial,sans-serif;color:#7FA069;background:#111B15;width:100%;height:100%}}
+@page capa{margin:0;@top-center{content:none}@bottom-center{content:none}}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--text);font:10.4pt/1.5 'Barlow',Arial,sans-serif}
+.wrap{padding:0 16mm}
+a{color:var(--lime);text-decoration:none;border-bottom:1px dotted #EEFE7A88}
+h1,h2,h3{font-family:'Barlow Condensed','Barlow',Arial,sans-serif;font-weight:600;margin:0}
+h2{font-size:23pt;color:var(--lime);margin:0 0 3mm;display:flex;align-items:center;gap:3.5mm;break-after:avoid}
+h2 .num{flex:none;display:inline-flex;align-items:center;justify-content:center;width:11mm;height:11mm;border-radius:3.2mm;background:#152318;border:1px solid var(--accent);color:var(--accent);font-size:15pt}
+h3{font-size:14pt;color:var(--text);margin:6mm 0 2mm;break-after:avoid}
+h3 small{font:400 9pt 'Barlow',Arial;color:var(--muted);margin-left:2mm}
+p{margin:0 0 2.6mm;color:var(--dim)}
+strong{color:var(--text);font-weight:600}
+section{break-before:page}
+.lead{font-size:11.5pt;color:var(--dim);margin-bottom:5mm}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:4mm;padding:4.5mm 5mm;margin:0 0 4mm;break-inside:avoid}
+.note{border-left:3px solid var(--accent);background:#8dc8300f;padding:3mm 4mm;border-radius:0 3mm 3mm 0;margin:0 0 4mm;color:var(--dim);break-inside:avoid}
+.note.warn{border-left-color:var(--orange);background:#f9731612}
+.note.red{border-left-color:var(--danger);background:#ff6b5f12}
+.note.roxo{border-left-color:var(--roxo);background:#c084fc12}
+.note b.t{display:block;color:var(--lime);font:600 10pt 'Barlow',Arial;letter-spacing:.3px;margin-bottom:.8mm}
+.note.warn b.t{color:#FDBA74}.note.red b.t{color:#FF9E93}.note.roxo b.t{color:#D8B4FE}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4mm;break-inside:avoid}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;break-inside:avoid}
+.junto{break-inside:avoid}
+table.t{break-inside:avoid}
+p{orphans:3;widows:3}
+.btn{display:inline-block;border:1px solid var(--border);border-radius:2.2mm;background:var(--panel);color:var(--dim);padding:.5mm 2.4mm;font:600 8.6pt 'Barlow',Arial;white-space:nowrap;vertical-align:1px}
+.btn.primary{background:var(--accent);color:#111A0A;border-color:var(--accent)}
+.btn.on{background:#8dc8302b;border-color:var(--lime);color:var(--lime)}
+.campo{display:inline-block;border:1px solid var(--border);border-radius:2mm;background:#17251B;color:var(--text);padding:.4mm 2.2mm;font:500 8.6pt 'Barlow',Arial;white-space:nowrap}
+.badge{display:inline-block;font:700 7.4pt 'Barlow',Arial;letter-spacing:.8px;color:var(--lime);border:1px solid #8dc83066;background:#8dc83014;border-radius:99px;padding:.6mm 2.6mm;white-space:nowrap}
+.n{display:inline-flex;align-items:center;justify-content:center;width:5.4mm;height:5.4mm;border-radius:50%;background:var(--lime);color:#111A0A;font:700 8.4pt 'Barlow',Arial;flex:none;vertical-align:middle}
+.cor{display:inline-block;width:3.2mm;height:3.2mm;border-radius:.8mm;vertical-align:-.3mm;margin-right:1.4mm;border:1px solid #ffffff22}
+table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:9.2pt;margin:0 0 4mm;border:1px solid var(--border);border-radius:3mm;overflow:hidden}
+table.t th{background:var(--panel);color:var(--lime);text-align:left;font:600 8.6pt 'Barlow',Arial;letter-spacing:.3px;padding:2mm 3mm;border-bottom:1px solid var(--border)}
+table.t td{padding:2mm 3mm;border-bottom:1px solid #314a3288;color:var(--dim);vertical-align:top;background:var(--surface)}
+table.t tr:last-child td{border-bottom:0}
+table.t tr{break-inside:avoid}
+table.t td:first-child{color:var(--text);font-weight:600}
+ol.passos{margin:0 0 4mm;padding:0;list-style:none;counter-reset:p}
+ol.passos li{counter-increment:p;position:relative;padding:0 0 2.4mm 9mm;color:var(--dim);break-inside:avoid}
+ol.passos li::before{content:counter(p);position:absolute;left:0;top:0;width:5.8mm;height:5.8mm;border-radius:50%;background:var(--accent);color:#111A0A;font:700 8.6pt/5.8mm 'Barlow',Arial;text-align:center}
+ul{margin:0 0 3mm;padding-left:5mm;color:var(--dim)}li{margin-bottom:1mm}
+.formula{font:600 12pt 'Barlow Condensed','Barlow',Arial;color:var(--lime);background:#152318;border:1px solid var(--accent);border-radius:3mm;padding:3mm 4.5mm;margin:0 0 4mm;text-align:center;letter-spacing:.3px;break-inside:avoid}
+.formula small{display:block;font:400 8.6pt 'Barlow',Arial;color:var(--muted);margin-top:1mm;letter-spacing:0}
+.legenda-mock{font:italic 400 8.2pt 'Barlow',Arial;color:var(--muted);text-align:center;margin:-2mm 0 4mm}
+/* CAPA */
+.capa{page:capa;height:297mm;padding:26mm 20mm 18mm;display:flex;flex-direction:column;background:radial-gradient(ellipse at 70% 0%,#8dc83030,transparent 60%),linear-gradient(160deg,#111A0A,#1C2E10 55%,#243A16);border-bottom:2.2mm solid var(--lime);break-before:auto}
+.marca{display:flex;align-items:center;gap:5mm;color:var(--lime);font:700 54pt 'Barlow Condensed',sans-serif}
+.marca span{font-size:39pt;color:var(--accent)}.marca svg{width:24mm;height:24mm}
+.capa h1{font-size:40pt;line-height:1.05;margin:34mm 0 5mm;color:var(--text)}
+.capa .sub{font-size:14pt;color:var(--dim);max-width:135mm}
+.capa .rod{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:10mm;color:var(--dim);font-size:10pt}
+.capa .link{font:600 13pt 'Barlow',Arial}
+/* SUMARIO */
+.sumario a{display:flex;align-items:baseline;gap:3mm;border:0;border-bottom:1px solid #314a3288;padding:2.3mm 0;color:var(--text);font:500 11.5pt 'Barlow',Arial}
+.sumario a b{color:var(--accent);font:600 13pt 'Barlow Condensed';width:8mm;flex:none}
+.sumario a small{margin-left:auto;color:var(--muted);font-size:8.8pt;text-align:right}
+/* MOCKS */
+.mock{border:1px solid var(--border);border-radius:3.5mm;background:var(--bg);overflow:hidden;margin:0 0 4mm;break-inside:avoid}
+.mock .linha{display:flex;align-items:center;gap:2.5mm;padding:2.2mm 3.5mm;border-bottom:1px solid var(--border);font-size:8.6pt;color:var(--dim)}
+.mock .linha:last-child{border-bottom:0}
+.mock .conta{background:var(--panel)}
+.mock .cab{background:linear-gradient(135deg,#111A0A,#1C2E10 55%,#243A16);border-bottom:.8mm solid var(--lime)}
+.mock .logo{color:var(--lime);font:700 15pt 'Barlow Condensed'}.mock .logo span{color:var(--accent);font-size:11.5pt}
+.mock .bloco{flex:1;border:1px solid var(--border);background:var(--surface);border-radius:2.4mm;padding:2mm 3mm;min-height:9mm;display:flex;align-items:center;gap:2mm;flex-wrap:wrap}
+.mock .bloco b{color:var(--text);font:600 10.5pt 'Barlow Condensed'}
+.sp{margin-left:auto}
+.loginmock{width:74mm;background:var(--surface);border:1px solid var(--border);border-radius:5mm;padding:6mm;display:grid;gap:2.6mm;font-size:8.6pt;color:var(--dim)}
+.loginmock .logo{color:var(--lime);font:700 21pt 'Barlow Condensed'}.loginmock .logo span{color:var(--accent);font-size:15.5pt}
+.loginmock .inp{border:1px solid var(--border);background:#17251B;border-radius:2mm;height:7.5mm;margin-top:1mm}
+.loginmock .b{border:1px solid var(--border);border-radius:2.4mm;background:var(--panel);text-align:center;padding:1.8mm;font-weight:600;position:relative}
+.loginmock .b.p{background:var(--accent);color:#111A0A;border-color:var(--accent)}
+.loginmock .n{position:absolute;right:-7.5mm;top:1mm}
+.loginmock .rel{position:relative}
+table.g{width:100%;border-collapse:separate;border-spacing:0;font-size:7.8pt;table-layout:fixed}
+table.g th,table.g td{border-bottom:1px solid var(--border);border-right:1px solid #314a3255;padding:1.3mm 1.6mm;text-align:right;height:7.4mm;white-space:nowrap;overflow:hidden}
+table.g th{background:var(--panel);color:var(--dim);font-weight:600}
+table.g th.ctl{width:23mm;text-align:left;vertical-align:top;white-space:normal;padding:1.2mm}
+table.g th.rot{width:47mm;text-align:left;white-space:normal;line-height:1.2}
+table.g th.rot small{display:block;font-weight:400;font-size:6.6pt;color:var(--dim);opacity:.85}
+table.g .hoje{background:#8dc8302b;color:var(--lime)}
+table.g thead .hoje{box-shadow:inset 0 .8mm 0 var(--lime)}
+table.g tr.tot td{font-weight:700;background:#8dc8300a}
+table.g tr.tot td.hoje{background:#8dc8302b}
+table.g tr.ent td{background:#183c2c}table.g tr.ent th.rot{background:#204b36;color:#b7efcb;border-left:.8mm solid #14b8a6}
+table.g tr.sai td{background:#482728}table.g tr.sai th.rot{background:#592f31;color:#ffd0d0;border-left:.8mm solid var(--danger)}
+table.g tr.info th.rot,table.g tr.info td{background:#1c2a1f;color:var(--muted);font-style:italic;font-weight:400}
+table.g .inp{display:block;border:1px solid #467e58;background:#24543b;color:#ecfff1;border-radius:1.4mm;padding:.5mm 1mm}
+table.g tr.sai .inp{background:#67383b;border-color:#a86469;color:#fff0f0}
+table.g td.ed{box-shadow:inset 0 -.7mm var(--lime)}table.g td.ed .inp{color:var(--lime)}
+table.g td.d1 .inp{border-color:var(--roxo);box-shadow:inset 0 0 0 .3mm var(--roxo)}
+table.g td.verde{background:#008000;color:#fff}
+.mini{display:flex;flex-direction:column;gap:.8mm}
+.mini i{font:700 5.8pt 'Barlow',Arial;font-style:normal;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.mini .btn{font-size:6.2pt;padding:.5mm 1mm;white-space:normal;text-align:center;border-radius:1.4mm;line-height:1.15}
+.pop{background:#272a2d;border:1px solid #92999f;border-radius:3mm;padding:3.4mm 4mm;color:#fff;font-size:8.6pt;box-shadow:0 2mm 6mm #0006;break-inside:avoid}
+.pop .l{display:flex;justify-content:space-between;gap:4mm;padding:.7mm 0}
+.pop hr{border:0;border-top:1px solid #52575b;margin:1.8mm 0}
+.pop p{color:#e0e5e8;font-size:8.2pt;margin:0 0 .6mm}
+.cardm{border:1px solid var(--border);border-radius:3mm;padding:3mm 3.6mm;background:var(--surface)}
+.cardm small{color:var(--dim);font-size:8pt;display:block}.cardm b{display:block;font:600 19pt 'Barlow Condensed';color:var(--text);margin:.8mm 0}.cardm em{font-style:normal;font-size:7.4pt;color:var(--muted)}
+.cid{border:1px solid var(--border);border-left:1.1mm solid var(--danger);border-radius:3mm;padding:3mm 3.6mm;background:var(--surface);font-size:8.6pt;color:var(--muted)}
+.cid.at{border-left-color:var(--orange)}.cid.ok{border-left-color:var(--accent)}
+.cid h4{margin:0;font:600 10pt 'Barlow',Arial;color:var(--text)}.cid p{margin:1.4mm 0 .6mm;color:var(--text);font-size:8.6pt}
+.barra{display:flex;height:6mm;border-radius:99px;overflow:hidden;border:1px solid var(--border);margin:0 0 3mm;font:700 8pt 'Barlow',Arial;color:#111A0A}
+.barra span{display:flex;align-items:center;justify-content:center}
+.pills{display:flex;gap:1.6mm;align-items:center;margin-bottom:3mm}
+.faq h3{margin-top:4.5mm;font-size:12.5pt;color:var(--lime)}
+.faq>div{break-inside:avoid}
+.gloss{columns:2;column-gap:7mm}
+.gloss p{break-inside:avoid;margin-bottom:2.2mm}
+.mini-sumario{columns:2;column-gap:8mm}.mini-sumario a{font-size:10pt;padding:1.5mm 0;break-inside:avoid}.mini-sumario a b{width:11mm;font-size:11pt}
+.fx{font:600 10.6pt 'Barlow Condensed','Barlow',Arial;color:var(--lime);letter-spacing:.2px}table.contas td{vertical-align:middle}table.contas small{color:var(--muted);font-size:8pt}
+.fim{margin-top:6mm;text-align:center;color:var(--muted);font-size:8.6pt}
+/* LEITURA NA TELA (botao "Manual" do simulador abre esta pagina; o PDF continua saindo igual pelo Imprimir) */
+.barra-web{display:none}
+@media screen{
+ body{max-width:215mm;margin:0 auto;font-size:11pt}
+ .capa{height:auto;min-height:0;padding:16mm 14mm 12mm}.capa h1{margin:14mm 0 4mm}
+ section{padding:12mm 0 4mm;border-top:1px solid var(--border);scroll-margin-top:14mm}
+ section#sumario{border-top:0}
+ .barra-web{display:flex;position:sticky;top:0;z-index:9;gap:3mm;align-items:center;justify-content:flex-end;padding:2.4mm 16mm;background:#111B15ee;backdrop-filter:blur(4px);border-bottom:1px solid var(--border)}
+ .barra-web b{margin-right:auto;color:var(--lime);font:600 13pt 'Barlow Condensed',Arial}
+ .barra-web a,.barra-web button{border:1px solid var(--border);border-radius:2.4mm;background:var(--panel);color:var(--dim);padding:1.4mm 3.4mm;font:600 9.6pt 'Barlow',Arial;cursor:pointer}
+ .barra-web a:hover,.barra-web button:hover{border-color:var(--accent);color:var(--text)}
+}
+@media screen and (max-width:700px){.wrap{padding:0 16px}.barra-web{padding:8px 16px}.grid2,.grid3{grid-template-columns:1fr}.mock,.table-rola{overflow-x:auto}}
+</style></head><body>
+<div class="barra-web"><b>Nextoques · Manual</b><a href="#sumario">☰ Sumário</a><a href="#c10">Regras de cálculo</a><button type="button" onclick="print()">⬇ Salvar em PDF</button></div>
+
+<!-- ============ CAPA ============ -->
+<div class="capa">
+ <div class="marca"><svg viewBox="0 0 44 44"><rect x="2" y="2" width="40" height="40" rx="13" fill="#152318" stroke="#8DC830" stroke-width="1.4"/><clipPath id="tk"><circle cx="21" cy="24" r="12"/></clipPath><circle cx="21" cy="24" r="12" fill="none" stroke="#3a5a2e" stroke-width="1.4"/><g clip-path="url(#tk)"><path d="M9 26 Q15 23 21 26 T33 26 V38 H9 Z" fill="#8DC830"/></g><path d="M8 15 L19 9 L29 13 L36 7" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 4"/><path d="M32 7 L36 7 L36 11" fill="none" stroke="#EEFE7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Nex<span>toques</span></div>
+ <h1>Manual de uso<br>e regras do simulador<br>de estoques</h1>
+ <p class="sub">Onde clicar, o que cada botão faz e como cada número da tela é calculado, do login à aba Alertas.</p>
+ <div class="rod">
+  <div><div style="color:var(--muted);font-size:9pt;margin-bottom:1mm">ACESSE O PORTAL</div><a class="link" href="https://nexta-logistica.com.br/simulador_estoque/">nexta-logistica.com.br/simulador_estoque</a></div>
+  <div style="text-align:right"><span class="badge">LOGÍSTICA · GESTÃO DE ABASTECIMENTO DAS BASES</span><div style="margin-top:2mm">Elaborado pela área de Governança Operacional<br>Versão 1.1 · novembro de 2026</div></div>
+ </div>
+</div>
+
+<div class="wrap">
+
+<!-- ============ SUMARIO ============ -->
+<section id="sumario" style="break-before:auto">
+<h2>Sumário</h2>
+<p class="lead">Clique em um capítulo para ir direto a ele.</p>
+<div class="sumario">
+ <a href="#c1"><b>1</b>O que é o Nextoques<small>para que serve e o que ele mostra</small></a>
+ <a href="#c2"><b>2</b>Acesso e login<small>entrar, senha, sessão</small></a>
+ <a href="#c3"><b>3</b>Mapa da tela<small>cada área, de cima para baixo</small></a>
+ <a href="#c4"><b>4</b>Escolher a base e o produto<small>filtros e modo combinado</small></a>
+ <a href="#c5"><b>5</b>A tabela de simulação<small>linhas, botões, edição, popups</small></a>
+ <a href="#c6"><b>6</b>O gráfico e o ritmo da semana<small>barras, linhas e legenda</small></a>
+ <a href="#c7"><b>7</b>Política e cartões<small>os painéis de baixo</small></a>
+ <a href="#c8"><b>8</b>Salvar na equipe<small>rascunho local × cenário compartilhado</small></a>
+ <a href="#c9"><b>9</b>Alertas e Histórico<small>abas, matriz cidade × produto, dias de estoque e histórico</small></a>
+ <a href="#c10"><b>10</b>Todas as regras de cálculo<small>de onde vem cada número</small></a>
+ <a href="#c11"><b>11</b>Cores e avisos<small>guia rápido do que cada cor significa</small></a>
+ <a href="#c12"><b>12</b>Dúvidas frequentes<small>o que fazer quando algo parece errado</small></a>
+ <a href="#c13"><b>13</b>Glossário<small>LE, VMD, FOB, CIF, lastro…</small></a>
+</div>
+<p style="margin-top:6mm;font-size:9.4pt;color:var(--muted)">As telas reproduzidas neste manual são ilustrações com números de exemplo. Botões aparecem como <span class="btn">Sair</span> e campos como <span class="campo">Cidade</span>.</p>
+</section>
+
+<!-- ============ 1 ============ -->
+<section id="c1">
+<h2><span class="num">1</span>O que é o Nextoques</h2>
+<p class="lead">O Nextoques é o simulador de estoques de combustíveis da Logística. Ele parte do estoque real de abertura de cada base e projeta, dia a dia, como o estoque fica nas próximas duas semanas.</p>
+<p>No portal é possível ver a abertura, as entradas previstas (FOB, CIF e bombeio) e as vendas previstas de cada base e produto nos próximos 14 dias (e, pelo botão <span class="btn">+ dias</span>, os 5 dias anteriores). Também é possível trocar a fonte das vendas ou das entradas, ou digitar um volume por cima, e ver o efeito nos dias seguintes. O cenário montado pode ser salvo para a equipe e consultado na aba Histórico.</p>
+<p>Os volumes estão em m³, arredondados para o inteiro mais próximo. Os números vêm das fontes (planilha de abertura, política de estoque, LE, SAP, MIS, portal inbound e Herrlog); o que for editado fica como rascunho no navegador de quem editou até ser salvo na equipe.</p>
+<p>A conta do estoque é sempre a mesma:</p>
+<div class="formula">Fechamento = Abertura + Entradas − Saídas<small>Abertura do dia seguinte = fechamento do dia anterior. Saldo negativo também é levado adiante.</small></div>
+<p>Para começar a usar: escolha <span class="campo">Cidade</span>, <span class="campo">Depósito</span>, <span class="campo">Empresa</span> e <span class="campo">Produto</span>. O passo a passo está nos capítulos <a href="#c4">4</a> e <a href="#c5">5</a>.</p>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="c2">
+<h2><span class="num">2</span>Acesso e login</h2>
+<p class="lead">O portal fica em <a href="https://nexta-logistica.com.br/simulador_estoque/">nexta-logistica.com.br/simulador_estoque</a> e só abre para e-mails liberados.</p>
+<div class="junto" style="display:flex;gap:14mm;align-items:flex-start;margin-bottom:4mm">
+ <div class="loginmock">
+  <div class="logo">Nex<span>toques</span></div>
+  <div style="font:600 13pt 'Barlow Condensed';color:var(--text)">Simulador de estoque de combustíveis</div>
+  <div class="rel">E-mail<div class="inp"></div><span class="n">1</span></div>
+  <div class="rel">Senha<div class="inp"></div><span class="n" style="top:5mm">2</span></div>
+  <div class="rel">☐ Mostrar senha<span class="n" style="top:-.5mm">3</span></div>
+  <div class="b p">Entrar<span class="n">4</span></div>
+  <div class="b">Esqueci minha senha<span class="n">5</span></div>
+  <div style="color:#f3c787">Entre com o e-mail liberado para o simulador.</div>
+ </div>
+ <div style="flex:1">
+  <table class="t">
+   <tr><th style="width:9mm"></th><th>O que é</th><th>O que faz</th></tr>
+   <tr><td><span class="n">1</span></td><td>E-mail</td><td>O e-mail que foi liberado para você.</td></tr>
+   <tr><td><span class="n">2</span></td><td>Senha</td><td>Mínimo de 6 caracteres.</td></tr>
+   <tr><td><span class="n">3</span></td><td>Mostrar senha</td><td>Mostra o que você digitou, para conferir.</td></tr>
+   <tr><td><span class="n">4</span></td><td>Entrar</td><td>Confere o acesso e carrega os estoques.</td></tr>
+   <tr><td><span class="n">5</span></td><td>Esqueci minha senha</td><td>Digite o e-mail antes e clique. Chega um e-mail com o link para criar uma senha nova.</td></tr>
+  </table>
+  <p>A linha amarela embaixo dos botões é a <strong>mensagem de status</strong>: é ali que aparece o que está acontecendo ou o motivo de um erro.</p>
+ </div>
+</div>
+<h3>Mensagens que podem aparecer</h3>
+<table class="t">
+ <tr><th style="width:42%">Mensagem</th><th>O que fazer</th></tr>
+ <tr><td>E-mail ou senha incorretos.</td><td>Confira os dois. Se não lembrar, use <span class="btn">Esqueci minha senha</span>.</td></tr>
+ <tr><td>Muitas tentativas. Aguarde antes de tentar novamente.</td><td>Espere alguns minutos e tente de novo.</td></tr>
+ <tr><td>Sua conta ainda não tem acesso liberado ao simulador.</td><td>A conta existe, mas o acesso ainda não foi liberado. Peça a liberação ao administrador do simulador. O botão <span class="btn">Usar outra conta</span> aparece para trocar de e-mail.</td></tr>
+ <tr><td>Sua senha temporária expirou (prazo de 72 horas sem troca).</td><td>A senha inicial não foi trocada a tempo. Use <span class="btn">Esqueci minha senha</span> para criar uma nova.</td></tr>
+ <tr><td>Sessão encerrada após 2h sem uso. Entre novamente.</td><td>Basta entrar novamente. Seu rascunho continua guardado no navegador.</td></tr>
+ <tr><td>A carga de estoque foi atualizada durante o carregamento.</td><td>Recarregue a página (F5).</td></tr>
+</table>
+<div class="junto"><h3>Primeiro acesso e validade da senha</h3>
+ <ul>
+  <li><strong>Senha inicial:</strong> quem ganha acesso recebe do administrador uma senha inicial. No <strong>1º login</strong> com ela o portal abre normalmente, com um aviso no topo.</li>
+  <li><strong>A partir do 2º login</strong>, abre a janela <strong>“Defina sua nova senha”</strong>, que só fecha depois de salvar a senha nova (senha atual = a inicial; nova senha com no mínimo 6 caracteres, digitada duas vezes).</li>
+  <li><strong>Prazo de 72 horas:</strong> se a senha inicial não for trocada nesse prazo, o login fica bloqueado e só volta pelo <span class="btn">Esqueci minha senha</span>.</li>
+  <li><strong>Validade de 3 meses:</strong> nos 5 últimos dias aparece um aviso no topo com o botão <span class="btn">Trocar senha agora</span>. Depois de vencida, o portal só libera o uso após a troca.</li>
+  <li>A qualquer momento dá para trocar pelo botão <span class="btn">Trocar senha</span>, ao lado de <span class="btn">Sair</span>.</li>
+ </ul></div><div class="junto"><h3>Regras da sessão</h3>
+ <ul>
+  <li><strong>Fechou a aba, saiu.</strong> O login vale só para a aba aberta.</li>
+  <li><strong>2 horas sem uso</strong> (sem mouse, teclado ou rolagem em nenhuma aba do simulador): o portal encerra a sessão automaticamente e volta para o login.</li>
+  <li><span class="btn">Sair</span> encerra a sessão na hora.</li>
+  <li>Nada se perde ao sair: o rascunho é gravado no navegador a cada edição.</li>
+ </ul></div>
+ 
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="c3">
+<h2><span class="num">3</span>Mapa da tela</h2>
+<p class="lead">Esta é a tela principal do portal, que aparece depois do login. Cada área está numerada na figura e explicada na tabela logo abaixo.</p>
+<div class="mock">
+ <div class="linha conta"><span class="n">1</span><span class="sp badge">Sincronizado 12/10, 09:30 · trânsito 09:41</span><span>Seu nome</span><span class="btn">Sair</span></div>
+ <div class="linha cab"><span class="n">2</span><span class="logo">Nex<span>toques</span></span><span style="color:var(--text);font-weight:700">LOGÍSTICA</span><span class="sp badge">SIMULAÇÃO DE ESTOQUES</span></div>
+ <div class="linha"><span class="n">3</span><div class="bloco"><b>Filtros</b><span class="campo">Região</span><span class="campo">Cidade</span><span class="campo">Depósito</span><span class="campo">Empresa</span><span class="campo">Produto</span><span class="campo">Data da abertura</span><span class="campo">Período</span><span class="campo">Nome do cenário</span></div></div>
+ <div class="linha"><span class="n">4</span><span class="btn primary">Salvar na equipe</span><span>Rascunho local. Use Salvar na equipe para compartilhar.</span></div>
+ <div class="linha"><span class="n">5</span><div class="bloco" style="min-height:17mm"><b>Histórico e projeção</b><span>gráfico de barras com os mesmos dias da tabela, cada barra em cima da coluna do seu dia</span></div></div>
+ <div class="linha"><span class="n">6</span><div class="bloco" style="min-height:21mm"><b>Duas semanas de simulação · edição direta</b><span>tabela editável, botões de Entrada e Vendas, botões de <span class="btn">Sugerir cadência</span> (Encher o tanque, Estoque mínimo, Venda média da rede), <span class="btn">↺ Restaurar</span> e a barra “Ritmo da semana”</span></div></div>
+ <div class="linha"><span class="n">7</span><div class="bloco"><b>Política de estoque</b><span>abertura, lastro, mínimo, médio, máximo, capacidade</span></div></div>
+ <div class="linha"><span class="n">8</span><div class="bloco"><b>Cartões-resumo</b><span>4 indicadores do período</span></div></div>
+ <div class="linha"><span class="n">9</span><div class="bloco"><b>Painéis de apoio</b><span>Conferir valores originais · Semana anterior · Fontes dos dados</span></div></div>
+</div>
+<p class="legenda-mock">Ilustração da tela principal.</p>
+<table class="t">
+ <tr><th style="width:9mm"></th><th style="width:30%">Área</th><th>Para que serve</th><th style="width:17%">Detalhes</th></tr>
+ <tr><td><span class="n">1</span></td><td>Barra da conta</td><td>O selo “Sincronizado” mostra quando as fontes foram lidas e a hora do último trânsito recebido. À direita, seu nome, <span class="btn">Trocar senha</span> (pede a senha atual e a nova, com no mínimo 6 caracteres). A senha vale 3 meses: nos 5 últimos dias aparece um aviso no topo e, depois de vencida, o portal só libera o uso após a troca. Quem recebe acesso entra com a senha inicial definida pelo administrador. No 1º login aparece só um aviso; a partir do 2º login abre a janela “Defina sua nova senha”, que só fecha depois de salvar a senha nova. Sem troca em até 72 horas, o acesso fica bloqueado e só volta pelo “Esqueci minha senha”, na tela de entrada e <span class="btn">Sair</span>.</td><td><a href="#c9">Capítulo 9</a></td></tr>
+ <tr><td><span class="n">2</span></td><td>Cabeçalho</td><td>Só identificação do portal.</td><td></td></tr>
+ <tr><td><span class="n">3</span></td><td>Filtros</td><td>Escolha do que simular: cidade, depósito, empresa e produto.</td><td><a href="#c4">Capítulo 4</a></td></tr>
+ <tr><td><span class="n">4</span></td><td>Salvar na equipe</td><td>Envia o cenário atual para a equipe, com nome, autor e horário.</td><td><a href="#c8">Capítulo 8</a></td></tr>
+ <tr><td><span class="n">5</span></td><td>Gráfico</td><td>Visão rápida: estoque de abertura e entradas em barras, limites da política em linhas.</td><td><a href="#c6">Capítulo 6</a></td></tr>
+ <tr><td><span class="n">6</span></td><td>Tabela de simulação</td><td>A área principal do portal. É aqui que se troca a fonte e se edita volume.</td><td><a href="#c5">Capítulo 5</a></td></tr>
+ <tr><td><span class="n">7</span></td><td>Política de estoque</td><td>Os limites da base, vindos da planilha. Só leitura.</td><td><a href="#c7">Capítulo 7</a></td></tr>
+ <tr><td><span class="n">8</span></td><td>Cartões</td><td>Abertura, fechamento em 14 dias, menor estoque e primeira atenção.</td><td><a href="#c7">Capítulo 7</a></td></tr>
+ <tr><td><span class="n">9</span></td><td>Painéis de apoio</td><td>Conferência com as fontes, histórico e lista de alertas.</td><td><a href="#c7">Capítulo 7</a></td></tr>
+</table>
+<div class="note"><b class="t">A tela abre na visão geral</b>Sem cidade escolhida, o gráfico mostra a <strong>soma de todas as bases e produtos</strong> que você pode ver. A tabela fica <strong>só leitura</strong> enquanto não houver uma cidade e um único produto escolhidos. Para voltar à visão geral, clique de novo na cidade marcada.</div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="c4">
+<h2><span class="num">4</span>Escolher a base e o produto</h2>
+<p class="lead">A seleção vai do maior para o menor: cidade, depois depósito, depois empresa, depois produto.</p>
+<ol class="passos">
+ <li><span class="campo">Região</span> (opcional): SP, MG + RJ ou Centro-Oeste. Reduz a lista de cidades. Deixe em “Todas” para ver tudo.</li>
+ <li><span class="campo">Cidade</span>: escolha a cidade. As listas de depósito e empresa são zeradas e montadas de novo para ela.</li>
+ <li><span class="campo">Depósito</span>: o terminal dentro da cidade. Se a cidade só tem um, ele já vem preenchido.</li>
+ <li><span class="campo">Empresa</span>: necessária porque o mesmo depósito pode ter estoque de mais de uma empresa (por exemplo, três empresas diferentes no mesmo terminal). Se só há uma, vem preenchida.</li>
+ <li><span class="campo">Produto</span>: a lista mostra só os produtos que existem naquela combinação. Ao escolher, a tabela e o gráfico aparecem.</li>
+</ol>
+<h3>Os outros campos da faixa de filtros</h3>
+<table class="t">
+ <tr><th style="width:27%">Campo</th><th>O que é</th></tr>
+ <tr><td>Data da abertura</td><td>Só leitura. É a data da última planilha de abertura lida, o dia de <strong>referência</strong> da simulação.</td></tr>
+ <tr><td>Período</td><td>Só leitura: “−7 dias / +14 dias”. É a janela que o portal carrega.</td></tr>
+ <tr><td>Nome do cenário</td><td>Nome do seu rascunho (até 80 caracteres). É o nome sugerido na hora de salvar na equipe.</td></tr>
+ <tr><td>Selecionar cidade/depósito/empresa pelos botões <span class="n" style="background:#8dc8302b;color:var(--accent)">i</span></td><td>Linha recolhida. Ao clicar, abre os mesmos filtros em forma de botões. É o único lugar onde é possível marcar <strong>mais de um</strong> depósito ou empresa.</td></tr>
+</table>
+<h3>Modo combinado <small>somar vários depósitos ou empresas</small></h3>
+<p>Abra Selecionar cidade/depósito/empresa pelos botões e ligue dois ou mais botões de depósito e/ou de empresa. O botão ligado fica <span class="btn on">assim</span>.</p>
+<div class="grid2">
+ <div class="panel"><h3 style="margin-top:0">O que acontece</h3>
+  <ul style="margin-bottom:0">
+   <li>O portal soma tudo: abertura, entradas, saídas e os limites da política (lastro, mínimo, médio, máximo, capacidade).</li>
+   <li>O nome da base vira “Cidade · Dep. A + Dep. B · Empresa (combinado)”.</li>
+   <li>Passar o mouse na abertura de hoje mostra quanto vem de cada depósito/empresa.</li>
+   <li>No popup do FOB, cada viagem mostra para qual depósito vai.</li>
+  </ul></div>
+ <div class="panel"><h3 style="margin-top:0">O que muda</h3>
+  <ul style="margin-bottom:0">
+   <li>É possível editar e simular normalmente.</li>
+   <li><strong>Não é possível salvar na equipe.</strong> O cenário salvo é sempre de uma base só.</li>   <li>Escolher pelo campo de lista (em vez dos botões) volta para uma opção só.</li>
+  </ul></div>
+</div>
+<p>Ao ligar ou desligar um depósito, o portal mantém o produto que estava selecionado, desde que ele exista na nova combinação.</p>
+
+<div class="junto">
+<h3>Depósito compartilhado <small>SIM e Nexta no mesmo tanque</small></h3>
+<p>Em alguns terminais a SIM e a Nexta usam o <strong>mesmo tanque</strong>. Nesses casos o simulador já mostra as duas empresas <strong>somadas numa base só</strong>, do mesmo jeito que o BI: abertura, vendas, entradas, política e capacidade. O popup da abertura mostra quanto é de cada empresa.</p>
+<table class="t">
+ <tr><th style="width:30%">Cidade</th><th>Depósito somado</th></tr>
+ <tr><td>Betim</td><td>POTENCIAL</td></tr>
+ <tr><td>Cubatão</td><td>IPIRANGA</td></tr>
+ <tr><td>Guarulhos</td><td>TORRÃO</td></tr>
+ <tr><td>Paulínia</td><td>TORRÃO</td></tr>
+ <tr><td>Uberlândia</td><td>LIDERPETRO</td></tr>
+</table>
+<p>Na aba Aberturas, cada empresa continua lançando a sua abertura separada. A soma é feita pelo simulador.</p>
+</div>
+<div class="note"><b class="t">Uberlândia Nexta · diesel misturado</b>Esse depósito armazena o diesel <strong>já misturado</strong> (Diesel S10 B e Diesel S500 B). Por isso, nele, os produtos aparecem como Diesel B, e a venda não é separada em diesel A e biodiesel.</div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="c5">
+<h2><span class="num">5</span>A tabela de simulação</h2>
+<p class="lead">Cada coluna é um dia e cada linha é um movimento. As células com caixa são editáveis.</p>
+<div class="mock" style="padding:2.5mm">
+<table class="g">
+ <thead><tr><th class="ctl"><span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">+ dias</span> <span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">− linhas</span></th><th class="rot">Movimento / m³</th><th class="hoje">12/10<br>seg<br><small>Referência</small></th><th>13/10<br>ter<br><small>Simulação</small></th><th>14/10<br>qua<br><small>Simulação</small></th><th>15/10<br>qui<br><small>Simulação</small></th><th>16/10<br>sex<br><small>Simulação</small></th></tr></thead>
+ <tbody>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Estoque inicial · abertura<small>hoje 07:42</small></th><td class="hoje verde">1.250</td><td class="verde">1.220</td><td class="verde">1.225</td><td class="verde">1.327</td><td class="verde">1.197</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Lastro mínimo<small>08/10 16:10</small></th><td class="hoje">120</td><td>120</td><td>120</td><td>120</td><td>120</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Abertura menos lastro</th><td class="hoje">1.130</td><td>1.100</td><td>1.105</td><td>1.207</td><td>1.077</td></tr>
+ <tr class="ent"><th class="ctl" rowspan="4"><div class="mini"><i>Entrada</i><span class="btn on">Fontes automáticas</span><span class="btn">Cadência MIS</span><span class="btn">Programado + Não programado</span></div></th><th class="rot">+ Trânsito FOB · programado (com placa)<small>hoje 09:41 · tempo real</small></th><td class="hoje"><span class="inp">180</span></td><td class="d1"><span class="inp">120</span></td><td><span class="inp">0</span></td><td><span class="inp">60</span></td><td><span class="inp">0</span></td></tr>
+ <tr class="info"><th class="rot">↳ Trânsito FOB · não programado (sem placa)</th><td class="hoje">—</td><td>60</td><td>—</td><td>—</td><td>—</td></tr>
+ <tr class="ent"><th class="rot">+ Trânsito CIF · recebimento<small>hoje 09:41 · tempo real</small></th><td class="hoje"><span class="inp">0</span></td><td><span class="inp">90</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td><td><span class="inp">60</span></td></tr>
+ <tr class="ent"><th class="rot">+ Bombeio<small>hoje 06:15</small></th><td class="hoje"><span class="inp">0</span></td><td><span class="inp">0</span></td><td class="ed"><span class="inp">300</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td></tr>
+ <tr class="info"><th class="ctl"></th><th class="rot">↳ VMD reprojetada</th><td class="hoje">214</td><td>209</td><td>201</td><td>194</td><td>188</td></tr>
+ <tr class="info"><th class="ctl"></th><th class="rot">↳ LE vigente (sem reprojeção)</th><td class="hoje">210</td><td>205</td><td>198</td><td>190</td><td>185</td></tr>
+ <tr class="sai"><th class="ctl"><div class="mini"><i>Vendas</i><span class="btn">VMD</span><span class="btn on">LE</span><span class="btn">Pedidos em tela</span><span class="btn">Real</span><span class="btn">Disp MIS</span></div></th><th class="rot">− Vendas · LE vigente<small>hoje 08:35</small></th><td class="hoje"><span class="inp">210</span></td><td><span class="inp">205</span></td><td><span class="inp">198</span></td><td><span class="inp">190</span></td><td><span class="inp">185</span></td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Total de entradas</th><td class="hoje">180</td><td>210</td><td>300</td><td>60</td><td>60</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Total de saídas</th><td class="hoje">210</td><td>205</td><td>198</td><td>190</td><td>185</td></tr>
+ </tbody>
+</table>
+</div>
+<p class="legenda-mock">Ilustração com números de exemplo (parte das linhas de referência omitida). Confira a conta: 1.250 + 180 − 210 = 1.220, que é a abertura do dia 13.</p>
+
+<div class="junto">
+<h3>As cores da linha de abertura <small>verde, amarela e vermelha</small></h3>
+<p>A célula de <strong>Estoque inicial · abertura</strong> muda de cor conforme a ocupação do tanque. A conta é: abertura do dia ÷ capacidade do tanque (a capacidade vem da linha “Espaço (m³)” da planilha de política). Base e produto sem capacidade estabelecida ficam sem cor. Vale para todos os dias da tabela, inclusive os de histórico.</p>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;margin-bottom:3mm">
+ <div style="background:#008000;color:#fff;border-radius:3mm;padding:3mm 4mm"><strong style="color:#fff;font-size:12pt">Verde</strong><br>Abertura <strong style="color:#fff">acima de 75%</strong> da capacidade.</div>
+ <div style="background:#FFA500;color:#000;border-radius:3mm;padding:3mm 4mm"><strong style="color:#000;font-size:12pt">Amarela</strong><br>Abertura <strong style="color:#000">de 70% a 75%</strong> da capacidade.</div>
+ <div style="background:#8B0000;color:#fff;border-radius:3mm;padding:3mm 4mm"><strong style="color:#fff;font-size:12pt">Vermelha</strong><br>Abertura <strong style="color:#fff">abaixo de 70%</strong> da capacidade.</div>
+</div>
+<table class="t">
+ <tr><th style="width:38%">Exemplo: tanque de 2.000 m³</th><th>Cor da célula</th></tr>
+ <tr><td>Abertura de 1.600 m³ (80%)</td><td><span class="cor" style="background:#008000"></span>Verde</td></tr>
+ <tr><td>Abertura de 1.450 m³ (72,5%)</td><td><span class="cor" style="background:#FFA500"></span>Amarela</td></tr>
+ <tr><td>Abertura de 1.200 m³ (60%)</td><td><span class="cor" style="background:#8B0000"></span>Vermelha</td></tr>
+</table>
+<ul>
+ <li>Se o MIS não informa a capacidade do tanque, a célula fica <strong>sem cor</strong>.</li>
+ <li>Essas três cores são só da <strong>linha de abertura</strong>. O cartão “Menor estoque” e a aba Alertas usam outra régua, a da política de estoque (mínimo, médio e máximo). As duas estão lado a lado no <a href="#c11">capítulo 11</a>.</li></ul>
+</div>
+
+<h3>As colunas</h3>
+<ul>
+ <li>O cabeçalho mostra a data, o dia da semana e o tipo do dia: <strong>Histórico</strong> (já aconteceu), <strong>Referência</strong> (o dia da abertura lida, destacado em amarelo) e <strong>Simulação</strong> (projeção).</li>
+ <li>A tabela mostra o dia de referência e os 14 dias seguintes. O histórico fica recolhido.</li>
+</ul>
+
+<div class="junto"><h3>Os botões + e − <small>no canto superior esquerdo da tabela</small></h3>
+<p>São dois botões de abrir e fechar. O sinal mostra o que o clique vai fazer: <strong>+</strong> abre, <strong>−</strong> fecha. Os dois começam fechados e voltam a fechar quando a página é recarregada. Eles só mudam o que aparece; <strong>não alteram nenhum número</strong>.</p>
+<table class="t">
+ <tr><th style="width:24%">Botão</th><th>O que faz</th></tr>
+ <tr><td><span class="btn">+ dias</span> / <span class="btn">− dias</span></td><td>Abre ou fecha, à esquerda do dia de referência, as colunas dos <strong>5 dias anteriores</strong> (marcadas como “Histórico”), com o que realmente aconteceu: abertura da planilha de cada dia, vendas realizadas e FOB/CIF que chegaram. Esses dias são só leitura. O gráfico acompanha: com <span class="btn">+ dias</span>, ele também mostra os 5 dias anteriores.</td></tr>
+ <tr><td><span class="btn">+ linhas</span> / <span class="btn">− linhas</span></td><td>Abre ou fecha as <strong>6 linhas de referência</strong> (em itálico, começam com ↳): Recebimentos reais (SAP), FOB não programado, VMD reprojetada, LE vigente, Pedidos em tela e Vendas reais. Elas não entram na conta: servem para comparar as fontes lado a lado.</td></tr>
+ <tr><td><span class="btn">↺ Restaurar</span></td><td>Desfaz todas as suas edições deste recorte e volta aos dados da fonte. Também devolve o botão de Entrada para <span class="btn on">Fontes automáticas</span>.</td></tr>
+ <tr><td><span class="badge">SALVO NESTE NAVEGADOR</span></td><td>Não é botão, é um aviso: seu rascunho está guardado. Antes da primeira edição aparece “CENÁRIO LOCAL”.</td></tr>
+</table></div>
+<p>Linhas de texto com uma setinha (▸) também são de abrir e fechar com um clique: Selecionar cidade/depósito/empresa pelos botões (nos filtros), Conferir os valores originais das fontes, <strong>Fontes dos dados</strong>.</p>
+
+<h3>As linhas, de cima para baixo</h3>
+<table class="t">
+ <tr><th style="width:33%">Linha</th><th style="width:13%">Editável?</th><th>O que mostra</th></tr>
+ <tr><td>Estoque inicial · abertura</td><td>Não</td><td>O estoque no começo do dia. No dia de referência vem da planilha; nos dias seguintes é o fechamento do dia anterior. A cor indica a ocupação do tanque (veja <a href="#c11">capítulo 11</a>).</td></tr>
+ <tr><td>Lastro mínimo</td><td>Não</td><td>Volume que não pode ser usado, vindo da política.</td></tr>
+ <tr><td>Abertura menos lastro</td><td>Não</td><td>O estoque realmente disponível no começo do dia.</td></tr>
+ <tr><td>↳ Recebimentos reais (SAP)</td><td>Referência</td><td>O que o SAP registrou como recebido. Só tem valor nos dias de histórico.</td></tr>
+ <tr><td>+ Trânsito FOB · programado (com placa)</td><td><strong>Sim</strong></td><td>Viagens FOB que já contam: em andamento ou finalizadas.</td></tr>
+ <tr><td>↳ Trânsito FOB · não programado (sem placa)</td><td>Referência</td><td>Viagens FOB ainda sem placa (ofertadas, aceitas ou em backlog). Só entram na conta com o botão <span class="btn">Programado + Não programado</span>.</td></tr>
+ <tr><td>+ Trânsito CIF · recebimento</td><td><strong>Sim</strong></td><td>Entregas CIF previstas para o dia.</td></tr>
+ <tr><td>+ Bombeio</td><td><strong>Sim</strong></td><td>Bombeio programado na cadência MIS.</td></tr>
+ <tr><td>+ Cadência sugerida</td><td><strong>Sim</strong></td><td>Cargas sugeridas pelo simulador ao clicar em um dos botões de <span class="btn">Sugerir cadência</span>, ou digitadas. Entra na conta como as outras entradas. Não altera a cadência do MIS.</td></tr>
+ <tr><td>+ Transferência · entrada</td><td><strong>Sim</strong></td><td>Cargas que chegam de outra base da rede, na data de descarga. Se a viagem já estava no Trânsito FOB ou CIF, ela sai de lá e entra só aqui, para não somar duas vezes. Transferências programadas que ainda não estavam em nenhuma linha passam a contar aqui. Passe o mouse para ver de qual base vem cada carga.</td></tr>
+ <tr><td>− Transferência · saída</td><td><strong>Sim</strong></td><td>Cargas que saem desta base para outra base da rede, na data de carregamento: viagens do portal inbound em que esta base é o fornecedor e, nas semanas que o portal ainda não cobre, a cadência do MIS com origem nesta base (cargas por trem ou duto não entram). Passe o mouse para ver para onde vai cada carga.</td></tr>
+ <tr><td>↳ VMD reprojetada<br>↳ LE vigente (sem reprojeção)<br>↳ Pedidos em tela<br>↳ Vendas reais (faturamento)</td><td>Referência</td><td>As quatro referências de venda, lado a lado, para comparar com o que está aplicado na linha de baixo.</td></tr>
+ <tr><td>− Vendas · (fonte escolhida)</td><td><strong>Sim</strong></td><td>A única linha que debita o estoque. O nome muda conforme o botão de Vendas ligado.</td></tr>
+ <tr><td>Total de entradas / Total de saídas</td><td>Não</td><td>Somas do dia. Transferências que vierem da fonte entram nesses totais, mesmo sem linha própria.</td></tr>
+</table>
+<div class="note"><b class="t">Horário embaixo do nome da linha</b>O texto pequeno (“hoje 09:41”, “08/10 16:10”) é a última atualização da fonte daquela linha. No trânsito aparece “· tempo real”. Se aparecer <strong style="color:var(--orange)">⚠ banco sem resposta</strong>, o banco de faturamento não respondeu na última carga e a linha está usando o plano B (veja <a href="#c10">capítulo 10</a>).</div>
+
+<h3>Botões de Entrada <small>de onde vêm FOB, CIF e bombeio</small></h3>
+<table class="t">
+ <tr><th style="width:31%">Botão</th><th>O que aplica nos dias de hoje em diante</th></tr>
+ <tr><td><span class="btn on">Fontes automáticas</span></td><td>O padrão. FOB e CIF vêm do portal inbound com a Herrlog, em tempo real; o bombeio vem da cadência MIS.</td></tr>
+ <tr><td><span class="btn">Cadência MIS</span></td><td>Troca FOB, CIF e bombeio pelos volumes <strong>planejados</strong> na cadência MIS. Transferência de entrada fica zerada.</td></tr>
+ <tr><td><span class="btn">Programado + Não programado</span></td><td>Igual às fontes automáticas, mas soma no FOB as viagens ainda sem placa.</td></tr>
+</table>
+
+<h3>Botões de Vendas <small>de onde vem a linha que debita</small></h3>
+<table class="t">
+ <tr><th style="width:20%">Botão</th><th>O que aplica nos dias de hoje em diante</th></tr>
+ <tr><td><span class="btn">VMD</span></td><td>A venda média diária <strong>reprojetada</strong>: o LE ajustado pelo ritmo real de vendas da semana.</td></tr>
+ <tr><td><span class="btn on">LE</span></td><td>O LE vigente do dia, original, sem reprojeção. É feito pelo time de Demanda em produto misturado; o simulador já mostra convertido para o produto puro.</td></tr>
+ <tr><td><span class="btn">Pedidos em tela</span></td><td>O total de pedidos do dia no SAP (VA05), em todos os status.</td></tr>
+ <tr><td><span class="btn">Real</span></td><td>O volume efetivamente faturado. Só preenche até o dia da última carga; os dias seguintes ficam em zero.</td></tr>
+ <tr><td><span class="btn">Disp MIS</span></td><td>A disponibilidade informada no MIS.</td></tr>
+</table>
+<div class="note warn"><b class="t">Rascunho por combinação de botões</b>O rascunho é guardado por base, produto, botão de Vendas e botão de Entrada. Se você editou com <span class="btn on">LE</span> e depois clicou em <span class="btn">VMD</span>, as edições não são perdidas: continuam guardadas no <span class="btn">LE</span>. Os dias anteriores a hoje usam o mesmo dado em todos os botões.</div>
+
+<h3>Sugestão de cadência <small>botões ao lado do Restaurar</small></h3>
+<p>São três botões. Cada um preenche a linha <strong>Cadência sugerida</strong> com cargas de 60 m³, de amanhã em diante, buscando um objetivo diferente. Os exemplos usam um tanque de <strong>180 m³</strong>.</p>
+
+<div class="panel junto">
+<h3 style="margin-top:0">1. Encher o tanque</h3>
+<table class="t">
+ <tr><th style="width:26%">Para que serve</th><td>Manter o tanque bem abastecido, perto da capacidade.</td></tr>
+ <tr><th>Quando sugere carga</th><td>No dia em que o saldo ficaria abaixo de <strong>70% da capacidade do tanque</strong>.</td></tr>
+ <tr><th>Quantas cargas</th><td>As necessárias para o saldo voltar a 70% ou mais, sem passar da capacidade.</td></tr>
+ <tr><th>Exemplo</th><td>70% de 180 = 126 m³. Saldo do dia sem carga de 95 m³: está abaixo de 126, então sugere 1 carga (95 + 60 = 155). Com saldo de 20 m³, sugere 2 cargas (20 + 60 + 60 = 140). Com saldo de 122 m³, uma carga daria 182 e passaria do tanque: não sugere e a célula fica em vermelho.</td></tr>
+</table>
+</div>
+
+<div class="panel junto">
+<h3 style="margin-top:0">2. Estoque mínimo</h3>
+<table class="t">
+ <tr><th style="width:26%">Para que serve</th><td>Garantir só o necessário para não ficar abaixo do estoque mínimo da política, com o menor número de cargas.</td></tr>
+ <tr><th>Quando sugere carga</th><td>No dia em que o saldo ficaria abaixo do <strong>estoque mínimo</strong> da política.</td></tr>
+ <tr><th>Quantas cargas</th><td>As necessárias para o saldo chegar ao mínimo ou mais, sem passar da capacidade.</td></tr>
+ <tr><th>Exemplo</th><td>Estoque mínimo de 105 m³. Saldo do dia sem carga de 95 m³: está abaixo de 105, então sugere 1 carga (95 + 60 = 155). Com saldo de 122 m³, já está acima do mínimo e não sugere nada.</td></tr>
+</table>
+</div>
+
+<div class="panel junto">
+<h3 style="margin-top:0">3. Venda média da rede</h3>
+<table class="t">
+ <tr><th style="width:26%">Para que serve</th><td>Manter no tanque cerca de um dia de venda da rede, sem acumular estoque.</td></tr>
+ <tr><th>O que é a venda média da rede</th><td>A média, de segunda a sexta, da venda prevista na semana só do segmento Rede (sem Spot), já ajustada pelo ritmo de venda da semana. Muda de uma semana para a outra.</td></tr>
+ <tr><th>Quando sugere carga</th><td>No dia em que o saldo ficaria abaixo da <strong>venda média da rede</strong>.</td></tr>
+ <tr><th>Quantas cargas</th><td>As que deixam o saldo o <strong>mais perto possível</strong> da venda média, sem deixar o estoque negativo e sem passar da capacidade. Se uma carga levar o saldo para mais longe da média do que ele já está, não sugere.</td></tr>
+ <tr><th>Exemplo</th><td>Venda média de 60 m³. Saldo do dia sem carga de 20 m³: com 1 carga fica 80 (20 acima da média), sem carga fica 20 (40 abaixo). 80 está mais perto, então sugere 1 carga. Com saldo de 50 m³: sem carga fica 50 (10 abaixo) e com carga fica 110 (50 acima), então não sugere. Com saldo negativo, sugere pelo menos as cargas necessárias para não faltar produto.</td></tr>
+</table>
+</div>
+
+<p><strong>Vale para os três botões:</strong></p>
+<ul>
+ <li>A sugestão nunca deixa o estoque passar da capacidade do tanque, nem no dia da carga nem nos dias seguintes. Quando precisa e não cabe, a célula do dia fica em vermelho; passe o mouse para ver o motivo.</li>
+ <li><strong>A sugestão monta a cadência do zero.</strong> Considera a abertura, o trânsito real (caminhão com placa ou já em viagem, inclusive transferências em viagem) e as saídas (vendas e transferências de saída). A cadência planejada — bombeio da cadência MIS e transferências ainda programadas — sai da conta e da tabela de amanhã em diante, e a sugestão entra no lugar. O <span class="btn">↺ Restaurar</span> traz a cadência planejada de volta.</li>
+ <li>Cada clique refaz a sugestão do zero, considerando o que estiver na tela, inclusive o que você editou.</li>
+ <li>Base e produto sem capacidade estabelecida (venda no bico) não recebem sugestão.</li>
+ <li>A linha é editável e o <span class="btn">↺ Restaurar</span> apaga a sugestão. A sugestão é só uma simulação: para valer, a carga precisa ser programada no MIS e no portal inbound.</li>
+ <li>Ainda não entram: a antecedência para programar a carga, o limite de cargas por dia e os dias em que a base não recebe.</li>
+</ul>
+<h3>Como editar um volume</h3>
+<ol class="passos">
+ <li>Clique na célula colorida (FOB, CIF, Bombeio ou Vendas) do dia que quer mudar.</li>
+ <li>Digite o volume em m³. Não é aceito número negativo.</li>
+ <li>As aberturas dos dias seguintes, os totais, o gráfico, os cartões e os alertas são recalculados na hora.</li>
+ <li>A célula editada ganha um <strong style="color:var(--lime)">traço amarelo embaixo</strong> e o número fica amarelo. O selo passa a “SALVO NESTE NAVEGADOR”.</li>
+ <li>Para desfazer tudo, clique em <span class="btn">↺ Restaurar</span>.</li>
+</ol>
+<p>Quando chega uma carga nova das fontes ou um trânsito novo, o portal atualiza só as células que você <strong>não</strong> editou. O que você digitou continua lá. Se você estiver digitando no momento, ele espera você sair do campo.</p>
+
+<h3>Popups: passe o mouse ou clique</h3>
+<div class="grid2">
+ <div class="pop"><strong>Vendas · 13/10/2026</strong><hr>
+  <div class="l"><span>VMD</span><span>209 m³</span></div><div class="l"><span>LE vigente</span><span>205 m³</span></div><div class="l"><span>Pedidos em tela</span><span>172 m³</span></div><div class="l"><span>Vendas reais</span><span>Sem dado</span></div><hr>
+  <p>Cenário: <strong style="color:#fff">LE</strong></p><p>Aplicado: <strong style="color:#fff">205 m³</strong></p></div>
+ <div class="pop"><strong>Trânsito FOB · 13/10/2026</strong><hr>
+  <div style="color:#60A5FA"><b style="font-size:8.6pt">Viagem NXT-000000</b><br><span style="font-size:8.2pt">Origem: Fornecedor → Destino: Cidade · Depósito · Empresa<br>Transportadora · ABC1D23 · 60 m³ · Em Andamento · 85 km restantes · ETA 12/10 16:20 · <strong style="color:var(--roxo)">ETA após 15h → considerado no dia seguinte</strong></span></div><hr>
+  <div style="color:#F97316"><b style="font-size:8.6pt">Não programado (sem placa) · Viagem NXT-000001</b><br><span style="font-size:8.2pt">60 m³ · Aceito</span></div></div>
+</div>
+<p class="legenda-mock" style="margin-top:2mm">Ilustração dos popups de Vendas e de Trânsito FOB.</p>
+<table class="t">
+ <tr><th style="width:30%">Onde passar o mouse</th><th>O que aparece</th></tr>
+ <tr><td>Célula de Vendas</td><td>As quatro referências do dia (VMD, LE vigente, Pedidos em tela, Vendas reais), o cenário ligado e o volume aplicado, com a marca “editado” se você mexeu.</td></tr>
+ <tr><td>Célula de FOB ou CIF</td><td>Cada viagem do dia: ID, origem → destino, transportadora, placa, volume, status, km restantes e ETA ou hora de chegada. <span style="color:#60A5FA">Azul</span> = conta no estoque. <span style="color:#F97316">Laranja</span> = não programada. Vale também nos dias de histórico.</td></tr>
+ <tr><td>Abertura do dia de referência</td><td>O volume e a data da leitura. No modo combinado ou no depósito compartilhado, uma linha por depósito/empresa.</td></tr>
+</table>
+<p>Para fechar um popup: tire o mouse, clique fora ou aperte <strong>Esc</strong>.</p>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="c6">
+<h2><span class="num">6</span>O gráfico e o ritmo da semana</h2>
+<p class="lead">O gráfico “Histórico e projeção” mostra os mesmos dias da tabela logo abaixo, com cada barra em cima da coluna do seu dia; com <span class="btn">+ dias</span>, entram os 5 dias anteriores. Ao editar um volume na tabela, a barra muda.</p>
+<div class="mock" style="padding:3mm"><div id="grafico-mock"></div></div>
+<p class="legenda-mock">Ilustração do gráfico com números de exemplo.</p>
+<div class="grid2">
+ <div>
+ <h3 style="margin-top:0">Barras <small>empilhadas, por dia</small></h3>
+ <table class="t">
+  <tr><td><span class="cor" style="background:#F9B96B"></span>Lastro mínimo</td><td>Faixa da base da barra.</td></tr>
+  <tr><td><span class="cor" style="background:#3AAE9C"></span>Abertura − lastro</td><td>Estoque disponível na abertura. É o número escrito na barra.</td></tr>
+  <tr><td><span class="cor" style="background:#C8F2EC"></span>Recebimentos</td><td>No histórico, o recebido no SAP.</td></tr>
+  <tr><td><span class="cor" style="background:#9EDFD6"></span>Prog. Bombeio</td><td>Bombeio do dia.</td></tr>
+  <tr><td><span class="cor" style="background:#7FC4BA"></span>Prog. Rodoviário</td><td>Programação rodoviária.</td></tr>
+  <tr><td><span class="cor" style="background:#A3E635"></span>Cadência sugerida</td><td>Cargas da linha Cadência sugerida.</td></tr>
+  <tr><td><span class="cor" style="background:#B0B0B0"></span>Trânsito FOB</td><td>FOB do dia.</td></tr>
+  <tr><td><span class="cor" style="background:#C084FC"></span>FOB · ETA após 15h</td><td>FOB empurrado para D+1 pela regra das 15h.</td></tr>
+  <tr><td><span class="cor" style="background:#F4F08A"></span>Trânsito CIF</td><td>CIF do dia.</td></tr>
+ </table>
+ </div>
+ <div>
+ <h3 style="margin-top:0">Linhas</h3>
+ <table class="t">
+  <tr><td><span class="cor" style="background:#FF4D4D"></span>Estoque mín</td><td>Tracejada.</td></tr>
+  <tr><td><span class="cor" style="background:#9CA3AF"></span>Estoque méd</td><td>Tracejada.</td></tr>
+  <tr><td><span class="cor" style="background:#4CAF1F"></span>Estoque máx</td><td>Tracejada.</td></tr>
+  <tr><td><span class="cor" style="background:#38BDF8"></span>Capacidade</td><td>Contínua, mais grossa.</td></tr>
+  <tr><td><span class="cor" style="background:#FFFFFF"></span>VMD reprojetada</td><td>VMD do dia.</td></tr>
+  <tr><td><span class="cor" style="background:#D9F99D"></span>Vendas planejadas</td><td>Venda planejada (LE).</td></tr>
+  <tr><td><span class="cor" style="background:#C8C8C8"></span>Vendas real</td><td>No histórico, o realizado.</td></tr>
+  <tr><td><span class="cor" style="background:#39FF14"></span>Disp. MIS</td><td>Disponibilidade MIS.</td></tr>
+ </table>
+ </div>
+</div>
+<ul>
+ <li><strong>Passe o mouse ou clique em um dia</strong> para abrir o detalhe completo: abertura, fechamento, venda aplicada, cada entrada, as viagens previstas ou que chegaram e quanto do LE da semana já foi realizado.</li>
+ <li>A coluna de <strong>hoje</strong> tem um fundo amarelo claro, e o dia da semana e a data ficam em amarelo.</li>
+ <li>A escala começa no zero. <strong>Estoque negativo não é desenhado</strong> no gráfico; o valor continua aparecendo na tabela.</li>
+</ul>
+
+<h3>Ritmo da semana <small>embaixo da tabela</small></h3>
+<div class="panel">
+ <div style="font-size:9pt;color:var(--dim);margin-bottom:1.6mm">Ritmo da semana (dados até 12/10, 09:30): <strong>206 de 1.380 m³ vendidos</strong> (15%)</div>
+ <div style="height:3mm;border-radius:99px;background:#17251B;border:1px solid var(--border);overflow:hidden"><div style="width:15%;height:100%;background:var(--danger)"></div></div>
+</div>
+<p>Compara o LE da semana com o que já foi vendido, em m³ e em percentual, e traz uma tabela com LE e Vendido de cada dia.</p>
+<table class="t">
+ <tr><th style="width:35%">Cor da barra</th><th>Quando</th></tr>
+ <tr><td><span class="cor" style="background:#8DC830"></span>Verde</td><td>70% ou mais do LE da semana já vendido. Acima de 100% aparece “já passou da meta da semana”.</td></tr>
+ <tr><td><span class="cor" style="background:#F97316"></span>Laranja</td><td>Entre 35% e 70%.</td></tr>
+ <tr><td><span class="cor" style="background:#FF6B5F"></span>Vermelho</td><td>Menos de 35%.</td></tr>
+</table>
+<div class="note"><b class="t">Produto puro</b>O ritmo é medido na venda dos produtos comerciais (Gasolina C, Diesel B S10, Diesel B S500 e Hidratado) e depois <strong>aberto pelo mix</strong>. Por isso ela aparece para seis produtos: Gasolina A, Anidro, Diesel S10 A, Diesel S500 A, Biodiesel (B100) e Hidratado. Olhando o Anidro, você vê os 32% da Gasolina C; olhando o Biodiesel, os 15% do Diesel S10 somados aos 15% do Diesel S500. Detalhes no <a href="#c10">item 10.6</a>.</div>
+<div class="note warn"><b class="t">Quando a barra não aparece</b>Ela deixa de aparecer quando o banco de faturamento não respondeu na última carga ou quando não há LE para a semana. Ela volta a aparecer automaticamente na carga seguinte.</div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="c7">
+<h2><span class="num">7</span>Política e cartões</h2>
+<p class="lead">Abaixo da tabela ficam os painéis de conferência. Nenhum deles é editável.</p>
+<h3>Política de estoque · carregada da planilha</h3>
+<p>Seis campos fixos, lidos de <strong>Premissas Politica Estoques.xlsx</strong> (aba Politica Vigente): Estoque inicial / abertura, Lastro mínimo, Estoque mínimo, Estoque médio e Estoque máximo, além da Capacidade física, que vem do mesmo arquivo (linha “Espaço (m³)”); base e produto sem esse valor aparecem como “Sem capacidade estabelecida”. A política <strong>não pode ser alterada na simulação</strong>; se encontrar alguma divergência, <strong>acione o administrador do simulador</strong>.</p>
+<div class="note warn"><b class="t">Abertura 0</b>Quando a base não salvou a abertura de hoje na aba Aberturas (nem na planilha de contingência), a abertura aparece como 0. A ordem completa das fontes está no <a href="#r10-2">item 10.2</a>.</div>
+
+<h3>Os quatro cartões</h3>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:4mm">
+ <div class="cardm"><small>Abertura de referência</small><b>1.250</b><em>m³ · início do dia</em></div>
+ <div class="cardm"><small>Fechamento ao fim de 14 dias</small><b>1.012</b><em>m³ · diferença de 300 vs. original</em></div>
+ <div class="cardm"><small>Menor estoque no período</small><b style="color:var(--accent)">884</b><em>m³ · abertura e fechamento</em></div>
+ <div class="cardm"><small>Primeira atenção</small><b>Sem alerta de limite</b><em>Verifique os limites</em></div>
+</div>
+<table class="t">
+ <tr><th style="width:33%">Cartão</th><th>O que mostra</th></tr>
+ <tr><td>Abertura de referência</td><td>O estoque de partida da simulação.</td></tr>
+ <tr><td>Fechamento ao fim de 14 dias</td><td>Onde o estoque termina, e a diferença contra os dados originais da fonte. É assim que você mede o efeito das suas edições.</td></tr>
+ <tr><td>Menor estoque no período</td><td>O ponto mais baixo, considerando abertura e fechamento de cada dia. A cor segue as faixas da política.</td></tr>
+ <tr><td>Primeira atenção</td><td>O primeiro dia em que o estoque chega ao médio ou abaixo. Se não houver, “Sem alerta de limite”.</td></tr>
+</table>
+
+<h3>Painéis de apoio</h3>
+<table class="t">
+ <tr><th style="width:36%">Painel</th><th>Para que serve</th></tr>
+ <tr><td>Conferir os valores originais das fontes para o dia selecionado</td><td>Recolhido. Mostra os valores lidos das fontes, sem as suas edições.</td></tr>
+ <tr><td>Semana anterior · histórico da fonte</td><td>Aberturas reais dos dias anteriores. “—” significa informação ainda não integrada.</td></tr>
+ <tr><td>Fontes dos dados</td><td>Recolhido. Diz de qual arquivo, aba e linha veio a abertura, a hora da extração e um resumo das regras.</td></tr>
+</table>
+<h3>O que gera um ponto de atenção</h3>
+<table class="t">
+ <tr><th style="width:36%">Alerta</th><th>Quando aparece</th></tr>
+ <tr><td>Déficit físico de X m³</td><td>A abertura ou o fechamento do dia ficou negativo.</td></tr>
+ <tr><td>Estoque abaixo do lastro</td><td>O menor valor do dia ficou abaixo do lastro.</td></tr>
+ <tr><td>No mínimo ou abaixo em X m³</td><td>O menor valor do dia é igual ou menor que o estoque mínimo.</td></tr>
+ <tr><td>Capacidade excedida em X m³</td><td>O estoque do dia ficou maior que a capacidade do tanque. O produto não cabe.</td></tr>
+ <tr><td>Acima do estoque máximo</td><td>O estoque do dia ficou acima do estoque máximo da política, mas ainda cabe no tanque.</td></tr>
+</table>
+<p>Estoque máximo e capacidade são limites diferentes. O <strong>estoque máximo</strong> é o teto que a política de estoque define para a base; a <strong>capacidade</strong> é o quanto cabe fisicamente no tanque. Por isso existem dois alertas: o primeiro avisa que o estoque está mais alto do que o planejado, e o segundo avisa que não há onde guardar.</p>
+<p>O portal avalia a abertura e o fechamento de cada dia. Ele <strong>não</strong> simula a ordem dos eventos dentro do dia (por exemplo, se a venda saiu antes de a carga chegar).</p>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="c8">
+<h2><span class="num">8</span>Salvar na equipe</h2>
+<p class="lead">O portal tem dois níveis de salvamento: o rascunho local e o cenário salvo na equipe.</p>
+<div class="grid2">
+ <div class="panel"><h3 style="margin-top:0">Rascunho local</h3>
+  <ul style="margin-bottom:0"><li>Automático, a cada edição.</li><li>Fica <strong>só no seu navegador</strong>, neste computador.</li><li>Ninguém mais vê.</li><li>É separado por usuário: outra conta no mesmo computador não enxerga o seu.</li><li>Limpar os dados do navegador apaga o rascunho.</li></ul></div>
+ <div class="panel" style="border-color:var(--accent)"><h3 style="margin-top:0;color:var(--lime)">Salvo na equipe</h3>
+  <ul style="margin-bottom:0"><li>Manual, pelo botão <span class="btn primary">Salvar na equipe</span>.</li><li>Fica no servidor, visível para todos.</li><li>Fica registrado com seu nome e horário.</li><li>Cada versão é <strong>definitiva</strong>: não pode ser alterada nem apagada.</li></ul></div>
+</div>
+<h3>Passo a passo</h3>
+<ol class="passos">
+ <li>Monte o cenário na tabela (base única, não combinada).</li>
+ <li>Clique em <span class="btn primary">Salvar na equipe</span>, logo abaixo dos filtros.</li>
+ <li>Confirme ou troque o <strong>nome do cenário</strong> (até 80 caracteres).</li>
+ <li>Se já existe uma versão salva hoje para a mesma base, produto e cenário de venda, o portal mostra quem salvou e pergunta se você quer criar uma nova versão.</li>
+ <li>Se confirmar, informe o <strong>motivo</strong>. Ele é obrigatório e fica visível para a equipe.</li>
+ <li>Pronto: aparece a mensagem “Cenário salvo para a equipe”.</li>
+</ol>
+<h3>Regras</h3>
+<table class="t">
+ <tr><th style="width:37%">Situação</th><th>O que acontece</th></tr>
+ <tr><td>Nova versão no mesmo dia</td><td>Vira v2, v3… A anterior continua no histórico. As telas mostram sempre a versão mais recente.</td></tr>
+ <tr><td>Você respondeu “não” à nova versão</td><td>O cenário fica salvo para a equipe, mas a nova versão do dia não é registrada.</td></tr>
+ <tr><td>Motivo em branco</td><td>A nova versão não é gravada.</td></tr>
+ <tr><td>Duas pessoas salvando ao mesmo tempo</td><td>Cada uma recebe um número de versão diferente; nenhuma sobrescreve a outra.</td></tr>
+ <tr><td>“Cenário alterado por outra pessoa”</td><td>Alguém salvou enquanto você editava. Recarregue a página e salve de novo.</td></tr>
+ <tr><td>Modo combinado</td><td>O botão fica desligado. Selecione um depósito e uma empresa só.</td></tr>
+</table>
+<p>Cada versão salva guarda: base, depósito, produto, cenário de venda, nome, motivo, todos os volumes da simulação e os indicadores de risco calculados naquele momento (menor estoque, dia do menor estoque, dias críticos, dias em atenção e data da primeira ruptura).</p>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="c9">
+<h2><span class="num">9</span>Alertas e Histórico</h2>
+<p class="lead">O portal é dividido em quatro abas, na faixa logo abaixo do cabeçalho: <span class="btn">① Simulação de estoques</span> (filtros, gráfico e tabela de duas semanas), <span class="btn">② Alertas</span>, <span class="btn">③ Cenário</span> (ranking de dias de estoque, quadro por produto e política de estoque da base escolhida) e <span class="btn">④ Histórico</span>. O portal lembra a última aba usada. A aba Alertas mostra, para cada cidade e produto, se o estoque fica dentro da política de hoje até 5 dias à frente.</p>
+<p>O cálculo é feito na hora em que o painel abre, para todas as bases, com as entradas das fontes automáticas e as vendas pela <strong>VMD reprojetada</strong>. Não depende de ninguém ter salvo cenário, e edições feitas na tabela de simulação não entram.</p>
+
+<h3>Como a situação é classificada</h3>
+<table class="t">
+ <tr><th style="width:26%">Situação</th><th>Regra, olhando de hoje até 5 dias à frente</th></tr>
+ <tr><td><span class="cor" style="background:#8B0000"></span>Crítico hoje</td><td>O fechamento de hoje fica negativo ou abaixo do lastro.</td></tr>
+ <tr><td><span class="cor" style="background:#FF6B5F"></span>Crítico de amanhã a D+5</td><td>Hoje não é crítico, mas em algum dia até D+5 o fechamento fica negativo ou abaixo do lastro. A célula mostra a data do primeiro dia crítico.</td></tr>
+ <tr><td><span class="cor" style="background:#FACC15"></span>Atenção</td><td>Nenhum dia crítico, mas em algum dia o fechamento fica igual ou abaixo do estoque mínimo.</td></tr>
+ <tr><td><span class="cor" style="background:var(--accent)"></span>OK</td><td>Nenhuma das situações acima.</td></tr>
+</table>
+<p>Quando a cidade tem mais de um depósito ou empresa para o mesmo produto, vale o <strong>pior</strong> deles. Depósitos sem venda prevista (sem VMD) de hoje até D+5 e depósitos sem capacidade de tanque estabelecida (venda no bico) não entram na aba Alertas. Assim, a falta em um depósito não fica escondida pela sobra de outro. As células críticas (os dois tons de vermelho) piscam; passar o mouse sobre a célula interrompe o efeito.</p>
+
+<h3>O que aparece no painel</h3>
+<table class="t">
+ <tr><th style="width:30%">Elemento</th><th>O que é</th></tr>
+ <tr><td>Região · Cidade · Situação</td><td>Filtros. Em Cidade, digite parte do nome. Em Situação, “Crítico” mostra os dois tons de vermelho.</td></tr>
+ <tr><td>Barra colorida</td><td>Quantas combinações de cidade e produto estão em cada situação. O tamanho de cada cor é proporcional a essa quantidade, e não a volumes em m³.</td></tr>
+ <tr><td>Ranking de dias de estoque (aba Cenário)</td><td>Uma barra por cidade, da maior para a menor folga. Dias de estoque = (abertura − lastro + em trânsito) ÷ VMD planejada, somando os depósitos da cidade. Em trânsito, aqui, são só as viagens FOB em andamento ou finalizadas (sem CIF e sem viagens que ainda não saíram). O ticzinho “Considerar trânsito”, ao lado do filtro de produto, vem marcado; desmarcado, os dias de estoque contam só com a abertura. O portal lembra a última escolha. Exemplo: abertura de 300 m³ e VMD de 60 m³ por dia = 5,0 dias. Com <span class="campo">Todos os produtos</span>, soma todos os produtos e a barra fica em cor neutra; escolhendo um produto, a barra recebe a cor da situação daquela cidade na matriz da aba Alertas.</td></tr>
+ <tr><td>Quadro por produto (aba Cenário)</td><td>Ao lado do ranking: abertura de hoje menos o lastro mínimo, volume em trânsito, VMD planejada, dias de estoque, tamanho do tanque e autonomia do tanque de cada produto, somando todas as cidades, com uma linha de total no fim. VMD planejada = soma da VMD reprojetada de hoje até o fim do mês ÷ soma dos dias úteis equivalentes do período (aba “Dias úteis” da planilha previsao.xlsx; sábado vale cerca de 0,5 e domingo e feriado valem 0). A premissa de volume é o LE vigente, aberto para o produto puro e reprojetado na semana atual pelo ritmo de venda real. Autonomia do tanque = tamanho do tanque ÷ VMD dos depósitos com capacidade, ou seja, quantos dias de venda o tanque cheio aguenta. Exemplo: tanque de 428 m³ e VMD de 226 m³ por dia = 1,9 dia. Na linha de total, os dias de estoque e a autonomia são recalculados sobre os totais (total da abertura ÷ total da VMD), e não somados. Clique numa cidade do ranking para ver só ela; clique de novo, ou em <span class="btn">ver todas</span>, para voltar. O tamanho do tanque vem da linha “Espaço (m³)” de Premissas Politica Estoques.xlsx. Base e produto sem esse valor (venda no bico) aparecem como “Sem capacidade estabelecida”: ficam sem cores de capacidade na abertura e sem sugestão de cadência.</td></tr>
+ <tr><td>Matriz cidade × produto</td><td>Uma linha por cidade e uma coluna por produto, com OK, Atenção ou NOK. As cidades aparecem agrupadas por regional (SP, CO e MG + RJ) e, dentro de cada regional, as de situação mais grave vêm primeiro. “—” significa que a cidade não tem aquele produto. Passar o mouse abre um quadro com cada depósito e empresa daquela cidade, a situação de cada um, o menor fechamento e a data da ruptura, se houver. Clicar na célula abre o pior depósito daquela cidade e produto na tabela de simulação, já com as vendas pela VMD.</td></tr>
+</table>
+<p>Os cenários salvos com <span class="btn primary">Salvar na equipe</span> continuam guardados no servidor, mas não alteram a aba Alertas.</p>
+<h3>Aba Histórico</h3>
+<p>Mostra as simulações salvas pela equipe com <span class="btn primary">Salvar na equipe</span> no dia escolhido no campo <span class="campo">Dia</span> (hoje, ao abrir), agrupadas por cidade. Para cada base, produto e cenário aparece a versão mais recente: situação e menor estoque no momento em que foi salva, versão, autor, motivo e horário. O botão <span class="btn">Abrir</span> leva a base e o cenário para a aba de simulação.</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="c10">
+<h2><span class="num">10</span>Todas as regras de cálculo</h2>
+<p class="lead">Regras de cálculo usadas pelo portal e origem de cada número.</p>
+<div class="panel"><h3 style="margin-top:0">Neste capítulo</h3><div class="sumario mini-sumario"><a href="#r10-1"><b>10.1</b>A conta do estoque</a><a href="#r10-2"><b>10.2</b>Abertura</a><a href="#r10-3"><b>10.3</b>Política de estoque</a><a href="#r10-4"><b>10.4</b>Vendas</a><a href="#r10-5"><b>10.5</b>Reprojeção da VMD</a><a href="#r10-6"><b>10.6</b>Produto puro</a><a href="#r10-7"><b>10.7</b>Trânsito FOB e CIF</a><a href="#r10-8"><b>10.8</b>Bombeio, cadência, transferências e recebimentos</a><a href="#r10-9"><b>10.9</b>Dias de histórico</a><a href="#r10-10"><b>10.10</b>Regras de atualização</a></div></div>
+
+<div class="junto">
+<h3 id="r10-formulas">Todas as contas em uma página <small>para consultar rápido</small></h3>
+<p>Cada linha é uma conta do simulador, escrita de forma simples: <strong>resultado = como se calcula</strong>, com um exemplo de números ao lado. Os detalhes de cada uma estão nos itens seguintes.</p>
+<table class="t contas">
+ <tr><th style="width:27%">O que você quer saber</th><th>A conta</th><th style="width:27%">Exemplo</th></tr>
+ <tr><td>Quanto entra no dia</td><td><span class="fx">Entradas = FOB + CIF + Bombeio + Cadência sugerida + Transferência entrada</span></td><td>120 + 60 + 0 + 0 + 45 = <strong>225</strong></td></tr>
+ <tr><td>Como o estoque termina o dia</td><td><span class="fx">Saldo do dia = Abertura + Entradas − Vendas − Transferência saída</span></td><td>1.250 + 225 − 210 − 45 = <strong>1.220</strong></td></tr>
+ <tr><td>Como o estoque começa amanhã</td><td><span class="fx">Abertura de amanhã = Saldo de hoje</span></td><td><strong>1.220</strong></td></tr>
+ <tr><td>Quanto está disponível para uso</td><td><span class="fx">Estoque disponível = Abertura − Lastro</span></td><td>1.250 − 120 = <strong>1.130</strong></td></tr>
+ <tr><td>Ocupação do tanque (cor da abertura)</td><td><span class="fx">Ocupação = Abertura ÷ Capacidade do tanque</span></td><td>1.600 ÷ 2.000 = <strong>80%</strong> (verde)</td></tr>
+ <tr><td>Quando sugere carga · Encher o tanque</td><td><span class="fx">Saldo do dia &lt; 70% × Capacidade do tanque</span></td><td>95 &lt; 126 (70% de 180): <strong>sugere</strong></td></tr>
+ <tr><td>Quando sugere carga · Estoque mínimo</td><td><span class="fx">Saldo do dia &lt; Estoque mínimo</span></td><td>95 &lt; 105: <strong>sugere</strong></td></tr>
+ <tr><td>Quando sugere carga · Venda média da rede</td><td><span class="fx">Saldo do dia &lt; Venda média da rede</span></td><td>20 &lt; 60: 1 carga, saldo 80 (o mais perto de 60)</td></tr>
+ <tr><td>Venda média da rede na semana</td><td><span class="fx">Média de segunda a sexta da venda prevista da Rede (sem Spot), já reprojetada</span></td><td>(55 + 60 + 58 + 62 + 65) ÷ 5 = <strong>60</strong></td></tr>
+ <tr><td>Se a carga sugerida cabe</td><td><span class="fx">Saldo do dia + 60 ≤ Capacidade do tanque</span></td><td>95 + 60 = 155 ≤ 180: <strong>cabe</strong></td></tr>
+ <tr><td>Quanto a semana ainda precisa vender</td><td><span class="fx">Falta vender = LE da semana − Já vendido</span></td><td>700 − 300 = <strong>400</strong></td></tr>
+ <tr><td>A venda prevista corrigida (VMD)</td><td><span class="fx">VMD = Falta vender ÷ Dias que restam</span><br><small>quando o LE é igual em todos os dias</small></td><td>400 ÷ 5 = <strong>80 por dia</strong></td></tr>
+ <tr><td>A VMD quando o LE muda de um dia para o outro</td><td><span class="fx">VMD do dia = Falta vender × LE do dia ÷ LE dos dias que restam</span></td><td>700 × 200 ÷ 800 = <strong>175</strong></td></tr>
+ <tr><td>Andamento da semana (barra)</td><td><span class="fx">Ritmo da semana = Já vendido ÷ LE da semana</span></td><td>300 ÷ 700 = <strong>43%</strong></td></tr>
+ <tr><td>Quanto de produto puro sai em cada venda</td><td><span class="fx">Produto puro = Volume vendido × % do mix</span></td><td>100 de Gasolina C × 32% = <strong>32 de Anidro</strong></td></tr>
+</table>
+<p>Todos os volumes estão em m³. “Vendas” é a linha vermelha da tabela; “Entradas” são as linhas verdes.</p>
+</div>
+<h3 id="r10-1">10.1 A conta do estoque</h3>
+<div class="formula">Fechamento = Abertura + (FOB + CIF + Bombeio + demais entradas) − (Vendas + demais saídas)</div>
+<ul>
+ <li>A abertura do dia seguinte é o fechamento do dia anterior.</li>
+ <li><strong>Saldo negativo é transportado</strong>: o portal não zera um estoque que ficou negativo, justamente para mostrar o volume que falta para cobrir a demanda.</li>
+ <li><strong>O lastro fica dentro do estoque.</strong> O lastro é a parte do tanque que não pode ser usada, mas ele continua contando como volume. A conta do dia é feita com o estoque inteiro; o portal só mostra, numa linha separada, quanto sobra depois de tirar o lastro.
+  <br>Exemplo: abertura de 1.250 m³, lastro de 120 m³, entra 180 e vende 210.
+  <br>Saldo do dia = 1.250 + 180 − 210 = <strong>1.220 m³</strong> (o lastro não é subtraído aqui).
+  <br>Abertura menos lastro = 1.250 − 120 = <strong>1.130 m³</strong> (esse é o volume disponível para venda).
+  <br>Se o saldo de algum dia cair para menos de 120 m³, aparece o alerta “estoque abaixo do lastro”.</li>
+ <li>Zero na tela nem sempre significa ausência de movimento. Quando a fonte não traz valor para um dia (por exemplo, a cadência ainda não tem bombeio lançado para a semana que vem), o portal mostra 0 para conseguir fazer a conta. Isso significa “ninguém informou ainda”, e não “está confirmado que não vai ter”. Passe o mouse na célula: se for esse o caso, a dica mostra “sem valor na fonte, considerado zero na simulação”.</li>
+ <li>A tela mostra números inteiros. A conta interna usa os valores completos, então a soma dos números arredondados pode diferir em 1 m³.</li>
+</ul>
+
+<h3 id="r10-2">10.2 Abertura</h3>
+<p>A abertura é sempre a <strong>do dia</strong>, por base e produto, nesta ordem:</p>
+<ol class="passos">
+ <li><strong>Aba Aberturas do portal</strong> (fonte oficial desde 28/10/2026). A base lança o estoque em litros e o simulador converte para m³. Valor negativo também vale.</li>
+ <li><strong>Planilha diária de abertura</strong> do mesmo dia (contingência). Só é usada se a base não salvou no portal.</li>
+ <li><strong>Nenhum dos dois:</strong> a abertura fica <strong>0</strong>. O simulador <strong>não</strong> busca mais no MIS nem repete o valor de dias anteriores.</li>
+</ol>
+<div class="note warn"><b class="t">Abertura 0 = a base não lançou</b>Se a abertura de uma base aparecer zerada, primeiro confira se ela foi salva na aba Aberturas hoje. Um <strong>zero salvo</strong> no portal também vale, mesmo que o MIS diga outra coisa: o portal é a fonte oficial.</div>
+<ul>
+ <li>Para saber de onde veio a abertura, abra o painel “Fontes dos dados”: ele mostra “Portal”, ou a aba e a linha da planilha.</li>
+ <li>Nos dias passados, a abertura que vale é a que foi lançada naquele dia (ver <a href="#r10-9">10.9</a>).</li>
+</ul>
+
+<h3 id="r10-3">10.3 Política de estoque</h3>
+<p>Lastro, mínimo, médio e máximo vêm de <strong>Premissas Politica Estoques.xlsx</strong>, aba Politica Vigente. A <strong>capacidade do tanque</strong> vem do mesmo arquivo, linha <strong>“Espaço (m³)”</strong>, por depósito e produto; no depósito usado por SIM e Nexta juntas, as capacidades das duas empresas são somadas. Sem valor na planilha, a base fica sem capacidade e não recebe o aviso de “acima da capacidade”. São fixos na tela. Se encontrar alguma divergência nesses valores, acione o administrador do simulador. Se um campo estiver vazio na planilha, os alertas que dependem dele ficam indisponíveis.</p>
+
+<h3 id="r10-4">10.4 Vendas <small>as cinco fontes</small></h3>
+<table class="t">
+ <tr><th style="width:20%">Fonte</th><th>Origem</th><th style="width:36%">Regra</th></tr>
+ <tr><td>LE</td><td>LE vigente (Previsão de Vendas), feito pelo time de Demanda em produto misturado. O simulador converte para produto puro, em m³.</td><td>Valor original do dia, sem ajuste.</td></tr>
+ <tr><td>VMD</td><td>LE + faturamento do banco de dados (DW).</td><td>LE reprojetado pelo ritmo real da semana (fórmula abaixo).</td></tr>
+ <tr><td>Pedidos em tela</td><td>SAP VA05.</td><td>Soma dos pedidos do dia, em todos os status.</td></tr>
+ <tr><td>Real</td><td>Faturamento do banco de dados (DW).</td><td>Faturado por dia, <strong>sem</strong> vendas para empresas do grupo e <strong>sem</strong> devoluções. Só até a data da última carga.</td></tr>
+ <tr><td>Disp MIS</td><td>MIS.</td><td>Disponibilidade informada para o dia.</td></tr>
+</table>
+<h3 id="r10-5">10.5 Reprojeção da VMD</h3>
+<p>A VMD é o LE corrigido pelo que a semana já vendeu. A meta da semana não muda; o que muda é quanto ainda falta vender nos dias que restam.</p>
+<div class="grid2">
+ <div class="panel"><h3 style="margin-top:0">Vendeu <span style="color:var(--lime)">mais</span> que o previsto</h3><p style="margin-bottom:0">Sobra menos para vender no resto da semana. A VMD dos próximos dias <strong>cai</strong>.</p></div>
+ <div class="panel"><h3 style="margin-top:0">Vendeu <span style="color:var(--orange)">menos</span> que o previsto</h3><p style="margin-bottom:0">Sobra mais para vender no resto da semana. A VMD dos próximos dias <strong>sobe</strong>.</p></div>
+</div>
+
+<h3>Exemplo passo a passo</h3>
+<p>Uma cidade tem LE de <strong>100 m³ por dia</strong>, de segunda a domingo. A meta da semana é <strong>700 m³</strong>. Hoje é <strong>quarta-feira</strong>.</p>
+<div class="panel">
+<h3 style="margin-top:0;color:var(--lime)">De manhã</h3>
+<ol class="passos" style="margin-bottom:2mm">
+ <li><strong>Quanto já vendeu?</strong> Segunda vendeu 160 e terça vendeu 140. Total: <strong>300 m³</strong> (o previsto era 200).</li>
+ <li><strong>Quanto falta para a meta?</strong> 700 − 300 = <strong>400 m³</strong>.</li>
+ <li><strong>Em quantos dias?</strong> De quarta a domingo: <strong>5 dias</strong>.</li>
+ <li><strong>VMD =</strong> 400 ÷ 5 = <strong>80 m³ por dia</strong>, no lugar dos 100 do LE.</li>
+</ol>
+<table class="t" style="margin-bottom:0">
+ <tr><th style="width:26%"></th><th>seg</th><th>ter</th><th style="color:#111A0A;background:var(--lime)">qua (hoje)</th><th>qui</th><th>sex</th><th>sáb</th><th>dom</th></tr>
+ <tr><td>LE</td><td>100</td><td>100</td><td>100</td><td>100</td><td>100</td><td>100</td><td>100</td></tr>
+ <tr><td>Vendido</td><td>160</td><td>140</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+ <tr><td style="color:var(--lime)">VMD</td><td>—</td><td>—</td><td style="color:var(--lime)"><strong>80</strong></td><td style="color:var(--lime)"><strong>80</strong></td><td style="color:var(--lime)"><strong>80</strong></td><td style="color:var(--lime)"><strong>80</strong></td><td style="color:var(--lime)"><strong>80</strong></td></tr>
+</table>
+</div>
+<div class="panel">
+<h3 style="margin-top:0;color:var(--lime)">À tarde, a partir das 13h</h3>
+<p>A partir das 13h o portal passa a enxergar o que foi vendido <strong>hoje</strong> (os pedidos do dia no SAP) e refaz a conta para os dias de <strong>amanhã em diante</strong>. Suponha que a quarta já vendeu 120 m³.</p>
+<ol class="passos" style="margin-bottom:2mm">
+ <li><strong>Quanto já vendeu?</strong> 300 até terça + 120 de hoje = <strong>420 m³</strong>.</li>
+ <li><strong>Quanto falta para a meta?</strong> 700 − 420 = <strong>280 m³</strong>.</li>
+ <li><strong>Em quantos dias?</strong> De quinta a domingo: <strong>4 dias</strong>.</li>
+ <li><strong>VMD de quinta em diante =</strong> 280 ÷ 4 = <strong>70 m³ por dia</strong>.</li>
+</ol>
+<table class="t" style="margin-bottom:2mm">
+ <tr><th style="width:26%"></th><th style="color:#111A0A;background:var(--lime)">qua (hoje)</th><th>qui</th><th>sex</th><th>sáb</th><th>dom</th></tr>
+ <tr><td>VMD de manhã</td><td>80</td><td>80</td><td>80</td><td>80</td><td>80</td></tr>
+ <tr><td style="color:var(--lime)">VMD depois das 13h</td><td>80</td><td style="color:var(--lime)"><strong>70</strong></td><td style="color:var(--lime)"><strong>70</strong></td><td style="color:var(--lime)"><strong>70</strong></td><td style="color:var(--lime)"><strong>70</strong></td></tr>
+</table>
+<p style="margin-bottom:0">A VMD de <strong>hoje não muda</strong> (continua 80): a venda do dia só corrige os dias seguintes.</p>
+</div>
+
+<div class="junto">
+<h3>Resumo da regra</h3>
+<table class="t">
+ <tr><th style="width:34%">Situação</th><th>O que acontece</th></tr>
+ <tr><td>De manhã (antes das 13h)</td><td>A VMD já vem corrigida pelo que foi vendido <strong>até ontem</strong>.</td></tr>
+ <tr><td>A partir das 13h</td><td>A VMD de <strong>amanhã em diante</strong> é corrigida de novo, agora com a venda de hoje (pedidos do dia no SAP). Recarregue a página (F5) para ver.</td></tr>
+ <tr><td>Segunda-feira de manhã</td><td>Ainda não há venda na semana: a VMD é igual ao LE.</td></tr>
+ <tr><td>Semana que vem</td><td>Sempre igual ao LE. A correção vale só até o domingo da semana corrente.</td></tr>
+ <tr><td>A semana já atingiu a meta</td><td>Não falta nada para vender: a VMD dos dias restantes fica em <strong>zero</strong>. Nesse caso use o botão <span class="btn">LE</span> ou <span class="btn">Pedidos em tela</span>.</td></tr>
+ <tr><td>O banco de faturamento não respondeu</td><td>O portal usa o LE sem correção e mostra “⚠ banco sem resposta” na linha.</td></tr>
+</table>
+</div>
+
+<div class="junto">
+<h3>Quando o LE varia de um dia para o outro</h3>
+<p>No exemplo, o LE era 100 em todos os dias, então bastou dividir pelos dias. Na prática o LE do sábado e do domingo costuma ser menor. Nesse caso o portal não divide em partes iguais: ele distribui o que falta <strong>na mesma proporção do LE de cada dia</strong>. Um dia com LE maior recebe uma parte maior.</p>
+<div class="formula">VMD do dia = Falta vender × LE do dia ÷ LE dos dias que restam<small>Exemplo: faltam 700 m³ e restam 800 m³ de LE. Um dia com LE de 200 fica com 700 × 200 ÷ 800 = 175 m³; um sábado com LE de 120 fica com 105 m³.</small></div>
+</div>
+
+<p><strong>Outros detalhes:</strong></p>
+<ul>
+ <li>A semana vai de <strong>segunda a domingo</strong>.</li>
+ <li>A conta é feita por <strong>cidade e produto vendido</strong> (Gasolina, Diesel S10, Diesel S500 e Hidratado) e o resultado é aplicado a cada depósito da cidade.</li>
+ <li>O <strong>Anidro</strong> acompanha a correção da Gasolina e o <strong>Biodiesel</strong> acompanha a do Diesel S10 e a do Diesel S500 (veja o <a href="#c10">item 10.6</a>). Os demais produtos usam o LE sem correção.</li>
+ <li><strong>De onde vem o “já vendido”:</strong> nos dias anteriores, é o que foi <strong>faturado</strong>. Hoje, são os <strong>pedidos do dia no SAP (VA05)</strong>, porque as notas ainda estão sendo emitidas.</li>
+ <li><strong>O que não entra no “já vendido”:</strong> vendas para <strong>empresas do próprio grupo</strong> (o produto só muda de empresa, não sai para o mercado) e <strong>devoluções</strong> (nota de devolução de cliente ou própria). É a mesma regra do BI.
+  <div class="note warn" style="margin:2mm 0 0"><b class="t">Por que isso importa · caso real de Betim Diesel S500 (07/11)</b>Antes dessa regra, uma venda grande para uma empresa do grupo entrava como “já vendido”. A conta achava que a semana já tinha batido a meta (falta vender = 0) e a VMD do sábado ficou <strong>zerada</strong>. Sem essa venda, o vendido da semana voltou para o mesmo número do BI e a VMD voltou ao normal.</div></li>
+ <li><strong>O que conta como “13h”:</strong> a hora em que o arquivo de pedidos do SAP (VA05) foi atualizado pela última vez, e não a hora do relógio. Se o VA05 atrasar, a segunda correção também atrasa.</li>
+ <li>A venda de hoje só aparece na linha “Vendas reais” e na barra do ritmo da semana depois desse corte das <strong>13h</strong>. Antes disso, hoje aparece como “sem dado”.</li>
+ <li>Nos dias de histórico (botão <span class="btn">+ dias</span>), a linha “VMD reprojetada” mostra a VMD que valia <strong>naquele dia</strong>.</li>
+ <li>Para comparar a VMD com o LE lado a lado, abra <span class="btn">+ linhas</span> na tabela.</li>
+</ul>
+<h3 id="r10-6">10.6 Produto puro</h3>
+<div class="note"><b class="t">LE em produto misturado</b>O LE é feito pelo <strong>time de Demanda</strong> e vem em <strong>produto misturado</strong>, que é o que o cliente compra (Gasolina C, Diesel B S10, Diesel B S500, Hidratado). O simulador faz a conversão para <strong>produto puro</strong> automaticamente, para <strong>todos os produtos</strong> do LE. Você não precisa fazer nenhuma conta: o que aparece na tela já é o volume do produto puro selecionado.</div>
+<p>O estoque das bases é de produto puro, mas a venda é de produto misturado. Por isso, tudo que chega misturado (LE, pedidos e faturamento) é <strong>aberto pelo mix cadastrado</strong> antes de entrar na conta.</p>
+<table class="t">
+ <tr><th style="width:30%">Produto vendido</th><th>Vira, no estoque</th></tr>
+ <tr><td>Gasolina C</td><td><strong>68%</strong> Gasolina A + <strong>32%</strong> Anidro</td></tr>
+ <tr><td>Gasolina Premium</td><td><strong>75%</strong> Gasolina Premium + <strong>25%</strong> Anidro</td></tr>
+ <tr><td>Diesel B S10</td><td><strong>85%</strong> Diesel S10 A + <strong>15%</strong> Biodiesel (B100)</td></tr>
+ <tr><td>Diesel B S500</td><td><strong>85%</strong> Diesel S500 A + <strong>15%</strong> Biodiesel (B100)</td></tr>
+ <tr><td>Hidratado</td><td>100% Hidratado</td></tr>
+</table>
+<p>Os percentuais vêm da aba de mix do cadastro do simulador e têm data de vigência. Os valores acima são os vigentes em outubro de 2026; se o mix mudar no cadastro, o portal passa a usar o novo mix automaticamente.</p>
+<div class="panel">
+<h3 style="margin-top:0;color:var(--lime)">Exemplo · de onde vem a venda do Anidro e do Biodiesel</h3>
+<p>Em um dia, o LE da cidade é de <strong>100 m³ de Gasolina C</strong>, <strong>200 m³ de Diesel B S10</strong> e <strong>100 m³ de Diesel B S500</strong>.</p>
+<table class="t" style="margin-bottom:3mm">
+ <tr><th style="width:30%">Produto puro</th><th>Conta</th><th style="width:18%">Venda no dia</th></tr>
+ <tr><td>Gasolina A</td><td>100 × 68%</td><td><strong>68 m³</strong></td></tr>
+ <tr><td>Anidro</td><td>100 × 32%</td><td><strong>32 m³</strong></td></tr>
+ <tr><td>Diesel S10 A</td><td>200 × 85%</td><td><strong>170 m³</strong></td></tr>
+ <tr><td>Diesel S500 A</td><td>100 × 85%</td><td><strong>85 m³</strong></td></tr>
+ <tr><td>Biodiesel (B100)</td><td>(200 × 15%) + (100 × 15%) = 30 + 15</td><td><strong>45 m³</strong></td></tr>
+</table>
+<p style="margin-bottom:0"><strong>E na reprojeção?</strong> O Anidro usa o fator da Gasolina. O Biodiesel usa os dois: a fatia que veio do S10 é multiplicada pelo fator do Diesel S10 e a que veio do S500, pelo fator do Diesel S500. Se o fator do S10 for 0,9 e o do S500 for 1,2, a VMD do Biodiesel é 30 × 0,9 + 15 × 1,2 = <strong>45 m³</strong> (27 + 18).</p>
+</div>
+<ul>
+ <li>O mesmo vale para o <strong>Ritmo da semana</strong>: o LE e o vendido mostrados são a fatia do produto puro selecionado, não o volume do produto misturado.</li>
+ <li><strong>As compras já chegam em produto puro.</strong> Tudo que entra pelo portal inbound (trânsito FOB e CIF) é Gasolina A, Anidro, Diesel A S10, Diesel A S500, B100 ou Hidratado, e soma direto no estoque do próprio produto, sem conversão. A conversão pelo mix vale só para a <strong>venda</strong>.</li>
+ <li>Exceção rara: transferência de Diesel B (já misturado) entre bases próprias. Nesse caso o volume é dividido em diesel A e B100 pelo mesmo mix.</li>
+</ul>
+
+<h3 id="r10-7">10.7 Trânsito FOB e CIF</h3>
+<p>Fonte: portal inbound, com posição e ETA da Herrlog. Viagens canceladas são ignoradas.</p>
+<table class="t">
+ <tr><th style="width:27%">Viagem</th><th style="width:19%">Conta no estoque?</th><th>Em que dia</th></tr>
+ <tr><td>FOB · Viagem Finalizada</td><td>Sim</td><td>No dia real da chegada registrado pela Herrlog.</td></tr>
+ <tr><td>FOB · Em Andamento</td><td>Sim</td><td>No dia do ETA da Herrlog. Sem ETA ou com ETA já vencido: conta <strong>hoje</strong>.</td></tr>
+ <tr><td>FOB · Em Andamento com ETA às 15h ou depois</td><td>Sim</td><td>No <strong>dia seguinte</strong> ao ETA (regra das 15h).</td></tr>
+ <tr><td>FOB · Placa Enviada ou Frota Dedicada</td><td>Sim</td><td>Na data de descarga programada, enquanto a Herrlog ainda não rastreia o caminhão. Se essa data já passou: conta <strong>hoje</strong>. Quando a viagem fica Em Andamento, passa a valer o ETA da Herrlog.</td></tr>
+ <tr><td>FOB · Ofertado, Aceito ou Backlog</td><td>Não (só referência)</td><td>Na data de descarga programada. Só soma com <span class="btn">Programado + Não programado</span>.</td></tr>
+ <tr><td>CIF</td><td>Sim</td><td>Na data do ETA informado manualmente; sem ela, na data de descarga programada.</td></tr>
+</table>
+<div class="note"><b class="t">De hoje em diante, uma única fonte</b>Para os dias de hoje em diante, o FOB e o CIF vêm <strong>só do trânsito ao vivo</strong> (portal inbound + Herrlog). Dia sem viagem no trânsito ao vivo fica com <strong>0</strong>. Assim a mesma viagem nunca é contada em dois dias, nem somada de novo com a cadência MIS.</div>
+<div class="note roxo"><b class="t">Regra das 15h</b>Caminhão FOB em andamento com chegada prevista para as 15h ou mais tarde só deve descarregar no dia seguinte. Por isso o volume é contado em <strong>D+1</strong>. Na tela ele aparece em <strong style="color:var(--roxo)">roxo</strong>: pedaço roxo na barra do gráfico, borda roxa na célula do FOB e aviso no popup. Viagem já finalizada não sofre essa regra.</div>
+<div class="note warn"><b class="t">FOB contado hoje sem o caminhão ter chegado</b>Porque viagem em andamento sem ETA, ou com ETA vencido, é contada como chegando hoje. Acontece, por exemplo, quando o caminhão já está no destino mas a viagem não foi finalizada na Herrlog. O popup da célula mostra qual é a viagem.</div>
+
+<h3 id="r10-8">10.8 Bombeio, cadência, transferências e recebimentos</h3>
+<ul>
+ <li><strong>Bombeio:</strong> programação da cadência MIS, na data de descarga.</li>
+ <li><strong>Botão Cadência MIS:</strong> substitui FOB, CIF e bombeio de hoje em diante pelos volumes planejados na cadência MIS. Não soma com o trânsito do portal.</li>
+ <li><strong>Recebimentos reais (SAP):</strong> soma das movimentações do SAP por data de lançamento, material e base, incluindo estornos. Só existe nos dias de histórico e é referência, não entra na conta.</li>
+ <li>Os recebimentos da planilha diária não são somados de novo a essas entradas.</li>
+ <li><strong>Transferência · saída</strong> (base de origem, na data de carregamento) = viagens do portal inbound em que a base é o fornecedor + cargas da cadência MIS com origem na base, só nas semanas que o portal ainda não cobre. Cargas por trem ou duto (DAP) não contam como transferência: são abastecimento chegando no terminal.</li>
+ <li><strong>Transferência · entrada</strong> (base de destino, na data de descarga) = as mesmas cargas, vistas do outro lado. Se a viagem já estava no Trânsito FOB ou CIF, ela sai de lá e entra só nesta linha. A soma das duas bases não muda: o produto só troca de lugar.</li>
+ <li>Entre o carregamento e a descarga, o produto está no caminhão e não aparece em nenhum dos dois tanques. Transferência entre empresas no mesmo terminal (ex.: SIM → Nexta) debita uma e soma na outra; com as duas empresas juntas, o depósito não muda.</li>
+</ul>
+
+<p><strong>Tempo de viagem (lead time):</strong> não há um valor fixo. O simulador usa as datas das fontes: carregamento e descarga programados no portal e na cadência e, para o caminhão já na estrada, a previsão de chegada da Herrlog. Os botões de sugestão de cadência consideram a carga chegando no próprio dia em que é necessária e não usam a cadência planejada (ver capítulo 5).</p>
+<h3 id="r10-9">10.9 Dias de histórico</h3>
+<table class="t">
+ <tr><th style="width:30%">Linha no histórico</th><th>O que mostra</th></tr>
+ <tr><td>Abertura</td><td>A abertura informada naquele dia. O portal <strong>guarda a abertura dos últimos 5 dias</strong>, então ela continua aparecendo depois que o dia passa. No modo combinado (mais de um depósito ou empresa), aparece a soma. Se a base não informou naquele dia, aparece “—”.</td></tr>
+ <tr><td>Recebimentos reais (SAP)</td><td>O que o SAP <strong>lançou como recebido</strong> no depósito naquele dia (data de lançamento). É a mesma fonte que o BI usa para as entradas.</td></tr>
+ <tr><td>FOB e CIF</td><td>As viagens que chegaram, segundo o portal inbound e a Herrlog. Passe o mouse ou clique para ver o <strong>ID de cada viagem</strong> (NXT-…).</td></tr>
+ <tr><td>Vendas</td><td>O faturado no dia, sem empresas do grupo e sem devoluções.</td></tr>
+ <tr><td>Fechamento</td><td>A abertura do dia seguinte.</td></tr>
+</table>
+<p>A tabela e o gráfico mostram os mesmos dias: com o botão <span class="btn">+ dias</span>, os 5 dias anteriores aparecem nos dois.</p>
+
+<div class="junto">
+<h3>Conferência: SAP × viagens do portal</h3>
+<p>Nos dias passados existem duas visões do que entrou: o <strong>SAP</strong> (o que foi lançado) e o <strong>portal inbound</strong> (as viagens, com ID). O normal é as duas baterem. Quando não batem, o popup do dia avisa:</p>
+<table class="t">
+ <tr><th style="width:38%">Aviso no popup</th><th>O que quer dizer · o que fazer</th></tr>
+ <tr><td><span style="color:#FBBF24">Chegaram em outro depósito de &lt;cidade&gt;</span></td><td>Há viagens do mesmo produto e da mesma cidade que, no portal, foram para outro depósito. Muitas vezes é a carga que o SAP lançou aqui: o destino no portal está trocado.</td></tr>
+ <tr><td><span style="color:#F87171">⚠ SAP recebeu X m³ neste depósito, mas nenhuma viagem do portal chegou aqui</span></td><td>O SAP tem o recebimento, mas nenhuma viagem do portal tem este depósito e esta data. <strong>Peça a correção do destino ou da data da viagem no Inbound.</strong> Depois de corrigida, o ID passa a aparecer aqui.</td></tr>
+</table>
+</div>
+<div class="panel">
+<h3 style="margin-top:0;color:var(--lime)">Exemplo · Betim B100, 03/11</h3>
+<ol class="passos" style="margin-bottom:0">
+ <li>No depósito <strong>POTENCIAL</strong>, o SAP mostra <strong>~45 m³</strong> recebidos em 03/11.</li>
+ <li>O popup mostra “⚠ SAP recebeu 45 m³ neste depósito, mas nenhuma viagem do portal chegou aqui”.</li>
+ <li>Logo acima aparece “Chegaram em outro depósito de Betim”: a viagem <strong>NXT-006044</strong>, que no portal está com destino <strong>RBZ</strong>.</li>
+ <li>Conclusão: a carga é a mesma, só o destino no portal está errado. Corrigindo para POTENCIAL no Inbound, o ID passa a aparecer no dia certo.</li>
+</ol>
+</div>
+<p>Gasolina A e Diesel A chegam quase sempre por <strong>duto</strong> (bombeio). Por isso é normal terem recebimento no SAP sem viagem de caminhão.</p>
+
+<h3 id="r10-10">10.10 Regras de atualização <small>com que frequência cada dado muda</small></h3>
+<p>Os dados chegam ao portal por dois caminhos, com frequências diferentes: a carga completa das fontes e a atualização do trânsito.</p>
+<div class="grid2">
+ <div class="panel"><h3 style="margin-top:0;color:var(--lime)">Carga das fontes · a cada 30 minutos</h3>
+  <ul style="margin-bottom:0">
+   <li>É feita a cada meia hora (nos minutos :00 e :30).</li>
+   <li>Lê todos os arquivos e consulta o banco de faturamento.</li>
+   <li>Só é publicada quando algum dado mudou desde a carga anterior.</li>
+   <li>Para ver a carga nova, é preciso <strong>recarregar a página (F5)</strong>.</li>
+   <li>O horário aparece no selo do topo: <span class="badge">Sincronizado DD/MM, HH:MM</span>.</li>
+  </ul></div>
+ <div class="panel"><h3 style="margin-top:0;color:var(--lime)">Trânsito FOB e CIF · em tempo real</h3>
+  <ul style="margin-bottom:0">
+   <li>O simulador acompanha o portal inbound e a Herrlog continuamente.</li>
+   <li>Quando uma viagem muda, os dados da base são atualizados em cerca de 1 minuto.</li>
+   <li>A tela é atualizada <strong>automaticamente</strong>, sem recarregar a página.</li>
+   <li>Além disso, é feita uma conferência completa a cada 15 minutos.</li>
+   <li>O horário da última atualização aparece no selo do topo, depois de “· trânsito”.</li>
+  </ul></div>
+</div>
+<table class="t">
+ <tr><th style="width:24%">Dado</th><th style="width:32%">Quando a fonte é atualizada</th><th>Quando aparece no portal</th></tr>
+ <tr><td>Abertura</td><td>Uma vez por dia, quando a base preenche a planilha (ou, na falta dela, pela extração do MIS).</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>Política de estoque</td><td>Só quando a planilha de premissas é alterada.</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>LE vigente</td><td>Quando o planejamento publica um LE novo.</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>Pedidos em tela (VA05)</td><td>Ao longo do dia, a cada extração do SAP.</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>Cadência e Disp MIS</td><td>Ao longo do dia, a cada extração do MIS.</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>Recebimentos reais (SAP)</td><td>Uma vez por dia, na extração das movimentações do SAP.</td><td>Na carga de 30 min seguinte.</td></tr>
+ <tr><td>Vendas reais e VMD</td><td>O banco de faturamento é consultado a cada carga. O faturamento tem data, mas não tem hora. A venda de hoje vem dos pedidos do SAP (VA05) e só entra depois que o VA05 é atualizado às 13h ou mais tarde.</td><td>A cada 30 min. A VMD de amanhã em diante é reprojetada de novo na primeira carga depois desse corte.</td></tr>
+ <tr><td>Trânsito FOB e CIF</td><td>A cada mudança de viagem, status ou ETA.</td><td>Em tempo real.</td></tr>
+ <tr><td>Cenários salvos</td><td>Quando alguém clica em Salvar na equipe.</td><td>Na hora.</td></tr>
+ <tr><td>Aba Alertas</td><td>Calculada a partir das fontes já carregadas na tela.</td><td>A cada vez que o painel é aberto ou um filtro muda.</td></tr>
+</table>
+<table class="t">
+ <tr><th style="width:38%">Se algo falhar</th><th>O que o portal faz</th></tr>
+ <tr><td>Um arquivo de fonte está aberto ou bloqueado na hora da carga</td><td>A carga daquela rodada não é publicada. A anterior continua valendo e a próxima rodada tenta de novo.</td></tr>
+ <tr><td>O banco de faturamento não responde</td><td>A carga é publicada com o LE puro no lugar da VMD, a linha mostra “⚠ banco sem resposta” e a barra do ritmo da semana deixa de aparecer até a próxima carga concluída.</td></tr>
+ <tr><td>A base não lançou a abertura</td><td>Usa a planilha do dia, se houver. Sem portal e sem planilha, a abertura fica 0.</td></tr>
+ <tr><td>Chega trânsito novo enquanto você digita</td><td>Espera você sair do campo e só então atualiza. Suas edições são mantidas.</td></tr>
+</table>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="c11">
+<h2><span class="num">11</span>Cores e avisos</h2>
+<p class="lead">Guia rápido para identificar o que cada cor da tela significa.</p>
+<h3>Linha de abertura na tabela <small>ocupação do tanque</small></h3>
+<table class="t">
+ <tr><th style="width:34%">Cor da célula</th><th>Abertura em relação à capacidade do tanque (“Espaço (m³)” da planilha de política)</th></tr>
+ <tr><td><span class="cor" style="background:#8B0000"></span>Vermelha</td><td>Abaixo de 70%.</td></tr>
+ <tr><td><span class="cor" style="background:#FFA500"></span>Amarela</td><td>De 70% a 75%.</td></tr>
+ <tr><td><span class="cor" style="background:#008000"></span>Verde</td><td>Acima de 75%.</td></tr>
+</table>
+<h3>Faixas da política <small>cartão “Menor estoque” e demais indicadores</small></h3>
+<table class="t">
+ <tr><th style="width:34%">Cor</th><th>Estoque em relação à política</th></tr>
+ <tr><td><span class="cor" style="background:#8B0000"></span>Vermelho</td><td>No mínimo ou abaixo.</td></tr>
+ <tr><td><span class="cor" style="background:#FFA500"></span>Laranja</td><td>Acima do mínimo, até o médio.</td></tr>
+ <tr><td><span class="cor" style="background:#90EE90"></span>Verde claro</td><td>Acima do médio, até o máximo.</td></tr>
+ <tr><td><span class="cor" style="background:#008000"></span>Verde</td><td>Acima do máximo. Passar da capacidade gera um alerta separado.</td></tr>
+</table>
+<h3>Marcas na tabela</h3>
+<table class="t">
+ <tr><th style="width:40%">O que você vê</th><th>O que significa</th></tr>
+ <tr><td><span class="cor" style="background:#204b36"></span>Linha verde com “+”</td><td>Entrada (FOB, CIF, Bombeio).</td></tr>
+ <tr><td><span class="cor" style="background:#592f31"></span>Linha vermelha com “−”</td><td>Saída (Vendas).</td></tr>
+ <tr><td><span class="cor" style="background:#1c2a1f"></span>Linha em itálico com “↳”</td><td>Referência. Não entra na conta.</td></tr>
+ <tr><td><span class="cor" style="background:#8dc8302b;border-color:var(--lime)"></span>Coluna com fundo amarelado</td><td>O dia de referência da simulação.</td></tr>
+ <tr><td><span class="cor" style="background:var(--lime)"></span>Traço amarelo embaixo da célula</td><td>Você editou este valor.</td></tr>
+ <tr><td><span class="cor" style="background:var(--roxo)"></span>Borda roxa na célula do FOB</td><td>Tem volume que está neste dia por causa da regra das 15h.</td></tr>
+ <tr><td><span class="cor" style="background:#8B0000"></span>Célula vermelha na linha Cadência sugerida</td><td>O estoque fica abaixo de 70% do tanque nesse dia, mas uma carga de 60 m³ não cabe.</td></tr>
+ <tr><td><span style="color:var(--orange)">⚠ banco sem resposta</span></td><td>O banco de faturamento não respondeu; VMD e Real estão no plano B.</td></tr>
+</table>
+<h3>Estoque acima da capacidade do tanque</h3>
+<p>Quando o fechamento de algum dia (abertura + entradas − vendas) passa da capacidade do tanque, aparece um aviso em cinza listrado em cima da tabela. Ele diz em que dias o estoque não cabe, quanto passou e de onde veio o volume. Exemplo: “Em 16/10: abertura 144 + entradas 900 (Trânsito FOB 900) − vendas 27 = 1.017 m³, 681 m³ a mais do que cabe”.</p>
+<table class="t">
+ <tr><th style="width:40%">Na tabela</th><th>O que significa</th></tr>
+ <tr><td><span class="cor" style="background:repeating-linear-gradient(135deg,#5b6168 0 3px,#3f444a 3px 6px)"></span>Total de entradas em cinza listrado</td><td>Dia em que chega mais produto do que o tanque comporta para a venda prevista. Reveja as entradas desse dia (FOB, CIF, bombeio ou cadência sugerida).</td></tr>
+ <tr><td><span class="cor" style="background:repeating-linear-gradient(135deg,#5b6168 0 3px,#3f444a 3px 6px)"></span>Abertura em cinza listrado</td><td>O volume daquele dia não cabe no tanque; o excesso continua até as vendas trazerem o estoque de volta para baixo da capacidade.</td></tr>
+</table>
+<p>Passe o mouse na célula listrada para ver a conta do dia. Base e produto sem capacidade estabelecida não recebem esse aviso.</p><h3>Nos popups de viagem e na aba Alertas</h3>
+<table class="t">
+ <tr><th style="width:40%">Cor</th><th>O que significa</th></tr>
+ <tr><td><span class="cor" style="background:#60A5FA"></span>Texto azul</td><td>Viagem que conta no estoque.</td></tr>
+ <tr><td><span class="cor" style="background:#F97316"></span>Texto laranja</td><td>Viagem não programada (sem placa).</td></tr>
+ <tr><td><span class="cor" style="background:#8B0000"></span>Vermelho escuro</td><td>Crítico hoje.</td></tr>
+ <tr><td><span class="cor" style="background:#FF6B5F"></span>Vermelho claro</td><td>Crítico de amanhã a D+5.</td></tr>
+ <tr><td><span class="cor" style="background:#FACC15"></span>Amarelo</td><td>Atenção.</td></tr>
+ <tr><td><span class="cor" style="background:#FBBF24"></span>Título amarelo “Chegaram em outro depósito”</td><td>Dia passado: viagens da mesma cidade e produto que foram para outro depósito no portal (<a href="#r10-9">10.9</a>).</td></tr>
+ <tr><td><span class="cor" style="background:#F87171"></span>⚠ vermelho “SAP recebeu X m³…”</td><td>Dia passado: o SAP recebeu, mas nenhuma viagem do portal chegou neste depósito. Corrigir no Inbound (<a href="#r10-9">10.9</a>).</td></tr>
+ <tr><td><span class="cor" style="background:var(--accent)"></span>Faixa verde no cartão</td><td>OK.</td></tr>
+</table>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="c12" class="faq">
+<h2><span class="num">12</span>Dúvidas frequentes</h2>
+<div><h3>A tela está estranha ou diferente da de um colega.</h3><p>Quase sempre é a versão antiga guardada pelo navegador. Aperte <strong>Ctrl + F5</strong>. Se não resolver, abra o portal em uma janela anônima.</p></div>
+<div><h3>Os números não mudaram desde cedo.</h3><p>As fontes só chegam à sua tela quando você recarrega a página. Aperte <strong>F5</strong> e confira a hora no selo “Sincronizado”. Só o trânsito é atualizado automaticamente.</p></div>
+<div><h3>Uma base ou um produto não aparece na lista.</h3><p>Confira o filtro <span class="campo">Região</span>. Se estiver em “Todas” e ainda assim não aparecer, a base não está no cadastro do simulador: fale com o administrador.</p></div>
+<div><h3>A abertura está zerada.</h3><p>A base ainda não salvou a abertura de hoje na aba Aberturas (nem na planilha de contingência). Depois que ela salvar, o número aparece na próxima atualização (até 30 minutos; aperte F5).</p></div>
+<div><h3>O botão Salvar na equipe está apagado.</h3><p>Você está no modo combinado (mais de um depósito ou empresa ligados) ou ainda falta escolher base e produto.</p></div>
+<div><h3>Editei um valor e ele desapareceu quando troquei o botão de Vendas.</h3><p>O valor não foi perdido. Cada botão de Vendas e de Entrada tem o seu rascunho. Volte para o botão em que você estava.</p></div>
+<div><h3>Cliquei em Real e os dias futuros ficaram zerados.</h3><p>É o esperado: o faturado real só existe até a data da última carga. Para projetar à frente, use <span class="btn">VMD</span> ou <span class="btn">LE</span>.</p></div>
+<div><h3>O FOB de um dia parece estar no dia errado.</h3><p>Veja se há borda roxa na célula: a regra das 15h empurra para o dia seguinte os caminhões com chegada prevista no fim da tarde. Passe o mouse na célula para ver cada viagem, com o ETA.</p></div>
+<div><h3>Num dia passado, não aparece o ID da viagem que chegou.</h3><p>A viagem está no portal inbound com <strong>outro destino</strong> (outro depósito da cidade) ou com <strong>outra data</strong>. Abra o popup do dia: se aparecer “Chegaram em outro depósito”, a viagem provavelmente é essa. Peça a correção no Inbound. Veja o exemplo em <a href="#r10-9">10.9</a>.</p></div>
+<div><h3>O SAP mostra um recebimento num dia e a viagem chegou em outro.</h3><p>Pode ser lançamento atrasado no SAP (a carga chegou num dia e foi lançada dias depois). A conta do passado segue o SAP, igual ao BI. Se a diferença se repetir, avise o administrador.</p></div>
+<div><h3>A VMD de um dia ficou zerada.</h3><p>A conta entende que a semana já vendeu toda a meta do LE. Confira a barra “Ritmo da semana”. Se o vendido parecer alto demais, compare com o BI e avise o administrador. Para projetar enquanto isso, use <span class="btn">LE</span> ou <span class="btn">Pedidos em tela</span>.</p></div>
+<div><h3>A barra “Ritmo da semana” não aparece.</h3><p>O banco de faturamento não respondeu na última carga, ou não há LE para a semana. Recarregue depois da próxima atualização. Ela existe para Gasolina A, Anidro, Diesel S10 A, Diesel S500 A, Biodiesel e Hidratado.</p></div>
+<div><h3>Quero desfazer tudo que mexi.</h3><p>Clique em <span class="btn">↺ Restaurar</span>, no canto direito do título da tabela. Vale só para a base, produto e botões que estão na tela.</p></div>
+<div><h3>Salvei errado na equipe. É possível apagar?</h3><p>Não. As versões são definitivas. Corrija o cenário e salve de novo: a nova versão passa a ser a exibida, com o motivo que você informar.</p></div>
+<div><h3>A sessão foi encerrada sem eu sair.</h3><p>O portal sai após 2 horas sem uso, e também ao fechar a aba. Entre de novo; o rascunho continua no navegador.</p></div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section id="c13">
+<h2><span class="num">13</span>Glossário</h2>
+<div class="gloss">
+ <p><strong>Abertura</strong>: estoque físico no início do dia, informado pela base na planilha diária.</p>
+ <p><strong>Fechamento</strong>: estoque no fim do dia, depois de entradas e saídas.</p>
+ <p><strong>Lastro</strong>: volume mínimo do tanque que não pode ser bombeado nem vendido.</p>
+ <p><strong>Política de estoque</strong>: os limites de cada base e produto: lastro, mínimo, médio, máximo e capacidade.</p>
+ <p><strong>LE</strong>: a previsão de vendas vigente, feita pelo time de Demanda em produto misturado e usada como meta diária e semanal. O simulador converte para produto puro.</p>
+ <p><strong>Produto misturado / produto puro</strong>: misturado é o que o cliente compra (Gasolina C, Diesel B); puro é o que fica no tanque da base (Gasolina A, Anidro, Diesel A, B100).</p>
+ <p><strong>VMD</strong>: venda média diária. No portal, é o LE reprojetado pelo ritmo real da semana.</p>
+ <p><strong>Pedidos em tela</strong>: pedidos do dia registrados no SAP (transação VA05).</p>
+ <p><strong>Real</strong>: volume faturado, vindo do banco de dados de faturamento, sem vendas para empresas do grupo e sem devoluções.</p>
+ <p><strong>Recebimento SAP</strong>: entrada de produto lançada no SAP, por depósito e data de lançamento. É a fonte das entradas do passado, igual ao BI.</p>
+ <p><strong>ID da viagem</strong>: código da viagem no portal inbound (ex.: NXT-006044).</p>
+ <p><strong>Disp MIS</strong>: disponibilidade de produto informada no sistema MIS.</p>
+ <p><strong>Cadência MIS</strong>: a programação planejada de entradas (bombeio, FOB, CIF) no MIS.</p>
+ <p><strong>FOB</strong>: frete por nossa conta. A viagem é acompanhada por nós, com placa, transportadora e ETA.</p>
+ <p><strong>CIF</strong>: frete por conta do fornecedor. Sabemos a data prevista de entrega.</p>
+ <p><strong>Programado / não programado</strong>: viagem FOB com placa definida (em andamento ou finalizada) ou ainda sem placa (ofertada, aceita ou em backlog).</p>
+ <p><strong>Bombeio</strong>: entrada de produto por duto.</p>
+ <p><strong>ETA</strong>: horário estimado de chegada do caminhão.</p>
+ <p><strong>D+1</strong>: o dia seguinte.</p>
+ <p><strong>Herrlog</strong>: plataforma de rastreamento dos caminhões.</p>
+ <p><strong>Portal inbound</strong>: o portal de programação e acompanhamento das viagens de entrada.</p>
+ <p><strong>Modo combinado</strong>: simulação que soma mais de um depósito ou empresa da mesma cidade.</p>
+ <p><strong>Ruptura</strong>: o primeiro dia em que o fechamento fica negativo.</p>
+ <p><strong>Rascunho local</strong>: suas edições guardadas só no seu navegador.</p>
+ <p><strong>Versão</strong>: cada registro definitivo de um cenário salvo na equipe (v1, v2…).</p>
+</div>
+<div class="note" style="margin-top:5mm"><b class="t">Links úteis</b>
+Portal Nextoques: <a href="https://nexta-logistica.com.br/simulador_estoque/">nexta-logistica.com.br/simulador_estoque</a><br>
+Neste manual: <a href="#c5">tabela de simulação</a> · <a href="#c9">Alertas e Histórico</a> · <a href="#c10">regras de cálculo</a> · <a href="#c11">cores e avisos</a> · <a href="#c12">dúvidas frequentes</a> · <a href="#sumario">voltar ao sumário</a></div>
+<p class="fim">Nextoques · Logística · Gestão de abastecimento das bases · Manual de outubro de 2026</p>
+</section>
+
+</div>
+
+<script>
+// Grafico ilustrativo (numeros de exemplo), mesmas cores do portal.
+(function(){
+ const W=1000,H=250,L=44,R=10,T=12,B=30,dias=['seg','ter','qua','qui','sex','sáb','dom','seg','ter','qua','qui','sex','sáb','dom'];
+ const lastro=120,ab=[1310,1265,1190,1240,1180,1150,1205,1250,1220,1225,1327,1197,1072,1012];
+ const ent=[[0,0,0,60,0],[0,0,0,0,0],[160,0,0,0,0],[0,0,0,120,0],[0,0,0,60,0],[0,0,0,0,90],[140,0,0,0,0],[0,0,0,180,0],[0,0,60,60,90],[0,300,0,0,0],[0,0,0,60,0],[0,0,0,0,60],[0,0,0,0,0],[0,0,0,120,0]];
+ const cores=['#C8F2EC','#9EDFD6','#C084FC','#B0B0B0','#F4F08A'],hi=1700,cw=(W-L-R)/14,bw=cw*.74;
+ const y=v=>T+(hi-v)/hi*(H-T-B),x=i=>L+(i+.5)*cw;
+ let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">`;
+ for(let j=0;j<=4;j++){const v=hi*j/4;s+=`<path d="M${L} ${y(v)}H${W-R}" stroke="#314A32"/><text x="${L-6}" y="${y(v)+4}" fill="#7FA069" text-anchor="end" font-size="11" font-family="Barlow,Arial">${Math.round(v).toLocaleString('pt-BR')}</text>`;}
+ s+=`<rect x="${x(7)-cw/2}" y="0" width="${cw}" height="${H-B}" fill="#EEFE7A" opacity=".09"/>`;
+ ab.forEach((a,i)=>{let c=0;const p=[[lastro,'#F9B96B'],[a-lastro,'#3AAE9C'],...ent[i].map((v,k)=>[v,cores[k]])];
+  p.forEach(([v,cor],k)=>{if(v<=0)return;const t=y(c+v),h=y(c)-t;s+=`<rect x="${x(i)-bw/2}" y="${t}" width="${bw}" height="${h}" fill="${cor}"/>`;
+   if(k>0&&h>=17){const tx=v.toLocaleString('pt-BR'),w=tx.length*7+8;s+=`<rect x="${x(i)-w/2}" y="${t+h/2-8}" width="${w}" height="16" rx="4" fill="#EAF6E8" opacity=".92"/><text x="${x(i)}" y="${t+h/2+4}" text-anchor="middle" fill="#14210F" font-size="11" font-weight="700" font-family="Barlow,Arial">${tx}</text>`;}c+=v;});
+  const hoje=i===7;s+=`<text x="${x(i)}" y="${H-16}" text-anchor="middle" fill="${hoje?'#EEFE7A':'#BFD4A8'}" font-size="11" font-weight="${hoje?700:400}" font-family="Barlow,Arial">${dias[i]}</text><text x="${x(i)}" y="${H-3}" text-anchor="middle" fill="${hoje?'#EEFE7A':'#7FA069'}" font-size="10" font-family="Barlow,Arial">${String(5+i).padStart(2,'0')}/10</text>`;});
+ for(const [v,cor,tr,w] of [[380,'#FF4D4D','3 4',1.5],[820,'#9CA3AF','3 4',1.5],[1420,'#4CAF1F','3 4',1.5],[1620,'#38BDF8','',2]])s+=`<path d="M${L} ${y(v)}H${W-R}" stroke="${cor}" stroke-width="${w}" stroke-dasharray="${tr}"/>`;
+ const vend=[205,198,190,201,196,120,90,214,209,201,194,188,118,92];
+ s+=`<polyline points="${vend.map((v,i)=>x(i)+','+y(v)).join(' ')}" fill="none" stroke="#FFFFFF" stroke-width="2"/>`+vend.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="#FFFFFF"/>`).join('');
+ document.getElementById('grafico-mock').innerHTML=s+'</svg>';
+})();
+</script>
+</body></html>

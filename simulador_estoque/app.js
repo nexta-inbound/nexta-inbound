@@ -321,7 +321,12 @@ function diasAtrasoAbertura(){
 function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
 // Capacidade 0 = base/produto fora da planilha de tancagem (venda no bico): "Sem capacidade estabelecida".
 function semCapacidade(){return record?.capacidadeFisica===0;}
-function history(i){return D.history?.[day(i)]?.[record.base+'|'+record.product];}
+// Modo combinado (2026-11-09: abertura do historico vinha "—"): o record sintetico nao tem chave no historico,
+// entao soma o historico de cada registro real por tras da soma (mesma ideia da venda passada).
+function history(i){const dia=D.history?.[day(i)];const regs=record?._registrosCombinados;
+ if(!regs)return dia?.[record.base+'|'+record.product];
+ const hs=regs.map(r=>dia?.[r.base+'|'+r.product]).filter(Boolean);if(!hs.length)return undefined;
+ const s=k=>somaOuNula(hs.map(h=>h[k]));return{opening:s('opening'),received:s('received'),planned:s('planned'),sale:s('sale')};}
 // Dias passados da grade: o que realmente aconteceu (mesmas fontes do BI): abertura da planilha do dia,
 // vendas realizadas (VA05 fornecido), FOB/CIF realizados (trânsito publicado) e fechamento = abertura do dia seguinte.
 // Cor da abertura pela ocupacao do tanque: vermelho abaixo de 70% da capacidade, amarelo ate 75%, verde acima.
@@ -438,6 +443,21 @@ function viagensDoDia(i,modal){return registrosReais().flatMap(r=>{const ids=ids
   // cada viagem mostra o Status Viagem da Herrlog junto do status do portal.
   .filter(v=>!filtroStatusAtivo()||filtroStatusViagem.has(categoriaViagem(v)))
   .map(v=>({...v,status:v.statusViagem?`${v.status} · ${v.statusViagem}`:v.status,destino:[cidadeDe(r),depositoDe(r),empresaDe(r)].filter(Boolean).join(' · ')}));});}
+// Dias passados (2026-11-09, Betim POTENCIAL B100: o SAP recebeu no POTENCIAL, mas o portal cadastrou a NXT-006443
+// no RBZ): viagens que chegaram no dia em OUTRO deposito da mesma cidade, mesmo material. So' exibicao nos popups;
+// nao entra em nenhum total (o passado usa o recebimento do SAP, igual ao BI).
+function viagensOutrosDepositos(i){if(day(i)>=simulationToday())return[];
+ const regs=registrosReais(),meus=new Set(regs.map(r=>r.bi?.emp_dep)),vistos=new Set();
+ return (D.records||[]).filter(r=>regs.some(m=>r.bi?.cidade&&r.bi.cidade===m.bi?.cidade&&r.bi?.material===m.bi?.material)&&!meus.has(r.bi?.emp_dep))
+  .flatMap(r=>{const k=r.bi.emp_dep+'|'+r.bi.material;if(vistos.has(k))return[];vistos.add(k);
+   return (D.transitoAoVivo?.[r.bi.emp_dep]?.[r.bi.material]?.[day(i)]?.viagens||[]).filter(v=>v.grupo!=='programado')
+    .map(v=>({...v,status:v.statusViagem?`${v.status} · ${v.statusViagem}`:v.status,destino:[cidadeDe(r),depositoDe(r),empresaDe(r)].filter(Boolean).join(' · ')}));});}
+// Bloco do popup: viagens de outro deposito + aviso quando o SAP recebeu e nenhuma viagem do dia explica.
+function conferenciaPassadoHtml(i,nViagensAqui){if(day(i)>=simulationToday())return'';
+ const outras=viagensOutrosDepositos(i),sap=recebidoPassado(i);
+ const blocoOutras=outras.length?`<p><strong style="color:#FBBF24">Chegaram em outro depósito de ${esc(cidadeDe(registrosReais()[0])||'')} (${outras.length}) · confira se é a carga lançada aqui no SAP</strong></p><dl class="viagens">${outras.map(linhaViagemHtml).join('')}</dl>`:'';
+ const aviso=sap>0.5&&!nViagensAqui?`<p style="color:#F87171">⚠ SAP recebeu ${fmt(sap)} m³ neste depósito, mas nenhuma viagem do portal chegou aqui neste dia${outras.length?' (veja acima as de outro depósito)':''}. Corrigir o destino ou a data da viagem no Inbound.</p>`:'';
+ return blocoOutras+aviso;}
 // Volume FOB do dia que so' esta' nele pela regra das 15h (ETA Herrlog >= 15h -> D+1, inbound.py:
 // HORA_CORTE_DESCARGA) — pintado de roxo no grafico e na grade (pedido da usuaria, 2026-10-09).
 const COR_FOB_D1='#C084FC';
@@ -785,7 +805,7 @@ function popupGrafico(i){
  const naoProgHtml=naoProg.length?`<p><strong style="color:#F97316">Não programado · sem placa (${naoProg.length} · ${fmt(naoProg.reduce((s,v)=>s+(v.volume||0),0))} m³)</strong></p><dl class="viagens">${naoProg.map(linhaViagemHtml).join('')}</dl>`:'';
  const transf=futuro&&!unificaTransf?transfEntradaContadas(i):[];
  const transfHtml=transf.length?`<p><strong style="color:#C4B5FD">⇄ Transferências entre bases · já somadas no Trânsito FOB (${fmt(transf.reduce((s,t)=>s+(t.volume||0),0))} m³)</strong></p><dl class="viagens">${transf.map(t=>`<div><dt><span style="color:#C4B5FD">← ${esc(t.de||'—')}</span> · ${fmt(t.volume)} m³${t.statusViagem?` · ${esc(t.statusViagem)}`:' · sem status de viagem'}</dt><dd>carregamento ${dataTransf(t.carga)} · descarga ${dataTransf(t.descarga)} · ${esc(t.fonte)}${t.viagem?` · ${esc(t.viagem)}`:''}${t.status?` (${esc(t.status)})`:''}</dd></div>`).join('')}</dl>`:'';
- return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${naoProgHtml}${transfHtml}${futuro&&state.movements.pump[i]>0?bombeioMisHtml(i,'Bombeio · origem (cadência MIS)'):''}${semanaHtml}`;
+ return `<strong>${esc(label(i))} · ${esc(record.base)} · ${esc(record.product)}</strong><dl class="valores">${linhas.map(([n,v])=>`<div><dt>${esc(n)}</dt><dd>${v==null?'Sem dado':fmt(v)+' m³'}</dd></div>`).join('')}</dl>${politicaHtml}${viagensHtml}${futuro?'':conferenciaPassadoHtml(i,viagens.length)}${naoProgHtml}${transfHtml}${futuro&&state.movements.pump[i]>0?bombeioMisHtml(i,'Bombeio · origem (cadência MIS)'):''}${semanaHtml}`;
 }
 function mostrarPopupGrafico(el){
  const i=+el.dataset.chartDay,popup=$('chart-popover');

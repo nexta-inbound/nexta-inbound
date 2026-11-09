@@ -240,11 +240,13 @@
   if(Math.abs(semViagem-volProg)<0.5)semViagem=0;   // nao programadas somadas ("Transito real + Nao programado"/LE)
   const avisoSemViagem=day(index)>=today()&&semViagem>0.5&&valor===baseline.movements[modal]?.[index]&&$('entrada')?.value!=='cadencia'
    ?`<p style="color:#F87171">⚠ ${fmt(semViagem)} m³ sem viagem identificada. Avise o administrador do simulador (base, produto e dia).</p>`:'';
-  if(!viagens.length&&!transfJunto.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||(avisoSemViagem?'':'<p>Sem detalhe de viagem ao vivo pra este dia.</p>')}${avisoSemViagem}`;
+  // Passado: viagens de outro deposito da cidade + aviso de SAP sem viagem (app.js conferenciaPassadoHtml, 2026-11-09).
+  const conferencia=modal==='fob'?conferenciaPassadoHtml(index,realizadas.length):'';
+  if(!viagens.length&&!transfJunto.length)return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>${cadHtml||(avisoSemViagem||conferencia?'':'<p>Sem detalhe de viagem ao vivo pra este dia.</p>')}${avisoSemViagem}${conferencia}`;
   return `<strong>Trânsito ${modal.toUpperCase()} · ${dateLabel(day(index))}</strong>`
    +(nReal?`<dl class="viagens">${realizadas.map(linhaViagemHtml).join('')}${transfJunto.map(t=>linhaTransfHtml(t,index)).join('')}</dl><p style="color:#60A5FA">${nReal} viagem(ns) · total ${fmt(volReal)} m³${transfJunto.length?` (inclui ${transfJunto.length} transferência(s))`:''}</p>`:'')
    +(programadas.length?`<dl class="viagens">${programadas.map(linhaViagemHtml).join('')}</dl><p style="color:#F97316">${programadas.length} não programada(s) · ${fmt(programadas.reduce((s,v)=>s+v.volume,0))} m³ · só soma em "Trânsito real + Não programado" e "LE"</p>`:'')
-   +cadHtml+avisoSemViagem;
+   +cadHtml+avisoSemViagem+conferencia;
  }
  // Popup "de qual deposito/empresa vem essa abertura" no modo combinado — pedido da usuaria,
  // 2026-10-05: "na abertura, quando selecionar + de 1, eu preciso saber qual deposito e empresa".
