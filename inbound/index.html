@@ -753,6 +753,21 @@
   .tf-erro { color: var(--danger); font-weight: 600; }
   /* UF do trecho diferente da do cadastro de Fornecedores/Bases (ver divergenciasUfTrechoFrete) */
   .tf-uf-divergente { color: var(--accent2); font-weight: 600; cursor: help; }
+  /* Consolidado por rota — BID ponderado pelo Share Real (ver renderTabelaFreteConsolidado) */
+  #tabelaFreteConsTable td { white-space: nowrap; }
+  .tfc-regra { font-size: 11.5px; color: var(--text-muted); padding: 0 18px 10px; line-height: 1.5; }
+  .tfc-col-seta { width: 28px; padding-right: 0 !important; }
+  .tfc-linha { cursor: pointer; }
+  .tfc-seta { display: inline-block; color: var(--text-muted); transition: transform 0.15s; }
+  .tfc-linha.aberta .tfc-seta { transform: rotate(90deg); color: var(--accent); }
+  .tfc-bid { font-weight: 700; font-size: 14px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .tfc-badge-rota { padding: 1px 8px; font-size: 10.5px; }
+  .tfc-det > td { background: var(--panel-soft); padding: 8px 12px 12px; }
+  .tfc-mini { width: auto; }
+  .tfc-mini th, .tfc-mini td { font-size: 11.5px; padding: 5px 12px; white-space: nowrap; }
+  .tfc-mini tr.tfc-fora td { color: var(--text-muted); }
+  .tfc-mini tr.tfc-total td { font-weight: 700; border-top: 1px solid var(--border); }
+  .tfc-obs { font-size: 11px; color: var(--text-dim); margin-top: 8px; white-space: normal; }
 
   /* ── REVISÃO DA QUEBRA EM VIAGENS (ver revisarQuebraViagens) ── */
   .rq-resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
@@ -3991,7 +4006,57 @@
   </div>
 
   <div id="tabelaFreteContent" style="display:none">
-    <div class="table-wrap">
+    <div class="frota-modo-seletor" id="tabelaFreteSubViewSeletor" style="margin-bottom:12px">
+      <button class="frota-modo-btn ativo" data-view="transportador" onclick="mudarSubViewTabelaFrete('transportador')">📋 Por transportador</button>
+      <button class="frota-modo-btn" data-view="consolidado" onclick="mudarSubViewTabelaFrete('consolidado')" title="Uma linha por rota: frete das transportadoras ponderado pelo share da rota (ou da regional, se a rota tiver poucas viagens)">⚖️ Tabela ponderada por rota</button>
+    </div>
+    <div class="table-wrap" id="tabelaFreteViewConsolidado" style="display:none">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="table-title">Tabela ponderada por rota</span>
+          <span class="badge badge-accent" id="badge-tabela-frete-cons">0 rotas</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="exportarTabelaFreteConsolidado()" title="Baixa em Excel as rotas que estão na tela (com os filtros e a ordenação atuais)">📤 Exportar</button>
+      </div>
+      <div class="tfc-regra" id="tabelaFreteConsRegra"></div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <input type="text" class="filter-input fi-wide" id="fTfcBusca"
+            placeholder="🔍  Cidade, UF ou transportador..."
+            oninput="renderTabelaFreteConsolidado()">
+          <select class="filter-select" id="fTfcBalde" onchange="renderTabelaFreteConsolidado()">
+            <option value="">Share usado: Todos</option>
+          </select>
+          <select class="filter-select" id="fTfcOrigem" onchange="renderTabelaFreteConsolidado()">
+            <option value="">Origem: Todas</option>
+          </select>
+          <select class="filter-select" id="fTfcDestino" onchange="renderTabelaFreteConsolidado()">
+            <option value="">Destino: Todos</option>
+          </select>
+          <select class="filter-select" id="fTfcQtd" onchange="renderTabelaFreteConsolidado()" title="Quantidade de transportadoras com tabela valendo hoje na rota">
+            <option value="">Qtd transportadores: Todas</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="limparFiltrosTabelaFreteCons()" style="align-self:center;margin-left:2px">✕ Limpar</button>
+        </div>
+      </div>
+      <div class="scrollable">
+        <table id="tabelaFreteConsTable">
+          <thead>
+            <tr>
+              <th class="tfc-col-seta"></th>
+              <th class="th-sortable" data-col="origem" onclick="ordenarColunaFreteCons('origem')">Origem<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="destino" onclick="ordenarColunaFreteCons('destino')">Destino<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="rotuloBase" onclick="ordenarColunaFreteCons('rotuloBase')" title="Share da própria rota (com 10+ viagens de transportadoras com tabela nos últimos 60 dias) ou da regional">Share usado<span class="sort-arrow"></span></th>
+              <th style="text-align:right" title="Transportadoras que entram na ponderação (têm tabela valendo hoje e share) de quantas têm tabela na rota">Qtd Transportadores Tabela</th>
+              <th class="th-sortable" data-col="menor" onclick="ordenarColunaFreteCons('menor')" style="text-align:right">Menor frete<span class="sort-arrow"></span></th>
+              <th class="th-sortable" data-col="bid" onclick="ordenarColunaFreteCons('bid')" style="text-align:right">Tabela Ponderada (R$/m³)<span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tabelaFreteConsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="table-wrap" id="tabelaFreteViewTransp">
       <div class="table-toolbar">
         <div style="display:flex;align-items:center;gap:10px">
           <span class="table-title">Fretes</span>
@@ -10032,6 +10097,11 @@ function renderTabelaFrete() {
     return;
   }
 
+  const consolidado = subViewTabelaFrete === 'consolidado';
+  document.getElementById('tabelaFreteViewTransp').style.display = consolidado ? 'none' : '';
+  document.getElementById('tabelaFreteViewConsolidado').style.display = consolidado ? '' : 'none';
+  if (consolidado) { renderTabelaFreteConsolidado(); return; }
+
   popularSelectFiltroFrete('fTabelaFreteOrigem', 'Origem: Todas', todas.map(l => l.origem));
   popularSelectFiltroFrete('fTabelaFreteDestino', 'Destino: Todos', todas.map(l => l.destino));
   popularSelectFiltroFrete('fTabelaFreteTransp', 'Transportador: Todos', todas.map(l => l.transportador));
@@ -10101,6 +10171,435 @@ function linhaTabelaFreteHtml(l) {
           <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteVinculo('${t.id}', '${v.id}')" title="Ver histórico e atualizar o frete">✏️</button>
           <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerFreteVinculo('${t.id}', '${v.id}')" title="Remover este frete">✕</button>
         </div>
+      </td>
+    </tr>`;
+}
+
+// ── CONSOLIDADO POR ROTA: BID PONDERADO PELO SHARE ──
+// Uma linha por trecho juntando as transportadoras, como o relatório "BID Transportes Inbound"
+// do Power BI: BID = Σ(frete × share) ÷ Σ(share), sobre as transportadoras com tabela valendo
+// HOJE no trecho (temporária vigente prevalece — freteDoTransportadorNoDia). Share = volume FOB
+// nos últimos BID_FRETE_DIAS dias (fora Cancelado e Retorno Vazio):
+//   • da própria ROTA, quando ela teve BID_FRETE_MIN_VIAGENS+ viagens de transportadoras com
+//     tabela nela (são essas que formam o peso);
+//   • senão, da REGIONAL (mesmo balde da Aderência ao BID: Coletas por regional do destino,
+//     Transferências num balde só). O balde é o da maioria das viagens da rota na janela — a
+//     mesma rota pode ter coleta e transferência (Paulínia → Barra do Garças é quase toda
+//     transferência, mas Paulínia tem fornecedor de fora no cadastro); rota sem viagem nenhuma
+//     cai no cadastro (baldeShareTrechoFrete).
+// Quem tem share mas não tem tabela no trecho fica fora, e o Σ(share) no denominador repondera as
+// demais; quem tem tabela mas não rodou na janela tem peso zero.
+// Janela e mínimo vieram de análise das viagens FOB (09/11/2026): com 10 viagens o BID da rota
+// erra até ~7% em 9 de 10 casos (15 → ~4%), e em 60 dias as rotas com 10+ viagens somam ~70% do
+// volume (em 15 dias, só ~40%). O select do Gerir Viagens continua no SHARE_REAL_DIAS (15) —
+// lá a decisão é do dia a dia. Pedido do usuário 09/11/2026.
+const BID_FRETE_DIAS = 60;
+const BID_FRETE_MIN_VIAGENS = 10;
+let subViewTabelaFrete = 'transportador'; // 'transportador' | 'consolidado'
+let _consFreteAbertos = new Set();         // ids de trecho com a composição da conta aberta
+let sortColunaFreteCons = null;            // null = Origem → Destino
+let sortDirFreteCons = 'asc';
+let _promiseShareConsFrete = null;
+let _linhasConsFreteNaTela = [];           // filtradas + ordenadas do último render — é o que o Exportar baixa
+let _shareBid = null;  // { porBalde: Map balde -> Map(transp normalizado -> volume),
+                       //   porTrecho: Map chaveTrechoFrete -> { porTransp: Map(transp -> { vol, n }), baldes: Map(balde -> n) } }
+let _shareBidPromise = null;
+let _shareBidCalculadoEm = 0;
+let _shareBidErro = false;
+
+async function calcularShareBidFrete() {
+  const porBalde = new Map(), porTrecho = new Map();
+  (await viagensJanelaShareReal(BID_FRETE_DIAS)).forEach(v => {
+    if (v.status === 'Cancelado' || !v.transportador || v.modal !== 'FOB' || v.produto === PRODUTO_RETORNO_VAZIO) return;
+    const vol = Number(v.volume) || 0;
+    const nome = normTrechoFrete(v.transportador);
+    const balde = baldeShareViagem(v);
+    if (!porBalde.has(balde)) porBalde.set(balde, new Map());
+    const reg = porBalde.get(balde);
+    reg.set(nome, (reg.get(nome) || 0) + vol);
+    const dados = trechoFreteDaViagem(v);
+    if (!dados) return;
+    const chave = chaveTrechoFrete(dados);
+    if (!porTrecho.has(chave)) porTrecho.set(chave, { porTransp: new Map(), baldes: new Map() });
+    const rota = porTrecho.get(chave);
+    const x = rota.porTransp.get(nome) || { vol: 0, n: 0 };
+    x.vol += vol;
+    x.n++;
+    rota.porTransp.set(nome, x);
+    rota.baldes.set(balde, (rota.baldes.get(balde) || 0) + 1);
+  });
+  return { porBalde, porTrecho };
+}
+
+// Mesmo esquema de garantirShareReal: conta reaproveitada por SHARE_REAL_VALIDADE_MS; se falhar,
+// tenta de novo só daqui a 1 min.
+function garantirShareBidFrete() {
+  if (_shareBidPromise && Date.now() - _shareBidCalculadoEm < SHARE_REAL_VALIDADE_MS) return _shareBidPromise;
+  _shareBidCalculadoEm = Date.now();
+  _shareBidPromise = calcularShareBidFrete()
+    .then(r => { _shareBid = r; _shareBidErro = false; return r; })
+    .catch(e => {
+      console.error('Erro ao calcular share da tabela ponderada de frete:', e);
+      _shareBidCalculadoEm = Date.now() - SHARE_REAL_VALIDADE_MS + 60 * 1000;
+      _shareBidErro = !_shareBid;
+      return null;
+    });
+  return _shareBidPromise;
+}
+
+// Chave de maior contagem de um Map(chave -> n); null se vazio.
+function chaveMaisComum(mapa) {
+  return [...(mapa || new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+}
+
+function mudarSubViewTabelaFrete(view) {
+  subViewTabelaFrete = view;
+  document.querySelectorAll('#tabelaFreteSubViewSeletor .frota-modo-btn').forEach(b => b.classList.toggle('ativo', b.dataset.view === view));
+  renderTabelaFrete();
+}
+
+// O Share Real guarda o nome normalizado (normTrechoFrete) — volta pro nome do cadastro.
+function nomeTransportadorDoShare(norm) {
+  return transportadores.find(x => normTrechoFrete(x.nomeFantasia) === norm)?.nomeFantasia || norm.toUpperCase();
+}
+
+// Balde do share pelo cadastro, para rota SEM viagem na janela (com viagem, vale o balde da
+// maioria delas — ver linhasConsolidadoFrete): Transferências quando todo fornecedor cadastrado
+// na cidade de origem é da casa (nomeOrigemEhTransferencia); senão a regional da Base de destino
+// (a mais comum, se a cidade tiver mais de uma). null = nenhuma Base na cidade/UF de destino.
+function baldeShareTrechoFrete(t) {
+  const mesmaCidade = (cidade, uf, cidade2, uf2) =>
+    normTrechoFrete(cidade) === normTrechoFrete(cidade2) && normTrechoFrete(uf) === normTrechoFrete(uf2);
+  const fornOrigem = fornecedores.filter(f => mesmaCidade(f.cidade, f.uf, t.origemCidade, t.origemUf));
+  if (fornOrigem.length && fornOrigem.every(f => nomeOrigemEhTransferencia(f.origem))) return PERF_REGIONAL_TRANSFERENCIAS;
+  const contagem = new Map();
+  bases.filter(b => mesmaCidade(b.cidade, b.estado, t.destinoCidade, t.destinoUf)).forEach(b => {
+    const reg = b.regional || 'Sem Regional';
+    contagem.set(reg, (contagem.get(reg) || 0) + 1);
+  });
+  return chaveMaisComum(contagem);
+}
+
+function linhasConsolidadoFrete() {
+  const hoje = isoHojeReal();
+  const ufs = ufsCadastroCidadeFrete();
+  const linhas = [];
+  listaTrechosFrete().forEach(t => {
+    const nomes = new Map(); // nome normalizado -> como está gravado no vínculo
+    listaVinculosFrete(t).forEach(v => {
+      const n = normTrechoFrete(v.transportador);
+      if (n && !nomes.has(n)) nomes.set(n, v.transportador);
+    });
+    const itens = [];
+    nomes.forEach((nome, norm) => {
+      const vinc = freteDoTransportadorNoDia(t, nome, hoje);
+      if (vinc && temNumeroFrete(vinc.valor)) itens.push({ norm, nome, valor: Number(vinc.valor), temporaria: !!vinc.temporaria, share: null, peso: null });
+    });
+    if (!itens.length) return; // só temporária encerrada/a iniciar: nada valendo hoje
+    const comTabela = new Set(itens.map(x => x.norm));
+
+    // Rota ou regional: conta só as viagens de quem tem tabela, que são as que formam o peso
+    const rota = _shareBid?.porTrecho.get(chaveTrechoFrete(t)) || null;
+    let viagensRota = 0;
+    rota?.porTransp.forEach((x, norm) => { if (comTabela.has(norm)) viagensRota += x.n; });
+    const usaRota = viagensRota >= BID_FRETE_MIN_VIAGENS;
+    const baldePorViagens = !!rota?.baldes.size;
+    const balde = chaveMaisComum(rota?.baldes) || baldeShareTrechoFrete(t);
+    const volumes = !_shareBid ? null
+      : usaRota ? new Map([...rota.porTransp].map(([norm, x]) => [norm, x.vol]))
+      : balde ? (_shareBid.porBalde.get(balde) || new Map())
+      : null;
+    const total = volumes ? [...volumes.values()].reduce((s, v) => s + v, 0) : 0;
+
+    if (total) itens.forEach(x => { x.share = (volumes.get(x.norm) || 0) / total; });
+    const usados = itens.filter(x => x.share > 0);
+    const somaShare = usados.reduce((s, x) => s + x.share, 0);
+    usados.forEach(x => { x.peso = x.share / somaShare; });
+    const ignoradas = total
+      ? [...volumes.entries()]
+          .filter(([norm, vol]) => vol > 0 && !comTabela.has(norm))
+          .map(([norm, vol]) => ({ nome: nomeTransportadorDoShare(norm), share: vol / total }))
+          .sort((a, b) => b.share - a.share)
+      : [];
+    const maisBarato = itens.reduce((m, x) => (!m || x.valor < m.valor ? x : m), null);
+    linhas.push({
+      t, balde, itens, usados, ignoradas, maisBarato, viagensRota, baldePorViagens,
+      fonte: usaRota ? 'rota' : 'regional',
+      origem: rotuloOrigemFrete(t),
+      destino: rotuloDestinoFrete(t),
+      rotuloBalde: balde ? rotuloBaldeShare(balde) : 'Base fora do cadastro',
+      rotuloBase: usaRota ? 'Rota' : (balde ? rotuloBaldeShare(balde) : 'Base fora do cadastro'),
+      cobertura: total ? somaShare : null,
+      menor: maisBarato.valor,
+      bid: somaShare > 0 ? usados.reduce((s, x) => s + x.valor * x.peso, 0) : null,
+      divergenciasUf: divergenciasUfTrechoFrete(t, ufs),
+    });
+  });
+  return linhas;
+}
+
+// "na rota" / "em Coletas Centro Oeste" — de onde saiu o share da linha.
+function ondeShareFrete(l) {
+  return l.fonte === 'rota' ? 'na rota' : `em ${l.rotuloBase}`;
+}
+
+function motivoSemBidFrete(l) {
+  if (!_shareBid) return _shareBidErro ? 'Share indisponível no momento' : `Calculando share (viagens dos últimos ${BID_FRETE_DIAS} dias)...`;
+  if (l.fonte === 'regional' && !l.balde) return 'Nenhuma Base cadastrada na cidade/UF de destino — sem regional para pegar o share';
+  if (l.cobertura === null) return `Sem viagens FOB ${ondeShareFrete(l)} nos últimos ${BID_FRETE_DIAS} dias`;
+  return `Nenhuma transportadora com share ${ondeShareFrete(l)} tem tabela valendo nesta rota`;
+}
+
+function pluralViagensFrete(n) { return `${n} viage${n !== 1 ? 'ns' : 'm'}`; }
+
+// Por que a linha usou o share da rota ou o da regional (e de onde veio o balde).
+function explicacaoFonteShareFrete(l) {
+  const janela = `nos últimos ${BID_FRETE_DIAS} dias`;
+  if (l.fonte === 'rota') {
+    return `Share da rota: ${pluralViagensFrete(l.viagensRota)} FOB ${janela} de transportadoras com tabela nela (mínimo ${BID_FRETE_MIN_VIAGENS}).`;
+  }
+  const poucas = `A rota teve ${pluralViagensFrete(l.viagensRota)} FOB ${janela} de transportadoras com tabela — o share da própria rota só é usado a partir de ${BID_FRETE_MIN_VIAGENS}.`;
+  if (!l.balde) return poucas;
+  const origemBalde = l.baldePorViagens
+    ? 'tipo definido pela maioria das viagens da rota'
+    : 'tipo definido pelo cadastro de Fornecedores/Bases, já que a rota não teve viagem na janela';
+  return `${poucas} Usado o share de ${l.rotuloBalde} (${origemBalde}).`;
+}
+
+function fmtPctFreteCons(x) {
+  if (x === null || x === undefined) return '—';
+  const p = x * 100;
+  if (p > 0 && p < 0.1) return '<0,1%';
+  return p.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+}
+
+function fmtReaisFreteCons(x) {
+  return 'R$ ' + Number(x).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function alternarDetalheConsFrete(trechoId) {
+  if (_consFreteAbertos.has(trechoId)) _consFreteAbertos.delete(trechoId);
+  else _consFreteAbertos.add(trechoId);
+  renderTabelaFreteConsolidado();
+}
+
+function limparFiltrosTabelaFreteCons() {
+  ['fTfcBusca', 'fTfcBalde', 'fTfcOrigem', 'fTfcDestino', 'fTfcQtd'].forEach(id => { document.getElementById(id).value = ''; });
+  renderTabelaFreteConsolidado();
+}
+
+function ordenarColunaFreteCons(coluna) {
+  if (sortColunaFreteCons === coluna) sortDirFreteCons = sortDirFreteCons === 'asc' ? 'desc' : 'asc';
+  else { sortColunaFreteCons = coluna; sortDirFreteCons = 'asc'; }
+  renderTabelaFreteConsolidado();
+}
+
+// Colunas numéricas: rota sem valor (—) fica sempre no fim, nos dois sentidos.
+function compararLinhasFreteCons(a, b) {
+  const txt = (x, y) => normTrechoFrete(x).localeCompare(normTrechoFrete(y), 'pt-BR');
+  const padrao = () => txt(a.origem, b.origem) || txt(a.destino, b.destino);
+  if (!sortColunaFreteCons) return padrao();
+  const dir = sortDirFreteCons === 'asc' ? 1 : -1;
+  if (['bid', 'menor'].includes(sortColunaFreteCons)) {
+    const x = a[sortColunaFreteCons], y = b[sortColunaFreteCons];
+    if (x === null && y === null) return padrao();
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return ((x - y) * dir) || padrao();
+  }
+  return (txt(a[sortColunaFreteCons], b[sortColunaFreteCons]) * dir) || padrao();
+}
+
+function renderTabelaFreteConsolidado() {
+  // O share é assíncrono (lê as viagens da janela) e reaproveitado por 10 min: re-renderiza
+  // uma vez quando cada cálculo novo termina. Comparar a promise evita laço — o render seguinte
+  // recebe a mesma promise (ainda válida) e não pendura outro .then().
+  const p = garantirShareBidFrete();
+  if (p !== _promiseShareConsFrete) {
+    _promiseShareConsFrete = p;
+    p.then(() => {
+      if (p === _promiseShareConsFrete && activeTab === 10 && subViewTabelaFrete === 'consolidado') renderTabelaFreteConsolidado();
+    });
+  }
+
+  const todas = linhasConsolidadoFrete();
+  popularSelectFiltroFrete('fTfcBalde', 'Share usado: Todos', todas.map(l => l.rotuloBase));
+  popularSelectFiltroFrete('fTfcOrigem', 'Origem: Todas', todas.map(l => l.origem));
+  popularSelectFiltroFrete('fTfcDestino', 'Destino: Todos', todas.map(l => l.destino));
+  // Qtd de transportadoras com tabela na rota — ordem numérica (popularSelectFiltroFrete ordena como texto: 10 antes de 2)
+  const selQtd = document.getElementById('fTfcQtd');
+  const qtdAtual = selQtd.value;
+  const qtds = [...new Set(todas.map(l => l.itens.length))].sort((a, b) => a - b);
+  selQtd.innerHTML = '<option value="">Qtd transportadores: Todas</option>'
+    + qtds.map(n => `<option value="${n}">${n} transportador${n !== 1 ? 'es' : ''} com tabela</option>`).join('');
+  selQtd.value = qtds.includes(Number(qtdAtual)) ? qtdAtual : '';
+
+  const busca = normTrechoFrete(document.getElementById('fTfcBusca').value);
+  const fBalde = document.getElementById('fTfcBalde').value;
+  const fOrigem = document.getElementById('fTfcOrigem').value;
+  const fDestino = document.getElementById('fTfcDestino').value;
+  const fQtd = selQtd.value;
+  const filtradas = todas.filter(l =>
+    (!busca || normTrechoFrete(`${l.origem} ${l.destino} ${l.rotuloBase} ${l.itens.map(x => x.nome).join(' ')}`).includes(busca)) &&
+    (!fBalde || l.rotuloBase === fBalde) &&
+    (!fOrigem || l.origem === fOrigem) &&
+    (!fDestino || l.destino === fDestino) &&
+    (!fQtd || l.itens.length === Number(fQtd))
+  ).sort(compararLinhasFreteCons);
+  _linhasConsFreteNaTela = filtradas;
+
+  document.getElementById('badge-tabela-frete-cons').textContent =
+    (filtradas.length < todas.length ? `${filtradas.length} de ${todas.length}` : `${todas.length}`) + ` rota${todas.length !== 1 ? 's' : ''}`;
+  // Só o aviso de carregamento/erro do share — a regra da conta aparece no detalhe de cada rota
+  const statusShare = _shareBid ? ''
+    : _shareBidErro ? '<b>⚠️ Share indisponível no momento.</b>'
+    : `<b>Calculando share (lendo as viagens dos últimos ${BID_FRETE_DIAS} dias)...</b>`;
+  const avisoShare = document.getElementById('tabelaFreteConsRegra');
+  avisoShare.innerHTML = statusShare;
+  avisoShare.style.display = statusShare ? '' : 'none';
+  document.querySelectorAll('#tabelaFreteConsTable th[data-col]').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = sortColunaFreteCons === th.dataset.col ? (sortDirFreteCons === 'asc' ? '▲' : '▼') : '';
+  });
+
+  document.getElementById('tabelaFreteConsBody').innerHTML = filtradas.length
+    ? filtradas.map(linhaConsolidadoFreteHtml).join('')
+    : '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Nenhuma rota encontrada para o filtro</td></tr>';
+}
+
+// Só o resultado de cada rota (uma linha por rota), sem a composição por transportadora.
+function exportarTabelaFreteConsolidado() {
+  if (typeof XLSX === 'undefined') { alert('A biblioteca de planilhas ainda está carregando — tente de novo em instantes.'); return; }
+  if (!_shareBid) { alert('O share ainda está sendo calculado — aguarde a tabela terminar de carregar e tente de novo.'); return; }
+  const linhas = _linhasConsFreteNaTela;
+  if (!linhas.length) { alert('Nenhuma rota na tela para exportar.'); return; }
+  const colunas = [
+    { titulo: 'Origem', largura: 26 },
+    { titulo: 'Destino', largura: 26 },
+    { titulo: 'Share usado', largura: 24 },
+    { titulo: `Viagens na rota (${BID_FRETE_DIAS} dias)`, largura: 14, num: true },
+    { titulo: 'Transportadores na ponderação', largura: 16, num: true },
+    { titulo: 'Transportadores com tabela', largura: 16, num: true },
+    { titulo: 'Menor frete (R$/m³)', largura: 14, num: true, reais: true },
+    { titulo: 'Transportador do menor frete', largura: 24 },
+    { titulo: 'Tabela ponderada (R$/m³)', largura: 16, num: true, reais: true },
+    { titulo: 'Observação', largura: 60 },
+  ];
+  const rows = linhas.map(l => [
+    l.origem, l.destino, l.rotuloBase, l.viagensRota, l.usados.length, l.itens.length,
+    l.menor, l.maisBarato.nome,
+    l.bid !== null ? Math.round(l.bid * 100) / 100 : '',
+    l.bid === null ? motivoSemBidFrete(l) : '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([colunas.map(c => c.titulo), ...rows]);
+  ws['!cols'] = colunas.map(c => ({ wch: c.largura }));
+  ws['!autofilter'] = { ref: ws['!ref'] };
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cel = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (!cel) continue;
+      if (R === 0) cel.s = ESTILO_CABECALHO_OFERTA;
+      else if (cel.t === 'n' && colunas[C].reais) cel.z = '#,##0.00';
+    }
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tabela ponderada');
+  XLSX.writeFile(wb, `tabela_ponderada_frete_${isoHojeReal()}.xlsx`);
+}
+
+function linhaConsolidadoFreteHtml(l) {
+  const aberta = _consFreteAbertos.has(l.t.id);
+  const ufHtml = (lado) => {
+    const d = l.divergenciasUf.find(x => x.lado === lado);
+    return d ? ` <span class="tf-uf-divergente" title="${esc(textoDivergenciaUfFrete(d) + ' — nenhuma viagem usa este frete. Corrija no ✏️ → Editar trecho.')}">⚠</span>` : '';
+  };
+  const comShare = l.cobertura !== null;
+  const naMedia = comShare
+    ? `<span title="${esc(`${l.usados.length} entram na ponderação (têm share ${ondeShareFrete(l)}) · ${l.itens.length} com tabela valendo hoje na rota`)}">${l.usados.length} de ${l.itens.length}</span>`
+    : `<span style="color:var(--text-muted)">— de ${l.itens.length}</span>`;
+  const base = !_shareBid
+    ? '<span style="color:var(--text-muted)">…</span>'
+    : `<span title="${esc(explicacaoFonteShareFrete(l))}">${l.fonte === 'rota' ? '<span class="badge badge-success tfc-badge-rota">Rota</span>' : esc(l.rotuloBase)}</span>`
+      + `<div class="tf-meta">${l.fonte === 'rota' ? '' : 'rota: '}${pluralViagensFrete(l.viagensRota)} em ${BID_FRETE_DIAS}d</div>`;
+  const menor = `<span class="tf-valor">${esc(fmtReaisFreteCons(l.menor))}</span><div class="tf-meta">${esc(l.maisBarato.nome)}</div>`;
+  const bid = l.bid !== null
+    ? `<span class="tfc-bid">${esc(fmtReaisFreteCons(l.bid))}</span>`
+    : `<span style="color:var(--text-muted);cursor:help" title="${esc(motivoSemBidFrete(l))}">—</span>`;
+  const linha = `
+    <tr class="tfc-linha${aberta ? ' aberta' : ''}" onclick="alternarDetalheConsFrete('${l.t.id}')" title="Clique para ${aberta ? 'fechar' : 'ver'} a conta">
+      <td class="tfc-col-seta"><span class="tfc-seta">▸</span></td>
+      <td>${esc(l.origem)}${ufHtml('origem')}</td>
+      <td>${esc(l.destino)}${ufHtml('destino')}</td>
+      <td>${base}</td>
+      <td class="tf-num">${naMedia}</td>
+      <td class="tf-num">${menor}</td>
+      <td class="tf-num">${bid}</td>
+    </tr>`;
+  return aberta ? linha + detalheConsolidadoFreteHtml(l) : linha;
+}
+
+// A conta da rota: cada transportadora com tabela, o share dela, o peso depois de reponderar e a
+// contribuição (frete × peso) — a soma da última coluna é o BID. Quem tem share mas não tem
+// tabela valendo na rota (l.ignoradas) entra na lista com frete "—" e peso "fora": é o que falta
+// pro Share coberto chegar a 100%. Ordem: maior share primeiro, como o relatório do Power BI.
+function detalheConsolidadoFreteHtml(l) {
+  const ordenados = [...l.itens, ...l.ignoradas.map(x => ({ ...x, semTabela: true }))]
+    .sort((a, b) => (b.share || 0) - (a.share || 0) || (!!a.semTabela - !!b.semTabela)
+      || (a.valor ?? 0) - (b.valor ?? 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const motivoSemShare = l.cobertura === null ? motivoSemBidFrete(l) : `Sem viagem FOB ${ondeShareFrete(l)} nos últimos ${BID_FRETE_DIAS} dias — não entra na média`;
+  const motivoSemTabela = `Tem share ${ondeShareFrete(l)}, mas não tem tabela valendo nesta rota — não entra na ponderação e o peso das demais é recalculado`
+    + (l.fonte === 'rota' ? '. Vale cadastrar a tabela.' : '');
+  const linhas = ordenados.map(x => {
+    if (x.semTabela) {
+      return `
+      <tr>
+        <td>${esc(x.nome)} <span class="badge badge-danger tf-badge-temp" title="${esc(motivoSemTabela)}">SEM TABELA</span></td>
+        <td class="tf-num" style="color:var(--text-muted)">—</td>
+        <td class="tf-num">${fmtPctFreteCons(x.share)}</td>
+        <td class="tf-num" style="color:var(--text-muted)"><span title="${esc(motivoSemTabela)}">fora</span></td>
+        <td class="tf-num" style="color:var(--text-muted)">—</td>
+      </tr>`;
+    }
+    const fora = !x.peso;
+    const temp = x.temporaria ? ' <span class="badge badge-warn tf-badge-temp" title="Tabela temporária valendo hoje">TEMPORÁRIA</span>' : '';
+    return `
+      <tr${fora ? ' class="tfc-fora"' : ''}>
+        <td>${esc(x.nome)}${temp}</td>
+        <td class="tf-num">${esc(fmtReaisFreteCons(x.valor))}</td>
+        <td class="tf-num">${fmtPctFreteCons(x.share)}</td>
+        <td class="tf-num">${fora ? `<span title="${esc(motivoSemShare)}">fora</span>` : fmtPctFreteCons(x.peso)}</td>
+        <td class="tf-num">${fora ? '—' : esc(fmtReaisFreteCons(x.valor * x.peso))}</td>
+      </tr>`;
+  }).join('');
+  const total = l.bid !== null ? `
+      <tr class="tfc-total">
+        <td>Tabela ponderada</td>
+        <td></td>
+        <td class="tf-num" title="Share de quem tem tabela nesta rota — é o que entra na ponderação">${fmtPctFreteCons(l.cobertura)}</td>
+        <td class="tf-num">100%</td>
+        <td class="tf-num">${esc(fmtReaisFreteCons(l.bid))}</td>
+      </tr>` : '';
+  const obs = [];
+  if (_shareBid) obs.push(esc(explicacaoFonteShareFrete(l)));
+  if (l.bid === null) obs.push(esc(motivoSemBidFrete(l)) + '.');
+  return `
+    <tr class="tfc-det">
+      <td></td>
+      <td colspan="6">
+        <table class="tfc-mini">
+          <thead>
+            <tr>
+              <th>Transportadora</th>
+              <th style="text-align:right">Frete (R$/m³)</th>
+              <th style="text-align:right" title="Volume FOB ${esc(ondeShareFrete(l))} nos últimos ${BID_FRETE_DIAS} dias">Share ${l.fonte === 'rota' ? 'na rota' : 'na regional'}</th>
+              <th style="text-align:right" title="Share recalculado só entre quem tem tabela na rota">Peso</th>
+              <th style="text-align:right">Frete × peso</th>
+            </tr>
+          </thead>
+          <tbody>${linhas}${total}</tbody>
+        </table>
+        ${obs.map(o => `<div class="tfc-obs">${o}</div>`).join('')}
       </td>
     </tr>`;
 }
@@ -10399,15 +10898,16 @@ function freteDoTransportadorNoDia(trecho, transportador, dia) {
   return doTransp.find(x => x.temporaria) || doTransp[0] || null;
 }
 
-// Viagens com carregamento (dtCarregProg || dtCarreg) nos últimos SHARE_REAL_DIAS dias. A
+// Viagens com carregamento (dtCarregProg || dtCarreg) nos últimos `dias` dias (SHARE_REAL_DIAS
+// no Gerir Viagens; BID_FRETE_DIAS no consolidado da Tabela de Frete). A
 // lista sai do índice local (viagensIndice), não de viagensAtivo(): o que está carregado na
 // tela depende do filtro (Padrão/Período personalizado) e o share não pode mudar com ele.
 // Registro completo: o já carregado na tela, senão o cache local (mesmo atualizadoEm), senão
 // busca no Firebase e guarda no cache — no modo Padrão quase tudo já está carregado (ele traz
 // as finalizadas de até JANELA_FINALIZADAS_DIAS dias).
-async function viagensJanelaShareReal() {
+async function viagensJanelaShareReal(dias = SHARE_REAL_DIAS) {
   const hoje = isoHojeReal();
-  const inicio = somarDiasIso(hoje, -SHARE_REAL_DIAS);
+  const inicio = somarDiasIso(hoje, -dias);
   const naJanela = (dia) => !!dia && dia >= inicio && dia <= hoje;
   const entradas = Object.entries(_indiceCacheCompleto || {});
   if (!entradas.length) {
@@ -18784,9 +19284,15 @@ const PERF_MAPA_PROJ = projetarUf(UF_CENTROIDES);
 // texto solto v.origem da viagem — é o mesmo padrão de valorUfOrigemFiltro/buscarBaseDaViagem
 // pra não depender de o campo da viagem estar exatamente igual ao nome cadastrado. No
 // cadastro a Sim aparece como "SIM DISTRIBUIDORA"; Nexta e Charrua já são o próprio nome.
+// Fornecedor da casa (SIM/NEXTA/CHARRUA) = Transferência. Também usado pelo consolidado da
+// Tabela de Frete (baldeShareTrechoFrete), que classifica o trecho pelo cadastro.
+function nomeOrigemEhTransferencia(nome) {
+  const n = String(nome || '').trim().toUpperCase();
+  return n.startsWith('SIM') || n.startsWith('NEXTA') || n.startsWith('CHARRUA');
+}
+
 function tipoOperacaoViagem(v) {
-  const nome = String(buscarFornecedorDaViagem(v)?.origem || v.origem || '').trim().toUpperCase();
-  return (nome.startsWith('SIM') || nome.startsWith('NEXTA') || nome.startsWith('CHARRUA')) ? 'Transferência' : 'Compra';
+  return nomeOrigemEhTransferencia(buscarFornecedorDaViagem(v)?.origem || v.origem) ? 'Transferência' : 'Compra';
 }
 
 function estadoFiltrosPerf() {
