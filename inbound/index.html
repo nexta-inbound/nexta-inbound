@@ -5915,6 +5915,7 @@ function salvarGrupo() {
       alert(`Verifique o ano das datas no registro ${i + 1} — parece um erro de digitação (ex: 2062 em vez de 2026).`);
       return;
     }
+    if (!confirmarDatasCadenciaManual({ dtCarreg, dtDesc }, `Registro ${i + 1}:\n`)) return;
   }
   editingGrupoIdxs.forEach((idx, i) => {
     cadencias[idx].dtCarreg = document.getElementById(`ge-dtcarreg-${i}`).value.trim() || '-';
@@ -7194,6 +7195,7 @@ function salvarLinha(gi, idx) {
     alert('Verifique o ano das datas informadas — parece um erro de digitação (ex: 2062 em vez de 2026).');
     return;
   }
+  if (!confirmarDatasCadenciaManual({ dtCarreg, dtDesc })) return;
   cadencias[idx].dtCarreg = dtCarreg;
   cadencias[idx].dtDesc   = dtDesc;
   cadencias[idx].volume   = parseFloat(document.getElementById(`ei-volume-${gi}`).value) || 0;
@@ -7393,6 +7395,7 @@ function salvarNovaCadencia() {
     alert(`Data de carregamento/descarga no passado (${[dtCarreg, dtDesc].filter(d => d && d !== '-').join(' / ')}) — confira se o ANO está correto, é o erro de digitação mais comum aqui.`);
     return;
   }
+  if (!confirmarDatasCadenciaManual({ dtCarreg, dtDesc })) return;
   cadencias.push({
     id,
     dtCarreg,
@@ -16983,20 +16986,314 @@ function processarArquivo(file) {
         return;
       }
 
-      const { validas, invalidas, corrigidas } = validarCadastroImportacao(linhasArquivo);
-      if (invalidas.length > 0) {
-        abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas);
-      } else if (corrigidas.length > 0) {
-        abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file);
-      } else {
-        abrirPopupModoImportacaoCadencia(linhasArquivo, file);
-      }
+      // Datas primeiro (ano errado, dia/mês invertido...), depois o cadastro de Origem/Destino.
+      verificarDatasImportacao(linhasArquivo, file);
     } catch(err) {
       alert('Erro ao ler o arquivo: ' + err.message);
       console.error(err);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function seguirValidacaoCadastroImportacao(linhasArquivo, file) {
+  if (linhasArquivo.length === 0) {
+    alert('Nenhuma linha para importar.');
+    document.getElementById('fileInput').value = '';
+    return;
+  }
+  const { validas, invalidas, corrigidas } = validarCadastroImportacao(linhasArquivo);
+  if (invalidas.length > 0) {
+    abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas);
+  } else if (corrigidas.length > 0) {
+    abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file);
+  } else {
+    abrirPopupModoImportacaoCadencia(linhasArquivo, file);
+  }
+}
+
+// ── VALIDAÇÃO DE DATAS DA CADÊNCIA (upload da planilha + edição manual) ──
+// A régua é a semana da cadência (semanaAtiva = "AAAA-MM-DD_AAAA-MM-DD"), não o ano de hoje:
+// no histórico (20 semanas, nov/2026) as datas de cadência ficam quase sempre a até 7 dias da
+// semana e raramente passam de 30. Erros reais que motivaram isto:
+//  - ano subindo +1 a cada linha (jeito de célula de data arrastada no Excel): 45.217584.11→.21
+//    com 2027…2037; NXT-006088 (45.217594.13) com carregamento 06/11/2029 numa semana de nov/2026;
+//  - dia/mês invertidos: "11/12/2026" numa semana de 10 a 16/11;
+//  - carregamento depois da descarga.
+// A tabela do portal só mostra DD/MM, então depois de importado o ano errado fica invisível.
+const DIAS_TOLERANCIA_DATA_CADENCIA = 30;
+
+function periodoReferenciaCadencia() {
+  const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{4})-(\d{2})-(\d{2})$/.exec(semanaAtiva || '');
+  if (m) return { ini: new Date(+m[1], +m[2] - 1, +m[3]), fim: new Date(+m[4], +m[5] - 1, +m[6]) };
+  const ini = new Date(); ini.setHours(0, 0, 0, 0);
+  const fim = new Date(ini); fim.setDate(fim.getDate() + 6);
+  return { ini, fim };
+}
+
+function fmtDataCadencia(d) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+// 'DD/MM/AAAA' -> Date (meia-noite local); null se malformado ou dia inexistente (31/02).
+// Mais rígido que parseDMY: não aceita ano de 2 dígitos (new Date(26, …) vira 1926).
+function parseDataCadenciaEstrita(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '').trim());
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1]);
+  return (d.getDate() === +m[1] && d.getMonth() === +m[2] - 1) ? d : null;
+}
+
+// Quantos dias a data fica fora do período (0 = dentro).
+function diasForaDoPeriodo(d, periodo) {
+  const DIA = 86400000;
+  if (d < periodo.ini) return Math.round((periodo.ini - d) / DIA);
+  if (d > periodo.fim) return Math.round((d - periodo.fim) / DIA);
+  return 0;
+}
+
+// Problemas de data de UMA linha de cadência ({ dtCarreg, dtDesc }). Cada item:
+//   { campo: 'dtCarreg' | 'dtDesc' | null, tipo: 'invalida' | 'ano' | 'invertida' | 'longe' | 'ordem',
+//     grave, msg, sugestao? ('DD/MM/AAAA') }
+// grave = bloqueia (data inválida, ano errado, dia/mês invertido, carregamento depois da
+// descarga); não grave = só aviso (mesmo ano, mas longe da semana — pode ser legítimo).
+function problemasDatasCadencia(c, periodo = periodoReferenciaCadencia()) {
+  const problemas = [];
+  const datas = {};
+  const anosSemana = [periodo.ini.getFullYear(), periodo.fim.getFullYear()];
+  const rotuloSemana = `${fmtDataCadencia(periodo.ini)} a ${fmtDataCadencia(periodo.fim)}`;
+  [['dtCarreg', 'Carregamento'], ['dtDesc', 'Descarga']].forEach(([campo, rotulo]) => {
+    const valor = String(c[campo] ?? '').trim();
+    if (!valor || valor === '-') return;
+    const d = parseDataCadenciaEstrita(valor);
+    if (!d) {
+      problemas.push({ campo, tipo: 'invalida', grave: true, msg: `${rotulo}: "${valor}" não é uma data válida (use DD/MM/AAAA)` });
+      return;
+    }
+    datas[campo] = d;
+    const dist = diasForaDoPeriodo(d, periodo);
+    if (dist <= 7) return;
+    // Dia e mês trocados caem na semana? (ex.: 11/12 numa semana de 10 a 16/11). Até a
+    // tolerância é só aviso (a data pode ser legítima); passando dela, vira erro mais abaixo.
+    const invertida = d.getDate() <= 12 ? new Date(d.getFullYear(), d.getDate() - 1, d.getMonth() + 1) : null;
+    const invertidaNaSemana = !!invertida && diasForaDoPeriodo(invertida, periodo) <= 7;
+    if (dist <= DIAS_TOLERANCIA_DATA_CADENCIA) {
+      if (invertidaNaSemana) {
+        problemas.push({ campo, tipo: 'invertida', grave: false, sugestao: fmtDataCadencia(invertida),
+          msg: `${rotulo}: ${valor} — dia e mês invertidos? A semana é de ${rotuloSemana}` });
+      }
+      return;
+    }
+
+    // Mesmo dia/mês em outro ano cai na semana? Então o erro é o ano.
+    const anosCandidatos = [anosSemana[0] - 1, ...anosSemana, anosSemana[1] + 1].filter(a => a !== d.getFullYear());
+    const melhorAno = anosCandidatos
+      .map(a => new Date(a, d.getMonth(), d.getDate()))
+      .filter(x => x.getDate() === d.getDate()) // 29/02 em ano não bissexto
+      .sort((a, b) => diasForaDoPeriodo(a, periodo) - diasForaDoPeriodo(b, periodo))[0];
+    if (melhorAno && diasForaDoPeriodo(melhorAno, periodo) <= DIAS_TOLERANCIA_DATA_CADENCIA) {
+      problemas.push({ campo, tipo: 'ano', grave: true, sugestao: fmtDataCadencia(melhorAno),
+        msg: `${rotulo}: ano ${d.getFullYear()} — a semana é de ${rotuloSemana}` });
+      return;
+    }
+    if (invertidaNaSemana) {
+      problemas.push({ campo, tipo: 'invertida', grave: true, sugestao: fmtDataCadencia(invertida),
+        msg: `${rotulo}: ${valor} parece dia e mês invertidos — a semana é de ${rotuloSemana}` });
+      return;
+    }
+    if (!anosSemana.includes(d.getFullYear())) {
+      problemas.push({ campo, tipo: 'ano', grave: true, msg: `${rotulo}: ano ${d.getFullYear()} — a semana é de ${rotuloSemana}` });
+      return;
+    }
+    problemas.push({ campo, tipo: 'longe', grave: false,
+      msg: `${rotulo}: ${valor} fica a ${dist} dias da semana (${rotuloSemana}) — confira` });
+  });
+  const algumaGrave = problemas.some(p => p.grave);
+  if (!algumaGrave && datas.dtCarreg && datas.dtDesc && datas.dtCarreg > datas.dtDesc) {
+    problemas.push({ campo: null, tipo: 'ordem', grave: true, msg: `Carregamento (${c.dtCarreg}) depois da descarga (${c.dtDesc})` });
+  }
+  return problemas;
+}
+
+// Fluxos manuais (Inserir Linha, editar linha/grupo): alert/confirm simples. true = pode salvar.
+function confirmarDatasCadenciaManual(c, prefixo = '') {
+  const problemas = problemasDatasCadencia(c);
+  const graves = problemas.filter(p => p.grave);
+  if (graves.length) {
+    alert(`${prefixo}${graves.map(p => '• ' + p.msg + (p.sugestao ? ` (seria ${p.sugestao}?)` : '')).join('\n')}\n\nCorrija a data antes de salvar.`);
+    return false;
+  }
+  const avisos = problemas.filter(p => !p.grave);
+  if (avisos.length) return confirm(`${prefixo}${avisos.map(p => '• ' + p.msg).join('\n')}\n\nSalvar mesmo assim?`);
+  return true;
+}
+
+function verificarDatasImportacao(linhasArquivo, file) {
+  const periodo = periodoReferenciaCadencia();
+  const comProblema = linhasArquivo.filter(c => problemasDatasCadencia(c, periodo).length > 0);
+  if (comProblema.length === 0) { seguirValidacaoCadastroImportacao(linhasArquivo, file); return; }
+  abrirPopupDatasImportacao(linhasArquivo, comProblema, file, periodo);
+}
+
+// Lista as linhas da planilha com data suspeita e deixa corrigir ali mesmo (os inputs editam
+// a própria linha que vai ser importada). "Continuar" só libera sem nenhum problema grave.
+function abrirPopupDatasImportacao(linhasArquivo, comProblema, file, periodo) {
+  window._datasImport = { linhasArquivo, comProblema, file, periodo };
+  const algumAno = comProblema.some(c => problemasDatasCadencia(c, periodo).some(p => p.tipo === 'ano'));
+  const inputStyle = 'width:108px;padding:5px 7px;font-size:12px';
+  const linhasHtml = comProblema
+    .map((c, i) => `
+      <tr id="pdi-row-${i}" style="border-top:1px solid var(--border);vertical-align:top">
+        <td style="padding:6px 8px;white-space:nowrap">${c._linha ?? ''}</td>
+        <td style="padding:6px 8px;white-space:nowrap">${esc(c.id)}</td>
+        <td style="padding:6px 8px;white-space:normal">${esc(c.produto)}<div style="color:var(--text-muted)">${esc(c.origem)} → ${esc(c.destino)}</div></td>
+        <td style="padding:6px 8px"><input class="config-input" id="pdi-dtCarreg-${i}" value="${esc(c.dtCarreg === '-' ? '' : c.dtCarreg)}" placeholder="DD/MM/AAAA" style="${inputStyle}" oninput="atualizarLinhaPopupDatasImportacao(${i})"></td>
+        <td style="padding:6px 8px"><input class="config-input" id="pdi-dtDesc-${i}" value="${esc(c.dtDesc === '-' ? '' : c.dtDesc)}" placeholder="DD/MM/AAAA" style="${inputStyle}" oninput="atualizarLinhaPopupDatasImportacao(${i})"></td>
+        <td style="padding:6px 8px;white-space:normal;min-width:200px" id="pdi-prob-${i}"></td>
+      </tr>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'popupDatasImportOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:900px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column">
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--danger)">⚠ ${comProblema.length} linha(s) com data fora da semana da cadência</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+        Em "${esc(file.name)}" — semana ativa: <strong style="color:var(--text)">${fmtDataCadencia(periodo.ini)} a ${fmtDataCadencia(periodo.fim)}</strong>.
+        Depois de importada, a tabela só mostra DD/MM e o ano errado fica invisível. Corrija aqui ou na planilha e suba de novo.
+      </div>
+      ${algumAno ? `<div style="font-size:11px;background:var(--accent2-dim);border:1px solid var(--accent2);border-radius:8px;padding:8px 10px;margin-bottom:10px">
+        💡 Ano subindo de 1 em 1 a cada linha (2027, 2028, 2029…) costuma vir de <strong>arrastar a célula de data no Excel</strong>. Vale conferir a coluna inteira na planilha.
+      </div>` : ''}
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-secondary btn-sm" id="pdi-aplicar-todas" onclick="aplicarSugestoesPopupDatasImportacao()"></button>
+      </div>
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--panel);z-index:1">
+            <tr>
+              <th style="text-align:left;padding:6px 8px">Linha</th>
+              <th style="text-align:left;padding:6px 8px">Pedido MIS</th>
+              <th style="text-align:left;padding:6px 8px">Produto / Rota</th>
+              <th style="text-align:left;padding:6px 8px">Carregamento</th>
+              <th style="text-align:left;padding:6px 8px">Descarga</th>
+              <th style="text-align:left;padding:6px 8px">Problema</th>
+            </tr>
+          </thead>
+          <tbody>${linhasHtml}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <button onclick="fecharPopupDatasImportacao()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline">Cancelar importação</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="pdi-pular" onclick="pularLinhasPopupDatasImportacao()"></button>
+          <button class="btn btn-primary btn-sm" id="pdi-continuar" onclick="confirmarPopupDatasImportacao()">Continuar importação</button>
+        </div>
+      </div>
+    </div>`;
+  // Sem fechar ao clicar fora (diferente dos outros popups): aqui o usuário digita correções.
+  document.body.appendChild(overlay);
+  comProblema.forEach((_, i) => atualizarLinhaPopupDatasImportacao(i));
+}
+
+// Lê os dois inputs da linha i, grava na linha da planilha e redesenha o diagnóstico dela.
+function atualizarLinhaPopupDatasImportacao(i) {
+  const st = window._datasImport;
+  if (!st) return;
+  const c = st.comProblema[i];
+  ['dtCarreg', 'dtDesc'].forEach(campo => {
+    const el = document.getElementById(`pdi-${campo}-${i}`);
+    if (el) c[campo] = el.value.trim() || '-';
+  });
+  const problemas = problemasDatasCadencia(c, st.periodo);
+  ['dtCarreg', 'dtDesc'].forEach(campo => {
+    const el = document.getElementById(`pdi-${campo}-${i}`);
+    const p = problemas.find(x => x.campo === campo);
+    if (el) el.style.borderColor = p ? (p.grave ? 'var(--danger)' : 'var(--accent2)') : '';
+  });
+  const cel = document.getElementById(`pdi-prob-${i}`);
+  if (cel) {
+    cel.innerHTML = problemas.length
+      ? problemas.map(p => `
+          <div style="color:${p.grave ? 'var(--danger)' : 'var(--accent2)'};margin-bottom:3px">${p.grave ? '✕' : '⚠'} ${esc(p.msg)}
+            ${p.sugestao ? `<button class="btn btn-secondary btn-sm" style="padding:2px 7px;margin-left:4px" onclick="usarSugestaoDataImportacao(${i}, '${p.campo}', '${p.sugestao}')">usar ${p.sugestao}</button>` : ''}
+          </div>`).join('')
+      : '<span style="color:var(--success)">✓ ok</span>';
+  }
+  atualizarRodapePopupDatasImportacao();
+}
+
+function usarSugestaoDataImportacao(i, campo, valor) {
+  const el = document.getElementById(`pdi-${campo}-${i}`);
+  if (!el) return;
+  el.value = valor;
+  atualizarLinhaPopupDatasImportacao(i);
+}
+
+function aplicarSugestoesPopupDatasImportacao() {
+  const st = window._datasImport;
+  if (!st) return;
+  st.comProblema.forEach((c, i) => {
+    problemasDatasCadencia(c, st.periodo).forEach(p => {
+      if (!p.sugestao) return;
+      const el = document.getElementById(`pdi-${p.campo}-${i}`);
+      if (el) el.value = p.sugestao;
+    });
+    atualizarLinhaPopupDatasImportacao(i);
+  });
+}
+
+function atualizarRodapePopupDatasImportacao() {
+  const st = window._datasImport;
+  if (!st) return;
+  let graves = 0, sugestoes = 0;
+  st.comProblema.forEach(c => {
+    const problemas = problemasDatasCadencia(c, st.periodo);
+    if (problemas.some(p => p.grave)) graves++;
+    sugestoes += problemas.filter(p => p.sugestao).length;
+  });
+  const btnContinuar = document.getElementById('pdi-continuar');
+  if (btnContinuar) {
+    btnContinuar.disabled = graves > 0;
+    btnContinuar.style.opacity = graves > 0 ? '0.45' : '';
+    btnContinuar.style.cursor = graves > 0 ? 'not-allowed' : '';
+    btnContinuar.title = graves > 0 ? `Corrija as ${graves} linha(s) marcadas com ✕ para continuar` : '';
+  }
+  const btnTodas = document.getElementById('pdi-aplicar-todas');
+  if (btnTodas) {
+    btnTodas.style.display = sugestoes > 0 ? '' : 'none';
+    btnTodas.textContent = `✓ Aplicar as ${sugestoes} sugestão(ões)`;
+  }
+  const btnPular = document.getElementById('pdi-pular');
+  if (btnPular) {
+    const restantes = st.linhasArquivo.length - graves;
+    btnPular.style.display = graves > 0 && restantes > 0 ? '' : 'none';
+    btnPular.textContent = `Importar sem as ${graves} linha(s) com erro`;
+  }
+}
+
+function confirmarPopupDatasImportacao() {
+  const st = window._datasImport;
+  if (!st) return;
+  if (st.comProblema.some(c => problemasDatasCadencia(c, st.periodo).some(p => p.grave))) return;
+  document.getElementById('popupDatasImportOverlay')?.remove();
+  window._datasImport = null;
+  seguirValidacaoCadastroImportacao(st.linhasArquivo, st.file);
+}
+
+function pularLinhasPopupDatasImportacao() {
+  const st = window._datasImport;
+  if (!st) return;
+  const comErro = new Set(st.comProblema.filter(c => problemasDatasCadencia(c, st.periodo).some(p => p.grave)));
+  document.getElementById('popupDatasImportOverlay')?.remove();
+  window._datasImport = null;
+  seguirValidacaoCadastroImportacao(st.linhasArquivo.filter(c => !comErro.has(c)), st.file);
+}
+
+function fecharPopupDatasImportacao() {
+  document.getElementById('popupDatasImportOverlay')?.remove();
+  document.getElementById('fileInput').value = '';
+  window._datasImport = null;
 }
 
 // Compara nomes ignorando diferenças triviais (acentuação em forma NFD vindo do Excel,
