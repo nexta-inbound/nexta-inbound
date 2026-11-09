@@ -1251,6 +1251,16 @@
     color: var(--text-dim);
     margin-bottom: 24px;
   }
+  /* Enquanto entra e carrega os dados (ver entrarComPerfil/liberarTelaPrincipal) */
+  .login-progresso {
+    height: 3px; margin: -12px 0 12px; border-radius: 3px; overflow: hidden;
+    background: rgba(141,200,48,0.15); position: relative;
+  }
+  .login-progresso::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 35%; border-radius: 3px;
+    background: #EEFE7A; animation: login-progresso 1.3s ease-in-out infinite;
+  }
+  @keyframes login-progresso { from { left: -35%; } to { left: 100%; } }
   .login-field { margin-bottom: 15px; }
   .login-field label {
     display: block;
@@ -1515,6 +1525,35 @@
   body:not(.transportador-mode) #bulkBarTransportador,
   body:not(.transportador-mode) #painelTransportadorCards {
     display: none !important;
+  }
+
+  /* ── ACESSO POR ABA (perfis/<uid>/abas — ver aplicarAbasDoPerfil) ──
+     Aba sem acesso some do menu; aba "só visualização" esconde os botões que gravam.
+     É restrição de tela: as regras do banco seguem por tipo (staff/transportador), e as
+     funções que gravam também checam exigirEdicaoAba()/podeEditarAba(). */
+  .tab.aba-sem-acesso { display: none !important; }
+  .tab.aba-leitura::after { content: ' 👁'; font-size: 11px; opacity: 0.7; }
+  body.sem-aba-viagens #pipeline { display: none !important; }
+  .tab-content.somente-leitura .section-header .btn:not(.leitura-ok),
+  .tab-content.somente-leitura .col-acao:not(.leitura-ok),
+  .tab-content.somente-leitura .col-checkbox,
+  .tab-content.somente-leitura .frota-nota-btn,
+  .tab-content.somente-leitura .vd-week-btn,
+  .tab-content.somente-leitura [onclick^="removerFreteVinculo"],
+  .tab-content.somente-leitura [onclick^="abrirCalendarioEtaManual"],
+  .tab-content.somente-leitura [onclick^="abrirModalAnotacao"],
+  #modalHistoricoAnotacoes.somente-leitura [onclick^="abrirModalAnotacaoDoHistorico"],
+  #modalFreteVinculo.somente-leitura .tf-form,
+  #modalFreteVinculo.somente-leitura #btnSalvarFreteVinculo,
+  #modalFreteVinculo.somente-leitura [onclick^="abrirModalTrechoFrete"] {
+    display: none !important;
+  }
+  .tab-content.somente-leitura tbody input,
+  .tab-content.somente-leitura tbody select,
+  .tab-content.somente-leitura [onclick^="toggleDiaCarregamentoInline"],
+  .tab-content.somente-leitura [onclick^="abrirModalIndisponibilidade"] {
+    pointer-events: none;
+    cursor: default;
   }
 
   /* ── CARDS DO TRANSPORTADOR (Ofertadas / Placas Pendentes) ──
@@ -2563,6 +2602,7 @@
 
     <div class="login-title">Acesso ao sistema</div>
     <div class="login-desc" id="login-andamento">Entrando com o seu login Nexta…</div>
+    <div class="login-progresso" id="login-progresso"></div>
     <div class="login-error" id="login-erro"></div>
     <a class="login-btn" id="login-inicio" href="/?menu" style="display:none">Ir para a tela inicial</a>
   </div>
@@ -3432,7 +3472,7 @@
               <th>E-mail</th>
               <th>Telefone/WhatsApp</th>
               <th>CNPJs vinculados</th>
-              <th style="width:88px;min-width:88px;text-align:center">Ações</th>
+              <th class="col-acao" style="width:88px;min-width:88px;text-align:center">Ações</th>
             </tr>
           </thead>
           <tbody id="transpBody"></tbody>
@@ -3960,7 +4000,7 @@
       <div class="section-sub">Frete em R$/m³ por origem, destino e transportador — clique no ✏️ para ver o histórico de valores e atualizar</div>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary btn-sm" onclick="baixarModeloTabelaFrete()" title="Baixa a planilha modelo já preenchida com os fretes atuais — altere valores, inclua linhas novas e importe de volta">📄 Baixar Modelo</button>
+      <button class="btn btn-secondary btn-sm leitura-ok" onclick="baixarModeloTabelaFrete()" title="Baixa a planilha modelo já preenchida com os fretes atuais — altere valores, inclua linhas novas e importe de volta">📄 Baixar Modelo</button>
       <button class="btn btn-secondary btn-sm" onclick="abrirImportacaoTabelaFrete()" title="Importa a planilha modelo: trecho + transportador que já existe é atualizado (com histórico); o que não existe é incluído. Mostra uma prévia antes de gravar.">📥 Importar Planilha</button>
       <button class="btn btn-secondary btn-sm" onclick="aplicarFreteOfertasAbertas()" title="Grava o frete da tabela nas viagens em oferta (Ofertado, Aceito, Placa Enviada) que estão sem valor ou com valor diferente — é o valor que o transportador vê na oferta. Mostra a lista antes de gravar e registra no Histórico de Ofertas.">💲 Aplicar Frete nas Ofertas</button>
       <button class="btn btn-primary" onclick="abrirModalNovoFrete()">＋ Novo Frete</button>
@@ -4100,7 +4140,7 @@
               <th class="th-sortable" data-col="tipoTabela" onclick="ordenarColunaFrete('tipoTabela')">Tipo Tabela<span class="sort-arrow"></span></th>
               <th>Validade</th>
               <th class="th-sortable" data-col="atualizado" onclick="ordenarColunaFrete('atualizado')">Atualizado em<span class="sort-arrow"></span></th>
-              <th class="col-acao" style="text-align:center">Ações</th>
+              <th class="col-acao leitura-ok" style="text-align:center">Ações</th>
             </tr>
           </thead>
           <tbody id="tabelaFreteBody"></tbody>
@@ -5265,6 +5305,70 @@ function nomeTransportadorLogado() {
   return (_authUsuarioAtual?.transportadorNome || '').trim();
 }
 
+// ── ABAS POR PERFIL (pedido do usuário 09/11/2026) ──
+// perfis/<uid>/abas, gravado pela tela de Usuários do login central (testes/portal_hub/functions/sistemas.py,
+// ABAS_INBOUND — mesmos ids, na ordem das abas): { <idAba>: 'completo' | 'leitura' }. Sem o campo = todas as
+// abas com acesso completo, como sempre foi. Admin vê sempre todas; transportador continua só com Minhas Cargas.
+// 'leitura' (só visualização): a aba ganha .somente-leitura (o CSS esconde botões de edição e trava os campos das
+// linhas) e cada ação que edita confere exigirEdicaoAba(n) antes de abrir/gravar. Gerir Viagens e Importar
+// Cadência ainda não têm esse modo — o central só oferece "Acesso completo" para elas.
+// É restrição de tela: as regras do banco seguem liberando por tipo (staff), não por aba.
+const ABAS_PORTAL = ['cadencia', 'viagens', 'exportar', 'monitoramento', 'transportadores', 'bases',
+  'fornecedores', 'veiculos', 'leadtime', 'performance', 'frete']; // índice = número da aba (switchTab)
+const NIVEIS_ABA = ['completo', 'leitura'];
+
+// null = sem restrição (todas); objeto = só as abas listadas (pode vir vazio se nada válido foi gravado).
+function normalizarAbasPerfil(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return Object.fromEntries(Object.entries(raw).filter(([id, nivel]) => ABAS_PORTAL.includes(id) && NIVEIS_ABA.includes(nivel)));
+}
+
+// 'completo' | 'leitura' | null (sem acesso). Antes do login, tudo liberado (a tela de login cobre o portal).
+function nivelAba(i) {
+  const u = _authUsuarioAtual;
+  if (!u) return 'completo';
+  if (u.tipo === 'transportador') return i === 1 ? 'completo' : null;
+  if (u.admin || !u.abas) return 'completo';
+  return u.abas[ABAS_PORTAL[i]] || null;
+}
+function podeVerAba(i) { return nivelAba(i) !== null; }
+function podeEditarAba(i) { return nivelAba(i) === 'completo'; }
+function primeiraAbaPermitida() {
+  const i = ABAS_PORTAL.findIndex((_, n) => podeVerAba(n));
+  return i >= 0 ? i : 1;
+}
+
+function nomeAba(i) {
+  return (document.getElementById('tabBtn' + i)?.textContent || '').replace(/^[^\wÀ-ÿ]+/, '').trim() || `aba ${i + 1}`;
+}
+
+// Primeira linha das ações que editam algo da aba i: avisa e devolve false quando o acesso é só de visualização.
+function exigirEdicaoAba(i) {
+  if (podeEditarAba(i)) return true;
+  alert(`Seu acesso à aba "${nomeAba(i)}" é só de visualização — nada foi alterado.`);
+  return false;
+}
+
+function aplicarAbasDoPerfil() {
+  ABAS_PORTAL.forEach((_, i) => {
+    const nivel = nivelAba(i);
+    const btn = document.getElementById('tabBtn' + i);
+    if (btn) {
+      btn.classList.toggle('aba-sem-acesso', nivel === null);
+      btn.classList.toggle('aba-leitura', nivel === 'leitura');
+      btn.title = nivel === 'leitura' ? 'Acesso só de visualização' : '';
+    }
+    document.getElementById('tab-' + i)?.classList.toggle('somente-leitura', nivel === 'leitura');
+  });
+  // O funil de status do topo filtra e leva para Gerir Viagens
+  document.body.classList.toggle('sem-aba-viagens', !podeVerAba(1));
+  // Modais fora do .tab-content: o histórico de anotações é só do Monitoramento, o
+  // detalhe do frete só da Tabela de Frete
+  document.getElementById('modalHistoricoAnotacoes')?.classList.toggle('somente-leitura', !podeEditarAba(3));
+  document.getElementById('modalFreteVinculo')?.classList.toggle('somente-leitura', !podeEditarAba(10));
+  if (!podeVerAba(activeTab)) switchTab(primeiraAbaPermitida());
+}
+
 // ── MOTIVO DO CANCELAMENTO ──
 // Pede o motivo antes de confirmar o status "Cancelado" (ver salvarStatusInline,
 // salvarViagem e aplicarEmLote) — resolve com o motivo escolhido, ou null se o
@@ -5473,6 +5577,7 @@ async function carregarUsuariosFirebase(mostrarFeedback = false) {
       tipo: p.tipo || 'staff',
       transportadorNome: p.transportadorNome || '',
       assinatura: p.assinatura || '',
+      abas: normalizarAbasPerfil(p.abas),
     }));
     _usuariosAtivos = lista;
     if (mostrarFeedback && info) info.textContent = lista.length + ' usuário(s) carregado(s).';
@@ -5500,9 +5605,25 @@ function mostrarAndamentoLogin(texto) {
   document.getElementById('login-andamento').textContent = texto;
 }
 
+// A tela de entrada fica na frente até os dados carregarem (cadastros, semana e viagens do Padrão), para a
+// pessoa não ver o portal vazio com "Carregando..." e as abas mudando sozinhas. Se a carga travar, libera
+// depois de LIMITE_TELA_ENTRADA_MS e a barra de status do topo segue mostrando o andamento.
+const LIMITE_TELA_ENTRADA_MS = 60000;
+let _telaPrincipalLiberada = false;
+function liberarTelaPrincipal() {
+  if (_telaPrincipalLiberada) return;
+  _telaPrincipalLiberada = true;
+  document.getElementById('login-overlay').style.display = 'none';
+}
+// Etapa da carga na tela de entrada (sem efeito depois que o portal já apareceu)
+function andamentoCarga(texto) {
+  if (!_telaPrincipalLiberada) mostrarAndamentoLogin(texto);
+}
+
 function mostrarFalhaLogin(msg) {
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('login-andamento').textContent = '';
+  document.getElementById('login-progresso').style.display = 'none';
   const erroEl = document.getElementById('login-erro');
   erroEl.textContent = msg || 'Não foi possível entrar.';
   erroEl.classList.add('visible');
@@ -5524,6 +5645,11 @@ async function entrarComPerfil(user) {
     mostrarFalhaLogin('Seu login ainda não tem perfil no Inbound. Fale com o key user do Inbound.');
     return;
   }
+  const abas = normalizarAbasPerfil(perfil.abas);
+  if (perfil.tipo !== 'transportador' && !perfil.admin && abas && !Object.keys(abas).length) {
+    mostrarFalhaLogin('Seu perfil no Inbound não tem nenhuma aba liberada. Fale com o key user do Inbound.');
+    return;
+  }
   aplicarSessaoUsuario({
     login: (user.email || '').toLowerCase(),
     uid: user.uid,
@@ -5531,13 +5657,21 @@ async function entrarComPerfil(user) {
     admin: !!perfil.admin,
     tipo: perfil.tipo === 'transportador' ? 'transportador' : 'staff',
     transportadorNome: perfil.transportadorNome || '',
+    abas,
   });
-  await iniciarFirebase();
+  andamentoCarga('Carregando os dados do Inbound…');
+  const limite = setTimeout(liberarTelaPrincipal, LIMITE_TELA_ENTRADA_MS);
+  try {
+    await iniciarFirebase();
+  } finally {
+    clearTimeout(limite);
+    liberarTelaPrincipal();
+  }
 }
 
+// Também chamada por validarSessaoAtual (lista de usuários mudou): não mexe na tela de entrada
 function aplicarSessaoUsuario(usuario) {
   _authUsuarioAtual = usuario;
-  document.getElementById('login-overlay').style.display = 'none';
   const nome = usuario.nome || usuario.login;
   const iniciais = nome.split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?';
   document.getElementById('headerUser').style.display = 'flex';
@@ -5568,6 +5702,7 @@ function aplicarRestricoesPorTipo(usuario) {
   }
 
   if (transportador) switchTab(1);
+  aplicarAbasDoPerfil();
 }
 
 // "Sair": grava o pendente, limpa o cache local e sai também do login central (volta à tela inicial)
@@ -5610,6 +5745,7 @@ function validarSessaoAtual() {
     admin: !!usuario.admin,
     tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
     transportadorNome: usuario.transportadorNome || '',
+    abas: usuario.abas,
   });
 }
 
@@ -6687,6 +6823,7 @@ function toggleKpisViagens() {
 // ── TABS ──
 function switchTab(i) {
   if (isTransportador() && i !== 1) i = 1;
+  if (!podeVerAba(i)) i = primeiraAbaPermitida(); // aba fora do perfil (ver nivelAba) — inclusive os switchTab do código
   document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', j===i));
   document.querySelectorAll('.tab-content').forEach((c,j) => c.classList.toggle('active', j===i));
   activeTab = i;
@@ -8771,8 +8908,19 @@ async function carregarTransportadoresFirebase() {
   } catch (e) { console.error('Erro ao carregar transportadores:', e); }
 }
 
+// Aba dona de cada cadastro — rede de segurança do modo só visualização (as ações já conferem exigirEdicaoAba;
+// aqui é silencioso porque também roda sozinho, ex.: migração de status ao carregar os veículos).
+const ABA_DO_CADASTRO = {
+  salvarTransportadores: 4, salvarBases: 5, salvarFornecedores: 6, salvarVeiculosDedicados: 7,
+  salvarLeadtimes: 8, salvarMetasShareRegional: 9,
+};
+
 async function persistirEmFirebase(metodo, dados, label) {
   if (!window._fb?.[metodo]) return;
+  if (metodo in ABA_DO_CADASTRO && !podeEditarAba(ABA_DO_CADASTRO[metodo])) {
+    console.warn(`${label}: não gravado — acesso só de visualização na aba ${nomeAba(ABA_DO_CADASTRO[metodo])}`);
+    return;
+  }
   try {
     await window._fb[metodo](dados);
   } catch (e) { console.error(`Erro ao salvar ${label}:`, e); }
@@ -8881,6 +9029,7 @@ function renderBasesTable() {
 let editingBaseIdx = null;
 
 function abrirModalBase(idx) {
+  if (!exigirEdicaoAba(5)) return;
   editingBaseIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('base-modal-title').textContent = isNovo ? 'Nova Base' : 'Editar Base';
@@ -8944,6 +9093,7 @@ async function salvarBase() {
 }
 
 async function removerBase(idx) {
+  if (!exigirEdicaoAba(5)) return;
   const b = bases[idx];
   if (!confirm(`Remover a base "${b.nomeMis}" do cadastro?`)) return;
   bases.splice(idx, 1);
@@ -9304,6 +9454,7 @@ function renderChipsJanelaCarregamentoTabela(f) {
 // Editar direto na tabela (sem abrir o modal) — mesmo dado que a Janela de Carregamento
 // do modal, só que grava na hora; mantém a mesma trava de não poder zerar todos os dias.
 async function toggleDiaCarregamentoInline(idx, dia) {
+  if (!exigirEdicaoAba(6)) return;
   const f = fornecedores[idx];
   const dias = new Set(f.diasCarregamento ?? diasCarregamentoPadrao(f.origem));
   if (dias.has(dia)) {
@@ -9368,6 +9519,7 @@ function renderFornecedoresTable() {
 }
 
 function abrirModalFornecedor(idx) {
+  if (!exigirEdicaoAba(6)) return;
   editingFornecedorIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('fornecedor-modal-title').textContent = isNovo ? 'Novo Fornecedor' : 'Editar Fornecedor';
@@ -9433,6 +9585,7 @@ async function salvarFornecedor() {
 }
 
 async function removerFornecedor(idx) {
+  if (!exigirEdicaoAba(6)) return;
   const f = fornecedores[idx];
   if (!confirm(`Remover o fornecedor "${f.origem} / ${f.baseAtendimento}" do cadastro?`)) return;
   fornecedores.splice(idx, 1);
@@ -9481,6 +9634,7 @@ function renderLeadtimeTable() {
 }
 
 function abrirModalLeadtime(idx, prefill) {
+  if (!exigirEdicaoAba(8)) return;
   editingLeadtimeIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('leadtime-modal-title').textContent = isNovo ? 'Novo Leadtime' : 'Editar Leadtime';
@@ -9537,6 +9691,7 @@ async function salvarLeadtime() {
 }
 
 async function removerLeadtime(idx) {
+  if (!exigirEdicaoAba(8)) return;
   const l = leadtimes[idx];
   if (!confirm(`Remover o leadtime "${l.origemCidade}/${l.origemUf}" → "${l.destinoCidade}/${l.destinoUf}" do cadastro?`)) return;
   leadtimes.splice(idx, 1);
@@ -9603,11 +9758,13 @@ function renderLeadtimesPendentes() {
 }
 
 function abrirModalLeadtimePendente(i) {
+  if (!exigirEdicaoAba(8)) return;
   abrirModalLeadtime(null, leadtimesPendentesAtual[i]);
 }
 
 // ── Upload xlsx Leadtime (layout: Origem CIDADE, Origem UF, Destino CIDADE, Destino UF, Leadtime sem T2 (horas)) ──
 function processarArquivoLeadtime(file) {
+  if (!exigirEdicaoAba(8)) return;
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -9723,6 +9880,13 @@ let _tokenHistoricoFrete = 0;   // descarta resposta de histórico que chega dep
 let sortColunaFrete = null;     // null = Origem → Destino → Transportador
 let sortDirFrete = 'asc';
 
+// Quem espera a 1ª resposta do listener (dados ou erro) — a tela de entrada, ver esperarTabelaFrete/iniciarFirebase
+let _esperandoTabelaFrete = [];
+function esperarTabelaFrete() {
+  if (_tabelaFreteCarregada || !_unsubTabelaFrete) return Promise.resolve();
+  return new Promise(resolve => _esperandoTabelaFrete.push(resolve));
+}
+
 function garantirListenerTabelaFrete() {
   if (_unsubTabelaFrete || isTransportador() || !window._fb?.ouvirTabelaFrete) return;
   _unsubTabelaFrete = window._fb.ouvirTabelaFrete((dados, err) => {
@@ -9737,6 +9901,7 @@ function garantirListenerTabelaFrete() {
       _tabelaFreteErro = null;
     }
     _tabelaFreteCarregada = true;
+    _esperandoTabelaFrete.splice(0).forEach(resolve => resolve());
     if (activeTab === 10) renderTabelaFrete();
     if (_freteVinculoAberto) renderDetalheFreteVinculo();
     atualizarSelectTransportadorModalAberto();
@@ -10166,9 +10331,11 @@ function linhaTabelaFreteHtml(l) {
       <td>${l.tipoTabela ? esc(l.tipoTabela) : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>${validadeFreteHtml(l)}</td>
       <td title="${esc(`por ${v.atualizadoPor || '—'}`)}">${esc(fmtDataCurtaFrete(l.atualizado))}</td>
-      <td class="col-acao">
+      <td class="col-acao leitura-ok">
         <div style="display:flex;gap:4px;justify-content:center">
-          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteVinculo('${t.id}', '${v.id}')" title="Ver histórico e atualizar o frete">✏️</button>
+          ${podeEditarAba(10)
+            ? `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteVinculo('${t.id}', '${v.id}')" title="Ver histórico e atualizar o frete">✏️</button>`
+            : `<button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalFreteVinculo('${t.id}', '${v.id}')" title="Ver histórico do frete">🕘</button>`}
           <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerFreteVinculo('${t.id}', '${v.id}')" title="Remover este frete">✕</button>
         </div>
       </td>
@@ -11284,6 +11451,7 @@ function revisarFretesOfertados(pares, nota = '') {
 // gravado (ou antes de a tabela ter o trecho). As que continuam sem tabela pra rota ×
 // transportador só entram na contagem: aparecem em "Rotas com viagens sem frete cadastrado".
 function aplicarFreteOfertasAbertas() {
+  if (!exigirEdicaoAba(10)) return;
   if (_tabelaFreteErro) { alert('A Tabela de Frete não carregou (veja o aviso na tela) — não dá para aplicar o frete nas ofertas.'); return; }
   if (!_tabelaFreteCarregada) { alert('A Tabela de Frete ainda está carregando — tente de novo em instantes.'); return; }
   const semTabela = viagensAtivo().filter(v => STATUS_OFERTA_EXIGE_FRETE.includes(v.status) && v.transportador
@@ -11361,6 +11529,7 @@ function atualizarSelectTransportadorModalAberto() {
 // Gravação única de toda a aba — trava o botão e evita duplo clique gerando log duplicado.
 async function executarGravacaoTabelaFrete(updates, logs, btnId) {
   if (_salvandoTabelaFrete) return false;
+  if (!exigirEdicaoAba(10)) return false;
   if (!window._fb?.gravarTabelaFrete) { alert('Firebase indisponível — recarregue a página.'); return false; }
   const btn = btnId ? document.getElementById(btnId) : null;
   _salvandoTabelaFrete = true;
@@ -11475,6 +11644,7 @@ function validarCamposTrechoFrete(dados) {
 // prefill: { origemCidade, origemUf, destinoCidade, destinoUf, transportador } — vem do
 // "＋ Cadastrar" das rotas sem frete (ver renderFretesPendentes).
 function abrirModalNovoFrete(prefill = null) {
+  if (!exigirEdicaoAba(10)) return;
   ['origemCidade', 'origemUf', 'destinoCidade', 'destinoUf', 'valor', 'tipoTabela', 'observacao'].forEach(c => {
     document.getElementById('nf-' + c).value = (prefill && prefill[c]) || '';
   });
@@ -11592,6 +11762,7 @@ async function salvarNovoFrete() {
 
 // ── Modal: Editar trecho (origem/destino) ──
 function abrirModalTrechoFrete(trechoId) {
+  if (!exigirEdicaoAba(10)) return;
   const t = trechosFrete[trechoId];
   if (!t) { alert('Trecho não encontrado — pode ter sido removido por outro usuário.'); return; }
   editingTrechoFreteId = trechoId;
@@ -11733,7 +11904,7 @@ function abrirModalFreteVinculo(trechoId, vinculoId) {
   renderDetalheFreteVinculo();
   carregarHistoricoFreteModal(trechoId, vinculoId);
   document.getElementById('modalFreteVinculo').classList.add('open');
-  setTimeout(() => document.getElementById('fv-valor').focus(), 100);
+  if (podeEditarAba(10)) setTimeout(() => document.getElementById('fv-valor').focus(), 100);
 }
 
 function fecharModalFreteVinculo() {
@@ -11833,6 +12004,7 @@ function linhaHistoricoFrete(h) {
 }
 
 async function salvarFreteVinculo() {
+  if (!exigirEdicaoAba(10)) return;
   if (_salvandoTabelaFrete || !_freteVinculoAberto) return;
   const { trechoId, vinculoId } = _freteVinculoAberto;
   const t = trechosFrete[trechoId];
@@ -11926,6 +12098,7 @@ async function salvarFreteVinculo() {
 }
 
 async function removerFreteVinculo(trechoId, vinculoId) {
+  if (!exigirEdicaoAba(10)) return;
   const t = trechosFrete[trechoId];
   const v = t?.vinculos?.[vinculoId];
   if (!v) return;
@@ -12036,6 +12209,7 @@ function baixarModeloTabelaFrete() {
 
 // A comparação precisa da tabela carregada — sem ela, todo frete existente viraria "novo".
 function abrirImportacaoTabelaFrete() {
+  if (!exigirEdicaoAba(10)) return;
   if (_tabelaFreteErro) { alert('A Tabela de Frete não carregou (veja o aviso na tela) — não dá para comparar a planilha com o que já existe.'); return; }
   if (!_tabelaFreteCarregada) { alert('A Tabela de Frete ainda está carregando — tente de novo em instantes.'); return; }
   document.getElementById('fileInputTabelaFrete').click();
@@ -13380,6 +13554,7 @@ function renderStatusFrotaTabelaHtml(colunas, porTransportador, hoje, isoHoje) {
 }
 
 function abrirModalVeiculo(idx) {
+  if (!exigirEdicaoAba(7)) return;
   editingVeiculoIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('veiculo-modal-title').textContent = isNovo ? 'Novo Veículo Dedicado' : 'Editar Veículo Dedicado';
@@ -13499,6 +13674,7 @@ async function salvarVeiculo() {
 }
 
 async function removerVeiculo(idx) {
+  if (!exigirEdicaoAba(7)) return;
   const vd = veiculosDedicados[idx];
   if (!confirm(`Remover o veículo "${vd.placaCavalo}" (${vd.transportador}) do cadastro?`)) return;
   veiculosDedicados.splice(idx, 1);
@@ -13511,6 +13687,7 @@ let _indispAlvo = null; // { veiculoId, dias: [iso, ...] }
 
 // Clique num dia individual do calendário — abre o modal só para aquele dia.
 function abrirModalIndisponibilidade(veiculoId, dia) {
+  if (!exigirEdicaoAba(7)) return;
   if (isTransportador()) return;
   abrirModalIndisponibilidadeDias(veiculoId, [dia]);
 }
@@ -13518,6 +13695,7 @@ function abrirModalIndisponibilidade(veiculoId, dia) {
 // Botão "🚫 Semana toda" — aplica de uma vez a todos os dias exibidos no
 // calendário daquele veículo, em vez de clicar dia a dia.
 function abrirModalIndisponibilidadeSemana(veiculoId) {
+  if (!exigirEdicaoAba(7)) return;
   if (isTransportador()) return;
   const vd = veiculosDedicados.find(x => x.id === veiculoId);
   const dias = diasAtivosDoVeiculo(vd).map(d => d.toISOString().slice(0, 10));
@@ -13630,7 +13808,7 @@ function renderTransportadoresTable() {
         <td class="cell-truncate" style="color:var(--text-dim)">${esc(t.email || '—')}</td>
         <td class="cell-truncate" style="color:var(--text-dim);font-family:monospace">${esc(t.telefone || '—')}</td>
         <td style="font-size:11px;line-height:1.7">${cnpjsHtml}</td>
-        <td style="text-align:center">
+        <td class="col-acao" style="text-align:center">
           <div style="display:flex;gap:4px;justify-content:center">
             <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px" onclick="abrirModalTransportador(${realIdx})">✏️</button>
             <button class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px" onclick="removerTransportador(${realIdx})">✕</button>
@@ -13671,6 +13849,7 @@ function removerLinhaCnpj(i) {
 }
 
 function abrirModalTransportador(idx) {
+  if (!exigirEdicaoAba(4)) return;
   editingTranspIdx = idx;
   const isNovo = idx === null || idx === undefined;
   document.getElementById('transp-modal-title').textContent = isNovo ? 'Novo Transportador' : 'Editar Transportador';
@@ -13793,6 +13972,7 @@ async function salvarTransportador() {
 }
 
 async function removerTransportador(idx) {
+  if (!exigirEdicaoAba(4)) return;
   const t = transportadores[idx];
   if (!confirm(`Remover "${t.nomeFantasia}" do cadastro (e os ${t.cnpjs.length} CNPJ(s) vinculados a ele)?`)) return;
   transportadores.splice(idx, 1);
@@ -16791,6 +16971,7 @@ function renderBotaoComprovantePamcard(v) {
 }
 
 function salvarEtaManualInline(idViagem, valorInput) {
+  if (!exigirEdicaoAba(3)) { renderMonitoramento(); return; }
   const v = viagensAtivo().find(x => x.idViagem === idViagem);
   if (!v) return;
   const anterior = v.etaManualData || '-';
@@ -16864,6 +17045,7 @@ function datetimeLocalParaDMYHora(valor) {
 }
 
 function abrirCalendarioEtaManual(idViagem) {
+  if (!exigirEdicaoAba(3)) return;
   const picker = document.getElementById(`eta-picker-${idViagem}`);
   if (!picker) return;
   const v = viagensAtivo().find(x => x.idViagem === idViagem);
@@ -16873,6 +17055,7 @@ function abrirCalendarioEtaManual(idViagem) {
 }
 
 function aplicarCalendarioEtaManual(idViagem, valorPicker) {
+  if (!exigirEdicaoAba(3)) return;
   const partes = datetimeLocalParaDMYHora(valorPicker);
   if (!partes) return;
   const v = viagensAtivo().find(x => x.idViagem === idViagem);
@@ -16898,6 +17081,7 @@ function aplicarCalendarioEtaManual(idViagem, valorPicker) {
 }
 
 function salvarStatusManualInline(idViagem, valorInput) {
+  if (!exigirEdicaoAba(3)) { renderMonitoramento(); return; }
   const v = viagensAtivo().find(x => x.idViagem === idViagem);
   if (!v) return;
   const anterior = v.statusManual || '';
@@ -16921,6 +17105,7 @@ function salvarStatusManualInline(idViagem, valorInput) {
 let _anotacaoIdViagemAtual = null;
 
 function abrirModalAnotacao(idViagem) {
+  if (!exigirEdicaoAba(3)) return;
   const v = viagensAtivo().find(x => x.idViagem === idViagem);
   if (!v) return;
   _anotacaoIdViagemAtual = idViagem;
@@ -17276,6 +17461,7 @@ function exigePassagemSemDescarga(v, base) {
 }
 
 function exportarHerrlog() {
+  if (!exigirEdicaoAba(2)) return;
   // Sem restrição por herrlogExportadoEm — reexportar quantas vezes precisar não é
   // problema; o filtro "Aguardando criação na Herrlog" já indica o que falta confirmar.
   // A exceção é herrlogImportIncertoEm: um POST sem resposta pode ter sido processado,
@@ -18099,6 +18285,7 @@ zone.addEventListener('drop', e => {
 
 // ── Upload xlsx Fornecedores (modelo "dados origens") ──
 function processarArquivoFornecedores(file) {
+  if (!exigirEdicaoAba(6)) return;
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -19052,6 +19239,14 @@ async function iniciarFirebase() {
   if (!_authUsuarioAtual) return;
   mostrarStatus('saving', 'Carregando dados...');
   try {
+  // Tabela de Frete (~1 MB em nov/2026): baixa junto com o resto e a tela de entrada espera por ela (ver o fim
+  // desta função), para quem usa: a aba de frete ou Gerir Viagens, cujo modal e seleção em lote mostram o frete
+  // de cada transportador. Antes só começava no 1º clique na aba ou no 1º modal, que ficavam uns segundos em
+  // "Carregando tabela de frete...". A gravação do frete na oferta e a trava não dependem disso: leem do banco
+  // na hora se o listener ainda não respondeu (fonteTabelaFreteOferta/viagensBloqueadasPorFrete).
+  const usaTabelaFrete = !isTransportador() && (podeVerAba(10) || podeVerAba(1));
+  if (usaTabelaFrete) garantirListenerTabelaFrete();
+  andamentoCarga('Carregando os cadastros…');
 await carregarUsuariosFirebase();
   await carregarTransportadoresFirebase();
   await carregarBasesFirebase();
@@ -19072,6 +19267,7 @@ await carregarUsuariosFirebase();
     return;
   }
   semanaAtiva = semanas[0];
+  andamentoCarga('Carregando a semana…');
   await carregarListaSemanas();
   const payload = await carregarPayloadSemana(semanaAtiva);
   if (payload) {
@@ -19094,7 +19290,13 @@ await carregarUsuariosFirebase();
   // Cadência continua usando o seletor único (semanaAtiva) normalmente. Transportador
   // participa também: carregarIndiceViagens/ouvirIndiceViagens/obterViagemIndividual já
   // usam a query restrita por transportador.
+  andamentoCarga('Carregando as viagens…');
   await ativarSelecaoPadrao();
+  if (usaTabelaFrete && !_tabelaFreteCarregada) {
+    andamentoCarga('Carregando a tabela de frete…');
+    // Teto próprio: sem resposta, segue (a aba e o modal mostram "Carregando..." e se atualizam quando chegar)
+    await Promise.race([esperarTabelaFrete(), new Promise(resolve => setTimeout(resolve, 20000))]);
+  }
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
     console.error('iniciarFirebase error:', err);
@@ -19234,6 +19436,7 @@ function valorMetaShare(transportador, regional) {
 // muta o array em memória, re-renderiza pra refletir o Δ na hora, e persiste no Firebase
 // (visível para todos os usuários, não só na sessão local).
 async function atualizarMetaShare(transportador, regional, valorStr) {
+  if (!exigirEdicaoAba(9)) return;
   const bruto = String(valorStr).trim();
   const idx = metasShareRegional.findIndex(m => m.transportador === transportador && m.regional === regional);
   if (bruto === '') {
