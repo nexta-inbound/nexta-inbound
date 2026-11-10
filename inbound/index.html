@@ -6959,6 +6959,7 @@ function agruparCadencias(arr) {
 }
 
 function valorOrigemFiltro(item) {
+  item = normalizarUnidadeFornecedor(item);
   return (item.origem || '') + (item.base ? ` (${item.base})` : '');
 }
 
@@ -18523,6 +18524,7 @@ function configurarListenerSemana(key) {
   }
 
   const aplicarViagemLocal = (id, dados) => {
+    dados = normalizarUnidadeFornecedor(dados);
     const idx = viagens.findIndex(v => v.idViagem === id);
     if (idx >= 0) viagens[idx] = dados; else viagens.push(dados);
   };
@@ -18718,7 +18720,7 @@ function _pararCadenciaSeSemanaVazia(semana) {
 function _aplicarViagemCarregada(id, semana, registro) {
   _garantirCadenciaDaSemana(semana);
   const idx = viagensMultiSemana.findIndex(v => v.idViagem === id);
-  const registroComOrigem = { ...registro, _semanaOrigem: semana };
+  const registroComOrigem = { ...normalizarUnidadeFornecedor(registro), _semanaOrigem: semana };
   if (idx >= 0) viagensMultiSemana[idx] = registroComOrigem; else viagensMultiSemana.push(registroComOrigem);
   _idsCarregados.add(id);
 }
