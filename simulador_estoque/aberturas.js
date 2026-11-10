@@ -163,8 +163,12 @@
     if (!alvos.length) { status('Nenhuma alteração para salvar.'); return; }
     const lotes = alvos.map(coletar);
     if (lotes.some(l => !l)) { status('Há valores inválidos: use apenas números inteiros (negativo só na Abertura Dia).', true); return; }
-    const vazios = lotes.filter(({linhas}) => !linhas.some(l => l.unidade !== 'frascos' && l.valores.abertura !== 0)).map(({t}) => t.nome);
-    if (vazios.length && !confirm(`Nenhuma abertura de combustível foi preenchida em:\n${vazios.map(n => '• ' + n).join('\n')}\n\nSalvar assim mesmo?`)) return;
+    // Qualquer abertura de combustivel zerada/em branco (usuaria, 2026-11-10: antes so' avisava com o terminal
+    // inteiro zerado) — lista produto a produto e pergunta antes de salvar. Frascos (aditivo) ficam de fora.
+    const zerados = lotes.flatMap(({t, linhas}) => linhas.filter(l => l.unidade !== 'frascos' && l.valores.abertura === 0)
+      .map(l => `• ${t.nome} · ${l.produto}`));
+    if (zerados.length && !confirm(`Temos campos zerados na abertura:\n\n${zerados.join('\n')}\n\nTem certeza disso? `
+        + 'Clique em OK para salvar assim mesmo ou em Cancelar para voltar e preencher.')) return;
     // Diferenca acima de 10% da referencia (usuaria, 2026-10-19): um resumo so', de todos os terminais; a pessoa
     // confirma ou volta pra corrigir. A mensagem pra gestao (WhatsApp) sai da maquina logistica.
     const fora = lotes.flatMap(({t, linhas}) => linhas.filter(l => l.unidade !== 'frascos').map(l => {
