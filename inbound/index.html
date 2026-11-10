@@ -6182,7 +6182,17 @@ function atualizarBulkBar() {
       `${count} ${pluralViagem(count)} selecionada${count !== 1 ? 's' : ''}`;
   } else {
     bar.style.display = 'none';
+    // Sem seleção, os campos voltam pro "Manter atual" — senão um transportador escolhido e não
+    // aplicado ficava escondido na barra e ia junto no próximo lote (ex.: aplicar só o programador)
+    if (!transportador) limparCamposLote();
   }
+}
+
+function limparCamposLote() {
+  ['bulk-status', 'bulk-agendamento', 'bulk-transp', 'bulk-transp-cnpj', 'bulk-programador'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 }
 
 function limparSelecao() {
@@ -6208,6 +6218,24 @@ async function aplicarEmLote() {
     if (!motivoCancelamento) return;
   }
   const arr = viagensAtivo();
+  // Sem Programação = sem transportador (o pipeline conta Backlog como "Sem Transportador"):
+  // viagem que continua em Sem Programação não recebe transportador no lote — pra alocar, escolhe
+  // o status junto (ex.: Ofertado). Senão ela fica "pré-alocada" sem rastro e, ao virar Ofertado,
+  // vai direto pra esse transportador (caso NXT-006386..006400 com GAM, nov/2026).
+  const semTranspPorSemProgramacao = new Set(transp
+    ? [...selectedViagens].map(idx => arr[idx]).filter(v => v && !viagemCancelada(v) && !pedagioComprado(v)
+      && (status || v.status) === 'Backlog' && String(v.transportador || '').trim() !== transp)
+    : []);
+  if (semTranspPorSemProgramacao.size) {
+    const ids = [...semTranspPorSemProgramacao].map(v => v.idViagem);
+    const n = ids.length;
+    const msg = `🔒 ${n} ${pluralViagem(n)} em Sem Programação não ${n === 1 ? 'recebe' : 'recebem'} o transportador: `
+      + ids.slice(0, 5).join(', ') + (n > 5 ? ` e mais ${n - 5}` : '')
+      + '\n\nEm Sem Programação a viagem fica sem transportador — para alocar, escolha também o status (ex.: Ofertado).';
+    const temOutraAlteracao = status || agendamento || progRaw || n < selectedViagens.size;
+    if (!temOutraAlteracao) { alert(msg); return; }
+    if (!confirm(`${msg}\n\nAplicar o restante mesmo assim?`)) return;
+  }
   // Trava de frete: viagens que este lote transforma em oferta nova (ver ofertaNovaExigeFrete).
   // As bloqueadas ficam fora do lote inteiro.
   const novasOfertas = [...selectedViagens].map(idx => arr[idx])
@@ -6257,7 +6285,7 @@ async function aplicarEmLote() {
     if (removerAlocacao) {
       v.transportador = '';
       v.transportadorCnpj = '';
-    } else if (transp) {
+    } else if (transp && !semTranspPorSemProgramacao.has(v)) {
       v.transportador = transp;
       v.transportadorCnpj = transpCnpj; // troca de apelido invalida o CNPJ anterior; fica vazio se não escolhido aqui
     }
@@ -6286,11 +6314,7 @@ async function aplicarEmLote() {
     if (modoMultiSemana && v._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
   });
   selectedViagens.clear();
-  document.getElementById('bulk-status').value = '';
-  document.getElementById('bulk-agendamento').value = '';
-  document.getElementById('bulk-transp').value = '';
-  document.getElementById('bulk-transp-cnpj').value = '';
-  document.getElementById('bulk-programador').value = '';
+  limparCamposLote();
   updatePipeline();
   agendarAutosave();
   renderViagensTable();
@@ -10942,10 +10966,11 @@ function renderFretesPendentes() {
 // cancelada direto nesses status. Frota Dedicada não trava (pedido do usuário 09/10/2026).
 // Mesma regra de rota da lista "Rotas com viagens sem frete" (trechoFreteDaViagem/
 // temFreteDoTransportador); Retorno Vazio fica fora (não é cobrado por m³).
-// DESLIGADA até a Tabela de Frete estar completa (pedido do usuário 09/10/2026) — pra ligar,
-// TRAVA_OFERTA_SEM_FRETE = true. Pra testar antes sem afetar ninguém, liga só no próprio
-// navegador pelo console: localStorage.setItem('travaOfertaSemFrete', '1') (removeItem desliga).
-const TRAVA_OFERTA_SEM_FRETE = false;
+// LIGADA em 10/11/2026 (pedido do usuário; ficou desligada desde 09/10/2026 até a Tabela de
+// Frete estar completa) — pra desligar de novo, TRAVA_OFERTA_SEM_FRETE = false. Desligada, dá
+// pra ligar só no próprio navegador pelo console pra testar:
+// localStorage.setItem('travaOfertaSemFrete', '1') (removeItem desliga).
+const TRAVA_OFERTA_SEM_FRETE = true;
 const STATUS_OFERTA_EXIGE_FRETE = ['Ofertado', 'Aceito', 'Placa Enviada'];
 // Quem já passou pela oferta (o grupo acima + execução): voltar daqui pro grupo com o mesmo
 // transportador não é oferta nova (ex.: volta automática Em Andamento → Placa Enviada da Herrlog).
@@ -11239,6 +11264,12 @@ function montarSelectTransportadorFrete(sel, viagensAlvo, dados, { current, topo
       sel.value = current;
     }
     // Remontado com a lista aberta (frete/share chegando) mantém o texto completo
+    textoOpcoesSelectTransportador(sel, document.activeElement === sel);
+  } else if (sel.value !== (current || '')) {
+    // Mesma lista, valor diferente: o modal reaberto em outra viagem do mesmo trecho ficava com o
+    // transportador escolhido (e não salvo/remontado) na viagem anterior. Assinatura igual = a
+    // opção "(não cadastrado)" de `current`, se precisar, já está no DOM.
+    sel.value = current || '';
     textoOpcoesSelectTransportador(sel, document.activeElement === sel);
   }
   return { dias, baldes, share };
@@ -15648,6 +15679,13 @@ async function salvarViagem() {
   }
   const novoTransportador = document.getElementById('m-transportador').value;
   const novoCnpj = document.getElementById('m-transportador-cnpj').value;
+  // Sem Programação = sem transportador (mesma regra do lote, ver aplicarEmLote). Viagem antiga
+  // que já está assim salva normal enquanto o transportador não muda.
+  if (!isTransportador() && novoStatus === 'Backlog' && novoTransportador
+    && novoTransportador !== (v.transportador || '')) {
+    alert('Em Sem Programação a viagem fica sem transportador.\n\nPara alocar o transportador, mude também o status (ex.: Ofertado).');
+    return;
+  }
   if (novoTransportador) {
     const t = buscarTransportadorPorNome(novoTransportador);
     if (t && t.cnpjs.length && !novoCnpj) {
