@@ -4,7 +4,7 @@
 // Quando houver IA, ela entra no lugar de responder() usando os mesmos trechos.
 (function(){
 'use strict';
-const SUGESTOES=['Como é calculada a VMD?','De onde vem a abertura?','Quando o FOB vai para o dia seguinte?',
+const SUGESTOES=['Como lanço a abertura da minha base?','Como é calculada a VMD?','De onde vem a abertura?','Quando o FOB vai para o dia seguinte?',
  'Por que não aparece o ID da viagem?','Por que a VMD ficou zerada?','O que é o lastro?','Como salvar na equipe?','O que significa cada cor?'];
 const PARADAS=new Set(('a o as os e é de da do das dos que qual quais como por porque pra para no na nos nas um uma em ' +
  'com se ao aos eu meu minha ele ela isso esse essa este esta tem ter ta tá ficou fica foi ser sao são quando onde ' +
@@ -39,7 +39,8 @@ function carregarManual(){
    const texto=(caixa.innerText||caixa.textContent||'').replace(/\n{3,}/g,'\n\n').trim();
    const titulo=(h.tagName==='H2'?h.textContent.replace(/^\s*\d+\s*/,''):h.textContent).trim();
    if(!texto&&h.tagName==='H2')return;
-   const ancora=h.id?'#'+h.id:'#'+sec.id+':~:text='+encodeURIComponent(h.childNodes[0]?.textContent?.trim()||titulo);
+   // Titulo de capitulo (h2) vai pro inicio do capitulo; subtitulo sem id, direto pro texto dele.
+   const ancora=h.id?'#'+h.id:h.tagName==='H2'?'#'+sec.id:'#'+sec.id+':~:text='+encodeURIComponent(h.childNodes[0]?.textContent?.trim()||titulo);
    lista.push({titulo,capitulo:cap?cap.textContent.replace(/^\s*\d+/,'').trim():'',texto,ancora,
     pt:new Set(palavras(titulo)),pc:palavras(texto)});
   });
@@ -98,6 +99,9 @@ function css(){
 .dv-rel button{display:block;width:100%;text-align:left;margin-top:5px;padding:6px 9px;font-size:12px;border-radius:8px}
 .dv-chips{display:flex;flex-wrap:wrap;gap:6px;white-space:normal;margin-top:8px}
 .dv-chips button{padding:6px 10px;border-radius:999px;font-size:12px;flex:none;width:auto;min-width:0}
+.dv-aval{white-space:normal;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,#314A32);font-size:12px;color:var(--dim,#BFD4A8);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dv-aval button{flex:none;width:auto;min-width:0;padding:3px 9px;font-size:15px;border-radius:8px}
+.dv-nota{display:block;margin-top:6px;font-size:11px;color:var(--muted,#7FA069);white-space:normal}
 .dv-form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border,#314A32)}
 .dv-form input{flex:1}.dv-form button{flex:none;width:auto;min-width:0}
 .dv-rod{padding:0 16px 12px;font-size:11px;color:var(--muted,#7FA069)}.dv-rod a{color:var(--dim,#BFD4A8)}`;
@@ -111,16 +115,44 @@ function trechoHtml(t){
  return`<span class="dv-tit">${esc(t.titulo)}</span>${t.capitulo&&t.capitulo!==t.titulo?`<span class="dv-cap">${esc(t.capitulo)}</span>`:''}`+
   `${esc(resumo(t.texto))}\n<a href="manual.html${esc(t.ancora)}" target="_blank" rel="noopener">📖 Ler no manual →</a>`;
 }
+// Conversa de cortesia (usuaria, 2026-11-10: "eu mandei um oi"): cumprimento/agradecimento tem resposta propria,
+// sem procurar no manual e sem ir pro relatorio de duvidas.
+const CUMPRIMENTO=/^(oi+e?|ola+|opa|hey|e ?ai|eai|bom dia|boa tarde|boa noite|tudo (bem|bom|certo)|como vai)\b/;
+const AGRADECIMENTO=/^(obrigad[oa]|obg|valeu|vlw|brigad[oa]|show|top|perfeito|otimo|beleza|blz|ok|certo|entendi)\b/;
+function cortesia(texto){
+ const t=norm(texto).replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+ if(t.split(' ').length>3)return null;  // frase longa: e' pergunta de verdade, mesmo comecando com "oi"
+ if(CUMPRIMENTO.test(t))return 'Oi! 😊 Sou o assistente de dúvidas do simulador. Escreva sua pergunta do seu jeito, por exemplo “por que a VMD ficou zerada?”, ou clique numa sugestão:'+chips();
+ if(AGRADECIMENTO.test(t))return 'Por nada! Se tiver outra dúvida, é só perguntar. 👍';
+ return null;
+}
 async function perguntar(texto){
  texto=String(texto||'').trim();if(!texto)return;
  adicionar(esc(texto),'eu');campo.value='';
+ const gentil=cortesia(texto);if(gentil){adicionar(gentil,'bot');return;}
  const espera=adicionar('Procurando no manual…','bot');
  try{await carregarManual();}catch(e){espera.innerHTML='Não consegui abrir o manual agora. Tente de novo em instantes ou <a href="manual.html" target="_blank" rel="noopener">abra o manual</a>.';return;}
  const achados=responder(texto);
- if(!achados.length){espera.innerHTML='Não encontrei isso no manual. Tente com outras palavras, veja as sugestões abaixo ou fale com o administrador do simulador.'+chips();return;}
+ if(!achados.length){
+  espera.innerHTML='Não encontrei isso no manual. Tente com outras palavras, veja as sugestões abaixo ou fale com o administrador do simulador.'+chips();
+  registrar(texto,'').then(id=>{if(id)espera.querySelector('.dv-chips')?.insertAdjacentHTML('beforebegin',
+   '<span class="dv-nota">Sua pergunta foi registrada para melhorarmos o manual.</span>');});
+  return;
+ }
  const [melhor,...outros]=achados;
  espera.innerHTML=trechoHtml(melhor)+(outros.length?`<div class="dv-rel">Também pode ajudar:${outros.map((t,i)=>`<button type="button" data-trecho="${i+1}">${esc(t.titulo)}</button>`).join('')}</div>`:'');
  espera._achados=achados;
+ registrar(texto,melhor.titulo).then(id=>{if(id)espera.insertAdjacentHTML('beforeend',
+  `<div class="dv-aval" data-duvida="${esc(id)}">Essa resposta ajudou? <button type="button" data-ajudou="1" title="Ajudou">👍</button><button type="button" data-ajudou="0" title="Não ajudou">👎</button></div>`);});
+}
+// Guarda a pergunta no Firebase (online.js; sem nome, so' o perfil). Falha nunca atrapalha o chat: sem conexao,
+// no modo local ou perguntando rapido demais (limite de 3 s das regras), a resposta aparece igual, so' sem o 👍/👎.
+async function registrar(pergunta,trecho){
+ try{return await window.SIM_CLOUD?.registrarDuvida?.(pergunta,trecho)||null;}catch(e){console.warn('duvida nao registrada',e);return null;}
+}
+async function avaliar(caixa,ajudou){
+ caixa.innerHTML=ajudou?'Obrigado! 👍':'Obrigado por avisar. Vamos usar isso para melhorar a resposta.';
+ try{await window.SIM_CLOUD?.avaliarDuvida?.(caixa.dataset.duvida,ajudou);}catch(e){console.warn('avaliacao nao registrada',e);}
 }
 function abrir(){
  css();
@@ -136,7 +168,8 @@ function abrir(){
   painel.querySelector('form').onsubmit=e=>{e.preventDefault();perguntar(campo.value);};
   msgs.addEventListener('click',e=>{
    const b=e.target.closest('button');if(!b)return;
-   if(b.dataset.pergunta)perguntar(b.dataset.pergunta);
+   if(b.dataset.ajudou){const caixa=b.closest('.dv-aval');if(caixa)avaliar(caixa,b.dataset.ajudou==='1');}
+   else if(b.dataset.pergunta)perguntar(b.dataset.pergunta);
    else if(b.dataset.trecho){const m=b.closest('.dv-msg');const t=m?._achados?.[+b.dataset.trecho];if(t)adicionar(trechoHtml(t),'bot');}
   });
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!painel.hidden)painel.hidden=true;});

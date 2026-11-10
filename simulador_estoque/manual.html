@@ -166,7 +166,7 @@ table.g td.verde{background:#008000;color:#fff}
  <a href="#c6"><b>6</b>O gráfico e o ritmo da semana<small>barras, linhas e legenda</small></a>
  <a href="#c7"><b>7</b>Política e cartões<small>os painéis de baixo</small></a>
  <a href="#c8"><b>8</b>Salvar na equipe<small>rascunho local × cenário compartilhado</small></a>
- <a href="#c9"><b>9</b>Alertas e Histórico<small>abas, matriz cidade × produto, dias de estoque e histórico</small></a>
+ <a href="#c9"><b>9</b>As abas do portal<small>Alertas, Cenário, Histórico, Aberturas e Usuários</small></a>
  <a href="#c10"><b>10</b>Todas as regras de cálculo<small>de onde vem cada número</small></a>
  <a href="#c11"><b>11</b>Cores e avisos<small>guia rápido do que cada cor significa</small></a>
  <a href="#c12"><b>12</b>Dúvidas frequentes<small>o que fazer quando algo parece errado</small></a>
@@ -180,7 +180,7 @@ table.g td.verde{background:#008000;color:#fff}
 <h2><span class="num">1</span>O que é o Nextoques</h2>
 <p class="lead">O Nextoques é o simulador de estoques de combustíveis da Logística. Ele parte do estoque real de abertura de cada base e projeta, dia a dia, como o estoque fica nas próximas duas semanas.</p>
 <p>No portal é possível ver a abertura, as entradas previstas (FOB, CIF e bombeio) e as vendas previstas de cada base e produto nos próximos 14 dias (e, pelo botão <span class="btn">+ dias</span>, os 5 dias anteriores). Também é possível trocar a fonte das vendas ou das entradas, ou digitar um volume por cima, e ver o efeito nos dias seguintes. O cenário montado pode ser salvo para a equipe e consultado na aba Histórico.</p>
-<p>Os volumes estão em m³, arredondados para o inteiro mais próximo. Os números vêm das fontes (planilha de abertura, política de estoque, LE, SAP, MIS, portal inbound e Herrlog); o que for editado fica como rascunho no navegador de quem editou até ser salvo na equipe.</p>
+<p>Os volumes estão em m³, arredondados para o inteiro mais próximo. Os números vêm das fontes (aba Aberturas, política de estoque, LE, SAP, MIS, portal inbound e Herrlog); o que for editado fica como rascunho no navegador de quem editou até ser salvo na equipe.</p>
 <p>A conta do estoque é sempre a mesma:</p>
 <div class="formula">Fechamento = Abertura + Entradas − Saídas<small>Abertura do dia seguinte = fechamento do dia anterior. Saldo negativo também é levado adiante.</small></div>
 <p>Para começar a usar: escolha <span class="campo">Cidade</span>, <span class="campo">Depósito</span>, <span class="campo">Empresa</span> e <span class="campo">Produto</span>. O passo a passo está nos capítulos <a href="#c4">4</a> e <a href="#c5">5</a>.</p>
@@ -189,55 +189,56 @@ table.g td.verde{background:#008000;color:#fff}
 <!-- ============ 2 ============ -->
 <section id="c2">
 <h2><span class="num">2</span>Acesso e login</h2>
-<p class="lead">O portal fica em <a href="https://nexta-logistica.com.br/simulador_estoque/">nexta-logistica.com.br/simulador_estoque</a> e só abre para e-mails liberados.</p>
+<p class="lead">O Nextoques usa o <strong>login único</strong> dos portais da Nexta, em <a href="https://nexta-logistica.com.br/">nexta-logistica.com.br</a>. Você entra uma vez e usa todos os sistemas liberados para você, sem digitar a senha de novo.</p>
 <div class="junto" style="display:flex;gap:14mm;align-items:flex-start;margin-bottom:4mm">
  <div class="loginmock">
-  <div class="logo">Nex<span>toques</span></div>
-  <div style="font:600 13pt 'Barlow Condensed';color:var(--text)">Simulador de estoque de combustíveis</div>
+  <div style="font:600 13pt 'Barlow Condensed';color:var(--text)">Acesso ao TMS Nexta</div>
+  <div style="color:var(--dim)">Entre abaixo com suas credenciais.</div>
   <div class="rel">E-mail<div class="inp"></div><span class="n">1</span></div>
   <div class="rel">Senha<div class="inp"></div><span class="n" style="top:5mm">2</span></div>
-  <div class="rel">☐ Mostrar senha<span class="n" style="top:-.5mm">3</span></div>
-  <div class="b p">Entrar<span class="n">4</span></div>
-  <div class="b">Esqueci minha senha<span class="n">5</span></div>
-  <div style="color:#f3c787">Entre com o e-mail liberado para o simulador.</div>
+  <div class="b p">Entrar<span class="n">3</span></div>
+  <div class="b">Esqueci minha senha<span class="n">4</span></div>
  </div>
  <div style="flex:1">
   <table class="t">
    <tr><th style="width:9mm"></th><th>O que é</th><th>O que faz</th></tr>
-   <tr><td><span class="n">1</span></td><td>E-mail</td><td>O e-mail que foi liberado para você.</td></tr>
-   <tr><td><span class="n">2</span></td><td>Senha</td><td>Mínimo de 6 caracteres.</td></tr>
-   <tr><td><span class="n">3</span></td><td>Mostrar senha</td><td>Mostra o que você digitou, para conferir.</td></tr>
-   <tr><td><span class="n">4</span></td><td>Entrar</td><td>Confere o acesso e carrega os estoques.</td></tr>
-   <tr><td><span class="n">5</span></td><td>Esqueci minha senha</td><td>Digite o e-mail antes e clique. Chega um e-mail com o link para criar uma senha nova.</td></tr>
+   <tr><td><span class="n">1</span></td><td>E-mail</td><td>O e-mail cadastrado para você.</td></tr>
+   <tr><td><span class="n">2</span></td><td>Senha</td><td>A sua senha, a mesma para todos os sistemas. Mínimo de 6 caracteres.</td></tr>
+   <tr><td><span class="n">3</span></td><td>Entrar</td><td>Confere o acesso. Depois, escolha <strong>Nextoques</strong> na tela inicial (ou, se você abriu o link do simulador, ele abre direto).</td></tr>
+   <tr><td><span class="n">4</span></td><td>Esqueci minha senha</td><td><strong>Não envia e-mail.</strong> Mostra o nome e o e-mail das pessoas que podem criar uma senha provisória para você (o key user do sistema e o administrador). Fale com uma delas.</td></tr>
   </table>
-  <p>A linha amarela embaixo dos botões é a <strong>mensagem de status</strong>: é ali que aparece o que está acontecendo ou o motivo de um erro.</p>
  </div>
 </div>
+
+<div class="junto"><h3>Primeiro acesso</h3>
+<ol class="passos">
+ <li>Quem libera o seu acesso te passa uma <strong>senha provisória</strong>.</li>
+ <li>Entre com o seu e-mail e essa senha.</li>
+ <li>Abre a janela <strong>“Crie a sua senha”</strong>: digite a senha provisória, a nova senha (mínimo 6 caracteres) e repita a nova.</li>
+ <li>Pronto. A partir daí vale a sua senha, em todos os sistemas.</li>
+</ol>
+<div class="note"><b class="t">A senha não vence</b>Não há prazo de validade nem troca obrigatória de tempos em tempos. Para trocar quando quiser, use o botão <span class="btn">Trocar senha</span>, ao lado de <span class="btn">Sair</span>.</div>
+</div>
+
 <h3>Mensagens que podem aparecer</h3>
 <table class="t">
  <tr><th style="width:42%">Mensagem</th><th>O que fazer</th></tr>
- <tr><td>E-mail ou senha incorretos.</td><td>Confira os dois. Se não lembrar, use <span class="btn">Esqueci minha senha</span>.</td></tr>
+ <tr><td>E-mail ou senha incorretos.</td><td>Confira os dois. Se não lembrar a senha, clique em <span class="btn">Esqueci minha senha</span> e fale com uma das pessoas da lista.</td></tr>
  <tr><td>Muitas tentativas. Aguarde antes de tentar novamente.</td><td>Espere alguns minutos e tente de novo.</td></tr>
- <tr><td>Sua conta ainda não tem acesso liberado ao simulador.</td><td>A conta existe, mas o acesso ainda não foi liberado. Peça a liberação ao administrador do simulador. O botão <span class="btn">Usar outra conta</span> aparece para trocar de e-mail.</td></tr>
- <tr><td>Sua senha temporária expirou (prazo de 72 horas sem troca).</td><td>A senha inicial não foi trocada a tempo. Use <span class="btn">Esqueci minha senha</span> para criar uma nova.</td></tr>
- <tr><td>Sessão encerrada após 2h sem uso. Entre novamente.</td><td>Basta entrar novamente. Seu rascunho continua guardado no navegador.</td></tr>
+ <tr><td>Seu login ainda não foi liberado no portal.</td><td>O cadastro ainda não existe ou está desativado. Fale com o key user do sistema que você usa.</td></tr>
+ <tr><td>Sua conta ainda não tem acesso liberado ao simulador.</td><td>Você tem login, mas não tem o Nextoques. Peça a liberação ao administrador do simulador.</td></tr>
+ <tr><td>Seu acesso ao simulador foi desativado.</td><td>Fale com a gestão ou com o administrador do simulador.</td></tr>
+ <tr><td>Sua sessão foi encerrada depois de 2h sem uso. Entre de novo.</td><td>Basta entrar novamente. O seu rascunho continua guardado no navegador.</td></tr>
  <tr><td>A carga de estoque foi atualizada durante o carregamento.</td><td>Recarregue a página (F5).</td></tr>
 </table>
-<div class="junto"><h3>Primeiro acesso e validade da senha</h3>
+
+<div class="junto"><h3>Regras da sessão</h3>
  <ul>
-  <li><strong>Senha inicial:</strong> quem ganha acesso recebe do administrador uma senha inicial. No <strong>1º login</strong> com ela o portal abre normalmente, com um aviso no topo.</li>
-  <li><strong>A partir do 2º login</strong>, abre a janela <strong>“Defina sua nova senha”</strong>, que só fecha depois de salvar a senha nova (senha atual = a inicial; nova senha com no mínimo 6 caracteres, digitada duas vezes).</li>
-  <li><strong>Prazo de 72 horas:</strong> se a senha inicial não for trocada nesse prazo, o login fica bloqueado e só volta pelo <span class="btn">Esqueci minha senha</span>.</li>
-  <li><strong>Validade de 3 meses:</strong> nos 5 últimos dias aparece um aviso no topo com o botão <span class="btn">Trocar senha agora</span>. Depois de vencida, o portal só libera o uso após a troca.</li>
-  <li>A qualquer momento dá para trocar pelo botão <span class="btn">Trocar senha</span>, ao lado de <span class="btn">Sair</span>.</li>
- </ul></div><div class="junto"><h3>Regras da sessão</h3>
- <ul>
-  <li><strong>Fechou a aba, saiu.</strong> O login vale só para a aba aberta.</li>
-  <li><strong>2 horas sem uso</strong> (sem mouse, teclado ou rolagem em nenhuma aba do simulador): o portal encerra a sessão automaticamente e volta para o login.</li>
-  <li><span class="btn">Sair</span> encerra a sessão na hora.</li>
-  <li>Nada se perde ao sair: o rascunho é gravado no navegador a cada edição.</li>
+  <li><strong>Um login para todos os sistemas.</strong> Entrou em um, está dentro dos outros que você tem liberados.</li>
+  <li><strong>2 horas sem uso</strong> em <strong>nenhum</strong> dos sistemas: a sessão é encerrada em todos e volta para o login. Usar qualquer sistema mantém os outros abertos.</li>
+  <li><span class="btn">Sair</span> encerra a sessão na hora, em todos os sistemas.</li>
+  <li>Nada se perde ao sair: o rascunho do simulador é gravado no navegador a cada edição.</li>
  </ul></div>
- 
 </section>
 
 <!-- ============ 3 ============ -->
@@ -247,10 +248,10 @@ table.g td.verde{background:#008000;color:#fff}
 <div class="mock">
  <div class="linha conta"><span class="n">1</span><span class="sp badge">Sincronizado 12/10, 09:30 · trânsito 09:41</span><span>Seu nome</span><span class="btn">Sair</span></div>
  <div class="linha cab"><span class="n">2</span><span class="logo">Nex<span>toques</span></span><span style="color:var(--text);font-weight:700">LOGÍSTICA</span><span class="sp badge">SIMULAÇÃO DE ESTOQUES</span></div>
- <div class="linha"><span class="n">3</span><div class="bloco"><b>Filtros</b><span class="campo">Região</span><span class="campo">Cidade</span><span class="campo">Depósito</span><span class="campo">Empresa</span><span class="campo">Produto</span><span class="campo">Data da abertura</span><span class="campo">Período</span><span class="campo">Nome do cenário</span></div></div>
+ <div class="linha"><span class="n">3</span><div class="bloco"><b>Filtros</b><span class="campo">Região</span><span>botões de</span><span class="btn">EMPRESA</span><span class="btn">CIDADE</span><span class="btn">DEPÓSITO</span><span class="btn">PRODUTO</span><span class="campo">Nome do cenário</span></div></div>
  <div class="linha"><span class="n">4</span><span class="btn primary">Salvar na equipe</span><span>Rascunho local. Use Salvar na equipe para compartilhar.</span></div>
  <div class="linha"><span class="n">5</span><div class="bloco" style="min-height:17mm"><b>Histórico e projeção</b><span>gráfico de barras com os mesmos dias da tabela, cada barra em cima da coluna do seu dia</span></div></div>
- <div class="linha"><span class="n">6</span><div class="bloco" style="min-height:21mm"><b>Duas semanas de simulação · edição direta</b><span>tabela editável, botões de Entrada e Vendas, botões de <span class="btn">Sugerir cadência</span> (Encher o tanque, Estoque mínimo, Venda média da rede), <span class="btn">↺ Restaurar</span> e a barra “Ritmo da semana”</span></div></div>
+ <div class="linha"><span class="n">6</span><div class="bloco" style="min-height:21mm"><b>Duas semanas de simulação · edição direta</b><span>tabela editável, botões de Entrada e Vendas (dentro da tabela, à esquerda), botões de <span class="btn">Sugerir cadência</span> (Encher o tanque, Estoque mínimo, Venda média da rede), <span class="btn">↺ Restaurar</span> e a barra “Ritmo da semana”</span></div></div>
  <div class="linha"><span class="n">7</span><div class="bloco"><b>Política de estoque</b><span>abertura, lastro, mínimo, médio, máximo, capacidade</span></div></div>
  <div class="linha"><span class="n">8</span><div class="bloco"><b>Cartões-resumo</b><span>4 indicadores do período</span></div></div>
  <div class="linha"><span class="n">9</span><div class="bloco"><b>Painéis de apoio</b><span>Conferir valores originais · Semana anterior · Fontes dos dados</span></div></div>
@@ -258,10 +259,10 @@ table.g td.verde{background:#008000;color:#fff}
 <p class="legenda-mock">Ilustração da tela principal.</p>
 <table class="t">
  <tr><th style="width:9mm"></th><th style="width:30%">Área</th><th>Para que serve</th><th style="width:17%">Detalhes</th></tr>
- <tr><td><span class="n">1</span></td><td>Barra da conta</td><td>O selo “Sincronizado” mostra quando as fontes foram lidas e a hora do último trânsito recebido. À direita, seu nome, <span class="btn">Trocar senha</span> (pede a senha atual e a nova, com no mínimo 6 caracteres). A senha vale 3 meses: nos 5 últimos dias aparece um aviso no topo e, depois de vencida, o portal só libera o uso após a troca. Quem recebe acesso entra com a senha inicial definida pelo administrador. No 1º login aparece só um aviso; a partir do 2º login abre a janela “Defina sua nova senha”, que só fecha depois de salvar a senha nova. Sem troca em até 72 horas, o acesso fica bloqueado e só volta pelo “Esqueci minha senha”, na tela de entrada e <span class="btn">Sair</span>.</td><td><a href="#c9">Capítulo 9</a></td></tr>
+ <tr><td><span class="n">1</span></td><td>Barra da conta</td><td>O selo “Sincronizado” mostra quando as fontes foram lidas e a hora do último trânsito recebido. À direita, seu nome, <span class="btn">❓ Dúvidas</span> (perguntas sobre as regras, com respostas do manual), <span class="btn">📖 Manual</span> (este manual), <span class="btn">Trocar senha</span> (pede a senha atual e a nova, com no mínimo 6 caracteres; a senha não vence) e <span class="btn">Sair</span>.</td><td><a href="#c2">Capítulo 2</a></td></tr>
  <tr><td><span class="n">2</span></td><td>Cabeçalho</td><td>Só identificação do portal.</td><td></td></tr>
- <tr><td><span class="n">3</span></td><td>Filtros</td><td>Escolha do que simular: cidade, depósito, empresa e produto.</td><td><a href="#c4">Capítulo 4</a></td></tr>
- <tr><td><span class="n">4</span></td><td>Salvar na equipe</td><td>Envia o cenário atual para a equipe, com nome, autor e horário.</td><td><a href="#c8">Capítulo 8</a></td></tr>
+ <tr><td><span class="n">3</span></td><td>Filtros</td><td>Escolha do que simular, clicando nos botões de empresa, cidade, depósito e produto.</td><td><a href="#c4">Capítulo 4</a></td></tr>
+ <tr><td><span class="n">4</span></td><td>Salvar na equipe</td><td>Envia o cenário atual para a equipe, com nome, autor e horário. Só aparece ligado para administrador e regional.</td><td><a href="#c8">Capítulo 8</a></td></tr>
  <tr><td><span class="n">5</span></td><td>Gráfico</td><td>Visão rápida: estoque de abertura e entradas em barras, limites da política em linhas.</td><td><a href="#c6">Capítulo 6</a></td></tr>
  <tr><td><span class="n">6</span></td><td>Tabela de simulação</td><td>A área principal do portal. É aqui que se troca a fonte e se edita volume.</td><td><a href="#c5">Capítulo 5</a></td></tr>
  <tr><td><span class="n">7</span></td><td>Política de estoque</td><td>Os limites da base, vindos da planilha. Só leitura.</td><td><a href="#c7">Capítulo 7</a></td></tr>
@@ -274,24 +275,22 @@ table.g td.verde{background:#008000;color:#fff}
 <!-- ============ 4 ============ -->
 <section id="c4">
 <h2><span class="num">4</span>Escolher a base e o produto</h2>
-<p class="lead">A seleção vai do maior para o menor: cidade, depois depósito, depois empresa, depois produto.</p>
+<p class="lead">Os filtros são <strong>botões</strong>, lado a lado como no BI: <span class="btn">EMPRESA</span> <span class="btn">CIDADE</span> <span class="btn">DEPÓSITO</span> <span class="btn">PRODUTO</span>. O botão ligado fica <span class="btn on">assim</span>. Basta clicar.</p>
 <ol class="passos">
  <li><span class="campo">Região</span> (opcional): SP, MG + RJ ou Centro-Oeste. Reduz a lista de cidades. Deixe em “Todas” para ver tudo.</li>
- <li><span class="campo">Cidade</span>: escolha a cidade. As listas de depósito e empresa são zeradas e montadas de novo para ela.</li>
- <li><span class="campo">Depósito</span>: o terminal dentro da cidade. Se a cidade só tem um, ele já vem preenchido.</li>
- <li><span class="campo">Empresa</span>: necessária porque o mesmo depósito pode ter estoque de mais de uma empresa (por exemplo, três empresas diferentes no mesmo terminal). Se só há uma, vem preenchida.</li>
- <li><span class="campo">Produto</span>: a lista mostra só os produtos que existem naquela combinação. Ao escolher, a tabela e o gráfico aparecem.</li>
+ <li><strong>Cidade</strong>: clique na cidade. Os botões de depósito e empresa são montados para ela. Clicar de novo na cidade marcada desmarca e volta para a visão geral (todas as bases).</li>
+ <li><strong>Depósito</strong>: o terminal dentro da cidade. Sem nenhum marcado, valem todos os depósitos da cidade.</li>
+ <li><strong>Empresa</strong>: o mesmo depósito pode ter estoque de mais de uma empresa. Sem nenhuma marcada, valem todas.</li>
+ <li><strong>Produto</strong>: só aparecem os produtos que existem naquela combinação.</li>
 </ol>
+<div class="note"><b class="t">Um produto para simular, vários para olhar</b>Com <strong>uma cidade e um único produto</strong> marcados, a tabela fica editável. Com <strong>nenhum ou dois ou mais produtos</strong> (ou sem cidade), o gráfico mostra a soma e a tabela fica <strong>só leitura</strong>: serve para olhar o conjunto, não para simular.</div>
 <h3>Os outros campos da faixa de filtros</h3>
 <table class="t">
  <tr><th style="width:27%">Campo</th><th>O que é</th></tr>
- <tr><td>Data da abertura</td><td>Só leitura. É a data da última planilha de abertura lida, o dia de <strong>referência</strong> da simulação.</td></tr>
- <tr><td>Período</td><td>Só leitura: “−7 dias / +14 dias”. É a janela que o portal carrega.</td></tr>
  <tr><td>Nome do cenário</td><td>Nome do seu rascunho (até 80 caracteres). É o nome sugerido na hora de salvar na equipe.</td></tr>
- <tr><td>Selecionar cidade/depósito/empresa pelos botões <span class="n" style="background:#8dc8302b;color:var(--accent)">i</span></td><td>Linha recolhida. Ao clicar, abre os mesmos filtros em forma de botões. É o único lugar onde é possível marcar <strong>mais de um</strong> depósito ou empresa.</td></tr>
 </table>
 <h3>Modo combinado <small>somar vários depósitos ou empresas</small></h3>
-<p>Abra Selecionar cidade/depósito/empresa pelos botões e ligue dois ou mais botões de depósito e/ou de empresa. O botão ligado fica <span class="btn on">assim</span>.</p>
+<p>Os botões de depósito e de empresa ligam e desligam um por um, sem apagar os outros. Ligue dois ou mais para somar.</p>
 <div class="grid2">
  <div class="panel"><h3 style="margin-top:0">O que acontece</h3>
   <ul style="margin-bottom:0">
@@ -303,7 +302,8 @@ table.g td.verde{background:#008000;color:#fff}
  <div class="panel"><h3 style="margin-top:0">O que muda</h3>
   <ul style="margin-bottom:0">
    <li>É possível editar e simular normalmente.</li>
-   <li><strong>Não é possível salvar na equipe.</strong> O cenário salvo é sempre de uma base só.</li>   <li>Escolher pelo campo de lista (em vez dos botões) volta para uma opção só.</li>
+   <li><strong>Não é possível salvar na equipe.</strong> O cenário salvo é sempre de uma base só.</li>
+   <li>Para voltar a uma opção só, desligue os botões extras.</li>
   </ul></div>
 </div>
 <p>Ao ligar ou desligar um depósito, o portal mantém o produto que estava selecionado, desde que ele exista na nova combinação.</p>
@@ -330,24 +330,24 @@ table.g td.verde{background:#008000;color:#fff}
 <p class="lead">Cada coluna é um dia e cada linha é um movimento. As células com caixa são editáveis.</p>
 <div class="mock" style="padding:2.5mm">
 <table class="g">
- <thead><tr><th class="ctl"><span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">+ dias</span> <span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">− linhas</span></th><th class="rot">Movimento / m³</th><th class="hoje">12/10<br>seg<br><small>Referência</small></th><th>13/10<br>ter<br><small>Simulação</small></th><th>14/10<br>qua<br><small>Simulação</small></th><th>15/10<br>qui<br><small>Simulação</small></th><th>16/10<br>sex<br><small>Simulação</small></th></tr></thead>
+ <thead><tr><th class="ctl"><span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">+ dias</span> <span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">− linhas</span> <span class="btn" style="font-size:6.2pt;padding:.4mm 1.2mm">+ fim do LE</span></th><th class="rot">Movimento / m³</th><th class="hoje">12/10<br>seg<br><small>Referência</small></th><th>13/10<br>ter<br><small>Simulação</small></th><th>14/10<br>qua<br><small>Simulação</small></th><th>15/10<br>qui<br><small>Simulação</small></th><th>16/10<br>sex<br><small>Simulação</small></th></tr></thead>
  <tbody>
- <tr class="tot"><th class="ctl"></th><th class="rot">Estoque inicial · abertura<small>hoje 07:42</small></th><td class="hoje verde">1.250</td><td class="verde">1.220</td><td class="verde">1.225</td><td class="verde">1.327</td><td class="verde">1.197</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Estoque inicial · abertura<small>hoje 07:42</small></th><td class="hoje verde">1.250</td><td class="verde">1.216</td><td class="verde">1.217</td><td class="verde">1.316</td><td class="verde">1.182</td></tr>
  <tr class="tot"><th class="ctl"></th><th class="rot">Lastro mínimo<small>08/10 16:10</small></th><td class="hoje">120</td><td>120</td><td>120</td><td>120</td><td>120</td></tr>
- <tr class="tot"><th class="ctl"></th><th class="rot">Abertura menos lastro</th><td class="hoje">1.130</td><td>1.100</td><td>1.105</td><td>1.207</td><td>1.077</td></tr>
- <tr class="ent"><th class="ctl" rowspan="4"><div class="mini"><i>Entrada</i><span class="btn on">Fontes automáticas</span><span class="btn">Cadência MIS</span><span class="btn">Programado + Não programado</span></div></th><th class="rot">+ Trânsito FOB · programado (com placa)<small>hoje 09:41 · tempo real</small></th><td class="hoje"><span class="inp">180</span></td><td class="d1"><span class="inp">120</span></td><td><span class="inp">0</span></td><td><span class="inp">60</span></td><td><span class="inp">0</span></td></tr>
- <tr class="info"><th class="rot">↳ Trânsito FOB · não programado (sem placa)</th><td class="hoje">—</td><td>60</td><td>—</td><td>—</td><td>—</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Abertura menos lastro</th><td class="hoje">1.130</td><td>1.096</td><td>1.097</td><td>1.196</td><td>1.062</td></tr>
+ <tr class="ent"><th class="ctl" rowspan="4"><div class="mini"><i>Entrada</i><span class="btn on">Trânsito real</span><span class="btn">Trânsito real + Não programado</span><span class="btn">Cadência MIS</span></div></th><th class="rot">+ Trânsito FOB · programado (com placa)<small>hoje 09:41 · tempo real</small></th><td class="hoje"><span class="inp">180</span></td><td class="d1"><span class="inp">120</span></td><td><span class="inp">0</span></td><td><span class="inp">60</span></td><td><span class="inp">0</span></td></tr>
  <tr class="ent"><th class="rot">+ Trânsito CIF · recebimento<small>hoje 09:41 · tempo real</small></th><td class="hoje"><span class="inp">0</span></td><td><span class="inp">90</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td><td><span class="inp">60</span></td></tr>
  <tr class="ent"><th class="rot">+ Bombeio<small>hoje 06:15</small></th><td class="hoje"><span class="inp">0</span></td><td><span class="inp">0</span></td><td class="ed"><span class="inp">300</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td></tr>
- <tr class="info"><th class="ctl"></th><th class="rot">↳ VMD reprojetada</th><td class="hoje">214</td><td>209</td><td>201</td><td>194</td><td>188</td></tr>
- <tr class="info"><th class="ctl"></th><th class="rot">↳ LE vigente (sem reprojeção)</th><td class="hoje">210</td><td>205</td><td>198</td><td>190</td><td>185</td></tr>
- <tr class="sai"><th class="ctl"><div class="mini"><i>Vendas</i><span class="btn">VMD</span><span class="btn on">LE</span><span class="btn">Pedidos em tela</span><span class="btn">Real</span><span class="btn">Disp MIS</span></div></th><th class="rot">− Vendas · LE vigente<small>hoje 08:35</small></th><td class="hoje"><span class="inp">210</span></td><td><span class="inp">205</span></td><td><span class="inp">198</span></td><td><span class="inp">190</span></td><td><span class="inp">185</span></td></tr>
- <tr class="tot"><th class="ctl"></th><th class="rot">Total de entradas</th><td class="hoje">180</td><td>210</td><td>300</td><td>60</td><td>60</td></tr>
- <tr class="tot"><th class="ctl"></th><th class="rot">Total de saídas</th><td class="hoje">210</td><td>205</td><td>198</td><td>190</td><td>185</td></tr>
+ <tr class="ent"><th class="rot">+ Cadência sugerida</th><td class="hoje"><span class="inp">0</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td><td><span class="inp">0</span></td></tr>
+ <tr class="sai"><th class="ctl" rowspan="3"><div class="mini"><i>Vendas</i><span class="btn on">VMD reprojetada</span><span class="btn">Pedidos em tela</span><span class="btn">Faturamento</span><span class="btn">Disp. MIS</span></div></th><th class="rot">− Vendas · VMD reprojetada<small>hoje 08:35</small></th><td class="hoje"><span class="inp">214</span></td><td><span class="inp">209</span></td><td><span class="inp">201</span></td><td><span class="inp">194</span></td><td><span class="inp">188</span></td></tr>
+ <tr class="info"><th class="rot">↳ VMD reprojetada</th><td class="hoje">214</td><td>209</td><td>201</td><td>194</td><td>188</td></tr>
+ <tr class="info"><th class="rot">↳ LE vigente (sem reprojeção)</th><td class="hoje">210</td><td>205</td><td>198</td><td>190</td><td>185</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Total de entradas</th><td class="hoje">180</td><td>210</td><td>300</td><td>60</td><td>0</td></tr>
+ <tr class="tot"><th class="ctl"></th><th class="rot">Total de saídas</th><td class="hoje">214</td><td>209</td><td>201</td><td>194</td><td>188</td></tr>
  </tbody>
 </table>
 </div>
-<p class="legenda-mock">Ilustração com números de exemplo (parte das linhas de referência omitida). Confira a conta: 1.250 + 180 − 210 = 1.220, que é a abertura do dia 13.</p>
+<p class="legenda-mock">Ilustração com números de exemplo (parte das linhas de referência omitida). Confira a conta: 1.250 + 180 − 214 = 1.216, que é a abertura do dia 13.</p>
 
 <div class="junto">
 <h3>As cores da linha de abertura <small>verde, amarela e vermelha</small></h3>
@@ -375,12 +375,13 @@ table.g td.verde{background:#008000;color:#fff}
 </ul>
 
 <div class="junto"><h3>Os botões + e − <small>no canto superior esquerdo da tabela</small></h3>
-<p>São dois botões de abrir e fechar. O sinal mostra o que o clique vai fazer: <strong>+</strong> abre, <strong>−</strong> fecha. Os dois começam fechados e voltam a fechar quando a página é recarregada. Eles só mudam o que aparece; <strong>não alteram nenhum número</strong>.</p>
+<p>São três botões de abrir e fechar. O sinal mostra o que o clique vai fazer: <strong>+</strong> abre, <strong>−</strong> fecha. Os três começam fechados e voltam a fechar quando a página é recarregada. Eles só mudam o que aparece; <strong>não alteram nenhum número</strong>.</p>
 <table class="t">
  <tr><th style="width:24%">Botão</th><th>O que faz</th></tr>
- <tr><td><span class="btn">+ dias</span> / <span class="btn">− dias</span></td><td>Abre ou fecha, à esquerda do dia de referência, as colunas dos <strong>5 dias anteriores</strong> (marcadas como “Histórico”), com o que realmente aconteceu: abertura da planilha de cada dia, vendas realizadas e FOB/CIF que chegaram. Esses dias são só leitura. O gráfico acompanha: com <span class="btn">+ dias</span>, ele também mostra os 5 dias anteriores.</td></tr>
- <tr><td><span class="btn">+ linhas</span> / <span class="btn">− linhas</span></td><td>Abre ou fecha as <strong>6 linhas de referência</strong> (em itálico, começam com ↳): Recebimentos reais (SAP), FOB não programado, VMD reprojetada, LE vigente, Pedidos em tela e Vendas reais. Elas não entram na conta: servem para comparar as fontes lado a lado.</td></tr>
- <tr><td><span class="btn">↺ Restaurar</span></td><td>Desfaz todas as suas edições deste recorte e volta aos dados da fonte. Também devolve o botão de Entrada para <span class="btn on">Fontes automáticas</span>.</td></tr>
+ <tr><td><span class="btn">+ dias</span> / <span class="btn">− dias</span></td><td>Abre ou fecha, à esquerda do dia de referência, as colunas dos <strong>5 dias anteriores</strong> (marcadas como “Histórico”), com o que realmente aconteceu: a abertura lançada em cada dia, o faturamento, os recebimentos do SAP e as viagens que chegaram (ver <a href="#r10-9">10.9</a>). Esses dias são só leitura. O gráfico acompanha: com <span class="btn">+ dias</span>, ele também mostra os 5 dias anteriores.</td></tr>
+ <tr><td><span class="btn">+ linhas</span> / <span class="btn">− linhas</span></td><td>Abre ou fecha as <strong>5 linhas de referência de venda</strong> (em itálico, começam com ↳), logo abaixo da linha de Vendas: VMD reprojetada, LE vigente (sem reprojeção), Pedidos em tela, Disp. MIS e Faturamento. Elas não entram na conta: servem para comparar as fontes lado a lado.</td></tr>
+ <tr><td><span class="btn">+ fim do LE</span> / <span class="btn">− fim do LE</span></td><td>Estende a tabela e o gráfico até o <strong>último dia do LE vigente</strong> (até 30 dias). Os dias extras só são baixados quando você clica.</td></tr>
+ <tr><td><span class="btn">↺ Restaurar</span></td><td>Desfaz todas as suas edições deste recorte e volta aos dados da fonte. Também devolve o botão de Entrada para <span class="btn on">Trânsito real</span>.</td></tr>
  <tr><td><span class="badge">SALVO NESTE NAVEGADOR</span></td><td>Não é botão, é um aviso: seu rascunho está guardado. Antes da primeira edição aparece “CENÁRIO LOCAL”.</td></tr>
 </table></div>
 <p>Linhas de texto com uma setinha (▸) também são de abrir e fechar com um clique: Selecionar cidade/depósito/empresa pelos botões (nos filtros), Conferir os valores originais das fontes, <strong>Fontes dos dados</strong>.</p>
@@ -388,41 +389,38 @@ table.g td.verde{background:#008000;color:#fff}
 <h3>As linhas, de cima para baixo</h3>
 <table class="t">
  <tr><th style="width:33%">Linha</th><th style="width:13%">Editável?</th><th>O que mostra</th></tr>
- <tr><td>Estoque inicial · abertura</td><td>Não</td><td>O estoque no começo do dia. No dia de referência vem da planilha; nos dias seguintes é o fechamento do dia anterior. A cor indica a ocupação do tanque (veja <a href="#c11">capítulo 11</a>).</td></tr>
+ <tr><td>Estoque inicial · abertura</td><td>Não</td><td>O estoque no começo do dia. No dia de referência vem da aba Aberturas (ver <a href="#r10-2">10.2</a>); nos dias seguintes é o fechamento do dia anterior. A cor indica a ocupação do tanque (veja <a href="#c11">capítulo 11</a>).</td></tr>
  <tr><td>Lastro mínimo</td><td>Não</td><td>Volume que não pode ser usado, vindo da política.</td></tr>
  <tr><td>Abertura menos lastro</td><td>Não</td><td>O estoque realmente disponível no começo do dia.</td></tr>
- <tr><td>↳ Recebimentos reais (SAP)</td><td>Referência</td><td>O que o SAP registrou como recebido. Só tem valor nos dias de histórico.</td></tr>
- <tr><td>+ Trânsito FOB · programado (com placa)</td><td><strong>Sim</strong></td><td>Viagens FOB que já contam: em andamento ou finalizadas.</td></tr>
- <tr><td>↳ Trânsito FOB · não programado (sem placa)</td><td>Referência</td><td>Viagens FOB ainda sem placa (ofertadas, aceitas ou em backlog). Só entram na conta com o botão <span class="btn">Programado + Não programado</span>.</td></tr>
+ <tr><td>+ Trânsito FOB · programado (com placa)</td><td><strong>Sim</strong></td><td>Viagens FOB que já contam: com placa, em andamento ou finalizadas. As <strong>transferências que chegam de outra base da rede</strong> também entram aqui, destacadas no popup. As viagens ainda sem placa (ofertadas, aceitas ou em backlog) aparecem no popup em laranja e só somam com o botão <span class="btn">Trânsito real + Não programado</span>.</td></tr>
  <tr><td>+ Trânsito CIF · recebimento</td><td><strong>Sim</strong></td><td>Entregas CIF previstas para o dia.</td></tr>
  <tr><td>+ Bombeio</td><td><strong>Sim</strong></td><td>Bombeio programado na cadência MIS.</td></tr>
  <tr><td>+ Cadência sugerida</td><td><strong>Sim</strong></td><td>Cargas sugeridas pelo simulador ao clicar em um dos botões de <span class="btn">Sugerir cadência</span>, ou digitadas. Entra na conta como as outras entradas. Não altera a cadência do MIS.</td></tr>
- <tr><td>+ Transferência · entrada</td><td><strong>Sim</strong></td><td>Cargas que chegam de outra base da rede, na data de descarga. Se a viagem já estava no Trânsito FOB ou CIF, ela sai de lá e entra só aqui, para não somar duas vezes. Transferências programadas que ainda não estavam em nenhuma linha passam a contar aqui. Passe o mouse para ver de qual base vem cada carga.</td></tr>
  <tr><td>− Transferência · saída</td><td><strong>Sim</strong></td><td>Cargas que saem desta base para outra base da rede, na data de carregamento: viagens do portal inbound em que esta base é o fornecedor e, nas semanas que o portal ainda não cobre, a cadência do MIS com origem nesta base (cargas por trem ou duto não entram). Passe o mouse para ver para onde vai cada carga.</td></tr>
- <tr><td>↳ VMD reprojetada<br>↳ LE vigente (sem reprojeção)<br>↳ Pedidos em tela<br>↳ Vendas reais (faturamento)</td><td>Referência</td><td>As quatro referências de venda, lado a lado, para comparar com o que está aplicado na linha de baixo.</td></tr>
- <tr><td>− Vendas · (fonte escolhida)</td><td><strong>Sim</strong></td><td>A única linha que debita o estoque. O nome muda conforme o botão de Vendas ligado.</td></tr>
- <tr><td>Total de entradas / Total de saídas</td><td>Não</td><td>Somas do dia. Transferências que vierem da fonte entram nesses totais, mesmo sem linha própria.</td></tr>
+ <tr><td>− Vendas · (fonte escolhida)</td><td><strong>Sim</strong></td><td>A linha que debita a venda do estoque. O nome muda conforme o botão de Vendas ligado. Nos dias de histórico mostra o faturamento do dia.</td></tr>
+ <tr><td>↳ VMD reprojetada<br>↳ LE vigente (sem reprojeção)<br>↳ Pedidos em tela<br>↳ Disp. MIS<br>↳ Faturamento</td><td>Referência</td><td>Com <span class="btn">+ linhas</span>: as cinco referências de venda, lado a lado, logo abaixo da linha de Vendas, para comparar com o que está aplicado.</td></tr>
+ <tr><td>Total de entradas / Total de saídas</td><td>Não</td><td>Somas do dia. Nos dias de histórico, o total de entradas é o <strong>recebido no SAP</strong> (igual ao BI); sem lançamento no SAP, é a soma das viagens que chegaram.</td></tr>
 </table>
 <div class="note"><b class="t">Horário embaixo do nome da linha</b>O texto pequeno (“hoje 09:41”, “08/10 16:10”) é a última atualização da fonte daquela linha. No trânsito aparece “· tempo real”. Se aparecer <strong style="color:var(--orange)">⚠ banco sem resposta</strong>, o banco de faturamento não respondeu na última carga e a linha está usando o plano B (veja <a href="#c10">capítulo 10</a>).</div>
 
 <h3>Botões de Entrada <small>de onde vêm FOB, CIF e bombeio</small></h3>
 <table class="t">
  <tr><th style="width:31%">Botão</th><th>O que aplica nos dias de hoje em diante</th></tr>
- <tr><td><span class="btn on">Fontes automáticas</span></td><td>O padrão. FOB e CIF vêm do portal inbound com a Herrlog, em tempo real; o bombeio vem da cadência MIS.</td></tr>
- <tr><td><span class="btn">Cadência MIS</span></td><td>Troca FOB, CIF e bombeio pelos volumes <strong>planejados</strong> na cadência MIS. Transferência de entrada fica zerada.</td></tr>
- <tr><td><span class="btn">Programado + Não programado</span></td><td>Igual às fontes automáticas, mas soma no FOB as viagens ainda sem placa.</td></tr>
+ <tr><td><span class="btn on">Trânsito real</span></td><td>O padrão. Só o que já está no trânsito: FOB e CIF com placa (portal inbound com a Herrlog, em tempo real), transferências com status de viagem e o bombeio da cadência MIS.</td></tr>
+ <tr><td><span class="btn">Trânsito real + Não programado</span></td><td><strong>Igual ao botão LE do BI.</strong> Soma também as viagens do portal ainda sem placa (Ofertado, Aceito, Backlog) e as transferências sem status. Da semana que vem em diante, soma a cadência MIS que <strong>ainda não virou viagem</strong> no portal. A mesma carga nunca é contada duas vezes: quando ela entra no portal, sai da cadência.</td></tr>
+ <tr><td><span class="btn">Cadência MIS</span></td><td>Só o planejado na cadência do MIS: FOB, CIF e bombeio. Não usa o portal.</td></tr>
 </table>
 
 <h3>Botões de Vendas <small>de onde vem a linha que debita</small></h3>
 <table class="t">
  <tr><th style="width:20%">Botão</th><th>O que aplica nos dias de hoje em diante</th></tr>
- <tr><td><span class="btn">VMD</span></td><td>A venda média diária <strong>reprojetada</strong>: o LE ajustado pelo ritmo real de vendas da semana.</td></tr>
- <tr><td><span class="btn on">LE</span></td><td>O LE vigente do dia, original, sem reprojeção. É feito pelo time de Demanda em produto misturado; o simulador já mostra convertido para o produto puro.</td></tr>
+ <tr><td><span class="btn on">VMD reprojetada</span></td><td>O padrão. A venda média diária <strong>reprojetada</strong>: o LE ajustado pelo ritmo real de vendas da semana (ver <a href="#r10-5">10.5</a>).</td></tr>
  <tr><td><span class="btn">Pedidos em tela</span></td><td>O total de pedidos do dia no SAP (VA05), em todos os status.</td></tr>
- <tr><td><span class="btn">Real</span></td><td>O volume efetivamente faturado. Só preenche até o dia da última carga; os dias seguintes ficam em zero.</td></tr>
- <tr><td><span class="btn">Disp MIS</span></td><td>A disponibilidade informada no MIS.</td></tr>
+ <tr><td><span class="btn">Faturamento</span></td><td>O volume efetivamente faturado, sem vendas para empresas do grupo e sem devoluções. Só preenche até o dia da última carga; os dias seguintes ficam em zero.</td></tr>
+ <tr><td><span class="btn">Disp. MIS</span></td><td>A disponibilidade informada no MIS.</td></tr>
 </table>
-<div class="note warn"><b class="t">Rascunho por combinação de botões</b>O rascunho é guardado por base, produto, botão de Vendas e botão de Entrada. Se você editou com <span class="btn on">LE</span> e depois clicou em <span class="btn">VMD</span>, as edições não são perdidas: continuam guardadas no <span class="btn">LE</span>. Os dias anteriores a hoje usam o mesmo dado em todos os botões.</div>
+<p>O LE original (sem reprojeção) não tem botão: ele aparece como linha de referência, com <span class="btn">+ linhas</span>.</p>
+<div class="note warn"><b class="t">Rascunho por combinação de botões</b>O rascunho é guardado por base, produto, botão de Vendas e botão de Entrada. Se você editou com <span class="btn on">VMD reprojetada</span> e depois clicou em <span class="btn">Pedidos em tela</span>, as edições não são perdidas: continuam guardadas na VMD reprojetada. Os dias anteriores a hoje usam o mesmo dado em todos os botões.</div>
 
 <h3>Sugestão de cadência <small>botões ao lado do Restaurar</small></h3>
 <p>São três botões. Cada um preenche a linha <strong>Cadência sugerida</strong> com cargas de 60 m³, de amanhã em diante, buscando um objetivo diferente. Os exemplos usam um tanque de <strong>180 m³</strong>.</p>
@@ -468,8 +466,9 @@ table.g td.verde{background:#008000;color:#fff}
  <li>Ainda não entram: a antecedência para programar a carga, o limite de cargas por dia e os dias em que a base não recebe.</li>
 </ul>
 <h3>Como editar um volume</h3>
+<p><strong>Quem edita:</strong> administrador e regional. Os perfis leitura e base veem a mesma tela, mas só para consulta (as células ficam travadas).</p>
 <ol class="passos">
- <li>Clique na célula colorida (FOB, CIF, Bombeio ou Vendas) do dia que quer mudar.</li>
+ <li>Clique na célula com caixa (FOB, CIF, Bombeio, Cadência sugerida ou Vendas) do dia que quer mudar.</li>
  <li>Digite o volume em m³. Não é aceito número negativo.</li>
  <li>As aberturas dos dias seguintes, os totais, o gráfico, os cartões e os alertas são recalculados na hora.</li>
  <li>A célula editada ganha um <strong style="color:var(--lime)">traço amarelo embaixo</strong> e o número fica amarelo. O selo passa a “SALVO NESTE NAVEGADOR”.</li>
@@ -480,8 +479,8 @@ table.g td.verde{background:#008000;color:#fff}
 <h3>Popups: passe o mouse ou clique</h3>
 <div class="grid2">
  <div class="pop"><strong>Vendas · 13/10/2026</strong><hr>
-  <div class="l"><span>VMD</span><span>209 m³</span></div><div class="l"><span>LE vigente</span><span>205 m³</span></div><div class="l"><span>Pedidos em tela</span><span>172 m³</span></div><div class="l"><span>Vendas reais</span><span>Sem dado</span></div><hr>
-  <p>Cenário: <strong style="color:#fff">LE</strong></p><p>Aplicado: <strong style="color:#fff">205 m³</strong></p></div>
+  <div class="l"><span>VMD</span><span>209 m³</span></div><div class="l"><span>LE vigente</span><span>205 m³</span></div><div class="l"><span>Pedidos em tela</span><span>172 m³</span></div><div class="l"><span>Faturamento</span><span>Sem dado</span></div><hr>
+  <p>Cenário: <strong style="color:#fff">VMD reprojetada</strong></p><p>Aplicado: <strong style="color:#fff">209 m³</strong></p></div>
  <div class="pop"><strong>Trânsito FOB · 13/10/2026</strong><hr>
   <div style="color:#60A5FA"><b style="font-size:8.6pt">Viagem NXT-000000</b><br><span style="font-size:8.2pt">Origem: Fornecedor → Destino: Cidade · Depósito · Empresa<br>Transportadora · ABC1D23 · 60 m³ · Em Andamento · 85 km restantes · ETA 12/10 16:20 · <strong style="color:var(--roxo)">ETA após 15h → considerado no dia seguinte</strong></span></div><hr>
   <div style="color:#F97316"><b style="font-size:8.6pt">Não programado (sem placa) · Viagem NXT-000001</b><br><span style="font-size:8.2pt">60 m³ · Aceito</span></div></div>
@@ -489,7 +488,7 @@ table.g td.verde{background:#008000;color:#fff}
 <p class="legenda-mock" style="margin-top:2mm">Ilustração dos popups de Vendas e de Trânsito FOB.</p>
 <table class="t">
  <tr><th style="width:30%">Onde passar o mouse</th><th>O que aparece</th></tr>
- <tr><td>Célula de Vendas</td><td>As quatro referências do dia (VMD, LE vigente, Pedidos em tela, Vendas reais), o cenário ligado e o volume aplicado, com a marca “editado” se você mexeu.</td></tr>
+ <tr><td>Célula de Vendas</td><td>As referências do dia (VMD, LE vigente, Pedidos em tela, Faturamento), o cenário ligado e o volume aplicado, com a marca “editado” se você mexeu.</td></tr>
  <tr><td>Célula de FOB ou CIF</td><td>Cada viagem do dia: ID, origem → destino, transportadora, placa, volume, status, km restantes e ETA ou hora de chegada. <span style="color:#60A5FA">Azul</span> = conta no estoque. <span style="color:#F97316">Laranja</span> = não programada. Vale também nos dias de histórico.</td></tr>
  <tr><td>Abertura do dia de referência</td><td>O volume e a data da leitura. No modo combinado ou no depósito compartilhado, uma linha por depósito/empresa.</td></tr>
 </table>
@@ -508,11 +507,11 @@ table.g td.verde{background:#008000;color:#fff}
  <table class="t">
   <tr><td><span class="cor" style="background:#F9B96B"></span>Lastro mínimo</td><td>Faixa da base da barra.</td></tr>
   <tr><td><span class="cor" style="background:#3AAE9C"></span>Abertura − lastro</td><td>Estoque disponível na abertura. É o número escrito na barra.</td></tr>
-  <tr><td><span class="cor" style="background:#C8F2EC"></span>Recebimentos</td><td>No histórico, o recebido no SAP.</td></tr>
+  <tr><td><span class="cor" style="background:#C8F2EC"></span>Recebimentos</td><td>No histórico, o recebido no SAP (igual ao BI). Nesses dias, o FOB só aparece se o SAP não tiver lançamento.</td></tr>
   <tr><td><span class="cor" style="background:#9EDFD6"></span>Prog. Bombeio</td><td>Bombeio do dia.</td></tr>
-  <tr><td><span class="cor" style="background:#7FC4BA"></span>Prog. Rodoviário</td><td>Programação rodoviária.</td></tr>
   <tr><td><span class="cor" style="background:#A3E635"></span>Cadência sugerida</td><td>Cargas da linha Cadência sugerida.</td></tr>
-  <tr><td><span class="cor" style="background:#B0B0B0"></span>Trânsito FOB</td><td>FOB do dia.</td></tr>
+  <tr><td><span class="cor" style="background:#B0B0B0"></span>Trânsito FOB</td><td>FOB do dia, incluindo as transferências entre bases.</td></tr>
+  <tr><td><span class="cor" style="background:#7DB9E8"></span>FOB · não programado</td><td>Viagens sem placa. Só aparece com <span class="btn">Trânsito real + Não programado</span>.</td></tr>
   <tr><td><span class="cor" style="background:#C084FC"></span>FOB · ETA após 15h</td><td>FOB empurrado para D+1 pela regra das 15h.</td></tr>
   <tr><td><span class="cor" style="background:#F4F08A"></span>Trânsito CIF</td><td>CIF do dia.</td></tr>
  </table>
@@ -608,7 +607,7 @@ table.g td.verde{background:#008000;color:#fff}
 </div>
 <h3>Passo a passo</h3>
 <ol class="passos">
- <li>Monte o cenário na tabela (base única, não combinada).</li>
+ <li>Monte o cenário na tabela (base única, não combinada). Só administrador e regional conseguem salvar.</li>
  <li>Clique em <span class="btn primary">Salvar na equipe</span>, logo abaixo dos filtros.</li>
  <li>Confirme ou troque o <strong>nome do cenário</strong> (até 80 caracteres).</li>
  <li>Se já existe uma versão salva hoje para a mesma base, produto e cenário de venda, o portal mostra quem salvou e pergunta se você quer criar uma nova versão.</li>
@@ -630,8 +629,19 @@ table.g td.verde{background:#008000;color:#fff}
 
 <!-- ============ 9 ============ -->
 <section id="c9">
-<h2><span class="num">9</span>Alertas e Histórico</h2>
-<p class="lead">O portal é dividido em quatro abas, na faixa logo abaixo do cabeçalho: <span class="btn">① Simulação de estoques</span> (filtros, gráfico e tabela de duas semanas), <span class="btn">② Alertas</span>, <span class="btn">③ Cenário</span> (ranking de dias de estoque, quadro por produto e política de estoque da base escolhida) e <span class="btn">④ Histórico</span>. O portal lembra a última aba usada. A aba Alertas mostra, para cada cidade e produto, se o estoque fica dentro da política de hoje até 5 dias à frente.</p>
+<h2><span class="num">9</span>As abas do portal</h2>
+<p class="lead">O portal é dividido em abas, na faixa logo abaixo do cabeçalho. O portal lembra a última aba usada.</p>
+<table class="t">
+ <tr><th style="width:30%">Aba</th><th>Para que serve</th></tr>
+ <tr><td><span class="btn">Simulação de estoques</span></td><td>Filtros, gráfico e tabela de duas semanas (capítulos 4 a 8).</td></tr>
+ <tr><td><span class="btn">Alertas</span></td><td>Situação de cada cidade e produto de hoje até 5 dias à frente.</td></tr>
+ <tr><td><span class="btn">Cenário</span></td><td>Ranking de dias de estoque por cidade e quadro por produto.</td></tr>
+ <tr><td><span class="btn">Histórico</span></td><td>Simulações salvas pela equipe, por dia.</td></tr>
+ <tr><td><span class="btn">Aberturas</span></td><td>Onde as bases <strong>lançam o estoque de abertura do dia</strong>. É a fonte oficial da abertura (ver <a href="#c9-aberturas">Aba Aberturas</a>).</td></tr>
+ <tr><td><span class="btn">Usuários</span></td><td>Só para quem gerencia os acessos: leva à tela de usuários do portal.</td></tr>
+</table>
+<h3>Aba Alertas</h3>
+<p>Mostra, para cada cidade e produto, se o estoque fica dentro da política de hoje até 5 dias à frente.</p>
 <p>O cálculo é feito na hora em que o painel abre, para todas as bases, com as entradas das fontes automáticas e as vendas pela <strong>VMD reprojetada</strong>. Não depende de ninguém ter salvo cenário, e edições feitas na tabela de simulação não entram.</p>
 
 <h3>Como a situação é classificada</h3>
@@ -656,6 +666,39 @@ table.g td.verde{background:#008000;color:#fff}
 <p>Os cenários salvos com <span class="btn primary">Salvar na equipe</span> continuam guardados no servidor, mas não alteram a aba Alertas.</p>
 <h3>Aba Histórico</h3>
 <p>Mostra as simulações salvas pela equipe com <span class="btn primary">Salvar na equipe</span> no dia escolhido no campo <span class="campo">Dia</span> (hoje, ao abrir), agrupadas por cidade. Para cada base, produto e cenário aparece a versão mais recente: situação e menor estoque no momento em que foi salva, versão, autor, motivo e horário. O botão <span class="btn">Abrir</span> leva a base e o cenário para a aba de simulação.</p>
+
+<h3 id="c9-aberturas">Aba Aberturas <small>onde as bases lançam o estoque do dia</small></h3>
+<p>Substitui a antiga planilha “Envio Abertura Bases”, com o mesmo desenho dela. Desde 28/10/2026 é a <strong>fonte oficial da abertura</strong> usada pelo simulador (ver <a href="#r10-2">10.2</a>). A planilha fica só como contingência.</p>
+<div class="panel">
+<h3 style="margin-top:0;color:var(--lime)">Passo a passo para lançar a abertura</h3>
+<ol class="passos" style="margin-bottom:0">
+ <li>Abra a aba <span class="btn">Aberturas</span>. O perfil base já entra direto nela. Confira o campo <span class="campo">Data</span>: ele vem com o dia de hoje.</li>
+ <li>Na lista de cidades, cada uma aparece como <strong>Enviado</strong> ou <strong>Pendente</strong>. Clique na sua cidade.</li>
+ <li>Para cada terminal e produto, preencha em <strong>litros</strong> (aditivos em <strong>frascos</strong>):
+  <ul><li><strong>Abertura Dia</strong>: o estoque no início do dia. Aceita número negativo.</li>
+   <li><strong>Receb. Efetuado / Disponível</strong> e <strong>Receb. Programado Dia</strong>.</li></ul>
+  Tudo começa em 0: troque só o que tiver valor. Embaixo da Abertura Dia aparece a <strong>referência do SAP</strong> (ex.: “SAP: 33.736 L”), só para conferência; ela não é preenchida automaticamente.</li>
+ <li>Clique em <span class="btn primary">Salvar &lt;cidade&gt;</span>, fixo no topo. Um clique grava <strong>todos os terminais alterados</strong> da cidade.</li>
+ <li>Antes de gravar, o portal avisa, num resumo só:
+  <ul><li>terminais sem nenhuma abertura de combustível preenchida (“Salvar assim mesmo?”);</li>
+   <li>aberturas com diferença <strong>acima de 10%</strong> da referência. Se você confirmar, ela vai para o grupo <strong>Aberturas do Dia</strong> no WhatsApp marcada em vermelho.</li></ul></li>
+ <li>Pronto: a cidade passa a <strong>Enviado</strong>. O simulador usa a abertura na próxima atualização (até 30 minutos).</li>
+</ol>
+</div>
+<table class="t">
+ <tr><th style="width:34%">Regra</th><th>Como funciona</th></tr>
+ <tr><td>Quem lança</td><td>Perfil base: só os terminais dele. Coordenadores liberados e administradores: todos. Os demais veem como <strong>Somente leitura</strong>.</td></tr>
+ <tr><td>Enviado × Pendente</td><td>Enviado = o terminal tem algo gravado no dia (salvar com tudo 0 também conta) ou veio da planilha. Pendente = ninguém salvou.</td></tr>
+ <tr><td>Valores que vieram da planilha</td><td>Aparecem marcados (“Veio do Formulário Excel”). Confira, corrija se precisar e salve: a partir daí vale o portal.</td></tr>
+ <tr><td>Corrigir depois</td><td>Pode editar e salvar de novo quantas vezes precisar. Cada alteração fica no <strong>Histórico</strong> do terminal: quem mudou, quando e o valor anterior.</td></tr>
+ <tr><td>Atualização</td><td>A aba se atualiza sozinha a cada 1 minuto (o que outra base salvou aparece sem F5), menos quando você tem alteração não salva.</td></tr>
+ <tr><td>Sair sem salvar</td><td>O portal pergunta “Há alterações não salvas nesta cidade. Sair mesmo assim?”.</td></tr>
+ <tr><td>⬇ Baixar consolidado (Excel)</td><td>Para quem tem permissão: as aberturas do dia no formato da planilha “DD.MM.AAAA.xlsx”.</td></tr>
+</table>
+<div class="note warn"><b class="t">Não lançou = abertura 0</b>Se a base não salvar a abertura do dia, o simulador usa a planilha de contingência e, sem ela, considera <strong>0</strong>. O MIS não é mais usado como plano B.</div>
+
+<h3>Aba Usuários</h3>
+<p>Só aparece para quem gerencia os acessos do Nextoques. Ela leva à tela <strong>Usuários</strong> do portal central, onde se libera ou tira o acesso de uma pessoa e se define a senha provisória.</p>
 </section>
 
 <!-- ============ 10 ============ -->
@@ -720,11 +763,11 @@ table.g td.verde{background:#008000;color:#fff}
 <h3 id="r10-4">10.4 Vendas <small>as cinco fontes</small></h3>
 <table class="t">
  <tr><th style="width:20%">Fonte</th><th>Origem</th><th style="width:36%">Regra</th></tr>
- <tr><td>LE</td><td>LE vigente (Previsão de Vendas), feito pelo time de Demanda em produto misturado. O simulador converte para produto puro, em m³.</td><td>Valor original do dia, sem ajuste.</td></tr>
- <tr><td>VMD</td><td>LE + faturamento do banco de dados (DW).</td><td>LE reprojetado pelo ritmo real da semana (fórmula abaixo).</td></tr>
+ <tr><td>VMD reprojetada <small>(padrão)</small></td><td>LE + faturamento do banco de dados (DW).</td><td>LE reprojetado pelo ritmo real da semana (fórmula abaixo).</td></tr>
+ <tr><td>LE <small>(só referência)</small></td><td>LE vigente (Previsão de Vendas), feito pelo time de Demanda em produto misturado. O simulador converte para produto puro, em m³.</td><td>Valor original do dia, sem ajuste. Não tem botão: aparece com <span class="btn">+ linhas</span>.</td></tr>
  <tr><td>Pedidos em tela</td><td>SAP VA05.</td><td>Soma dos pedidos do dia, em todos os status.</td></tr>
- <tr><td>Real</td><td>Faturamento do banco de dados (DW).</td><td>Faturado por dia, <strong>sem</strong> vendas para empresas do grupo e <strong>sem</strong> devoluções. Só até a data da última carga.</td></tr>
- <tr><td>Disp MIS</td><td>MIS.</td><td>Disponibilidade informada para o dia.</td></tr>
+ <tr><td>Faturamento</td><td>Faturamento do banco de dados (DW).</td><td>Faturado por dia, <strong>sem</strong> vendas para empresas do grupo e <strong>sem</strong> devoluções. Só até a data da última carga.</td></tr>
+ <tr><td>Disp. MIS</td><td>MIS.</td><td>Disponibilidade informada para o dia.</td></tr>
 </table>
 <h3 id="r10-5">10.5 Reprojeção da VMD</h3>
 <p>A VMD é o LE corrigido pelo que a semana já vendeu. A meta da semana não muda; o que muda é quanto ainda falta vender nos dias que restam.</p>
@@ -775,7 +818,7 @@ table.g td.verde{background:#008000;color:#fff}
  <tr><td>A partir das 13h</td><td>A VMD de <strong>amanhã em diante</strong> é corrigida de novo, agora com a venda de hoje (pedidos do dia no SAP). Recarregue a página (F5) para ver.</td></tr>
  <tr><td>Segunda-feira de manhã</td><td>Ainda não há venda na semana: a VMD é igual ao LE.</td></tr>
  <tr><td>Semana que vem</td><td>Sempre igual ao LE. A correção vale só até o domingo da semana corrente.</td></tr>
- <tr><td>A semana já atingiu a meta</td><td>Não falta nada para vender: a VMD dos dias restantes fica em <strong>zero</strong>. Nesse caso use o botão <span class="btn">LE</span> ou <span class="btn">Pedidos em tela</span>.</td></tr>
+ <tr><td>A semana já atingiu a meta</td><td>Não falta nada para vender: a VMD dos dias restantes fica em <strong>zero</strong>. Nesse caso use o botão <span class="btn">Pedidos em tela</span> ou digite a venda prevista na linha de Vendas.</td></tr>
  <tr><td>O banco de faturamento não respondeu</td><td>O portal usa o LE sem correção e mostra “⚠ banco sem resposta” na linha.</td></tr>
 </table>
 </div>
@@ -795,7 +838,7 @@ table.g td.verde{background:#008000;color:#fff}
  <li><strong>O que não entra no “já vendido”:</strong> vendas para <strong>empresas do próprio grupo</strong> (o produto só muda de empresa, não sai para o mercado) e <strong>devoluções</strong> (nota de devolução de cliente ou própria). É a mesma regra do BI.
   <div class="note warn" style="margin:2mm 0 0"><b class="t">Por que isso importa · caso real de Betim Diesel S500 (07/11)</b>Antes dessa regra, uma venda grande para uma empresa do grupo entrava como “já vendido”. A conta achava que a semana já tinha batido a meta (falta vender = 0) e a VMD do sábado ficou <strong>zerada</strong>. Sem essa venda, o vendido da semana voltou para o mesmo número do BI e a VMD voltou ao normal.</div></li>
  <li><strong>O que conta como “13h”:</strong> a hora em que o arquivo de pedidos do SAP (VA05) foi atualizado pela última vez, e não a hora do relógio. Se o VA05 atrasar, a segunda correção também atrasa.</li>
- <li>A venda de hoje só aparece na linha “Vendas reais” e na barra do ritmo da semana depois desse corte das <strong>13h</strong>. Antes disso, hoje aparece como “sem dado”.</li>
+ <li>A venda de hoje só aparece na linha “Faturamento” e na barra do ritmo da semana depois desse corte das <strong>13h</strong>. Antes disso, hoje aparece como “sem dado”.</li>
  <li>Nos dias de histórico (botão <span class="btn">+ dias</span>), a linha “VMD reprojetada” mostra a VMD que valia <strong>naquele dia</strong>.</li>
  <li>Para comparar a VMD com o LE lado a lado, abra <span class="btn">+ linhas</span> na tabela.</li>
 </ul>
@@ -838,7 +881,7 @@ table.g td.verde{background:#008000;color:#fff}
  <tr><td>FOB · Em Andamento</td><td>Sim</td><td>No dia do ETA da Herrlog. Sem ETA ou com ETA já vencido: conta <strong>hoje</strong>.</td></tr>
  <tr><td>FOB · Em Andamento com ETA às 15h ou depois</td><td>Sim</td><td>No <strong>dia seguinte</strong> ao ETA (regra das 15h).</td></tr>
  <tr><td>FOB · Placa Enviada ou Frota Dedicada</td><td>Sim</td><td>Na data de descarga programada, enquanto a Herrlog ainda não rastreia o caminhão. Se essa data já passou: conta <strong>hoje</strong>. Quando a viagem fica Em Andamento, passa a valer o ETA da Herrlog.</td></tr>
- <tr><td>FOB · Ofertado, Aceito ou Backlog</td><td>Não (só referência)</td><td>Na data de descarga programada. Só soma com <span class="btn">Programado + Não programado</span>.</td></tr>
+ <tr><td>FOB · Ofertado, Aceito ou Backlog</td><td>Não (só referência)</td><td>Na data de descarga programada. Só soma com <span class="btn">Trânsito real + Não programado</span>. Se essa data já passou, aparece em <strong>hoje</strong>, então confira a data no Inbound.</td></tr>
  <tr><td>CIF</td><td>Sim</td><td>Na data do ETA informado manualmente; sem ela, na data de descarga programada.</td></tr>
 </table>
 <div class="note"><b class="t">De hoje em diante, uma única fonte</b>Para os dias de hoje em diante, o FOB e o CIF vêm <strong>só do trânsito ao vivo</strong> (portal inbound + Herrlog). Dia sem viagem no trânsito ao vivo fica com <strong>0</strong>. Assim a mesma viagem nunca é contada em dois dias, nem somada de novo com a cadência MIS.</div>
@@ -849,10 +892,11 @@ table.g td.verde{background:#008000;color:#fff}
 <ul>
  <li><strong>Bombeio:</strong> programação da cadência MIS, na data de descarga.</li>
  <li><strong>Botão Cadência MIS:</strong> substitui FOB, CIF e bombeio de hoje em diante pelos volumes planejados na cadência MIS. Não soma com o trânsito do portal.</li>
- <li><strong>Recebimentos reais (SAP):</strong> soma das movimentações do SAP por data de lançamento, material e base, incluindo estornos. Só existe nos dias de histórico e é referência, não entra na conta.</li>
- <li>Os recebimentos da planilha diária não são somados de novo a essas entradas.</li>
+ <li><strong>Botão Trânsito real + Não programado:</strong> da semana que vem em diante soma só a cadência MIS <strong>pendente</strong>, ou seja, a que ainda não virou viagem no portal. O vínculo é pelo pedido (OC + item): quando a viagem é criada no portal, aquela carga sai da cadência. <strong>Portal e cadência nunca são somados para a mesma carga.</strong></li>
+ <li><strong>Recebimentos reais (SAP):</strong> soma das movimentações do SAP por data de lançamento, material e base, incluindo estornos. Só existe nos dias de histórico, onde é o total de entradas do dia (igual ao BI).</li>
+ <li>Os recebimentos lançados na aba Aberturas não são somados de novo a essas entradas.</li>
  <li><strong>Transferência · saída</strong> (base de origem, na data de carregamento) = viagens do portal inbound em que a base é o fornecedor + cargas da cadência MIS com origem na base, só nas semanas que o portal ainda não cobre. Cargas por trem ou duto (DAP) não contam como transferência: são abastecimento chegando no terminal.</li>
- <li><strong>Transferência · entrada</strong> (base de destino, na data de descarga) = as mesmas cargas, vistas do outro lado. Se a viagem já estava no Trânsito FOB ou CIF, ela sai de lá e entra só nesta linha. A soma das duas bases não muda: o produto só troca de lugar.</li>
+ <li><strong>Transferência · entrada</strong> (base de destino, na data de descarga) = as mesmas cargas, vistas do outro lado. Não tem linha própria: <strong>soma no Trânsito FOB</strong> e aparece destacada no popup do dia. A soma das duas bases não muda: o produto só troca de lugar.</li>
  <li>Entre o carregamento e a descarga, o produto está no caminhão e não aparece em nenhum dos dois tanques. Transferência entre empresas no mesmo terminal (ex.: SIM → Nexta) debita uma e soma na outra; com as duas empresas juntas, o depósito não muda.</li>
 </ul>
 
@@ -916,7 +960,7 @@ table.g td.verde{background:#008000;color:#fff}
  <tr><td>Pedidos em tela (VA05)</td><td>Ao longo do dia, a cada extração do SAP.</td><td>Na carga de 30 min seguinte.</td></tr>
  <tr><td>Cadência e Disp MIS</td><td>Ao longo do dia, a cada extração do MIS.</td><td>Na carga de 30 min seguinte.</td></tr>
  <tr><td>Recebimentos reais (SAP)</td><td>Uma vez por dia, na extração das movimentações do SAP.</td><td>Na carga de 30 min seguinte.</td></tr>
- <tr><td>Vendas reais e VMD</td><td>O banco de faturamento é consultado a cada carga. O faturamento tem data, mas não tem hora. A venda de hoje vem dos pedidos do SAP (VA05) e só entra depois que o VA05 é atualizado às 13h ou mais tarde.</td><td>A cada 30 min. A VMD de amanhã em diante é reprojetada de novo na primeira carga depois desse corte.</td></tr>
+ <tr><td>Faturamento e VMD</td><td>O banco de faturamento é consultado a cada carga. O faturamento tem data, mas não tem hora. A venda de hoje vem dos pedidos do SAP (VA05) e só entra depois que o VA05 é atualizado às 13h ou mais tarde.</td><td>A cada 30 min. A VMD de amanhã em diante é reprojetada de novo na primeira carga depois desse corte.</td></tr>
  <tr><td>Trânsito FOB e CIF</td><td>A cada mudança de viagem, status ou ETA.</td><td>Em tempo real.</td></tr>
  <tr><td>Cenários salvos</td><td>Quando alguém clica em Salvar na equipe.</td><td>Na hora.</td></tr>
  <tr><td>Aba Alertas</td><td>Calculada a partir das fontes já carregadas na tela.</td><td>A cada vez que o painel é aberto ou um filtro muda.</td></tr>
@@ -989,24 +1033,26 @@ table.g td.verde{background:#008000;color:#fff}
 <div><h3>Os números não mudaram desde cedo.</h3><p>As fontes só chegam à sua tela quando você recarrega a página. Aperte <strong>F5</strong> e confira a hora no selo “Sincronizado”. Só o trânsito é atualizado automaticamente.</p></div>
 <div><h3>Uma base ou um produto não aparece na lista.</h3><p>Confira o filtro <span class="campo">Região</span>. Se estiver em “Todas” e ainda assim não aparecer, a base não está no cadastro do simulador: fale com o administrador.</p></div>
 <div><h3>A abertura está zerada.</h3><p>A base ainda não salvou a abertura de hoje na aba Aberturas (nem na planilha de contingência). Depois que ela salvar, o número aparece na próxima atualização (até 30 minutos; aperte F5).</p></div>
-<div><h3>O botão Salvar na equipe está apagado.</h3><p>Você está no modo combinado (mais de um depósito ou empresa ligados) ou ainda falta escolher base e produto.</p></div>
+<div><h3>O botão Salvar na equipe está apagado.</h3><p>Você está no modo combinado (mais de um depósito ou empresa ligados), ainda falta escolher cidade e um único produto, ou o seu perfil é só de consulta (leitura ou base).</p></div>
+<div><h3>Não consigo digitar na tabela.</h3><p>A tabela fica só leitura sem cidade escolhida, com nenhum ou vários produtos marcados, ou para os perfis leitura e base. Escolha uma cidade e um produto; se ainda assim não liberar, o seu perfil é de consulta.</p></div>
+<div><h3>Como lanço a abertura da minha base?</h3><p>Na aba <span class="btn">Aberturas</span>: clique na sua cidade, preencha em litros e clique em <span class="btn primary">Salvar &lt;cidade&gt;</span>. O passo a passo está em <a href="#c9-aberturas">Aba Aberturas</a>.</p></div>
 <div><h3>Editei um valor e ele desapareceu quando troquei o botão de Vendas.</h3><p>O valor não foi perdido. Cada botão de Vendas e de Entrada tem o seu rascunho. Volte para o botão em que você estava.</p></div>
-<div><h3>Cliquei em Real e os dias futuros ficaram zerados.</h3><p>É o esperado: o faturado real só existe até a data da última carga. Para projetar à frente, use <span class="btn">VMD</span> ou <span class="btn">LE</span>.</p></div>
+<div><h3>Cliquei em Faturamento e os dias futuros ficaram zerados.</h3><p>É o esperado: o faturado só existe até a data da última carga. Para projetar à frente, use <span class="btn">VMD reprojetada</span> ou <span class="btn">Pedidos em tela</span>.</p></div>
 <div><h3>O FOB de um dia parece estar no dia errado.</h3><p>Veja se há borda roxa na célula: a regra das 15h empurra para o dia seguinte os caminhões com chegada prevista no fim da tarde. Passe o mouse na célula para ver cada viagem, com o ETA.</p></div>
 <div><h3>Num dia passado, não aparece o ID da viagem que chegou.</h3><p>A viagem está no portal inbound com <strong>outro destino</strong> (outro depósito da cidade) ou com <strong>outra data</strong>. Abra o popup do dia: se aparecer “Chegaram em outro depósito”, a viagem provavelmente é essa. Peça a correção no Inbound. Veja o exemplo em <a href="#r10-9">10.9</a>.</p></div>
 <div><h3>O SAP mostra um recebimento num dia e a viagem chegou em outro.</h3><p>Pode ser lançamento atrasado no SAP (a carga chegou num dia e foi lançada dias depois). A conta do passado segue o SAP, igual ao BI. Se a diferença se repetir, avise o administrador.</p></div>
-<div><h3>A VMD de um dia ficou zerada.</h3><p>A conta entende que a semana já vendeu toda a meta do LE. Confira a barra “Ritmo da semana”. Se o vendido parecer alto demais, compare com o BI e avise o administrador. Para projetar enquanto isso, use <span class="btn">LE</span> ou <span class="btn">Pedidos em tela</span>.</p></div>
+<div><h3>A VMD de um dia ficou zerada.</h3><p>A conta entende que a semana já vendeu toda a meta do LE. Confira a barra “Ritmo da semana”. Se o vendido parecer alto demais, compare com o BI e avise o administrador. Para projetar enquanto isso, use <span class="btn">Pedidos em tela</span> ou digite a venda prevista.</p></div>
 <div><h3>A barra “Ritmo da semana” não aparece.</h3><p>O banco de faturamento não respondeu na última carga, ou não há LE para a semana. Recarregue depois da próxima atualização. Ela existe para Gasolina A, Anidro, Diesel S10 A, Diesel S500 A, Biodiesel e Hidratado.</p></div>
 <div><h3>Quero desfazer tudo que mexi.</h3><p>Clique em <span class="btn">↺ Restaurar</span>, no canto direito do título da tabela. Vale só para a base, produto e botões que estão na tela.</p></div>
 <div><h3>Salvei errado na equipe. É possível apagar?</h3><p>Não. As versões são definitivas. Corrija o cenário e salve de novo: a nova versão passa a ser a exibida, com o motivo que você informar.</p></div>
-<div><h3>A sessão foi encerrada sem eu sair.</h3><p>O portal sai após 2 horas sem uso, e também ao fechar a aba. Entre de novo; o rascunho continua no navegador.</p></div>
+<div><h3>A sessão foi encerrada sem eu sair.</h3><p>A sessão é encerrada depois de 2 horas sem uso em nenhum dos sistemas da Nexta (usar qualquer um deles mantém todos abertos). Entre de novo; o rascunho continua no navegador.</p></div>
 </section>
 
 <!-- ============ 13 ============ -->
 <section id="c13">
 <h2><span class="num">13</span>Glossário</h2>
 <div class="gloss">
- <p><strong>Abertura</strong>: estoque físico no início do dia, informado pela base na planilha diária.</p>
+ <p><strong>Abertura</strong>: estoque físico no início do dia, lançado pela base na aba Aberturas.</p>
  <p><strong>Fechamento</strong>: estoque no fim do dia, depois de entradas e saídas.</p>
  <p><strong>Lastro</strong>: volume mínimo do tanque que não pode ser bombeado nem vendido.</p>
  <p><strong>Política de estoque</strong>: os limites de cada base e produto: lastro, mínimo, médio, máximo e capacidade.</p>
@@ -1014,7 +1060,7 @@ table.g td.verde{background:#008000;color:#fff}
  <p><strong>Produto misturado / produto puro</strong>: misturado é o que o cliente compra (Gasolina C, Diesel B); puro é o que fica no tanque da base (Gasolina A, Anidro, Diesel A, B100).</p>
  <p><strong>VMD</strong>: venda média diária. No portal, é o LE reprojetado pelo ritmo real da semana.</p>
  <p><strong>Pedidos em tela</strong>: pedidos do dia registrados no SAP (transação VA05).</p>
- <p><strong>Real</strong>: volume faturado, vindo do banco de dados de faturamento, sem vendas para empresas do grupo e sem devoluções.</p>
+ <p><strong>Faturamento (Real)</strong>: volume faturado, vindo do banco de dados de faturamento, sem vendas para empresas do grupo e sem devoluções.</p>
  <p><strong>Recebimento SAP</strong>: entrada de produto lançada no SAP, por depósito e data de lançamento. É a fonte das entradas do passado, igual ao BI.</p>
  <p><strong>ID da viagem</strong>: código da viagem no portal inbound (ex.: NXT-006044).</p>
  <p><strong>Disp MIS</strong>: disponibilidade de produto informada no sistema MIS.</p>

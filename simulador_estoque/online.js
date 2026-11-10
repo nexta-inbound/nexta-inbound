@@ -16,7 +16,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'ae02f589bf';
+const VERSAO_SITE = '5692052154';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -181,6 +181,18 @@ async function aoMudarSessao(user) {
         return {...registro, numero};
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
+      // Painel Duvidas (2026-11-10): guarda a pergunta e o trecho do manual mostrado, com o perfil e SEM nome/uid
+      // (usuaria: "nao precisa guardar o nome"). Vai no mesmo update que duvidasRitmo/<uid>: as regras aceitam
+      // 1 pergunta a cada 3 s por pessoa. So' quem gerencia usuarios le (relatorio_duvidas.py).
+      async registrarDuvida(pergunta, trecho) {
+        const id = push(ref(db, 'duvidas')).key;
+        await update(ref(db), {
+          [`duvidas/${id}`]: {pergunta: String(pergunta).trim().slice(0, 200), trecho: String(trecho || '').slice(0, 200),
+            achou: !!trecho, perfil: profile.perfil, em: serverTimestamp()},
+          [`duvidasRitmo/${user.uid}`]: serverTimestamp()});
+        return id;
+      },
+      async avaliarDuvida(id, ajudou) { await set(ref(db, `duvidas/${id}/ajudou`), !!ajudou); },
       ...aberturasApi,
       // Aba Usuarios: desde o login central (2026-11-03) so' leva a' tela de Usuarios do portal; aparece para o
       // admin geral e o key user do Nextoques.
