@@ -6961,7 +6961,9 @@ function agruparCadencias(arr) {
 }
 
 function valorOrigemFiltro(item) {
-  item = normalizarUnidadeFornecedor(item);
+  // O filtro agrupa os aliases mesmo em viagens com CNPJ historico divergente.
+  // A copia serve apenas ao rotulo; dados fiscais e cadastro da viagem ficam intactos.
+  item = normalizarUnidadeFornecedor({ ...item, cnpjOrigem: '', cnpj: '' });
   return (item.origem || '') + (item.base ? ` (${item.base})` : '');
 }
 
