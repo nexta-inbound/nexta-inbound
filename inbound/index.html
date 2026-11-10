@@ -6231,9 +6231,16 @@ async function aplicarEmLote() {
   let bloqueadasCancelamento = 0;
   selectedViagens.forEach(idx => {
     const v = arr[idx];
-    // Cancelada: nada do lote é aplicado (nem programador) — reabertura só pelo admin,
-    // viagem a viagem (ver reabrirViagemCancelada).
-    if (viagemCancelada(v)) { bloqueadasCancelamento++; return; }
+    // Programador pode ser corrigido sem reabrir a viagem cancelada.
+    // Os campos operacionais continuam bloqueados; reabertura só pelo admin.
+    if (viagemCancelada(v)) {
+      if (status || agendamento || transpRaw) bloqueadasCancelamento++;
+      if (progRaw) {
+        v.programador = programador;
+        if (modoMultiSemana && v._semanaOrigem) viagensAlteradasMultiSemana.set(v.idViagem, v._semanaOrigem);
+      }
+      return;
+    }
     if (bloqueadasFrete.has(v)) return;
     // Pedágio comprado: só o programador é aplicado (não entra na compra Pamcard, ver
     // pedagioComprado); status/agendamento/transportador pulam essa viagem, sem
@@ -6288,7 +6295,7 @@ async function aplicarEmLote() {
   agendarAutosave();
   renderViagensTable();
   if (bloqueadasCancelamento > 0) {
-    alert(`${bloqueadasCancelamento} viagem(ns) cancelada(s) não foram alteradas — viagem cancelada não pode ser editada. Para reabrir, solicitar a um administrador.`);
+    alert(`${bloqueadasCancelamento} viagem(ns) cancelada(s) não tiveram status/agendamento/transportador alterados${progRaw ? ' (o programador foi aplicado normalmente)' : ''}. Para reabrir, solicitar a um administrador.`);
   }
   if (bloqueadasPedagio > 0) {
     alert(`${bloqueadasPedagio} viagem(ns) não tiveram status/agendamento/transportador alterados por já terem o pedágio comprado${progRaw ? ' (o programador foi aplicado normalmente)' : ''} — para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.`);
@@ -6685,7 +6692,19 @@ function marcarEAgendar(v) {
 // viagens chega do Firebase como objeto chaveado por idViagem (storage, ver regras);
 // em memoria sempre fica como array (todo o resto do app consome assim).
 function normalizarViagensArray(viagensRaw) {
-  return Array.isArray(viagensRaw) ? viagensRaw : Object.values(viagensRaw || {});
+  return (Array.isArray(viagensRaw) ? viagensRaw : Object.values(viagensRaw || {})).map(normalizarUnidadeFornecedor);
+}
+
+// De-para restrito a unidade BE8 Alto Araguaia (Usina Florida).
+function normalizarUnidadeFornecedor(item) {
+  if (!item || typeof item !== 'object') return item;
+  const chave = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
+  if (chave(item.origem) !== 'BE8') return item;
+  const campo = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
+  if (!['ALTO ARAGUAIA', 'BE8 - ALTO ARAGUAIA', 'ALTO ARAGUAIA - USINA FLORIDA'].includes(chave(item[campo]))) return item;
+  const cnpj = String(item.cnpjOrigem || item.cnpj || '').replace(/\D/g, '');
+  if (cnpj && cnpj !== '63228664000122') return item;
+  return { ...item, origem: 'BE8', [campo]: 'ALTO ARAGUAIA - USINA FLORIDA' };
 }
 
 // ── PERSISTÊNCIA ──
@@ -6749,7 +6768,7 @@ function salvarSessao(silencioso = false) {
 
 function aplicarPayload(payload) {
   if (!payload) return false;
-  cadencias = payload.cadencias || [];
+  cadencias = normalizarViagensArray(payload.cadencias);
   viagens   = normalizarViagensArray(payload.viagens);
   if (payload.config) {
     document.getElementById('capCaminhao').value = payload.config.capCaminhao || 60;
@@ -9414,9 +9433,9 @@ async function carregarFornecedoresFirebase() {
   try {
     const raw = await window._fb.carregarFornecedores();
     if (raw !== null && raw !== undefined) {
-      fornecedores = Array.isArray(raw) ? raw : Object.values(raw);
+      fornecedores = (Array.isArray(raw) ? raw : Object.values(raw)).map(normalizarUnidadeFornecedor);
     } else {
-      fornecedores = [...FORNECEDORES_SEED];
+      fornecedores = FORNECEDORES_SEED.map(normalizarUnidadeFornecedor);
       await window._fb.salvarFornecedores(fornecedores);
     }
   } catch (e) { console.error('Erro ao carregar fornecedores:', e); }
@@ -18004,6 +18023,7 @@ function validarCadastroImportacao(linhasArquivo) {
   const corrigidas = [];
 
   linhasArquivo.forEach(c => {
+    Object.assign(c, normalizarUnidadeFornecedor(c));
     const erros = [];
 
     if (c.origem && !fornecedores.find(f => f.origem === c.origem)) {
@@ -18236,6 +18256,7 @@ function fecharPopupModoImportacaoCadencia() {
 }
 
 function aplicarImportacaoCadencias(linhasArquivo, file, substituirTudo) {
+  linhasArquivo = linhasArquivo.map(normalizarUnidadeFornecedor);
   let novas = 0, atualizadas = 0;
   if (substituirTudo) {
     cadencias = linhasArquivo;
@@ -18530,7 +18551,7 @@ function configurarListenerSemana(key) {
   if (!isTransportador()) {
     let primeiraCad = true;
     unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
-      cadencias = novasCadencias;
+      cadencias = normalizarViagensArray(novasCadencias);
       if (activeTab === 0) renderPainelCadenciado();
       if (primeiraCad) { primeiraCad = false; return; }
       agendarRefresh(true);
