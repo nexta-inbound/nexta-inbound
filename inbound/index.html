@@ -6701,7 +6701,9 @@ function normalizarUnidadeFornecedor(item) {
   const chave = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
   if (chave(item.origem) !== 'BE8') return item;
   const campo = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
-  if (!['ALTO ARAGUAIA', 'BE8 - ALTO ARAGUAIA', 'ALTO ARAGUAIA - USINA FLORIDA'].includes(chave(item[campo]))) return item;
+  // Arquivos antigos usam hifen, travessao e espacos diferentes para a mesma unidade.
+  const baseChave = chave(item[campo]).replace(/[^A-Z0-9]/g, '');
+  if (!['ALTOARAGUAIA', 'BE8ALTOARAGUAIA', 'ALTOARAGUAIAUSINAFLORIDA'].includes(baseChave)) return item;
   const cnpj = String(item.cnpjOrigem || item.cnpj || '').replace(/\D/g, '');
   if (cnpj && cnpj !== '63228664000122') return item;
   return { ...item, origem: 'BE8', [campo]: 'ALTO ARAGUAIA - USINA FLORIDA' };
