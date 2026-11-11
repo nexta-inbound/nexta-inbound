@@ -94,7 +94,7 @@
   .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 14px; text-align: left; }
 
   /* KPIs */
-  /* Colunas automáticas: o cartão "Na fila do Backoffice" só aparece com a etapa ativa (Configurações) */
+  /* Colunas automáticas: o cartão "Na fila do Backoffice" só aparece com a etapa ativa (Configurações) ou com chamado nela */
   .kpis { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; margin-top: 24px; }
   @media (max-width: 900px) { .kpis { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; text-align: left; }
@@ -319,13 +319,6 @@
   .ov-cel .check { font-size: 13px; gap: 6px; white-space: nowrap; }
   .ov-cel .check input { margin-top: 1px; }
   .nao-inserido { color: var(--crit); font-size: 13px; font-weight: 600; white-space: nowrap; }
-  /* Aba Ajuste MIS: contador na aba e códigos dos chamados de cada grupo */
-  .tab-n { display: inline-block; min-width: 20px; margin-left: 6px; padding: 0 6px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-family: var(--mono); font-size: 12px; line-height: 20px; text-align: center; }
-  .cods { display: flex; flex-wrap: wrap; gap: 4px; }
-  .cod { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--accent); cursor: pointer; }
-  .cod:hover { border-color: var(--accent); }
-  table.mis td { white-space: nowrap; }
-  table.mis td.lancar { color: var(--warn); font-weight: 700; }
   .combo-vazio { padding: 8px 11px; color: var(--ink-3); font-size: 13px; font-style: italic; }
   label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
   label.f input, label.f select, label.f textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 11px; font-weight: 400; font-size: 15px; min-width: 0; width: 100%; }
@@ -419,13 +412,11 @@
   <nav class="tabs" id="nav" role="tablist" hidden>
     <button type="button" role="tab" data-view="chamados" aria-selected="true">Chamados</button>
     <button type="button" role="tab" data-view="resumo" aria-selected="false">Resumo</button>
-    <button type="button" role="tab" data-view="mis" aria-selected="false" id="nav-mis" hidden>Ajuste MIS<span class="tab-n" id="nav-mis-n" title="Grupos com volume a lançar no MIS" hidden></span></button>
     <button type="button" role="tab" data-view="cadastros" aria-selected="false" id="nav-cad" hidden>Cadastros</button>
   </nav>
 
   <div id="view-cadastros" hidden></div>
   <div id="view-resumo" hidden></div>
-  <div id="view-mis" hidden></div>
 
   <div id="view-chamados">
   <section class="kpis" id="kpis" aria-label="Resumo da fila"></section>
@@ -570,19 +561,20 @@
     recusado_demanda:   { label: "Recusado pela Demanda",   tone: "crit", final: true },
     fila_logistica:     { label: "Aguardando Logística",    tone: "wait" },
     recusado_logistica: { label: "Recusado pela Logística", tone: "crit", final: true },
-    // Aprovado pela Logística. Com a etapa do Backoffice ativa (Configurações), aguarda o Backoffice inserir o pedido
-    // no portal do revendedor; desativada, a própria Logística ajusta o MIS, envia ao portal e conclui (fluxo antigo).
-    // O status é o mesmo nos dois fluxos: ligar/desligar a etapa muda quem atende os chamados que já estão nele.
-    aprovado:           { get label() { return fluxoBackoffice() ? "Aguardando Backoffice" : "Aprovado · ajustar MIS"; },
-                          get tone() { return fluxoBackoffice() ? "wait" : "info"; } },
+    // Aprovado pela Logística: falta a própria Logística ajustar o MIS e enviar a disponibilidade ao portal (nos dois
+    // fluxos). Ao confirmar (logistica.misEm), a etapa do Backoffice (Configurações) decide: ativa → fila_backoffice;
+    // desativada → concluido (fluxo antigo). Também volta para cá quando o Backoffice devolve por falta de saldo no portal.
+    aprovado:           { label: "Aprovado · ajustar MIS",  tone: "info" },
+    // MIS ajustado e disponibilidade enviada ao portal: o Backoffice insere o pedido (OV por cliente) e conclui
+    fila_backoffice:    { label: "Aguardando Backoffice",   tone: "wait" },
     recusado_backoffice: { label: "Recusado pelo Backoffice", tone: "crit", final: true },
-    // Com o Backoffice: pedido inserido no portal do revendedor (o lançamento da Logística no MIS, aba Ajuste MIS, não
-    // muda o status). Sem o Backoffice: a Logística ajustou o MIS e enviou ao portal (logistica.misEm).
+    // Com o Backoffice: pedido inserido no portal do revendedor (backoffice.decisao = "inserido").
+    // Sem o Backoffice: a Logística ajustou o MIS e enviou ao portal (logistica.misEm).
     concluido:          { label: "Concluído",               tone: "ok",   final: true },
     cancelado:          { label: "Cancelado pelo solicitante", tone: "wait", final: true },
   };
   // Etapas em que quem abriu ainda pode cancelar (depois de concluído, não dá mais)
-  const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado"];
+  const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado", "fila_backoffice"];
   // Prioridade que a Demanda dá ao aprovar (demanda.prioridade): ajuda a Logística a escolher entre vários chamados da mesma base/produto
   const PRIORIDADES = {
     alta:  { label: "Alta",  tone: "crit", ordem: 1 },
@@ -598,12 +590,12 @@
     { id: "todos", label: "Todos os chamados", test: () => true },
     // semData: filas e atrasos sempre mostram tudo, sem o filtro de data de faturamento
     { id: "fila_demanda", label: "Na fila da Demanda", test: c => c.status === "fila_demanda", semData: true },
-    // Sem o Backoffice, o aprovado (ajustar MIS e concluir) também é fila da Logística
-    { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica" || (c.status === "aprovado" && !fluxoBackoffice()), semData: true },
-    { id: "fila_backoffice", label: "Na fila do Backoffice", test: c => c.status === "aprovado", semData: true, soBackoffice: true },
+    // O aprovado (ajustar o MIS e enviar ao portal) também é fila da Logística, com ou sem a etapa do Backoffice
+    { id: "fila_logistica", label: "Na fila da Logística", test: c => c.status === "fila_logistica" || c.status === "aprovado", semData: true },
+    { id: "fila_backoffice", label: "Na fila do Backoffice", test: c => c.status === "fila_backoffice", semData: true, soBackoffice: true },
     { id: "atrasados", label: "Fora do prazo", test: c => atrasado(c), crit: true, semData: true },
   ];
-  const filtrosVisiveis = () => FILTROS.filter(f => !f.soBackoffice || fluxoBackoffice());
+  const filtrosVisiveis = () => FILTROS.filter(f => !f.soBackoffice || temBackoffice());
 
   // ---------- Estado ----------
   const S = {
@@ -624,14 +616,15 @@
     diretorio: [],     // [{ uid, nome, papeis }] de diretorio/: quem pode ser solicitante num chamado aberto em nome de outra pessoa
     cadTab: "bases",
     resumoData: "",    // idem para a aba Resumo
-    mis: { lotes: [], lancados: {} }, // lançamentos no MIS (ajustesMis/) e marca de cada chamado lançado (misLancado/<id> = lote)
-    misData: "",       // data de faturamento do histórico de lançamentos da aba Ajuste MIS
     cadBusca: "",
     config: {},        // config/ do banco (tela Configurações, só admin grava): { backoffice: { ativo, em, por, porNome } }
     configCarregada: false,
   };
   // Etapa do Time Backoffice ligada? Sem o nó no banco (ou sem as regras novas publicadas), fica desligada: a Logística conclui
   const fluxoBackoffice = () => S.config.backoffice?.ativo === true;
+  // Fila do Backoffice aparece com a etapa ligada ou enquanto houver chamado nela (desligar a etapa não tira da fila
+  // quem já tinha o MIS ajustado: o Backoffice termina esses)
+  const temBackoffice = () => fluxoBackoffice() || S.chamados.some(c => c.status === "fila_backoffice");
 
   // ---------- Utilidades ----------
   function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -696,8 +689,8 @@
     if (c.semSla) return null;
     if (c.status === "fila_demanda") return { quem: "Demanda", iso: c.prazoDemanda };
     if (c.status === "fila_logistica") return { quem: "Logística", iso: c.prazoLogistica };
-    if (c.status === "aprovado" && fluxoBackoffice()) return { quem: "Backoffice", iso: prazoBackoffice(c) };
-    return null; // sem o Backoffice, ajustar o MIS e concluir não tem SLA (como no fluxo antigo)
+    if (c.status === "fila_backoffice") return { quem: "Backoffice", iso: prazoBackoffice(c) };
+    return null; // ajustar o MIS e enviar ao portal (aprovado) não tem SLA (como no fluxo antigo)
   }
   function atrasado(c) { const p = prazoAtual(c); return !!p && new Date() > new Date(p.iso); }
   // SLA de resposta já cumprido/estourado: compara quando cada time respondeu (demanda.em / logistica.em /
@@ -757,18 +750,21 @@
     const ps = pedidosDe(c);
     return vs.map((v, i) => ps[i]?.ov ? v : 0);
   }
-  const aprovadoFinal = c => c.status === "aprovado" || c.status === "concluido";
-  // Aguardando Backoffice: o que a Logística aprovou · Concluído: o que virou pedido no portal
+  const aprovadoFinal = c => c.status === "aprovado" || c.status === "fila_backoffice" || c.status === "concluido";
+  // Ajustar MIS / Aguardando Backoffice: o que a Logística aprovou · Concluído: o que virou pedido no portal
   function volumeAprovado(c) {
     if (!aprovadoFinal(c)) return 0;
     const vs = c.status === "concluido" ? volsFinais(c) : volsAprovados(c, "logistica");
     return vs ? soma(vs) : Number(c.volume) || 0; // sem registro da decisão: conta como aprovação integral
   }
   function ehParcial(c) { return aprovadoFinal(c) && volumeAprovado(c) < (Number(c.volume) || 0); }
+  // Devolvido pelo Backoffice (sem saldo no portal do revendedor): volta para a Logística ajustar o MIS e reenviar
+  const devolvido = c => c.status === "aprovado" && !!c.devolucaoBo;
   function statusDe(c) {
+    if (devolvido(c)) return { label: "Devolvido · ajustar MIS", tone: "warn" };
     const st = STATUS[c.status] || { label: c.status, tone: "wait" };
     if (!ehParcial(c)) return st;
-    return { ...st, label: c.status === "concluido" ? "Concluído (parcial)" : fluxoBackoffice() ? "Aprovado parcial · ag. Backoffice" : "Aprovado parcial · ajustar MIS" };
+    return { ...st, label: { concluido: "Concluído (parcial)", fila_backoffice: "Aprovado parcial · ag. Backoffice" }[c.status] || "Aprovado parcial · ajustar MIS" };
   }
   function resumoClientes(c) {
     const cs = clientesDe(c);
@@ -836,7 +832,7 @@
   }
 
   function filtroPadrao() {
-    return { demanda: "fila_demanda", logistica: "fila_logistica", backoffice: fluxoBackoffice() ? "fila_backoffice" : null }[S.papel] || "todos";
+    return { demanda: "fila_demanda", logistica: "fila_logistica", backoffice: temBackoffice() ? "fila_backoffice" : null }[S.papel] || "todos";
   }
 
   function configurarSessao() {
@@ -852,19 +848,16 @@
     $("config").hidden = !S.me.admin;
     $("nav").hidden = false;
     $("nav-cad").hidden = !S.me.admin;
-    $("nav-mis").hidden = !podeMis();
     if (!S.me.admin && S.view === "cadastros") mostrarView("chamados");
-    if (!podeMis() && S.view === "mis") mostrarView("chamados");
     S.filtro = filtroPadrao();
   }
 
   function mostrarView(v) {
     S.view = v;
-    for (const x of ["chamados", "resumo", "mis", "cadastros"]) $("view-" + x).hidden = v !== x;
+    for (const x of ["chamados", "resumo", "cadastros"]) $("view-" + x).hidden = v !== x;
     for (const b of $("nav").querySelectorAll("[data-view]")) b.setAttribute("aria-selected", String(b.dataset.view === v));
     if (v === "cadastros") renderCadastros();
     if (v === "resumo") renderResumo();
-    if (v === "mis") renderMis();
   }
 
   // Falha ao entrar pelo login central (sem acesso, desativado, servidor fora...)
@@ -879,7 +872,7 @@
     parar = [];
     S.chamados = []; S.modo = "carregando"; S.me = null; S.meuId = null; fechar();
     NOTIF.chave = ""; NOTIF.lista = []; atualizarSino();
-    S.cad = { bases: [], produtos: [] }; S.cadCarregado = false; S.diretorio = []; S.mis = { lotes: [], lancados: {} };
+    S.cad = { bases: [], produtos: [] }; S.cadCarregado = false; S.diretorio = [];
     S.config = {}; S.configCarregada = false;
     if (!user) { mostrarTela("carregando"); irParaLogin(); return; } // sessão encerrada por fora (ex.: acesso tirado)
 
@@ -939,16 +932,6 @@
       console.error(err);
       mostrarBanner("Não foi possível carregar os cadastros de bases e produtos. Confira se as regras do banco foram atualizadas.");
     }));
-
-    // Lançamentos no MIS: a Logística usa na aba Ajuste MIS; para os demais, só a etapa "Ajuste MIS" do detalhe
-    parar.push(onValue(ref(db, "ajustesMis"), snap => {
-      S.mis.lotes = Object.entries(snap.val() || {}).map(([id, x]) => ({ ...x, id }));
-      aoMudarMis();
-    }, err => {
-      console.error(err);
-      if (podeMis()) mostrarBanner("Não foi possível carregar os lançamentos no MIS. Confira se as regras do banco foram atualizadas.");
-    }));
-    parar.push(onValue(ref(db, "misLancado"), snap => { S.mis.lancados = snap.val() || {}; aoMudarMis(); }, err => console.error(err)));
 
     // Só quem pode abrir chamado em nome de outra pessoa precisa da lista de usuários
     if (podeAbrirParaOutro()) parar.push(onValue(ref(db, "diretorio"), snap => {
@@ -1029,7 +1012,7 @@
   // Rótulos curtos dos chips de status (todos cabem numa linha); o nome completo aparece no hover
   const CHIP_LABEL = {
     recusa_auto: "Recusa auto", fila_demanda: "Ag. Demanda", recusado_demanda: "Recusado Demanda",
-    fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", get aprovado() { return fluxoBackoffice() ? "Ag. Backoffice" : "Ajustar MIS"; },
+    fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ajustar MIS", fila_backoffice: "Ag. Backoffice",
     recusado_backoffice: "Recusado Backoffice", concluido: "Concluído", cancelado: "Cancelado",
   };
   // Tudo menos os chips, na visão do cartão f (padrão: o ativo) — base dos KPIs e das contagens dos chips
@@ -1105,8 +1088,8 @@
     }, el("span", { class: "dot" }), label, el("span", { class: "cnt", text: S.modo === "carregando" ? "–" : n }));
     const doStatus = pre.filter(c => marcasOn.every(m => m.test(c)));
     const doMarca = pre.filter(c => !statusOn.length || statusOn.includes(c.status));
-    // Chips que só aparecem se houver chamado nesse status (recusado pelo Backoffice: sempre, com a etapa ativa)
-    const eventual = { recusa_auto: false, recusado_backoffice: fluxoBackoffice() };
+    // Chips que só aparecem se houver chamado nesse status (os do Backoffice: sempre, com a etapa ativa)
+    const eventual = { recusa_auto: false, fila_backoffice: fluxoBackoffice(), recusado_backoffice: fluxoBackoffice() };
     const ids = Object.keys(STATUS).filter(k => !(k in eventual) || eventual[k] || S.chamados.some(c => c.status === k));
     const limpar = el("button", { class: "linkbtn", type: "button", style: "margin-left:6px;font-size:13px", hidden: !S.fStatus.size,
       onclick: () => { S.fStatus.clear(); render(); } }, "Limpar status");
@@ -1120,6 +1103,8 @@
 
   function render() {
     if (!S.me) return;
+    // A fila do Backoffice some quando a etapa está desligada e o último chamado dela sai: volta para a fila padrão
+    if (!filtrosVisiveis().some(f => f.id === S.filtro)) S.filtro = filtroPadrao();
     NC.sync(); // etiqueta D0/D+1 muda sozinha se a página ficar aberta na virada do dia
     NC.el.hidden = !!(FILTROS.find(x => x.id === S.filtro) || FILTROS[0]).semData || !!S.busca.trim(); // buscando ID, a data não vale
     BUSCA.classList.toggle("ativo", !!S.busca.trim());
@@ -1194,15 +1179,8 @@
       fluxoBackoffice() ? el("span", {}, el("b", { text: "Retorno Backoffice: " }), `até ${fmtHora(REGRAS.slaBackoffice)} do dia do faturamento`) : null,
     );
 
-    // Contador da aba Ajuste MIS: grupos (faturamento × base × produto) com volume a lançar. Sem o Backoffice a
-    // Logística ajusta o MIS ao concluir cada chamado: a aba só aparece se sobrou concluído pelo Backoffice a lançar.
-    const nMis = podeMis() ? gruposMis().length : 0;
-    $("nav-mis-n").hidden = !nMis; $("nav-mis-n").textContent = nMis;
-    $("nav-mis").hidden = !podeMis() || !(fluxoBackoffice() || nMis || S.view === "mis");
-
     // Só redesenha o detalhe aberto se o chamado mudou (não apaga o que a pessoa está digitando)
     if (S.view === "resumo") renderResumo();
-    if (S.view === "mis") renderMis();
 
     if (S.abertoId) {
       const c = S.chamados.find(x => x.id === S.abertoId);
@@ -1249,21 +1227,25 @@
     const eLog = l ? [l.decisao === "aprovado" ? "done" : "fail", l.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
       c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] :
       cancelado && d?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
-    // Concluído sem registro do Backoffice = fluxo antigo, em que a própria Logística enviou ao portal
+    // A Logística ajusta o MIS e envia a disponibilidade ao portal nos dois fluxos (com ou sem o Backoffice)
+    const eMis = l?.misEm ? ["done", "Ajustado e enviado"] :
+      c.status === "aprovado" ? ["now", c.devolucaoBo ? "Devolvido (sem saldo)" : "Pendente (Logística)"] :
+      cancelado && c.cancelamento?.deStatus === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+    // Etapa do Backoffice: chamados que passaram por ela, ou que ainda vão passar (etapa ativa e chamado em aberto)
+    const deStatus = c.cancelamento?.deStatus;
+    const comBo = !!b || !!c.devolucaoBo || c.status === "fila_backoffice" || deStatus === "fila_backoffice"
+      || (fluxoBackoffice() && !STATUS[c.status]?.final);
     const eBo = b ? (b.decisao === "inserido" ? ["done", pedidosDe(c).some(p => p.naoInserido) ? "Inserido parcial" : "Pedido inserido"] : ["fail", "Recusado"]) :
-      c.status === "aprovado" ? ["now", ateOuSemSla(prazoBackoffice(c))] :
-      c.status === "concluido" ? ["done", "Enviado ao portal"] :
-      cancelado && l?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
-    // Lançamento da Logística no MIS: não muda o status (o chamado já está concluído), só informa se já foi feito
-    const lote = loteMis(c);
-    const eMis = lote ? ["done", `Lançado ${fmtDataHora(lote.em)}`] : l?.misEm ? ["done", "Ajustado"] :
-      pendenteMis(c) ? ["now", "Pendente (Logística)"] : ["", "—"];
-    // Sem a etapa do Backoffice (e sem registro dela no chamado): fluxo antigo, a Logística ajusta o MIS, envia ao portal e conclui
-    const eMisPortal = lote ? eMis : l?.misEm ? ["done", "Ajustado e enviado"] : c.status === "aprovado" ? ["now", "Pendente (Logística)"] :
-      cancelado && l?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+      c.status === "fila_backoffice" ? ["now", ateOuSemSla(prazoBackoffice(c))] :
+      devolvido(c) ? ["", "Devolvido à Logística"] :
+      cancelado && deStatus === "fila_backoffice" ? ["fail", "Cancelado"] : ["", "—"];
     body.append(el("div", {}, el("p", { class: "section-t", text: "Etapas" }),
-      el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog),
-        fluxoBackoffice() || b ? [etapa("Backoffice", ...eBo), etapa("Ajuste MIS", ...eMis)] : etapa("MIS e portal", ...eMisPortal))));
+      el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("MIS e portal", ...eMis),
+        comBo ? etapa("Backoffice", ...eBo) : null)));
+    // Devolvido pelo Backoffice: o motivo fica à vista para a Logística (e para quem acompanha)
+    if (devolvido(c)) body.append(el("div", { class: "hint t-warn", role: "note" },
+      el("b", { text: `Devolvido pelo Backoffice em ${fmtDataHora(c.devolucaoBo.em)}: ` }), "sem saldo no portal do revendedor. ",
+      c.devolucaoBo.motivo || ""));
 
     // Dados
     const kv = (k, v, full) => el("div", { class: full ? "full" : "" }, el("dt", { text: k }), el("dd", { text: v || "—" }));
@@ -1282,7 +1264,7 @@
     const cs = clientesDe(c);
     const etapaEdit = S.papel === "demanda" && c.status === "fila_demanda" ? "demanda"
       : S.papel === "logistica" && c.status === "fila_logistica" ? "logistica"
-      : S.papel === "backoffice" && c.status === "aprovado" && fluxoBackoffice() ? "backoffice" : null;
+      : S.papel === "backoffice" && c.status === "fila_backoffice" ? "backoffice" : null;
     const volEdit = etapaEdit === "demanda" || etapaEdit === "logistica";
     const vDem = volsAprovados(c, "demanda"), vLog = volsAprovados(c, "logistica");
     // Teto de cada cliente: Demanda aprova até o solicitado; Logística até o que a Demanda aprovou
@@ -1362,7 +1344,8 @@
   // o alerta do Windows (Notification API) só sai com o portal aberto em alguma aba.
   //   Time Demanda    → chamado novo na fila da Demanda
   //   Time Logística  → chamado aprovado pela Demanda (entrou na fila da Logística)
-  //   Time Backoffice → chamado aprovado pela Logística (entrou na fila do Backoffice; só com a etapa ativa)
+  //                     e chamado devolvido pelo Backoffice (sem saldo no portal: volta para ajustar o MIS)
+  //   Time Backoffice → MIS ajustado pela Logística (entrou na fila do Backoffice; só com a etapa ativa)
   //   Quem abriu      → aprovado pela Logística, concluído (pelo Backoffice ou pela Logística) ou recusado por Demanda/Logística/Backoffice
   //   Cancelamento    → avisa o time que estava com o chamado
   // Ninguém é avisado da própria ação (ex.: solicitante que cancela o próprio chamado).
@@ -1379,10 +1362,16 @@
     atualizarSino();
   }
   function salvarNotifs() { lsSet(NOTIF.chave, JSON.stringify({ vistos: NOTIF.vistos, lista: NOTIF.lista })); }
-  const mesmoAviso = (a, b) => a.id === b.id && a.status === b.status && a.titulo === b.titulo;
+  // em (atualizadoEm do chamado) separa o mesmo aviso de um evento repetido: devolução do Backoffice e reenvio podem
+  // acontecer mais de uma vez no mesmo chamado
+  const mesmoAviso = (a, b) => a.id === b.id && a.status === b.status && a.titulo === b.titulo && a.em === b.em;
+  // O que o usuário já viu de cada chamado: o status e, se o Backoffice devolveu, quando. Assim a devolução
+  // (fila_backoffice → aprovado) e o reenvio geram aviso mesmo para quem estava fora e já tinha visto aquele status.
+  const marcaNotif = c => c.status + (c.devolucaoBo?.em ? "#" + c.devolucaoBo.em : "");
 
-  function avisosDe(c, antes) {
-    if (antes === c.status) return [];
+  function avisosDe(c, vistoAntes) {
+    if (vistoAntes === marcaNotif(c)) return [];
+    const antes = vistoAntes ? String(vistoAntes).split("#")[0] : vistoAntes; // status visto por último
     const me = S.meuId, ps = S.me.papeis, out = [];
     if (c.status === "fila_demanda" && !antes && ps.includes("demanda") && c.criadoPor !== me && c.abertoPor !== me)
       out.push({ titulo: `Novo chamado ${c.codigo}`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base} · ${fmtVol(c.volume)}. Aguardando o Time Demanda.` });
@@ -1392,20 +1381,25 @@
     if (c.status === "fila_logistica" && ps.includes("logistica") && c.demanda?.por !== me)
       out.push({ titulo: `Chamado ${c.codigo} aprovado pela Demanda`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(soma(volsAprovados(c, "demanda")) || c.volume)}`
         + (prioridadeDe(c) ? ` · prioridade ${prioridadeDe(c).label.toLowerCase()}` : "") + ". Aguardando o Time Logística." });
-    if (c.status === "aprovado" && fluxoBackoffice() && ps.includes("backoffice") && c.logistica?.por !== me)
-      out.push({ titulo: `Chamado ${c.codigo} aprovado pela Logística`, txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(volumeAprovado(c))}. Aguardando o Time Backoffice inserir o pedido no portal do revendedor.` });
+    if (c.status === "fila_backoffice" && ps.includes("backoffice") && c.logistica?.misPor !== me)
+      out.push({ titulo: c.devolucaoBo ? `Chamado ${c.codigo} reenviado ao Backoffice` : `Chamado ${c.codigo} na fila do Backoffice`,
+        txt: `${resumoClientes(c)} · ${c.base} · ${fmtVol(volumeAprovado(c))}. MIS ajustado pela Logística`
+        + (c.devolucaoBo ? " após a devolução" : "") + ". Aguardando o Time Backoffice inserir o pedido no portal do revendedor." });
+    if (devolvido(c) && ps.includes("logistica") && c.devolucaoBo.por !== me)
+      out.push({ titulo: `Chamado ${c.codigo} devolvido pelo Backoffice`, txt: `Sem saldo no portal do revendedor: confira o ajuste no MIS e reenvie. ${c.devolucaoBo.motivo || ""}`.trim() });
     if (c.status === "cancelado" && c.cancelamento?.por !== me) {
       // avisa o time que estava com o chamado na hora do cancelamento
       const de = c.cancelamento?.deStatus || antes;
-      const time = { fila_demanda: "demanda", fila_logistica: "logistica", aprovado: fluxoBackoffice() ? "backoffice" : "logistica" }[de];
+      const time = { fila_demanda: "demanda", fila_logistica: "logistica", aprovado: "logistica", fila_backoffice: "backoffice" }[de];
       if (time && ps.includes(time))
         out.push({ titulo: `Chamado ${c.codigo} cancelado pelo solicitante`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base}. Motivo: ${c.cancelamento?.motivo || "—"}` });
     }
     if (c.criadoPor === me) {
-      if (c.status === "aprovado" && c.logistica?.por !== me) {
+      // Só na aprovação (a volta por devolução do Backoffice não repete o aviso)
+      if (c.status === "aprovado" && !devolvido(c) && c.logistica?.por !== me) {
         const tot = volumeAprovado(c);
         out.push({ titulo: `Seu chamado ${c.codigo} foi aprovado pela Logística`, txt: (tot < c.volume ? `Aprovado parcialmente: ${fmtVol(tot)} de ${fmtVol(c.volume)}.` : `Aprovado integralmente: ${fmtVol(tot)}.`)
-          + (fluxoBackoffice() ? " Aguardando o Backoffice inserir o pedido." : " Aguardando a Logística ajustar o MIS e enviar ao portal.") });
+          + " Aguardando a Logística ajustar o MIS e enviar ao portal" + (fluxoBackoffice() ? "; depois o Backoffice insere o pedido." : ".") });
       }
       if (c.status === "concluido" && c.backoffice?.por && c.backoffice.por !== me) {
         const tot = volumeAprovado(c);
@@ -1428,7 +1422,7 @@
 
   function processarNotifs() {
     if (!S.me || !NOTIF.chave) return;
-    const atual = Object.fromEntries(S.chamados.map(c => [c.id, c.status]));
+    const atual = Object.fromEntries(S.chamados.map(c => [c.id, marcaNotif(c)]));
     if (!NOTIF.vistos) { NOTIF.vistos = atual; NOTIF.primeira = false; salvarNotifs(); return; }
     const novos = S.chamados.flatMap(c => avisosDe(c, NOTIF.vistos[c.id]))
       .filter(a => !NOTIF.lista.some(x => mesmoAviso(x, a))); // outra aba do mesmo usuário pode já ter registrado
@@ -1589,8 +1583,8 @@
             n.logistica = { decisao: "aprovado", volumes: r.vals, volumeAprovado: r.total, obs: obs.value.trim(), em: new Date().toISOString(), por: S.meuId };
             n.status = "aprovado";
             evento(n, (r.parcial ? `Aprovado parcialmente pela Logística (${fmtVol(r.total)} de ${fmtVol(r.teto)})` : `Aprovado pela Logística (${fmtVol(r.total)})`), obs.value.trim());
-            gravar(n, fluxoBackoffice() ? `Aprovado ${fmtVol(r.total)} e enviado ao Backoffice.` : `Aprovado ${fmtVol(r.total)}. Falta ajustar o MIS e enviar ao portal.`);
-          } }, fluxoBackoffice() ? "Aprovar e enviar ao Backoffice" : "Aprovar"),
+            gravar(n, `Aprovado ${fmtVol(r.total)}. Falta ajustar o MIS e enviar ao portal.`);
+          } }, "Aprovar"),
           el("button", { class: "btn danger", type: "button", onclick: () => {
             if (!obs.value.trim()) { err.textContent = "Informe o motivo da recusa nas observações."; return; }
             const n = structuredClone(c);
@@ -1601,29 +1595,39 @@
       return box;
     }
 
-    // Etapa do Backoffice desligada (Configurações): a Logística ajusta o MIS, envia ao portal e conclui (fluxo antigo)
-    if (S.papel === "logistica" && c.status === "aprovado" && !fluxoBackoffice()) {
+    // A Logística ajusta o MIS e envia a disponibilidade ao portal. Com a etapa do Backoffice ativa (Configurações), o
+    // chamado segue para a fila do Backoffice; desativada, já é concluído (fluxo antigo). O painel é redesenhado quando
+    // a chave muda, e o clique lê a chave de novo (a regra do banco confere o mesmo nó na gravação).
+    if (S.papel === "logistica" && c.status === "aprovado") {
       const chk = el("input", { type: "checkbox", id: "a-mis" });
       const btn = el("button", { class: "btn primary", type: "button", disabled: true, onclick: () => {
+        const bo = fluxoBackoffice();
         const n = structuredClone(c);
         n.logistica = { ...n.logistica, misEm: new Date().toISOString(), misPor: S.meuId };
-        n.status = "concluido"; evento(n, "Ajustado no MIS e enviado ao portal");
-        gravar(n, "Chamado concluído");
-      } }, "Concluir chamado");
+        n.status = bo ? "fila_backoffice" : "concluido";
+        evento(n, (c.devolucaoBo ? "MIS reajustado após devolução do Backoffice" : "Ajustado no MIS e enviado ao portal") + (bo ? " · enviado ao Backoffice" : ""));
+        gravar(n, bo ? "Enviado ao Backoffice para inserir o pedido" : "Chamado concluído");
+      } }, fluxoBackoffice() ? "Enviar ao Backoffice" : "Concluir chamado");
       chk.addEventListener("change", () => (btn.disabled = !chk.checked));
       const cs = clientesDe(c), vs = volsAprovados(c, "logistica") || [];
+      // box.append é o do DOM (escreveria "null"): itens opcionais entram por spread
       box.append(titulo("Ajuste no MIS"),
+        ...(c.devolucaoBo ? [el("p", { text: "O Backoffice não encontrou saldo no portal do revendedor. Confira o ajuste no MIS e o envio da disponibilidade ao portal antes de reenviar." })] : []),
         el("p", {}, "Volume a ajustar: ", el("b", { class: "mono", text: fmtVol(volumeAprovado(c)) }),
           ehParcial(c) ? ` (aprovação parcial — solicitado ${fmtVol(c.volume)})` : "",
           cs.length > 1 ? el("span", { class: "sub", text: " · " + cs.map((x, i) => `${x.nome}: ${fmtVol(vs[i])}`).join(" · ") }) : null),
-        el("label", { class: "check", for: "a-mis" }, chk, `Confirmo que ${fmtVol(volumeAprovado(c))} foram ajustados no MIS e enviados ao portal`), btn);
+        el("label", { class: "check", for: "a-mis" }, chk, `Confirmo que ${fmtVol(volumeAprovado(c))} foram ajustados no MIS e enviados ao portal`),
+        ...(fluxoBackoffice() ? [el("p", { class: "sub", text: "Em seguida o Time Backoffice insere o pedido no portal do revendedor e conclui o chamado." })] : []),
+        el("div", { class: "row" }, btn));
       return box;
     }
 
-    if (S.papel === "backoffice" && c.status === "aprovado" && fluxoBackoffice()) {
+    // MIS ajustado pela Logística: o Backoffice insere o pedido de cada cliente no portal do revendedor e conclui. Vale
+    // mesmo com a etapa desligada depois (os que já estavam na fila são terminados pelo Backoffice).
+    if (S.papel === "backoffice" && c.status === "fila_backoffice") {
       // A OV (ou "Não inserido") de cada cliente fica na tabela de clientes (ctx.ovEdit)
       const linhas = ctx.ovEdit.filter(Boolean), vs = ctx.vBo, cs = clientesDe(c);
-      const mot = el("textarea", { id: "a-bo", placeholder: "Obrigatório se algum cliente não foi inserido (ex.: cliente bloqueado por crédito)" });
+      const mot = el("textarea", { id: "a-bo", placeholder: "Obrigatório se algum cliente não foi inserido (ex.: cliente bloqueado por crédito) ou ao devolver à Logística" });
       const err = el("div", { class: "err", role: "alert" });
       const totalEl = el("span", { class: "mono" });
       const atualizar = () => {
@@ -1636,7 +1640,9 @@
       const registro = (decisao, extra = {}) => ({ decisao, ...extra, ...(mot.value.trim() ? { motivo: mot.value.trim() } : {}),
         em: new Date().toISOString(), por: S.meuId });
       box.append(titulo("Pedido no portal do revendedor"),
-        el("p", { text: "Insira o pedido de cada cliente no portal do revendedor e informe o número da ordem de venda na tabela acima." }),
+        el("p", { text: "Insira o pedido de cada cliente no portal do revendedor e informe o número da ordem de venda na tabela acima. "
+          + "Se o portal estiver sem saldo (a disponibilidade do MIS não chegou), devolva à Logística." }),
+        ...(c.devolucaoBo ? [el("p", { class: "sub", text: `Reenviado pela Logística após devolução em ${fmtDataHora(c.devolucaoBo.em)}.` })] : []),
         el("div", { class: "aprov-barra" }, el("span", {}, "Volume a inserir: ", totalEl)),
         el("label", { class: "f", for: "a-bo" }, "Observações", mot), err,
         el("div", { class: "row" },
@@ -1657,8 +1663,22 @@
             const ovs = cs.map((x, i) => pedidos[i].ov ? `${x.nome}: OV ${pedidos[i].ov}` : pedidos[i].naoInserido ? `${x.nome}: não inserido` : null).filter(Boolean);
             evento(n, total < teto ? `Pedido inserido parcialmente no portal (${fmtVol(total)} de ${fmtVol(teto)})` : `Pedido inserido no portal do revendedor (${fmtVol(total)})`,
               [...ovs, mot.value.trim()].filter(Boolean).join(" · "));
-            gravar(n, "Chamado concluído. A Logística lança o volume no MIS pela aba Ajuste MIS.");
+            gravar(n, "Chamado concluído");
           } }, "Pedido inserido · concluir"),
+          // Sem saldo no portal = a disponibilidade do MIS não chegou: volta para a Logística ajustar e reenviar.
+          // O ajuste anterior no MIS (logistica.misEm/misPor) sai do registro; fica no histórico.
+          el("button", { class: "btn ghost", type: "button", onclick: async () => {
+            err.textContent = "";
+            if (!mot.value.trim()) { err.textContent = "Informe nas observações o que aconteceu no portal (ex.: sem saldo de S10 na base)."; mot.focus(); return; }
+            if (!await confirmar(`Devolver o chamado ${c.codigo} à Logística por falta de saldo no portal? Ela confere o MIS e reenvia ao Backoffice.`,
+              { ok: "Devolver à Logística", cancelar: "Voltar" })) return;
+            const n = structuredClone(c);
+            const { misEm, misPor, ...log } = n.logistica || {};
+            n.logistica = log;
+            n.devolucaoBo = { motivo: mot.value.trim(), em: new Date().toISOString(), por: S.meuId };
+            n.status = "aprovado"; evento(n, "Devolvido à Logística: sem saldo no portal do revendedor", mot.value.trim());
+            gravar(n, "Chamado devolvido à Logística");
+          } }, "Sem saldo · devolver à Logística"),
           el("button", { class: "btn danger", type: "button", onclick: () => {
             err.textContent = "";
             if (!mot.value.trim()) { err.textContent = "Informe nas observações por que o pedido não foi inserido."; mot.focus(); return; }
@@ -1670,24 +1690,17 @@
       return box;
     }
 
-    // Concluído pelo Backoffice e ainda não lançado no MIS: o lançamento é por grupo, na aba Ajuste MIS
-    if (S.papel === "logistica" && podeMis() && pendenteMis(c)) {
-      box.append(titulo("Ajuste no MIS"),
-        el("p", {}, "Volume a lançar no MIS: ", el("b", { class: "mono", text: fmtVol(volumeAprovado(c)) }),
-          ". O lançamento é feito por data de faturamento, base e produto, junto com os outros chamados do grupo."),
-        el("div", { class: "row" }, el("button", { class: "btn primary", type: "button", onclick: () => { fechar(); mostrarView("mis"); } }, "Abrir Ajuste MIS")));
-      return box;
-    }
-
-    // Quem abriu pode cancelar até o chamado ser concluído (pedido inserido pelo Backoffice ou MIS ajustado pela
-    // Logística). O chamado não é apagado: vai para o status "cancelado" (final), continua na lista e no CSV, mas fica fora do Resumo.
+    // Quem abriu pode cancelar até o chamado ser concluído (pedido inserido pelo Backoffice ou, sem a etapa do
+    // Backoffice, MIS ajustado pela Logística). O chamado não é apagado: vai para o status "cancelado" (final),
+    // continua na lista e no CSV, mas fica fora do Resumo.
     if (c.criadoPor === S.meuId && CANCELAVEL.includes(c.status)) {
       const situacao = c.status === "fila_demanda"
         ? (c.semSla ? "Aguardando o Time Demanda (sem SLA)." : `Aguardando o Time Demanda até ${fmtDataHora(c.prazoDemanda)}.`)
         : c.status === "fila_logistica"
           ? (c.semSla ? "Aprovado pela Demanda. Aguardando o Time Logística (sem SLA)." : `Aprovado pela Demanda. Aguardando o Time Logística até ${fmtDataHora(c.prazoLogistica)}.`)
-          : fluxoBackoffice()
-            ? `Aprovado pela Logística. Aguardando o Time Backoffice inserir o pedido no portal do revendedor${c.semSla ? " (sem SLA)" : ` até ${fmtDataHora(prazoBackoffice(c))}`}.`
+          : c.status === "fila_backoffice"
+            ? `MIS ajustado pela Logística. Aguardando o Time Backoffice inserir o pedido no portal do revendedor${c.semSla ? " (sem SLA)" : ` até ${fmtDataHora(prazoBackoffice(c))}`}.`
+            : devolvido(c) ? "Devolvido pelo Backoffice (sem saldo no portal). Aguardando a Logística conferir o MIS."
             : "Aprovado pela Logística. Aguardando o ajuste no MIS.";
       const mot = el("textarea", { id: "a-cancel", placeholder: "Por que o chamado está sendo cancelado?" });
       const err = el("div", { class: "err", role: "alert" });
@@ -1697,7 +1710,7 @@
           const motivo = mot.value.trim();
           if (!motivo) { err.textContent = "Informe o motivo do cancelamento."; mot.focus(); return; }
           err.textContent = "";
-          const quem = { fila_demanda: "o Time Demanda", fila_logistica: "o Time Logística", aprovado: fluxoBackoffice() ? "o Time Backoffice" : "o Time Logística" }[c.status];
+          const quem = { fila_demanda: "o Time Demanda", fila_logistica: "o Time Logística", aprovado: "o Time Logística", fila_backoffice: "o Time Backoffice" }[c.status];
           if (!await confirmar(`Cancelar o chamado ${c.codigo}? Ele fica registrado como cancelado e ${quem} será avisado.`, { ok: "Cancelar chamado", cancelar: "Voltar" })) return;
           const n = structuredClone(c);
           n.cancelamento = { motivo, deStatus: c.status, em: new Date().toISOString(), por: S.meuId };
@@ -1708,7 +1721,7 @@
       return box;
     }
 
-    const quem = { fila_demanda: "Time Demanda", fila_logistica: "Time Logística", aprovado: fluxoBackoffice() ? "Time Backoffice" : "Time Logística" }[c.status];
+    const quem = { fila_demanda: "Time Demanda", fila_logistica: "Time Logística", aprovado: "Time Logística", fila_backoffice: "Time Backoffice" }[c.status];
     if (quem) {
       box.append(el("p", { text: `Próxima ação é do ${quem}.` }));
       return box;
@@ -2136,14 +2149,16 @@
   }
 
   // ---------- Configurações (admin) ----------
-  // config/backoffice = { ativo, em, por, porNome }. Ligar/desligar não altera nenhum chamado: o status "aprovado" é o
-  // mesmo nos dois fluxos, só muda quem atende (Backoffice ou Logística). As regras do banco seguem a mesma chave.
+  // config/backoffice = { ativo, em, por, porNome }. Ligar/desligar não altera nenhum chamado: a chave só decide o que
+  // acontece quando a Logística confirma o ajuste no MIS (ativa → fila do Backoffice; desativada → concluído). Os que já
+  // estão na fila do Backoffice continuam lá até o Backoffice terminar. As regras do banco seguem a mesma chave.
   function abrirConfig() {
     S.abertoId = null;
     abrirDrawer("Configurações", "Ajustes do fluxo dos chamados. Só administradores alteram.");
     const body = $("dr-body"); body.replaceChildren();
     const bo = S.config.backoffice || {}, ativo = fluxoBackoffice();
     const nAprov = S.chamados.filter(c => c.status === "aprovado").length;
+    const nFila = S.chamados.filter(c => c.status === "fila_backoffice").length;
     const chk = el("input", { type: "checkbox", id: "cfg-bo" });
     chk.checked = ativo;
     const err = el("div", { class: "err", role: "alert" });
@@ -2152,13 +2167,16 @@
     btn.addEventListener("click", async () => {
       err.textContent = "";
       const novo = chk.checked;
-      const efeito = nAprov ? ` ${nAprov === 1 ? "O chamado aprovado pela Logística que está aberto passa" : `Os ${nAprov} chamados aprovados pela Logística que estão abertos passam`}`
-        + (novo ? " para a fila do Time Backoffice." : " a ser concluídos pela Logística.") : "";
+      const efeito = novo
+        ? " A partir de agora, ao confirmar o ajuste no MIS, a Logística envia o chamado ao Time Backoffice em vez de concluir."
+          + (nAprov ? ` Vale também para ${nAprov === 1 ? "o chamado que está" : `os ${nAprov} chamados que estão`} aguardando o ajuste no MIS.` : "")
+        : " A partir de agora, a Logística conclui o chamado ao confirmar o ajuste no MIS."
+          + (nFila ? ` ${nFila === 1 ? "O chamado que já está" : `Os ${nFila} chamados que já estão`} na fila do Backoffice continua${nFila === 1 ? "" : "m"} lá até o Backoffice concluir.` : "");
       if (!await confirmar(`${novo ? "Ativar" : "Desativar"} a etapa do Time Backoffice?${efeito}`, { ok: novo ? "Ativar" : "Desativar", cancelar: "Voltar" })) return;
       btn.disabled = true;
       try {
         await set(ref(db, "config/backoffice"), { ativo: novo, em: new Date().toISOString(), por: S.meuId, porNome: S.me.nome });
-        toast(novo ? "Etapa do Backoffice ativada" : "Etapa do Backoffice desativada: a Logística conclui os chamados");
+        toast(novo ? "Etapa do Backoffice ativada" : "Etapa do Backoffice desativada: a Logística conclui ao ajustar o MIS");
         abrirConfig();
       } catch (e) { console.error(e); err.textContent = msgErro(e); btn.disabled = false; }
     });
@@ -2168,9 +2186,10 @@
         bo.em ? el("span", { class: "sub", style: "margin-left:8px", text: `Alterado por ${bo.porNome || "—"} em ${fmtDataHora(bo.em)}` }) : null),
       el("ul", { style: "margin:0;padding-left:18px" },
         el("li", {}, el("b", { text: "Desativada: " }), "a Logística aprova, ajusta o MIS, envia ao portal e conclui o chamado."),
-        el("li", {}, el("b", { text: "Ativa: " }), "a Logística aprova, o Time Backoffice insere o pedido no portal do revendedor (OV por cliente) e conclui; depois a Logística lança o volume no MIS pela aba Ajuste MIS.")),
+        el("li", {}, el("b", { text: "Ativa: " }), "a Logística aprova, ajusta o MIS e envia ao portal; depois o Time Backoffice insere o pedido no portal do revendedor (OV por cliente) e conclui. Se o portal estiver sem saldo, o Backoffice devolve o chamado à Logística.")),
       el("label", { class: "check", for: "cfg-bo" }, chk, "Ativar a etapa do Time Backoffice"),
-      el("p", { class: "sub", style: "margin:0", text: `Nenhum chamado é alterado ao trocar: os aprovados pela Logística ainda abertos (${nAprov} agora) só mudam de fila. Concluídos e recusados ficam como estão.` }),
+      el("p", { class: "sub", style: "margin:0", text: `Nenhum chamado é alterado ao trocar: a chave só decide para onde vai o chamado quando a Logística confirma o ajuste no MIS. `
+        + `Agora: ${nAprov} aguardando o ajuste no MIS · ${nFila} na fila do Backoffice (continuam com o Backoffice mesmo se a etapa for desativada).` }),
       err, el("div", { class: "row" }, btn)));
   }
 
@@ -2178,9 +2197,10 @@
   // Solicitado = Reprovado + Aprovado + Pendente Demanda + Pendente Logística + Pendente Backoffice.
   // Solicitado = todos os chamados menos os cancelados pelo solicitante.
   // Aprovado = concluído pelo Backoffice (volume que virou pedido no portal do revendedor).
-  // Pendentes = volume parado na fila de cada time (na do Backoffice, o que a Logística aprovou).
+  // Pendentes = volume parado na fila de cada time: na da Logística também o aprovado ainda sem ajuste no MIS; na do
+  // Backoffice, o que a Logística aprovou e já ajustou no MIS.
   // Com a etapa do Backoffice desligada (fluxo antigo): Aprovado = aprovado pela Logística, com ou sem ajuste no MIS,
-  // e a coluna Pendente Backoffice some.
+  // e a coluna Pendente Backoffice some (a não ser que ainda haja chamado na fila do Backoffice).
   // Reprovado = recusas + cortes parciais (Demanda, Logística e clientes que o Backoffice não inseriu).
   // Pendentes trazem a quebra no prazo / atrasado / sem SLA (chaves <col>_ok, <col>_atr, <col>_sla).
   const COLS_RESUMO = [
@@ -2230,7 +2250,8 @@
       const [col, v] = c.status === "concluido" ? ["apr", volumeAprovado(c)]
         : c.status === "fila_demanda" ? ["pDem", vol]
         : c.status === "fila_logistica" ? ["pLog", soma(volsAprovados(c, "demanda")) || vol]
-        : c.status === "aprovado" ? [fluxoBackoffice() ? "pBo" : "apr", volumeAprovado(c)] : [null, 0];
+        : c.status === "aprovado" ? [fluxoBackoffice() ? "pLog" : "apr", volumeAprovado(c)]
+        : c.status === "fila_backoffice" ? ["pBo", volumeAprovado(c)] : [null, 0];
       const add = (chave, x) => { g[chave] += x; total[chave] += x; };
       add("sol", vol);
       add("rep", Math.max(0, vol - v));
@@ -2252,7 +2273,7 @@
         quebra.length ? el("div", { class: "quebra" }, quebra) : null);
     };
     const filtrando = alvo || filtrosDe(FR).some(([, m]) => m.selected.size);
-    const cols = COLS_RESUMO.filter(c => !c.soBackoffice || fluxoBackoffice());
+    const cols = COLS_RESUMO.filter(c => !c.soBackoffice || temBackoffice());
     $("resumo-box").replaceChildren(linhas.length
       ? el("table", { class: "resumo", style: "min-width:1040px" },
           el("thead", {}, el("tr", {}, el("th", { text: "Base" }), el("th", { text: "Produto" }),
@@ -2261,124 +2282,6 @@
             el("td", { text: g.base }), el("td", { text: g.produto }), cols.map(c => celula(g, c))))),
           el("tfoot", {}, el("tr", {}, el("td", { text: "Total", colspan: "2" }), cols.map(c => celula(total, c)))))
       : el("div", { class: "empty", text: filtrando ? "Nenhum chamado com esses filtros." : "Nenhum chamado ainda." }));
-  }
-
-  // ---------- Ajuste no MIS (Time Logística) ----------
-  // O chamado termina quando o Backoffice insere o pedido no portal do revendedor. Depois a Logística lança o volume
-  // no MIS para o estoque não ficar negativo. Esse lançamento não muda o status do chamado e é feito por grupo
-  // (data de faturamento × base × produto), não chamado a chamado: cada confirmação grava um lote em ajustesMis/<lote>
-  // e marca misLancado/<chamado> = <lote>, tudo numa gravação só. Chamados concluídos depois de um lote formam um novo
-  // pendente no mesmo grupo (ex.: 80 m³ lançados às 8h; às 10h aparece "+30 m³ a lançar · total do dia 110 m³").
-  // A regra do banco só deixa criar a marca de um chamado uma vez: dois cliques ao mesmo tempo não lançam em dobro
-  // (a segunda gravação inteira é recusada).
-  const podeMis = () => !!S.me && (S.me.admin || S.me.papeis.includes("logistica"));
-  const loteMis = c => { const id = S.mis.lancados[c.id]; return id ? S.mis.lotes.find(x => x.id === id) || { id } : null; };
-  // Concluídos no fluxo antigo (logistica.misEm) já tiveram o MIS ajustado junto com a conclusão
-  const pendenteMis = c => c.status === "concluido" && !c.logistica?.misEm && !S.mis.lancados[c.id] && volumeAprovado(c) > 0;
-  const chaveMis = x => `${x.dataEntrega}\u0000${x.base}\u0000${x.produto}`;
-  function gruposMis() {
-    const lancado = new Map();
-    for (const l of S.mis.lotes) lancado.set(chaveMis(l), (lancado.get(chaveMis(l)) || 0) + (Number(l.volume) || 0));
-    const grupos = new Map();
-    for (const c of S.chamados) {
-      if (!pendenteMis(c)) continue;
-      const k = chaveMis(c);
-      if (!grupos.has(k)) grupos.set(k, { dataEntrega: c.dataEntrega, base: c.base || "—", produto: c.produto || "—", chamados: [], volume: 0, lancado: lancado.get(k) || 0 });
-      const g = grupos.get(k);
-      g.chamados.push(c); g.volume += volumeAprovado(c);
-    }
-    // Faturamento mais antigo primeiro (o que já devia ter sido lançado aparece no topo)
-    return [...grupos.values()].map(g => ({ ...g, volume: Math.round(g.volume * 10) / 10, lancado: Math.round(g.lancado * 10) / 10 }))
-      .sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega) || a.base.localeCompare(b.base, "pt-BR") || a.produto.localeCompare(b.produto, "pt-BR"));
-  }
-  // Lançamento ou desfazer: redesenha a aba e, se o detalhe aberto é de um concluído, a etapa "Ajuste MIS" dele
-  // (concluído não tem campo sendo digitado no painel)
-  function aoMudarMis() {
-    render();
-    const c = S.abertoId && S.chamados.find(x => x.id === S.abertoId);
-    if (c?.status === "concluido") renderDetalhe();
-  }
-
-  async function lancarMis(g, btn) {
-    const cods = g.chamados.map(c => c.codigo).join(", ");
-    if (!await confirmar(`Confirma que ${fmtVol(g.volume)} de ${g.produto} foram lançados no MIS para ${g.base}, faturamento ${fmtData(g.dataEntrega)}? Chamados: ${cods}.`,
-      { ok: "Lancei no MIS", cancelar: "Voltar" })) return;
-    const id = push(ref(db, "ajustesMis")).key;
-    const upd = {
-      ["ajustesMis/" + id]: { em: new Date().toISOString(), por: S.meuId, porNome: S.me.nome, dataEntrega: g.dataEntrega, base: g.base, produto: g.produto,
-        volume: g.volume, chamados: Object.fromEntries(g.chamados.map(c => [c.id, volumeAprovado(c)])) },
-      ...Object.fromEntries(g.chamados.map(c => ["misLancado/" + c.id, id])),
-    };
-    btn.disabled = true;
-    try { await update(ref(db), upd); toast(`${fmtVol(g.volume)} lançados no MIS · ${g.base} · ${g.produto}`); }
-    catch (e) {
-      console.error(e); btn.disabled = false;
-      toast(e?.code === "PERMISSION_DENIED" || /permission/i.test(e?.message || "")
-        ? "O banco recusou o lançamento: algum chamado do grupo já foi lançado por outra pessoa (a tela atualiza sozinha) ou as regras do Firebase estão desatualizadas."
-        : msgErro(e));
-    }
-  }
-
-  async function desfazerLote(l) {
-    const ids = Object.keys(l.chamados || {}).filter(id => S.mis.lancados[id] === l.id);
-    if (!await confirmar(`Desfazer o lançamento de ${fmtVol(l.volume)} (${l.base} · ${l.produto}, faturamento ${fmtData(l.dataEntrega)})? `
-      + `${ids.length === 1 ? "O chamado volta" : `Os ${ids.length} chamados voltam`} para a lista de pendentes. Corrija também no MIS.`, { ok: "Desfazer", cancelar: "Voltar" })) return;
-    try { await update(ref(db), { ["ajustesMis/" + l.id]: null, ...Object.fromEntries(ids.map(id => ["misLancado/" + id, null])) }); toast("Lançamento desfeito"); }
-    catch (e) { console.error(e); toast(msgErro(e)); }
-  }
-
-  // Estrutura montada uma vez (navegador de data); renderMis() só redesenha as tabelas
-  let NM = null;
-  function montarMis() {
-    NM = navData(() => S.misData, v => { S.misData = v; renderMis(); });
-    $("view-mis").replaceChildren(
-      el("div", { class: "section-header" },
-        el("div", {}, el("h2", { text: "Volume a lançar no MIS" }),
-          el("p", { text: "Chamados concluídos pelo Backoffice que ainda não foram lançados, somados por data de faturamento, base e produto." }))),
-      el("div", { class: "tablebox", id: "mis-pend" }),
-      el("div", { class: "section-header" },
-        el("div", {}, el("h2", { text: "Lançamentos feitos" }), el("p", { text: "Histórico do que já foi lançado no MIS pelo portal, por data de faturamento." })),
-        NM.el),
-      el("div", { class: "tablebox", id: "mis-lotes" }));
-  }
-  function renderMis() {
-    if (!NM) montarMis();
-    NM.sync();
-    const porId = new Map(S.chamados.map(c => [c.id, c]));
-    const codigos = cs => el("div", { class: "cods" }, cs.map(c => el("button", { class: "cod", type: "button",
-      title: `${resumoClientes(c)} · ${fmtVol(volumeAprovado(c))}`, onclick: () => abrir(c.id) }, c.codigo)));
-    const dia = s => el("td", {}, fmtData(s), el("span", { class: "tag" + (difDias(s) === 0 ? " d0" : ""), text: relDia(s) }));
-
-    const gs = gruposMis();
-    $("mis-pend").replaceChildren(gs.length
-      ? el("table", { class: "mis" },
-          el("thead", {}, el("tr", {}, el("th", { text: "Faturamento" }), el("th", { text: "Base" }), el("th", { text: "Produto" }),
-            el("th", { class: "num", text: "A lançar agora" }), el("th", { class: "num", text: "Já lançado no dia" }), el("th", { class: "num", text: "Total do dia" }),
-            el("th", { text: "Chamados" }), el("th", {}))),
-          el("tbody", { class: "plain" }, gs.map(g => el("tr", {},
-            dia(g.dataEntrega), el("td", { text: g.base }), el("td", { text: g.produto }),
-            el("td", { class: "num mono lancar", text: "+" + fmtVol(g.volume) }),
-            el("td", { class: "num mono", text: g.lancado ? fmtVol(g.lancado) : "—" }),
-            el("td", { class: "num mono", text: fmtVol(g.lancado + g.volume) }),
-            el("td", {}, codigos(g.chamados)),
-            el("td", { class: "num" }, el("button", { class: "btn ok sm", type: "button", onclick: e => lancarMis(g, e.currentTarget) }, "Lancei no MIS"))))))
-      : el("div", { class: "empty", text: "Nada pendente: todo o volume concluído pelo Backoffice já foi lançado no MIS." }));
-
-    const alvo = S.misData || null;
-    const lotes = S.mis.lotes.filter(l => !alvo || l.dataEntrega === alvo).sort((a, b) => String(b.em).localeCompare(String(a.em)));
-    $("mis-lotes").replaceChildren(lotes.length
-      ? el("table", { class: "mis" },
-          el("thead", {}, el("tr", {}, el("th", { text: "Lançado em" }), el("th", { text: "Faturamento" }), el("th", { text: "Base" }), el("th", { text: "Produto" }),
-            el("th", { class: "num", text: "Volume" }), el("th", { text: "Chamados" }), el("th", { text: "Por" }), el("th", {}))),
-          el("tbody", { class: "plain" }, lotes.map(l => el("tr", {},
-            el("td", { class: "mono", text: fmtDataHora(l.em) }), dia(l.dataEntrega), el("td", { text: l.base }), el("td", { text: l.produto }),
-            el("td", { class: "num mono", text: fmtVol(l.volume) }),
-            el("td", {}, codigos(Object.keys(l.chamados || {}).map(id => porId.get(id)).filter(Boolean))),
-            el("td", { title: l.porNome || "", text: l.porNome ? nomeCurto(l.porNome) : "—" }),
-            el("td", { class: "num" }, S.me.admin || l.por === S.meuId
-              ? el("button", { class: "btn ghost sm", type: "button", title: "Desfaz o lançamento no portal (os chamados voltam a ficar pendentes)", onclick: () => desfazerLote(l) }, "Desfazer")
-              : null)))))
-      : el("div", { class: "empty", text: alvo ? "Nenhum lançamento para esta data de faturamento." : "Nenhum lançamento ainda." }));
   }
 
   // ---------- Cadastros (admin) ----------
@@ -2541,17 +2444,18 @@
   }
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
-    // volumeAprovadoFinal = o que virou pedido no portal (só chamados concluídos); lancadoMis = quando a Logística lançou no MIS
-    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoLogistica", "ordemVenda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "slaBackoffice", "motivo", "tradeoff", "obsLogistica", "obsBackoffice", "lancadoMis"];
+    // volumeAprovadoFinal = o que virou pedido no portal (só chamados concluídos); lancadoMis = quando a Logística ajustou
+    // o MIS e enviou ao portal (nome mantido para quem já usa o CSV); devolvidoBackoffice = última devolução por falta de saldo
+    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoLogistica", "ordemVenda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "slaBackoffice", "motivo", "tradeoff", "obsLogistica", "obsBackoffice", "lancadoMis", "devolvidoBackoffice"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
     const linhas = visiveis().flatMap(c => {
       const vDem = volsAprovados(c, "demanda"), vLog = volsAprovados(c, "logistica"), vFin = c.status === "concluido" ? volsFinais(c) : null;
-      const ps = pedidosDe(c), misEm = loteMis(c)?.em || c.logistica?.misEm;
+      const ps = pedidosDe(c), misEm = c.logistica?.misEm, devEm = c.devolucaoBo?.em;
       return clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.abertoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
         x.nome, x.segmento, x.modal, num(x.volume), num(vDem?.[i]), num(vLog?.[i]), ps[i]?.ov || (ps[i]?.naoInserido ? "Não inserido" : ""), num(vFin?.[i]), num(c.volume),
         statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), slaCsv(c, "Backoffice"),
-        c.motivo, c.demanda?.tradeoff, c.logistica?.obs, c.backoffice?.motivo, misEm ? fmtDataHora(misEm) : ""].map(esc).join(";"));
+        c.motivo, c.demanda?.tradeoff, c.logistica?.obs, c.backoffice?.motivo, misEm ? fmtDataHora(misEm) : "", devEm ? fmtDataHora(devEm) : ""].map(esc).join(";"));
     });
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -2580,7 +2484,6 @@
     if (!$("overlay").hidden && !document.querySelector("dialog[open]")) fechar();
   });
   S.resumoData = hojeStr(); // Resumo abre no D0; a lista de chamados abre sem filtro de data (S.fData = "")
-  S.misData = hojeStr();    // histórico de lançamentos no MIS também abre no D0 (os pendentes aparecem sempre, de todas as datas)
   const NC = navData(() => S.fData, v => { S.fData = v; render(); });
   $("nav-data-chamados").replaceWith(NC.el);
   $("exportar").addEventListener("click", exportar);
