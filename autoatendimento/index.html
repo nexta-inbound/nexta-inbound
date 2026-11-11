@@ -95,12 +95,16 @@ button, input { font: inherit; color: inherit; }
 /* Sem espaço para os 6 nomes (tablet em pé, celular): só o da etapa atual */
 @media (max-width: 900px) { .passo .txt { display: none; } .passo.atual .txt { display: inline; } .passo.atual { flex: 3; } }
 @media (max-width: 640px) { .passos { padding: 0 16px; } }
-/* Tela baixa (tablet deitado): menos espaço entre as etapas e o conteúdo */
-@media (max-height: 860px) { .passos { margin-top: 12px; } .conteudo { padding-top: 18px; } }
 
 /* ── CONTEÚDO ── */
 .conteudo { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 28px 24px 32px; }
+/* Tela baixa (tablet deitado, notebook): menos folga em cima e embaixo (a barra de botões presa embaixo já tem a dela).
+   Depois da regra de .conteudo, senão ela ganha */
+@media (max-height: 860px) { .passos { margin-top: 12px; } .conteudo { padding-top: 18px; padding-bottom: 4px; } }
 @media (max-width: 640px) { .conteudo { padding: 20px 16px 28px; } }
+/* Tela larga (notebook, monitor): as telas de lista do check-in (TELAS_LARGAS) usam os lados e rolam menos; as de
+   formulário continuam com 960 px */
+@media (min-width: 1200px) { body.tela-larga .passos, body.tela-larga .conteudo { max-width: 1600px; } }
 .tela { display: none; }
 .tela.ativa { display: block; }
 .titulo { font-size: 30px; font-weight: 600; line-height: 1.2; }
@@ -197,7 +201,9 @@ button, input { font: inherit; color: inherit; }
 .nota-sugestao { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 10px 16px; margin-bottom: 16px; border-radius: 12px; background: var(--accent-dim); color: var(--text-dim); font-size: 16px; }
 .comp-cap { font-weight: 500; color: var(--text-muted); }
 /* Alocação: chips dos compartimentos (respondido / atual / sem resposta) e a pergunta de um compartimento */
-.tudo-certo { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--success); border-radius: 12px; background: var(--success-dim); color: var(--success); font-size: 17px; font-weight: 600; }
+/* "Tudo certo" do resumo: selo na linha da instrução, como a confirmação da pergunta (uma caixa ocuparia a altura de
+   um compartimento a mais) */
+.tudo-certo { display: inline-block; padding: 4px 12px; border-radius: 10px; background: var(--success-dim); color: var(--success); font-size: 17px; font-weight: 600; }
 .pergunta-topo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
 .pergunta-titulo { font-size: 28px; font-weight: 600; }
 .pergunta-titulo .de { font-size: 18px; font-weight: 500; color: var(--text-muted); }
@@ -239,12 +245,26 @@ button, input { font: inherit; color: inherit; }
 .resumo-placas { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px 28px; }
 .resumo-placa .tanque-placa { margin-bottom: 2px; }
 .uma-placa .resumo-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
-.resumo-comp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 7px 0; border-top: 1px solid var(--border); }
+/* CT à esquerda; produto e volume na 1ª linha; pedido, cliente, cidade e CNPJ embaixo, com a largura toda (inclusive a
+   do volume): cabe numa linha só com mais frequência */
+.resumo-comp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "ct nome vol" "ct meta meta"; gap: 0 12px; padding: 7px 0; border-top: 1px solid var(--border); }
+.resumo-comp .resumo-ct { grid-area: ct; align-self: center; }
+.resumo-comp .produto-nome { grid-area: nome; align-self: baseline; }
+.resumo-comp .produto-vol { grid-area: vol; align-self: baseline; }
+.resumo-comp .produto-meta { grid-area: meta; }
 .resumo-comp:first-child, .uma-placa .resumo-comp:nth-child(2) { border-top: none; }
 .resumo-comp:last-child { padding-bottom: 0; }
+/* Cada compartimento do resumo é um botão: tocar troca o produto dele */
+button.resumo-comp { width: 100%; margin: 0; padding-left: 6px; padding-right: 6px; border: none; border-top: 1px solid var(--border); border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
+button.resumo-comp:last-child { padding-bottom: 7px; }
+button.resumo-comp:active { background: var(--accent-dim); }
+button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.resumo-comp .produto-nome, .resumo-comp .produto-meta { display: block; }
+.nota-previa { justify-content: flex-start; border: 1px solid var(--accent); color: var(--text); font-weight: 500; }
 .resumo-ct { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
 .resumo-comp .produto-nome { font-size: 16px; line-height: 1.3; }
-.resumo-comp .produto-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 1.35; }
+/* Pedido, cliente, cidade e CNPJ por inteiro (padrão dos usuários): quebra a linha em vez de cortar o nome */
+.resumo-comp .produto-meta { font-size: 14px; line-height: 1.35; }
 .resumo-comp .produto-vol { font-size: 16px; }
 .resumo-comp .produto-vol small { display: block; font-family: var(--font); font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .resumo-vazio { color: var(--text-muted); }
@@ -257,13 +277,13 @@ button, input { font: inherit; color: inherit; }
 @media (max-width: 640px) { .acoes-direita { flex: 1 1 100%; } }
 /* Alocação numa tela de tablet deitado: placa ao lado do desenho do tanque, opções em 2 colunas e a
    confirmação da última resposta no lugar da instrução; os botões ficam presos embaixo */
-.alocacao .sub { display: flex; align-items: center; min-height: 34px; margin: 4px 0 12px; }
+.alocacao .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-height: 34px; margin: 4px 0 12px; }
 .alocacao .cartao { padding: 14px 20px; margin-bottom: 12px; }
 .alocacao .pergunta-titulo, .alocacao .pergunta-cap { font-size: 26px; line-height: 1.25; }
 .pergunta-q { margin-top: 2px; font-size: 17px; font-weight: 600; color: var(--text-dim); }
 .alocacao .opcoes-lista { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 12px; }
 .alocacao .opcao-grande { min-height: 68px; padding: 10px 16px; }
-.alocacao .opcao-grande small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.alocacao .opcao-grande small { font-size: 14px; line-height: 1.35; }
 .alocacao .opcao-vazio { min-height: 52px; }
 .opcao-vazio .opcao-texto { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
 .opcao-vazio small { margin-top: 0; }
@@ -302,7 +322,26 @@ button, input { font: inherit; color: inherit; }
 .tl-linha:focus-within .tl-n { background: var(--accent); color: var(--accent-ink); }
 .tl-prod { font-size: 16px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
 .tl-prod .marca { width: 12px; height: 12px; margin-right: 6px; vertical-align: 0; }
-.tl-vol { font-size: 14px; color: var(--text-muted); }
+/* Produto e volume: linha própria embaixo da placa/CT; na tela larga, ao lado (separados por "·") */
+.tl-vol { display: block; font-size: 14px; font-weight: 400; line-height: 1.35; color: var(--text-muted); }
+.tl-sep { display: none; }
+/* Pedido, cliente, cidade e CNPJ (padrão dos usuários) numa linha própria, alinhada com o texto do compartimento:
+   embaixo da linha toda na tela média, embaixo do compartimento (ao lado dos códigos) na tela larga */
+.tl-com-pedido { grid-template-areas: "comp codigos" "pedido pedido"; row-gap: 0; }
+.tl-com-pedido > .tl-comp { grid-area: comp; }
+.tl-com-pedido > .tl-codigos { grid-area: codigos; }
+.tl-pedido { grid-area: pedido; padding: 0 0 4px 38px; font-size: 13.5px; line-height: 1.35; color: var(--text-muted); }
+/* Tela larga: os campos dos códigos sobravam (um lacre tem até 15 números); a coluna do compartimento cresce para o
+   pedido caber numa linha */
+@media (min-width: 1200px) {
+  body.tela-larga .tl-cabecalho, body.tela-larga .tl-linha { grid-template-columns: minmax(240px, 1fr) minmax(0, 1fr); }
+  body.tela-larga .tl-com-pedido { grid-template-areas: "comp codigos" "pedido codigos"; }
+  body.tela-larga .tl-com-pedido .tl-comp { min-height: 0; align-self: end; }
+  body.tela-larga .tl-com-pedido .tl-n { margin: -4px 0; } /* a bolinha não aumenta a linha */
+  body.tela-larga .tl-pedido { align-self: start; padding-bottom: 0; }
+  body.tela-larga .tl-vol { display: inline; font-size: 15px; }
+  body.tela-larga .tl-sep { display: inline; }
+}
 .tl-campo { min-width: 0; }
 .tl-campo .tl-rot { display: none; font-size: 13px; margin-bottom: 4px; }
 .tl-campo input { height: 40px; padding: 0 8px; font-size: 18px; letter-spacing: 0; }
@@ -313,6 +352,8 @@ button, input { font: inherit; color: inherit; }
 @media (max-width: 700px) {
   .tl-cabecalho { display: none; }
   .tl-linha { grid-template-columns: 1fr; align-items: start; padding: 12px 10px; }
+  .tl-com-pedido { grid-template-areas: "comp" "pedido" "codigos"; }
+  .tl-pedido { padding: 2px 0 10px 38px; }
   .tl-comp { min-height: 0; }
   .tl-codigos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tl-codigos > * { grid-column: auto; }
@@ -322,6 +363,8 @@ button, input { font: inherit; color: inherit; }
 
 /* ── CONFERÊNCIA DOS LACRES (etapa 4, depois da leitura) ── os códigos lidos na mesma tabela, só para ler ── */
 .rev-linha { padding: 6px 10px; }
+.rev-linha .tl-comp { min-height: 0; }
+.rev-linha .tl-pedido { padding-left: 0; } /* sem a bolinha do número: alinha com a placa */
 .rev-codigo { min-width: 0; font-family: var(--mono); font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
 .rev-codigo .tl-rot { display: none; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-dim); }
 .rev-vazios { padding: 8px 10px 6px; border-top: 1px solid var(--border); }
@@ -720,7 +763,9 @@ button, input { font: inherit; color: inherit; }
    não digita compartimentos: vêm do perfil SAP da placa (perfisCompartimento/<perfilChave>, sincronizado do
    datalake) ou da liberação temporária da equipe Nexta no agendamento (liberacaoCadastro.recurso); sem nenhum
    dos dois, o motorista é mandado ao guichê para a equipe liberar o cadastro. Depois aloca os pedidos (cada
-   pedido inteiro; se não cabe, registra inconsistência para o faturamento) e informa os lacres do perfil e o envelope de amostra
+   pedido inteiro; se não cabe, registra inconsistência para o faturamento). Se quem agendou já fez a alocação no portal
+   (agendamentos/<id>/alocacaoCompartimentos) e ela ainda bate com o veículo e os pedidos, a alocação abre no resumo
+   já preenchida: o motorista confere e, se precisar, troca o produto de um compartimento ou refaz. Por fim, informa os lacres do perfil e o envelope de amostra
    de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
    (status "aguardando") com o que o cockpit_transporte.py (nexta_automation/automation/
    autoatendimento) precisa para a Ordem de Frete:
@@ -778,7 +823,8 @@ const Q = { usuario: null, bases: {}, terminal: '', tela: 'carregando', falhasBu
 // Check-in em andamento: agendamento (id, a) e o que veio dele (tipoFrete, motoristaBp, recursoSap, linhas);
 // compartimentos do cadastro por placa (configuracoes[] = { placa, config, fonteConfig, perfil }, qtd total, caps
 // achatadas); alocação e lacres por compartimento (comps[i] = { placa, indicePlaca, linha, lacres, envelope }, erros);
-// alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 3
+// alocModo ('pergunta' | 'resumo'), alocAtual, alocNota, alocUltima (último respondido), alocAnimar = estado da etapa 3;
+// alocPrevia = alocação feita no agendamento ({ por, em, linhas } se valeu; { descartada: true } se não bate mais)
 let atd = null;
 // Agendamento sendo criado no quiosque: pedidos adicionados, motorista { nome, cpf, bp }, veiculo { placas, chave, id,
 // volume }, dados = registro depois de criado
@@ -837,6 +883,12 @@ function mascararCpf(el) {
 }
 // Na tela do quiosque o CPF aparece só em parte (outras pessoas podem estar olhando)
 function cpfParcial(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.***.***-${d.slice(9)}` : '—'; }
+// CNPJ do cliente (datalake), gravado só com dígitos. 11 dígitos é CPF de pessoa física: na tela do quiosque, parcial
+function rotuloCnpj(doc) {
+  const d = soDigitos(doc);
+  if (d.length === 14) return `CNPJ ${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  return d.length === 11 ? `CPF ${cpfParcial(d)}` : d ? `CNPJ ${d}` : '';
+}
 function placasDe(a) { return [a.placaCavalo, a.placaCarreta, a.placaCarreta2].map(normalizarPlaca).filter(Boolean); }
 function chaveRecursoDoAgendamento(a) {
   return a.recursoChave || placasDe(a).map(placaMercosul).sort().join('+');
@@ -903,10 +955,13 @@ function iniciarContagem(elId, segundos) {
   tick();
   _contagem = setInterval(tick, 1000);
 }
+// Telas de lista do check-in: em tela larga usam os lados (as de formulário ficariam com campos compridos demais)
+const TELAS_LARGAS = new Set(['agendamento', 'alocacao', 'lacres', 'revisao']);
 function mostrarTela(nome) {
   Q.tela = nome;
   pararContagem();
   document.querySelectorAll('.tela').forEach((el) => el.classList.toggle('ativa', el.id === 'tela-' + nome));
+  document.body.classList.toggle('tela-larga', TELAS_LARGAS.has(nome));
   const etapa = ETAPA_DA_TELA[nome];
   document.getElementById('passos').classList.toggle('hidden', !etapa);
   document.querySelectorAll('.passo').forEach((el, i) => {
@@ -1250,6 +1305,7 @@ async function seguirParaCheckin(id, a) {
   if (r.acompanhar) { acompanharFaturamento(r.acompanhar); return; }
   if (r.aviso) { mostrarAviso(r.aviso); return; }
   atd = r.atd;
+  aplicarAlocacaoPrevia();
   if (document.activeElement) document.activeElement.blur();
   renderAgendamento();
   mostrarTela('agendamento');
@@ -1309,13 +1365,15 @@ async function prepararAtendimento(id, a) {
   const recursoSap = String(a.recursoSap || recurso?.id || liberacaoRecursoValida(a)?.id || '');
   if (!recursoSap) return guiche('Cadastro do veículo em validação', 'O cadastro deste veículo ainda não foi liberado no sistema. Procure o guichê.');
 
-  // Uma linha por pedido + produto: é a "Ordem original" + "Produto" que o cockpit aloca nos compartimentos
+  // Uma linha por pedido + produto: é a "Ordem original" + "Produto" que o cockpit aloca nos compartimentos.
+  // Cidade e CNPJ do cliente vêm do agendamento (agendamentos de antes de nov/2026 não têm o CNPJ)
   const linhas = Object.values(a.pedidos || {}).flatMap((p) => Object.values(p.itens || {})
     .filter((i) => Number(i.volume) > 0)
     .map((i) => ({
       chave: `${p.nrPedido}|${i.codigo}`, ordemVenda: String(p.nrPedido), produto: String(i.codigo),
       descricao: i.descricao || `Produto ${i.codigo}`, volume: Number(i.volume),
       clienteCodigo: p.clienteCodigo || '', clienteNome: p.clienteNome || '',
+      clienteCidade: a.clientes?.[p.clienteCodigo]?.cidade || '', clienteCnpj: a.clientes?.[p.clienteCodigo]?.cnpj || '',
     })));
   const foraDoPadrao = (l) => !new RegExp(`^\\d{1,${LIMITES.ordem}}$`).test(l.ordemVenda) || !new RegExp(`^\\d{1,${LIMITES.produto}}$`).test(l.produto);
   if (!linhas.length || linhas.some(foraDoPadrao)) {
@@ -1342,15 +1400,35 @@ async function prepararAtendimento(id, a) {
   if (referencias.length > MAX_COMPARTIMENTOS) {
     return guiche('Atendimento no guichê', `O veículo tem ${referencias.length} compartimentos e o autoatendimento aceita até ${MAX_COMPARTIMENTOS}. Procure o guichê.`);
   }
+  await completarClientesDasLinhas(linhas);
   return { atd: {
     id, a, tipoFrete: fretes[0], motoristaBp, recursoSap, linhas,
     configuracoes,
     qtd: referencias.length, caps: referencias.map((ref) => ref.capacidade),
     // linha: null = compartimento ainda sem resposta, '' = vazio, "<pedido>|<produto>" = linha alocada nele
     comps: referencias.map((ref) => ({ placa: ref.placa, indicePlaca: ref.indicePlaca, linha: null, lacres: Array(ref.quantidadeLacres).fill(''), envelope: '' })),
-    alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false,
+    alocModo: 'pergunta', alocAtual: 0, alocNota: '', alocUltima: null, alocAnimar: false, alocPrevia: null,
     erros: {}, // lacres: "<índice>.<campo>" → mensagem
   } };
+}
+
+// Agendamento de antes do CNPJ (nov/2026), ou cliente gravado sem cidade: completa com o pedido da carteira
+// (pedidosSap/<nr>, que o quiosque pode ler). Leitura lenta ou com erro não segura o check-in: a tela fica sem o dado
+const ESPERA_DADOS_CLIENTE_MS = 3000;
+async function completarClientesDasLinhas(linhas) {
+  const faltando = [...new Set(linhas.filter((l) => !l.clienteCnpj || !l.clienteCidade).map((l) => l.ordemVenda))];
+  if (!faltando.length) return;
+  const limite = new Promise((ok) => setTimeout(() => ok(null), ESPERA_DADOS_CLIENTE_MS));
+  // Promise.resolve().then: erro na hora da chamada também vira "sem dado", nunca derruba o check-in
+  const ler = (nr) => Promise.resolve().then(() => window._fb.carregarPedido(nr)).catch(() => null);
+  const pedidos = await Promise.all(faltando.map((nr) => Promise.race([ler(nr), limite])));
+  const porNr = Object.fromEntries(faltando.map((nr, i) => [nr, pedidos[i]]));
+  for (const l of linhas) {
+    const p = porNr[l.ordemVenda];
+    if (!p || String(p.clienteCodigo || '') !== l.clienteCodigo) continue;
+    if (!l.clienteCnpj && p.clienteCnpj) l.clienteCnpj = p.clienteCnpj;
+    if (!l.clienteCidade && p.clienteCidade) l.clienteCidade = p.clienteCidade;
+  }
 }
 
 /* ── CRIAR AGENDAMENTO: motorista sem protocolo ── */
@@ -1418,7 +1496,8 @@ async function protocolosPorPedido() {
 }
 // Problema que impede o pedido de entrar ('' quando está tudo certo)
 function erroDoPedido(nr, p, protocolos) {
-  if (!p) return `Pedido ${nr} não encontrado ou indisponível (faturado, bloqueado ou cancelado). Confira o número. Pedido novo leva até 30 minutos para aparecer aqui.`;
+  if (!p) return `Pedido ${nr} não encontrado ou indisponível (faturado ou cancelado). Confira o número. Pedido novo leva até 30 minutos para aparecer aqui.`;
+  if (p.situacao === 'BLOQUEADO') return `O pedido ${nr} está bloqueado no SAP e não pode ser agendado. Procure o guichê.`;
   if (!baseTemLocal(Q.bases[Q.terminal], p.centro, p.depositoCodigo)) return `O pedido ${nr} é de outra base. Confira o local do carregamento com a transportadora.`;
   if (p.dataEntrega !== hoje()) {
     return `O pedido ${nr} ${p.dataEntrega ? `tem entrega em ${formatDataBR(p.dataEntrega)}` : 'está sem data de entrega'}. Aqui só dá para agendar pedido de hoje: procure o guichê.`;
@@ -1472,7 +1551,8 @@ function htmlPedidosNovo(comTirar) {
     <div class="produto-linha">
       <div class="novo-pedido">
         <div class="produto-nome">Pedido ${esc(p.nrPedido)}</div>
-        <div class="produto-meta">${esc([p.clienteNome, ...itensDe(p).map((i) => i.descricao)].filter(Boolean).join(' · '))}</div>
+        <div class="produto-meta">${htmlComCnpj([p.clienteNome, p.clienteCidade], p.clienteCnpj)}</div>
+        <div class="produto-meta">${esc(itensDe(p).map((i) => i.descricao).filter(Boolean).join(' · '))}</div>
       </div>
       <div class="produto-vol">${formatVolume(volumeDoPedido(p))}</div>
       ${comTirar ? `<button class="btn btn-secundario btn-tirar" type="button" onclick="tirarPedidoNovo(${jsArg(p.nrPedido)})">Tirar</button>` : ''}
@@ -1567,7 +1647,8 @@ function montarNovoAgendamento(protocolo) {
   const base = Q.bases[Q.terminal];
   const clientes = {}, pedidos = {};
   for (const p of novo.pedidos) {
-    clientes[p.clienteCodigo] = { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}) };
+    clientes[p.clienteCodigo] = { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}),
+      ...(p.clienteCnpj ? { cnpj: p.clienteCnpj } : {}) };
     const itens = {};
     for (const i of itensDe(p)) {
       if (Number(i.volume) > 0) itens[i.codigo] = { codigo: i.codigo, descricao: i.descricao, volumePedido: i.volume, volume: Number(i.volume) };
@@ -1664,7 +1745,7 @@ function renderAgendamento() {
   ].join('');
   document.getElementById('agendamento-produtos').innerHTML = atd.linhas.map((l) => `
     <div class="produto-linha">
-      <div><div class="produto-nome">${esc(l.descricao)}</div><div class="produto-meta">${esc(textoPedido(l))}</div></div>
+      <div><div class="produto-nome">${esc(l.descricao)}</div><div class="produto-meta">${htmlPedidoCompleto(l)}</div></div>
       <div class="produto-vol">${formatVolume(l.volume)}</div>
     </div>`).join('');
   // CT 01 recomeça em cada placa (hierarquia do SAP); compartimento errado é "Dados errados" (guichê)
@@ -1706,6 +1787,36 @@ function irParaAlocacao() {
   atd.alocUltima = null;
   renderAlocacao();
   mostrarTela('alocacao');
+}
+
+// Alocação feita no agendamento (portal: agendamentos/<id>/alocacaoCompartimentos). Só vale se ainda bate com o
+// check-in de agora: mesmo recurso, os mesmos compartimentos na mesma ordem (placa, CT e capacidade), só produtos do
+// agendamento e nenhum problema de alocação. Valendo, todos os compartimentos já chegam respondidos e a etapa 3 abre
+// no resumo, para o motorista conferir com o veículo. Senão, ele aloca do zero (com o aviso de que a do agendamento
+// não valeu: o veículo, o cadastro dos compartimentos ou os pedidos mudaram depois)
+function aplicarAlocacaoPrevia() {
+  const previa = atd.a.alocacaoCompartimentos;
+  if (!previa) return;
+  const lista = listaHistorico(previa.compartimentos);
+  const chaves = new Set(atd.linhas.map((l) => l.chave));
+  const chaveDe = (c) => (c?.ordemVenda ? `${c.ordemVenda}|${c.produto}` : '');
+  const bate = previa.recursoChave === chaveRecursoDoAgendamento(atd.a) && lista.length === atd.qtd
+    && lista.every((c, i) => placaMercosul(normalizarPlaca(c.placa)) === atd.comps[i].placa
+      && Number(c.indicePlaca) === atd.comps[i].indicePlaca && Number(c.capacidadeLitros) === atd.caps[i]
+      && (!chaveDe(c) || chaves.has(chaveDe(c))));
+  if (bate) {
+    lista.forEach((c, i) => { atd.comps[i].linha = chaveDe(c); });
+    if (!problemasAlocacao().length) {
+      atd.alocPrevia = { por: previa.feitaPor || '', em: previa.feitaEm || '', linhas: lista.map(chaveDe) };
+      return;
+    }
+    atd.comps.forEach((c) => { c.linha = null; });
+  }
+  atd.alocPrevia = { descartada: true };
+}
+// A do agendamento valeu e o motorista mudou algum compartimento (inclusive refazendo do zero com outro resultado)
+function alocacaoPreviaAjustada() {
+  return !!atd.alocPrevia?.linhas && atd.comps.some((c, i) => c.linha !== atd.alocPrevia.linhas[i]);
 }
 
 /* ── ETAPA 3: ALOCAÇÃO DOS PEDIDOS — um compartimento por vez, depois o resumo ── */
@@ -1811,6 +1922,14 @@ function faltaPorLinha(exceto = -1) {
 }
 // "Pedido 920124 · Cliente": com clientes diferentes no caminhão, o nome ajuda a separar os pedidos
 function textoPedido(l) { return `Pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''}`; }
+// Padrão dos usuários (nov/2026) nas telas de conferência: pedido, cliente, cidade e CNPJ. Na alocação fica o curto
+// (textoPedido), que cabe numa linha do resumo dos compartimentos
+function htmlPedidoCompleto(l) { return htmlComCnpj([textoPedido(l), l.clienteCidade], l.clienteCnpj); }
+// HTML já escapado: "1ª parte · cidade · CNPJ …". A 1ª (pedido/cliente) quebra normal; cidade e CNPJ não quebram no meio
+function htmlComCnpj([primeira, ...curtas], doc) {
+  const semQuebra = (t) => (t ? `<span style="white-space:nowrap">${esc(t)}</span>` : '');
+  return [esc(primeira || ''), ...curtas.map(semQuebra), semQuebra(rotuloCnpj(doc))].filter(Boolean).join(' · ');
+}
 // Nome do produto para o motorista, sempre com o pedido e o cliente
 function nomeLinha(l) {
   return `${l.descricao} (pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''})`;
@@ -1841,11 +1960,19 @@ function renderAlocacao() {
   const confirmado = resumo ? '' : htmlConfirmado();
   const sub = document.getElementById('alocacao-sub');
   if (confirmado) sub.innerHTML = confirmado;
-  else sub.textContent = resumo
-    ? 'Confira. Se algo estiver errado, toque em "Começar alocação de novo".'
-    : 'Toque no produto que vai em cada compartimento.';
+  else if (resumo) sub.innerHTML = htmlSubResumo();
+  else sub.textContent = 'Toque no produto que vai em cada compartimento.';
   document.getElementById('alocacao-conteudo').innerHTML = resumo ? htmlResumoAlocacao() : htmlPerguntaAlocacao();
   atd.alocAnimar = false;
+}
+// Instrução do resumo; sem problema, com o selo "tudo certo" (e os compartimentos que ficam vazios) na frente
+function htmlSubResumo() {
+  const instrucao = 'Para trocar o produto de um compartimento, toque nele.';
+  if (problemasAlocacao().length) return esc('Confira. ' + instrucao);
+  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha === '' ? referenciaCompartimento(i) : '')).filter(Boolean);
+  const textoVazios = vazios.length > 1 ? `${vazios.join(', ')} ficam vazios.` : vazios.length ? `${vazios[0]} fica vazio.` : '';
+  return `<span class="tudo-certo" id="alerta-alocacao" role="status">✓ Tudo certo: todos os produtos couberam.${textoVazios ? ` <span class="tudo-certo-nota">${esc(textoVazios)}</span>` : ''}</span>`
+    + `<span>${esc(instrucao)}</span>`;
 }
 // Desenho do tanque: o compartimento da vez em destaque, os respondidos na cor do produto
 function htmlTanque() {
@@ -1871,16 +1998,19 @@ function htmlConfirmado() {
 function htmlPerguntaAlocacao() {
   const i = atd.alocAtual, caps = capacidades(), atual = atd.comps[i].linha;
   const falta = faltaPorLinha(i);
-  // Nome do produto e quanto falta dele na 1ª linha; pedido e cliente na 2ª
+  // Nome do produto e quanto falta dele na 1ª linha; pedido, cliente, cidade e CNPJ embaixo (`detalhe` já escapado)
   const opcao = (chave, titulo, detalhe, resto = '') => `
     <button type="button" class="opcao-grande${atual === chave ? ' sel' : ''}${chave ? ' ' + corDaLinha(chave) : ' opcao-vazio'}" aria-pressed="${atual === chave}" onclick="escolherProduto(${i}, ${jsArg(chave)}, this)">
-      <span class="opcao-texto"><span class="opcao-titulo"><span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}</span>${resto ? `<span class="opcao-falta">${esc(resto)}</span>` : ''}</span><small>${esc(detalhe)}</small></span>
+      <span class="opcao-texto"><span class="opcao-titulo"><span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}</span>${resto ? `<span class="opcao-falta">${esc(resto)}</span>` : ''}</span><small>${detalhe}</small></span>
     </button>`;
   // Só os produtos que ainda faltam: o que já coube inteiro nos outros compartimentos sai da lista
   const opcoes = atd.linhas.filter((l) => falta[l.chave] > 0)
-    .map((l) => opcao(l.chave, l.descricao, textoPedido(l), `faltam ${formatVolume(falta[l.chave])}`));
+    .map((l) => opcao(l.chave, l.descricao, htmlPedidoCompleto(l), `faltam ${formatVolume(falta[l.chave])}`));
   const algumaResposta = atd.comps.slice(0, atd.qtd).some((c) => c.linha !== null);
+  const descartada = atd.alocPrevia?.descartada && !algumaResposta
+    ? '<div class="nota-sugestao">A alocação feita no agendamento não vale mais: o veículo ou os pedidos mudaram depois. Faça a alocação aqui.</div>' : '';
   return `
+    ${descartada}
     ${htmlTanque()}
     <div class="cartao pergunta-card${atd.alocAnimar ? ' entrando' : ''}">
       <div class="pergunta-topo">
@@ -1888,7 +2018,7 @@ function htmlPerguntaAlocacao() {
         <div class="pergunta-cap">${formatVolume(caps[i])}</div>
       </div>
       <div class="pergunta-q">Qual produto vai neste compartimento?</div>
-      <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', 'Não vai carregar')}</div>
+      <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', esc('Não vai carregar'))}</div>
     </div>
     <div class="acoes">
       <button class="btn btn-secundario" type="button" onclick="voltarAlocacao()">Voltar</button>
@@ -1897,27 +2027,32 @@ function htmlPerguntaAlocacao() {
 }
 function htmlResumoAlocacao() {
   const caps = capacidades(), previstos = volumesPrevistos(), problemas = problemasAlocacao();
-  const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha === '' ? referenciaCompartimento(i) : '')).filter(Boolean);
-  const textoVazios = vazios.length > 1 ? `${vazios.join(', ')} ficam vazios.` : vazios.length ? `${vazios[0]} fica vazio.` : '';
+  // Sem problema, o "tudo certo" fica na linha da instrução (htmlSubResumo)
   const situacao = problemas.length
-    ? `${atd.alocNota ? `<div class="nota-sugestao">${esc(atd.alocNota)}</div>` : ''}<div class="alerta" id="alerta-alocacao" role="alert">Assim não dá para continuar:<ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>Toque em "Começar alocação de novo".</div>`
-    : `<div class="tudo-certo" id="alerta-alocacao">✓ Tudo certo: todos os produtos couberam.${textoVazios ? ` <span class="tudo-certo-nota">${esc(textoVazios)}</span>` : ''}</div>`;
+    ? `${atd.alocNota ? `<div class="nota-sugestao">${esc(atd.alocNota)}</div>` : ''}<div class="alerta" id="alerta-alocacao" role="alert">Assim não dá para continuar:<ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>Toque no compartimento para trocar ou em "Começar alocação de novo".</div>`
+    : '';
+  // Alocação que veio do agendamento: o motorista confere com o veículo antes de seguir
+  const previa = atd.alocPrevia?.linhas ? `<div class="nota-sugestao nota-previa">${alocacaoPreviaAjustada()
+    ? 'Alocação do agendamento ajustada aqui. Confira com o veículo.'
+    : `Alocação feita no agendamento${atd.alocPrevia.por ? ` por ${esc(atd.alocPrevia.por)}` : ''}. Confira com o veículo: se algum compartimento estiver diferente, toque nele para trocar.`}</div>` : '';
   // Uma coluna por placa (CT 01 recomeça em cada uma); o volume é o que vai no compartimento
   const placas = [...new Set(atd.comps.slice(0, atd.qtd).map((c) => c.placa))];
   const grupos = placas.map((placa) => {
     const indices = atd.comps.slice(0, atd.qtd).map((c, i) => (c.placa === placa ? i : -1)).filter((i) => i >= 0);
+    // Cada compartimento é um botão: tocar abre a pergunta dele (a resposta volta ao resumo)
     const linhas = indices.map((i) => {
       const c = atd.comps[i], l = c.linha ? linhaDaChave(c.linha) : null;
-      return `<div class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}">
-        <div class="resumo-ct">CT ${pad2(c.indicePlaca)}</div>
-        ${l ? `<div><div class="produto-nome"><span class="marca"></span>${esc(l.descricao)}</div><div class="produto-meta">${esc(textoPedido(l))}</div></div>
-        <div class="produto-vol">${formatVolume(previstos[i])}${previstos[i] < caps[i] ? `<small>de ${formatVolume(caps[i])}</small>` : ''}</div>`
-          : `<div class="produto-nome resumo-vazio">Vazio</div><div class="produto-vol resumo-vazio">—</div>`}
-      </div>`;
+      return `<button type="button" class="resumo-comp${l ? ' ' + corDaLinha(c.linha) : ''}" onclick="irParaCompartimento(${i})" aria-label="${esc(referenciaCompartimento(i))}: ${esc(l ? l.descricao : 'vazio')}. Toque para trocar">
+        <span class="resumo-ct">CT ${pad2(c.indicePlaca)}</span>
+        ${l ? `<span class="produto-nome"><span class="marca"></span>${esc(l.descricao)}</span>
+        <span class="produto-vol">${formatVolume(previstos[i])}${previstos[i] < caps[i] ? `<small>de ${formatVolume(caps[i])}</small>` : ''}</span>
+        <span class="produto-meta">${htmlPedidoCompleto(l)}</span>`
+          : `<span class="produto-nome resumo-vazio">Vazio</span><span class="produto-vol resumo-vazio">—</span>`}
+      </button>`;
     }).join('');
     return `<div class="resumo-placa"><div class="tanque-placa">${esc(placa)}<span class="tanque-total">${indices.length} CT · ${formatVolume(somar(indices.map((i) => caps[i])))}</span></div><div class="resumo-lista">${linhas}</div></div>`;
   });
-  return `${situacao}
+  return `${previa}${situacao}
     <div class="cartao resumo-placas${grupos.length === 1 ? ' uma-placa' : ''}">${grupos.join('')}</div>
     <div class="acoes">
       <div class="acoes-direita">
@@ -1966,8 +2101,10 @@ function irParaCompartimento(i) {
   renderAlocacao();
   window.scrollTo(0, 0);
 }
-// Voltar (só na pergunta): o compartimento anterior; no 1º, a conferência do agendamento
+// Voltar (só na pergunta): o compartimento anterior; no 1º, a conferência do agendamento. Trocando um compartimento
+// a partir do resumo (todos já respondidos), volta ao resumo sem mudar nada
 function voltarAlocacao() {
+  if (!semResposta().length) { atd.alocModo = 'resumo'; atd.alocUltima = null; renderAlocacao(); window.scrollTo(0, 0); return; }
   if (atd.alocAtual > 0) { irParaCompartimento(atd.alocAtual - 1); return; }
   mostrarTela('agendamento');
 }
@@ -2008,18 +2145,28 @@ function colunasDosCodigos(usados) {
     cabecalho: `<div class="tl-cabecalho" aria-hidden="true"><div>Compartimento</div><div class="tl-codigos" style="--colunas:${colunas}">${rotulos.map((r) => `<div>${esc(r)}</div>`).join('')}</div></div>`,
   };
 }
+// Leitura e conferência dos lacres: "● CON6B41 · CT 01 · S500 COMUM · 5.000 L" e a linha do pedido (padrão dos
+// usuários: pedido, cliente, cidade e CNPJ), que a linha da tabela posiciona (.tl-com-pedido)
+function htmlCompartimentoLacres({ indicePlaca, placa, i, c }, caps, previstos) {
+  const l = linhaDaChave(c.linha);
+  return {
+    prod: `<div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}<span class="tl-vol"><span class="tl-sep"> · </span>${esc(nomeCurto(l))} · ${textoOcupacao(previstos[i], caps[i])}</span></div>`,
+    pedido: `<div class="tl-pedido">${htmlPedidoCompleto(l)}</div>`,
+  };
+}
 function renderLacres() {
   const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
   const { colunas, coluna, cabecalho } = colunasDosCodigos(usados);
   document.getElementById('lista-lacres').innerHTML = cabecalho
-    + usados.map(({ indicePlaca, placa, i, c }) => `
-    <div class="tl-linha">
-      <div class="tl-comp">
-        <span class="tl-n">${pad2(indicePlaca)}</span>
-        <div><div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}</div><div class="tl-vol">${esc(nomeCurto(linhaDaChave(c.linha)))} · ${textoOcupacao(previstos[i], caps[i])}</div></div>
-      </div>
+    + usados.map((u) => {
+      const { indicePlaca, placa, i, c } = u, { prod, pedido } = htmlCompartimentoLacres(u, caps, previstos);
+      return `
+    <div class="tl-linha tl-com-pedido">
+      <div class="tl-comp"><span class="tl-n">${pad2(indicePlaca)}</span>${prod}</div>
       <div class="tl-codigos" style="--colunas:${colunas}">${camposDoCompartimento(c).map(([campo, rotulo]) => campoLacre(i, `${placa} · CT ${pad2(indicePlaca)}`, campo, rotulo, coluna(campo))).join('')}</div>
-    </div>`).join('');
+      ${pedido}
+    </div>`;
+    }).join('');
   atualizarProgressoLacres();
 }
 function campoLacre(i, indice, campo, rotulo, coluna) {
@@ -2164,18 +2311,22 @@ function corrigirLacres() {
   modoLacres(false);
   window.scrollTo(0, 0);
 }
-// Os códigos lidos, para conferir com o veículo (o produto de cada compartimento já foi confirmado na alocação)
+// Os códigos lidos, para conferir com o veículo, com o produto e o pedido de cada compartimento (como na leitura)
 function renderConferenciaLacres() {
-  const usados = compartimentosUsados();
+  const caps = capacidades(), previstos = volumesPrevistos(), usados = compartimentosUsados();
   const { colunas, coluna, cabecalho } = colunasDosCodigos(usados);
   const vazios = atd.comps.slice(0, atd.qtd).map((c, i) => (c.linha ? null : referenciaCompartimento(i))).filter(Boolean);
   document.getElementById('lacres-lidos').innerHTML = cabecalho
-    + usados.map(({ indicePlaca, placa, c }) => `
-    <div class="tl-linha rev-linha">
-      <div class="tl-prod ${corDaLinha(c.linha)}"><span class="marca"></span>${esc(placa)} · CT ${pad2(indicePlaca)}</div>
-      <div class="tl-codigos" style="--colunas:${colunas}">${camposDoCompartimento(c).map(([campo, rotulo]) => `
-        <div class="rev-codigo" style="--coluna:${coluna(campo)}"><span class="tl-rot">${esc(rotulo)}</span>${esc(valorDoCampo(c, campo))}</div>`).join('')}</div>
-    </div>`).join('')
+    + usados.map((u) => {
+      const { prod, pedido } = htmlCompartimentoLacres(u, caps, previstos);
+      return `
+    <div class="tl-linha rev-linha tl-com-pedido">
+      <div class="tl-comp">${prod}</div>
+      <div class="tl-codigos" style="--colunas:${colunas}">${camposDoCompartimento(u.c).map(([campo, rotulo]) => `
+        <div class="rev-codigo" style="--coluna:${coluna(campo)}"><span class="tl-rot">${esc(rotulo)}</span>${esc(valorDoCampo(u.c, campo))}</div>`).join('')}</div>
+      ${pedido}
+    </div>`;
+    }).join('')
     + (vazios.length ? `<div class="nota rev-vazios">Vazio${vazios.length > 1 ? 's' : ''} (sem lacres): ${vazios.map(esc).join(', ')}.</div>` : '');
 }
 
@@ -2190,7 +2341,7 @@ function clientesDeEntrega() {
   const grupos = new Map();
   for (const l of atd.linhas) {
     const chave = l.clienteCodigo || l.clienteNome || 'pedido ' + l.ordemVenda;
-    const g = grupos.get(chave) || { nome: l.clienteNome || 'Cliente não informado', pedidos: [], volume: 0 };
+    const g = grupos.get(chave) || { nome: l.clienteNome || 'Cliente não informado', cidade: l.clienteCidade, cnpj: l.clienteCnpj, pedidos: [], volume: 0 };
     if (!g.pedidos.includes(l.ordemVenda)) g.pedidos.push(l.ordemVenda);
     g.volume += l.volume;
     grupos.set(chave, g);
@@ -2206,7 +2357,7 @@ function renderConfirmacao() {
   document.getElementById('confirmacao-clientes').innerHTML = `<div class="cartao-titulo">${clientes.length > 1 ? 'Clientes de entrega' : 'Cliente de entrega'}</div>`
     + clientes.map((g) => `
     <div class="produto-linha">
-      <div><div class="produto-nome">${esc(g.nome)}</div><div class="produto-meta">Pedido${g.pedidos.length > 1 ? 's' : ''} ${g.pedidos.map(esc).join(', ')}</div></div>
+      <div><div class="produto-nome">${esc(g.nome)}</div><div class="produto-meta">${htmlComCnpj([`Pedido${g.pedidos.length > 1 ? 's' : ''} ${g.pedidos.join(', ')}`, g.cidade], g.cnpj)}</div></div>
       <div class="produto-vol">${formatVolume(g.volume)}</div>
     </div>`).join('');
 }
@@ -2288,8 +2439,17 @@ function montarCheckin() {
         lacre1: c.lacres[0] || '', lacre2: c.lacres[1] || '', lacre3: c.lacres[2] || '', envelopeAmostra: c.envelope,
       };
     }),
+    ...dadosAlocacaoPrevia(),
     status: 'aguardando',
   };
+}
+// Alocação feita no agendamento: se o motorista usou como veio, ajustou ou se ela não valia mais (só registro; o
+// cockpit usa alocacoes/compartimentos)
+function dadosAlocacaoPrevia() {
+  const p = atd.alocPrevia;
+  if (!p) return {};
+  if (p.descartada) return { alocacaoAgendamento: { situacao: 'descartada' } };
+  return { alocacaoAgendamento: { situacao: alocacaoPreviaAjustada() ? 'ajustada' : 'confirmada', feitaPor: p.por, feitaEm: p.em } };
 }
 // Pedido não cabe inteiro: registra para o faturamento (status "inconsistente"). Um check-in completo depois
 // (o faturamento ajustou o pedido ou o cadastro do veículo) grava por cima
