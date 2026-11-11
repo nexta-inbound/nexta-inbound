@@ -2336,6 +2336,74 @@
     obterUrlComprovantePamcard: async (storagePath) => {
       return await getDownloadURL(storageRef(storage, storagePath));
     },
+    // Libera a viagem travada por pedágio comprado, depois do estorno na Pamcard (perfil com
+    // estornoPedagio — ver informarEstornoPedagio). Mesmo efeito dos scripts manuais
+    // exports/liberar_viagem_*.py, numa gravação só (tudo ou nada):
+    //   - arquiva monitoramentoPamcard e pamcardOperacoes em pamcardEstornos/<id>/<data> (só
+    //     acrescenta, ver regras) — ID Pamcard, valor e comprovante (o PDF segue no Storage);
+    //   - apaga os dois nós: é o que destrava (pedagioComprado) e deixa o bot reprocessar;
+    //   - compraPedagio=false na viagem, senão o bot compraria de novo no próximo ciclo em T2/T3;
+    //   - registro em historicoProgramacao e viagensIndice/<id>/atualizadoEm (caminho, não objeto),
+    //     para o cache local dos outros perceberem a mudança.
+    // Lê do servidor antes e só segue se o pedágio ainda está COMPRADO. Devolve o item do histórico.
+    liberarEdicaoPedagio: async (key, idViagem, usuario, motivo) => {
+      await validarSemanaParaEscrita(key);
+      const caminhoViagem = 'sessoes/' + key + '/viagens/' + idViagem;
+      const [snapMon, snapOp, snapViagem] = await Promise.all([
+        get(ref(db, 'monitoramentoPamcard/' + idViagem)),
+        get(ref(db, 'pamcardOperacoes/' + idViagem)),
+        get(ref(db, caminhoViagem)),
+      ]);
+      const mon = snapMon.val();
+      if (mon?.statusCompraPedagio !== 'COMPRADO') {
+        throw new Error('o pedágio desta viagem não está mais como comprado. Atualize a página e confira.');
+      }
+      const viagem = snapViagem.val();
+      if (!viagem || viagem.idViagem !== idViagem) {
+        throw new Error('viagem não encontrada na semana ' + key + '. Atualize a página e tente de novo.');
+      }
+      const op = snapOp.val();
+      const agora = new Date().toISOString();
+      const pamcardId = String(mon.idViagemPamcard || op?.pamcardId || '');
+      const valor = String(mon.valorPedagio || op?.valor || '');
+      const valorTexto = valor && Number.isFinite(Number(valor))
+        ? 'R$ ' + Number(valor).toFixed(2).replace('.', ',') : '';
+      const itemHistorico = {
+        data: agora,
+        usuario: usuario.nome || usuario.email || '',
+        evento: 'Pedágio estornado na Pamcard' + (pamcardId || valorTexto ? ` (${[pamcardId && 'ID ' + pamcardId, valorTexto].filter(Boolean).join(', ')})` : '')
+          + ' — viagem liberada para edição e compra automática desligada',
+        motivo,
+      };
+      // historicoProgramacao é lista no banco (chaves 0..n): o item novo entra na próxima posição.
+      const historicoAtual = viagem.historicoProgramacao || [];
+      const proximo = Array.isArray(historicoAtual)
+        ? historicoAtual.length
+        : Math.max(-1, ...Object.keys(historicoAtual).map(Number).filter(Number.isInteger)) + 1;
+      const registro = {
+        idViagem,
+        semana: key,
+        informadoEm: agora,
+        informadoPorUid: usuario.uid,
+        informadoPorNome: usuario.nome || '',
+        informadoPorEmail: usuario.email || '',
+        motivo,
+        pamcardId,
+        valorPedagio: valor,
+        comprovanteStoragePath: mon.comprovanteStoragePath || op?.comprovanteStoragePath || '',
+        monitoramentoPamcard: mon,
+        ...(op ? { pamcardOperacoes: op } : {}),
+      };
+      await update(ref(db), {
+        ['pamcardEstornos/' + idViagem + '/' + agora.replace(/[-:.]/g, '')]: registro,
+        ['monitoramentoPamcard/' + idViagem]: null,
+        ['pamcardOperacoes/' + idViagem]: null,
+        [caminhoViagem + '/compraPedagio']: false,
+        [caminhoViagem + '/historicoProgramacao/' + proximo]: itemHistorico,
+        ['viagensIndice/' + idViagem + '/atualizadoEm']: agora,
+      });
+      return itemHistorico;
+    },
     ouvirCadastroHerrlogPlacas: (callback) => {
       return onValue(ref(db, 'cadastroHerrlogPlacas'), (snap) => {
         callback(snap.exists() ? snap.val() : {});
@@ -4283,6 +4351,8 @@
 
     <div class="alert alert-warn" id="alertaPedagioCompradoBanner" style="display:none">
       🔒 Pedágio já comprado — só Programador, Motorista, CPF do Motorista e Observação podem ser alterados aqui.
+      <div id="alertaPedagioEstornoInfo" style="margin-top:6px"></div>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnInformarEstornoPedagio" style="display:none;margin-top:8px" onclick="informarEstornoPedagio()">💳 Pedágio estornado — liberar edição</button>
     </div>
 
     <div class="alert alert-warn" id="alertaViagemCanceladaBanner" style="display:none"></div>
@@ -5543,7 +5613,8 @@ function formatarHistoricoProgramacaoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icone = h.evento && h.evento.startsWith('Volume') ? '📦' : '📅';
+  const icone = h.evento && h.evento.startsWith('Volume') ? '📦'
+    : h.evento && h.evento.startsWith('Pedágio estornado') ? '💳' : '📅';
   const motivo = h.motivo ? ` <span style="color:var(--text-dim)">(${esc(h.motivo)})</span>` : '';
   return `<div style="padding:4px 0;border-bottom:1px dashed var(--border)">${icone} ${esc(h.evento)}${motivo} — ${esc(h.usuario || '—')} <span style="color:var(--text-muted);float:right">${dataFmt}</span></div>`;
 }
@@ -5578,6 +5649,7 @@ async function carregarUsuariosFirebase(mostrarFeedback = false) {
       transportadorNome: p.transportadorNome || '',
       assinatura: p.assinatura || '',
       abas: normalizarAbasPerfil(p.abas),
+      estornoPedagio: p.tipo !== 'transportador' && p.estornoPedagio === true,
     }));
     _usuariosAtivos = lista;
     if (mostrarFeedback && info) info.textContent = lista.length + ' usuário(s) carregado(s).';
@@ -5658,6 +5730,7 @@ async function entrarComPerfil(user) {
     tipo: perfil.tipo === 'transportador' ? 'transportador' : 'staff',
     transportadorNome: perfil.transportadorNome || '',
     abas,
+    estornoPedagio: perfil.tipo !== 'transportador' && perfil.estornoPedagio === true,
   });
   andamentoCarga('Carregando os dados do Inbound…');
   const limite = setTimeout(liberarTelaPrincipal, LIMITE_TELA_ENTRADA_MS);
@@ -5746,6 +5819,7 @@ function validarSessaoAtual() {
     tipo: usuario.tipo === 'transportador' ? 'transportador' : 'staff',
     transportadorNome: usuario.transportadorNome || '',
     abas: usuario.abas,
+    estornoPedagio: usuario.estornoPedagio === true,
   });
 }
 
@@ -14709,6 +14783,13 @@ function ajustarModalParaTipoUsuario(v) {
   // (podeEditarPlaca).
   const travadoPedagio = pedagioComprado(v);
   document.getElementById('alertaPedagioCompradoBanner').style.display = travadoPedagio ? '' : 'none';
+  // Quem tem "Estorno pedágio" no perfil libera daqui, depois do estorno na Pamcard (ver
+  // informarEstornoPedagio); os demais veem quem procurar.
+  const podeEstornar = travadoPedagio && podeInformarEstornoPedagio();
+  document.getElementById('btnInformarEstornoPedagio').style.display = podeEstornar ? '' : 'none';
+  document.getElementById('alertaPedagioEstornoInfo').textContent = !travadoPedagio || transportador ? ''
+    : podeEstornar ? 'Depois de estornar o vale-pedágio na Pamcard, libere a viagem pelo botão abaixo.'
+    : orientacaoEstornoPedagio();
   if (travadoPedagio) {
     ['m-transportador', 'm-transportador-cnpj', 'm-status', 'm-veiculo-dedicado',
      'm-placa', 'm-placaCarreta1', 'm-placaCarreta2', 'm-ajuste-seta']
@@ -16865,9 +16946,9 @@ function renderStatusCelulaMon(v, mon) {
 // ── TRAVA DE EDIÇÃO PÓS-COMPRA DO PEDÁGIO ──
 // Uma vez que o vale-pedágio Pamcard foi de fato COMPRADO, o valor/rota já está fechado
 // com a Pamcard — trocar transportador/placa/status (inclusive cancelar) depois disso
-// deixa a compra órfã/incorreta sem que ninguém do time perceba. Único jeito de destravar é
-// operacional (estornar na Pamcard + excluir o log em monitoramentoPamcard), não tem bypass
-// no app. Destino (mesmo CNPJ, ver trocarDestinoInline), as duas Datas (Desejada/Programação),
+// deixa a compra órfã/incorreta sem que ninguém do time perceba. Para destravar, o time de
+// pagamento de frete estorna na Pamcard e quem tem "Estorno pedágio" no perfil libera a viagem
+// no modal (ver informarEstornoPedagio). Destino (mesmo CNPJ, ver trocarDestinoInline), as duas Datas (Desejada/Programação),
 // o Programador (modal e lote, ver aplicarEmLote) e, no modal, Motorista/CPF/Observação (ver
 // salvarViagemCamposLiberadosPedagio) ficam de fora da trava — são os únicos ajustes que
 // não mexem com o que já foi comprado.
@@ -16903,8 +16984,91 @@ function statusPedagioExibido(v) {
 
 function bloqueadoPorPedagio(v) {
   if (!pedagioComprado(v)) return false;
-  alert('Não é possível alterar esta viagem considerando que o pedágio já foi comprado, para permitir alterações solicitar ao time de pagamento frete estornar o pedágio e equipe indicadores excluir logs pamcard do sistema.');
+  alert('Não é possível alterar esta viagem porque o pedágio já foi comprado.\n\n' + orientacaoEstornoPedagio());
   return true;
+}
+
+// ── ESTORNO DO PEDÁGIO (perfil "Estorno pedágio") ──
+// Depois que o time de pagamento de frete estorna o vale-pedágio na Pamcard, quem tem
+// estornoPedagio no perfil (marcado na tela de usuários do login central) libera no modal a
+// viagem travada por pedagioComprado. Substitui o pedido ao time de dev para rodar os scripts
+// exports/liberar_viagem_*.py, com o mesmo efeito (ver window._fb.liberarEdicaoPedagio). A
+// compra automática fica desligada (compraPedagio=false), senão o bot compraria de novo no
+// próximo ciclo em T2/T3: se a viagem seguir e precisar de pedágio novo, religar "Compra de
+// Pedágio" no modal depois dos ajustes. Admin não ganha o botão junto: precisa do flag também.
+function podeInformarEstornoPedagio() {
+  return !isTransportador() && _authUsuarioAtual?.estornoPedagio === true;
+}
+
+// Texto para quem não tem o flag: a quem pedir. Os nomes vêm dos perfis já carregados
+// (carregarUsuariosFirebase); sem eles, fica só a orientação.
+function orientacaoEstornoPedagio() {
+  const nomes = _usuariosAtivos
+    .filter(u => u.estornoPedagio && u.tipo !== 'transportador')
+    .map(u => u.nome)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return 'Para alterar, peça ao time de pagamento de frete o estorno do pedágio na Pamcard; depois do estorno, a viagem é liberada por quem tem a permissão "Estorno pedágio"'
+    + (nomes.length ? ': ' + nomes.join(', ') + '.' : '.');
+}
+
+async function informarEstornoPedagio() {
+  if (!podeInformarEstornoPedagio() || !exigirEdicaoAba(1)) return;
+  const v = editingIdx !== null ? viagensAtivo()[editingIdx] : null;
+  if (!v || !pedagioComprado(v)) {
+    alert('O pedágio desta viagem não está mais como comprado. Atualize a página e confira.');
+    return;
+  }
+  const semana = v._semanaOrigem || semanaAtiva;
+  if (!semana || !window._fb?.liberarEdicaoPedagio) {
+    alert('Não foi possível identificar a semana da viagem ou acessar o Firebase.');
+    return;
+  }
+  const ped = monitoramentoPamcard[v.idViagem] || {};
+  const compra = [
+    ped.idViagemPamcard ? `Pamcard ${ped.idViagemPamcard}` : '',
+    ped.valorPedagio ? `R$ ${Number(ped.valorPedagio).toFixed(2).replace('.', ',')}` : '',
+  ].filter(Boolean).join(' · ');
+  const motivo = (prompt(
+    `Liberar a viagem ${v.idViagem} para edição?` + (compra ? ` (${compra})` : '') + '\n\n'
+    + 'Confirme só depois que o vale-pedágio foi estornado na Pamcard. A compra automática de pedágio fica '
+    + 'desligada; se a viagem continuar e precisar de pedágio novo, ligue "Compra de Pedágio" de novo depois dos ajustes.\n\n'
+    + 'Informe o motivo (ex.: viagem cancelada, troca de placa):'
+  ) || '').trim();
+  if (!motivo) return;
+
+  const btn = document.getElementById('btnInformarEstornoPedagio');
+  btn.disabled = true;
+  mostrarStatus('saving', 'Liberando viagem...');
+  try {
+    const usuario = {
+      uid: _authUsuarioAtual.uid || window._fb.currentUser()?.uid || '',
+      nome: _authUsuarioAtual.nome || '',
+      email: _authUsuarioAtual.login || window._fb.currentUser()?.email || '',
+    };
+    const itemHistorico = await window._fb.liberarEdicaoPedagio(semana, v.idViagem, usuario, motivo);
+    // Reflete na hora, sem esperar os listeners (viagem e monitoramentoPamcard) — o servidor
+    // já tem os mesmos dados, então não marca a viagem para o autosave. A gravação muda o
+    // viagensIndice, e o listener recarrega a viagem e fecha o modal de qualquer jeito (ver
+    // _agendarRefreshCarregamento): fecha já e avisa, para a pessoa reabrir destravado.
+    v.compraPedagio = false;
+    if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+    v.historicoProgramacao.push(itemHistorico);
+    delete monitoramentoPamcard[v.idViagem];
+    closeModal();
+    updatePipeline();
+    renderViagensTable();
+    mostrarStatus('saved', `${v.idViagem} liberada para edição`);
+    alert(`Viagem ${v.idViagem} liberada para edição. Abra a viagem de novo para fazer os ajustes.\n\nA compra automática de pedágio ficou desligada.`);
+  } catch (e) {
+    console.error('Erro ao liberar viagem com pedágio estornado:', e);
+    mostrarStatus('saving', 'Erro ao liberar viagem');
+    const negado = /permission|denied/i.test(e?.message || '');
+    alert('Não foi possível liberar a viagem: ' + (negado
+      ? 'o banco recusou a gravação. Confira se a permissão "Estorno pedágio" está no seu perfil (pode ser preciso sair e entrar de novo).'
+      : e.message));
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── TRAVA DE EDIÇÃO DE VIAGEM CANCELADA ──
