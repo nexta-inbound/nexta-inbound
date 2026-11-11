@@ -170,6 +170,14 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .mot-opcao:last-child { border-bottom: none; }
 .mot-opcao:hover { background: var(--panel-soft); }
 .mot-opcao small { flex-shrink: 0; color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+/* Assistente: últimos veículos e motoristas usados, para escolher com um clique */
+.recentes { margin-bottom: 16px; }
+.recentes-tit { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.recentes-lista { display: flex; flex-wrap: wrap; gap: 8px; }
+.recente { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 100%; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
+.recente:hover { border-color: var(--accent); }
+.recente.escolhido { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.recente small { color: var(--text-muted); font-size: 12px; font-weight: 400; }
 
 /* ── PEDIDOS (etapa 3) ── */
 .item-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 4px 8px; flex-shrink: 0; }
@@ -183,6 +191,32 @@ body:not(.logado) .tabs-bar, body:not(.logado) .main { display: none; }
 .novo-disponiveis #ndBusca { flex: 1; min-width: 200px; }
 .nd-motivo { font-size: 12px; color: var(--text-muted); margin-top: 3px; white-space: normal; }
 .resumo-base { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; }
+/* Etapa Alocação: a pergunta e a tabela dos compartimentos */
+.alocar-agora { margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-soft); }
+.alocar-check { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.alocar-check input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+.alocar-check:has(input:disabled) { color: var(--text-muted); cursor: not-allowed; }
+.alocar-agora .form-hint { margin: 4px 0 0 26px; }
+.aloc-placa + .aloc-placa { margin-top: 16px; }
+.aloc-placa-titulo { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.aloc-placa-titulo span { font-family: var(--font); font-weight: 400; color: var(--text-muted); }
+.tabela-alocacao { width: 100%; }
+.tabela-alocacao td { vertical-align: middle; }
+.tabela-alocacao .ct { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+.tabela-alocacao select { width: 100%; min-width: 220px; padding: 7px 9px; border: 1px solid var(--border-dk); border-radius: 8px; background: var(--panel); font-size: 14px; }
+.tabela-alocacao select:focus { outline: none; border-color: var(--accent); }
+.tabela-alocacao tr.vazio select { color: var(--text-muted); }
+.tabela-alocacao .aloc-pedido { margin-top: 4px; font-size: 12.5px; line-height: 1.35; color: var(--text-muted); }
+.aloc-situacao { margin-top: 18px; }
+.aloc-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 16px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.aloc-linha:first-of-type { border-top: none; }
+.aloc-linha small { display: block; font-size: 12.5px; color: var(--text-muted); }
+.aloc-linha .sit { font-weight: 600; text-align: right; }
+.aloc-linha .sit.ok { color: var(--success); }
+.aloc-linha .sit.falta { color: var(--danger); }
+.aloc-linha .sit.sobra { color: var(--accent2); }
+.texto-mudo { color: var(--text-muted); }
+td.texto-aviso { color: var(--accent2); font-family: var(--font); font-weight: 600; }
 .resumo-total { font-size: 14px; color: var(--text-dim); margin: 10px 0 4px; }
 .resumo-total strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
 .resumo-total strong.texto-perigo { color: var(--danger); } /* passou da capacidade do veículo */
@@ -292,7 +326,7 @@ tbody tr:hover td { background: var(--panel-soft); }
 .wizard-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wizard-topo .modal-title { margin-bottom: 0; }
 /* Etapas no formato da linha do tempo do portal de solicitações: barra no topo (verde = feita, azul = atual) */
-.wizard-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.wizard-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 .wizard-step { display: flex; align-items: baseline; gap: 6px; min-width: 0; background: none; border: none; border-top: 4px solid var(--border); padding: 8px 0 0; text-align: left; font-size: 13.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
 .wizard-step:hover { color: var(--text-dim); }
 .wizard-step .n { font-family: var(--mono); font-size: 12px; font-weight: 500; }
@@ -560,7 +594,7 @@ tbody tr:hover td { background: var(--panel-soft); }
   </div>
 </div>
 
-<!-- MODAL: Novo Agendamento (assistente em 4 etapas) -->
+<!-- MODAL: Novo Agendamento (assistente em 5 etapas; a alocação nos compartimentos é a 4ª, opcional) -->
 <div class="modal-overlay" id="modalNovo">
   <div class="modal wizard" onkeydown="onTeclaWizard(event)">
     <div class="wizard-head">
@@ -574,6 +608,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     <div class="wizard-body">
       <div class="wizard-etapa" data-etapa="1">
         <div class="card-title">Placas do veículo</div>
+        <div id="veiculoRecentes"></div> <!-- últimos veículos usados: um clique preenche as placas -->
         <div class="form-row">
           <div class="form-field">
             <label>Placa do Cavalo</label>
@@ -603,6 +638,7 @@ tbody tr:hover td { background: var(--panel-soft); }
 
       <div class="wizard-etapa hidden" data-etapa="2">
         <div class="card-title">Motorista</div>
+        <div id="motoristaRecentes"></div> <!-- últimos motoristas usados: um clique preenche o CPF -->
         <div class="form-row">
           <div class="form-field">
             <label>CPF do Motorista</label>
@@ -650,7 +686,18 @@ tbody tr:hover td { background: var(--panel-soft); }
         </div>
       </div>
 
+      <!-- Alocação opcional: marcada, abre a tabela dos compartimentos; sem marcar, o motorista aloca no check-in do quiosque -->
       <div class="wizard-etapa hidden" data-etapa="4">
+        <div class="card-title">Alocação nos compartimentos</div>
+        <div class="alocar-agora">
+          <label class="alocar-check"><input type="checkbox" id="f-alocar" onchange="marcarAlocarAgora(this.checked)">
+            Deseja realizar a alocação nos compartimentos agora?</label>
+          <div class="form-hint" id="alocarAgoraTxt"></div>
+        </div>
+        <div id="alocacaoNovo"></div>
+      </div>
+
+      <div class="wizard-etapa hidden" data-etapa="5">
         <div id="wizardRevisao"></div>
         <div class="card-title">Data e horário</div>
         <div class="form-row tres-colunas">
@@ -1111,7 +1158,10 @@ const STATE = {
   // motoristaCad: consulta de motoristas/<cpf> com o CPF digitado;
   // motoristasNome: cadastro de motoristas por nome (equipe interna busca o motorista pelo nome), lido uma vez por agendamento
   // turnoSugerido: turno de entrega do 1º pedido (pré-seleciona o turno, se a base atende nele)
-  novo: { pedidos: [], baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, motoristasNome: null, turnoSugerido: '' },
+  // alocar: "Deseja realizar a alocação nos compartimentos agora?"; compart: consulta dos perfis de compartimento das
+  // placas do tanque; alocacao: linha (refItem) de cada compartimento, na ordem do tanque ('' = vazio)
+  novo: { pedidos: [], baseId: '', baseChave: '', slotHorario: null, baseSlots: null, slotsOcupados: null, recurso: null, motoristaCad: null, motoristasNome: null, turnoSugerido: '',
+    alocar: false, compart: null, alocacao: [] },
   baseEditando: null,      // id da base aberta no formulário de Cadastros
   baseLocais: [],          // centros + depósitos no formulário de base ({ centro, deposito }); gravados em "Salvar"
   pedidosDepositos: null,  // Cadastros → Bases: centro, depósito, entrega e volume de cada pedido (resumo dos depósitos sem base)
@@ -1344,6 +1394,11 @@ function reiniciarListenerAgendamentos() {
     STATE.agendamentos = agendamentos;
     renderListaAgendamentos();
     renderPedidosAgendamento(); // saldo dos pedidos em montagem depende dos agendamentos ativos
+    // Assistente aberto antes de os agendamentos chegarem: os últimos usados aparecem assim que chegam
+    if (document.getElementById('modalNovo').classList.contains('open')) {
+      if (etapaWizard === ETAPA.veiculo) renderVeiculosRecentes();
+      if (etapaWizard === ETAPA.motorista) renderMotoristasRecentes();
+    }
     if (STATE.pedidosCarteira) renderPedidosCarteira(); // aba Pedidos: agendado / disponível
     if (STATE.usuario.admin) { renderRecursosPendentes(); renderMotoristasPendentes(); } // protocolos de cada cadastro provisório
     // Importação aberta: saldo dos pedidos e viagens já importadas dependem dos agendamentos ativos
@@ -1401,6 +1456,27 @@ function cpfValido(cpf) {
   return dv(9) === Number(cpf[9]) && dv(10) === Number(cpf[10]);
 }
 function formatCpf(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : (cpf || ''); }
+// CNPJ do cliente (datalake, BI_GLD_PARCEIROS_NEGOCIO), gravado só com dígitos; 11 dígitos é CPF (pessoa física)
+function formatCnpj(doc) {
+  const d = soDigitos(doc);
+  return d.length === 14 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}` : d.length === 11 ? formatCpf(d) : d;
+}
+function rotuloCnpj(doc) { const d = soDigitos(doc); return d ? `${d.length === 11 ? 'CPF' : 'CNPJ'} ${formatCnpj(d)}` : ''; }
+// Padrão dos usuários (nov/2026): onde aparece o número do pedido, aparecem também o nome, a cidade e o CNPJ do cliente.
+// HTML do CNPJ sem quebrar no meio ('' sem CNPJ)
+function htmlCnpj(doc) { const r = rotuloCnpj(doc); return r ? `<span style="white-space:nowrap">${esc(r)}</span>` : ''; }
+// Linha de baixo do nome, já escapada: "código · cidade · CNPJ …" (campo vazio sai)
+function detalheCliente({ codigo, cidade, cnpj } = {}) { return [esc(codigo), esc(cidade), htmlCnpj(cnpj)].filter(Boolean).join(' · '); }
+// Cartão do celular (pedido da carteira ou do assistente): "nome · cidade · CNPJ … · frete"
+function cartaoCliente(p) { return [esc(p.clienteNome), esc(p.clienteCidade), htmlCnpj(p.clienteCnpj), esc(p.tipoFrete)].filter(Boolean).join(' · '); }
+// Cliente de um pedido da carteira (pedidosSap/<nr>)
+function clienteDoPedidoSap(p) { return { codigo: p.clienteCodigo, nome: p.clienteNome, cidade: p.clienteCidade, cnpj: p.clienteCnpj }; }
+// "Pedido 935958 · nome · cidade · CNPJ …", já escapado; a cidade e o CNPJ não quebram no meio (campo vazio sai)
+function htmlPedidoCliente(nr, { nome, cidade, cnpj } = {}) {
+  return [`Pedido ${esc(nr)}`, esc(nome), cidade ? `<span style="white-space:nowrap">${esc(cidade)}</span>` : '', htmlCnpj(cnpj)].filter(Boolean).join(' · ');
+}
+// Texto de busca com o CNPJ formatado e só com dígitos (quem cola o CNPJ do sistema acha do mesmo jeito)
+function buscaCnpj(doc) { const d = soDigitos(doc); return d ? `${d} ${formatCnpj(d)}` : ''; }
 // CPF no comprovante em PDF (circula impresso e por e-mail/WhatsApp): só os 6 dígitos do meio, como no padrão gov.br
 function cpfOculto(cpf) { const d = soDigitos(cpf); return d.length === 11 ? `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**` : '-'; }
 function mascararCpf(el) {
@@ -1668,7 +1744,7 @@ function renderPedidosCarteira() {
     passaFiltro('pcBase', chaveBase(s)) &&
     passaFiltro('pcStatus', s.status) &&
     (!dia || s.p.dataEntrega === dia) &&
-    (!termos.length || termos.every((t) => normalizarBusca(`${s.p.nrPedido} ${s.p.clienteNome} ${s.p.clienteCodigo} ${s.itens.map((i) => i.descricao).join(' ')}`).includes(t))));
+    (!termos.length || termos.every((t) => normalizarBusca(`${s.p.nrPedido} ${s.p.clienteNome} ${s.p.clienteCodigo} ${s.p.clienteCidade || ''} ${buscaCnpj(s.p.clienteCnpj)} ${s.itens.map((i) => i.descricao).join(' ')}`).includes(t))));
 
   document.getElementById('statPedQtd').textContent = lista.length;
   document.getElementById('statPedDisp').textContent = formatVolume(lista.reduce((t, s) => t + (s.status === 'bloqueado' ? 0 : s.disponivel), 0));
@@ -1679,7 +1755,7 @@ function renderPedidosCarteira() {
   tbody.innerHTML = lista.length ? lista.map((s) => `
     <tr onclick="abrirDetalhePedido(${jsArg(s.p.nrPedido)})" title="Ver os produtos do pedido">
       <td><strong>${esc(s.p.nrPedido)}</strong></td>
-      <td class="quebra">${esc(s.p.clienteNome)}<div class="form-hint" style="margin:0">${[esc(s.p.clienteCodigo), esc(s.p.clienteCidade)].filter(Boolean).join(' · ')}</div></td>
+      <td class="quebra">${esc(s.p.clienteNome)}<div class="form-hint" style="margin:0">${detalheCliente(clienteDoPedidoSap(s.p))}</div></td>
       <td class="quebra">${esc(nomeBase(s))}</td>
       <td>${formatDataBR(s.p.dataEntrega)}</td>
       <td>${esc(s.p.tipoFrete) || '—'}</td>
@@ -1693,7 +1769,7 @@ function renderPedidosCarteira() {
   cards.innerHTML = lista.length ? lista.map((s) => `
     <div class="pedido-card clicavel" onclick="abrirDetalhePedido(${jsArg(s.p.nrPedido)})">
       <div class="pedido-card-topo"><strong>Pedido ${esc(s.p.nrPedido)}</strong>${seloPedido(s)}</div>
-      <div class="pedido-card-cli">${[s.p.clienteNome, s.p.clienteCidade, s.p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="pedido-card-cli">${cartaoCliente(s.p)}</div>
       <div class="pedido-card-cli">${esc(nomeBase(s))} · faturamento ${formatDataBR(s.p.dataEntrega)}</div>
       <div class="pedido-card-cli">${esc(resumoProdutos(s))}</div>
       <div class="pedido-card-item"><span>Volume</span><span class="vol"><strong>${formatVolume(s.volume)}</strong></span></div>
@@ -1733,7 +1809,7 @@ function abrirDetalhePedido(nr) {
     <div class="modal-sub">${seloPedido(s)}</div>
     ${s.status === 'bloqueado' ? `<div class="form-hint" style="margin:0 0 12px">${esc(STATUS_PEDIDO.bloqueado.dica)}. Ele aparece aqui só para acompanhamento.</div>` : ''}
     <div class="info-row">
-      <div class="info-item"><div class="info-lbl">Cliente</div><div class="info-val">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${esc(p.clienteCodigo)}</div></div></div>
+      <div class="info-item"><div class="info-lbl">Cliente</div><div class="info-val">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${detalheCliente({ codigo: p.clienteCodigo, cnpj: p.clienteCnpj })}</div></div></div>
       <div class="info-item"><div class="info-lbl">Cidade</div><div class="info-val">${esc(p.clienteCidade) || '—'}</div></div>
       <div class="info-item"><div class="info-lbl">Frete</div><div class="info-val">${esc(p.tipoFrete) || '—'}</div></div>
     </div>
@@ -1802,7 +1878,7 @@ function renderPedidosDisponiveisNovo() {
   const termos = normalizarBusca(document.getElementById('ndBusca').value).split(/\s+/).filter(Boolean); // todas as palavras precisam aparecer
   if (termos.length) {
     lista = lista.filter((s) => {
-      const alvo = normalizarBusca([s.p.nrPedido, s.p.clienteNome, s.p.clienteCodigo, s.p.clienteCidade, ...produtosDoPedido(s)].join(' '));
+      const alvo = normalizarBusca([s.p.nrPedido, s.p.clienteNome, s.p.clienteCodigo, s.p.clienteCidade, buscaCnpj(s.p.clienteCnpj), ...produtosDoPedido(s)].join(' '));
       return termos.every((t) => alvo.includes(t));
     });
   }
@@ -1824,7 +1900,7 @@ function renderPedidosDisponiveisNovo() {
       <thead><tr><th>Pedido</th><th>Cliente</th><th>DT. Faturamento</th><th>Frete</th><th>Produtos</th><th class="num">Volume</th><th></th></tr></thead>
       <tbody>${mostrados.map((s) => `<tr>
         <td><strong>${esc(s.p.nrPedido)}</strong><div class="form-hint" style="margin:0">${esc(nomeBase(s))}</div></td>
-        <td class="quebra">${esc(s.p.clienteNome)}<div class="form-hint" style="margin:0">${[esc(s.p.clienteCodigo), esc(s.p.clienteCidade)].filter(Boolean).join(' · ')}</div></td>
+        <td class="quebra">${esc(s.p.clienteNome)}<div class="form-hint" style="margin:0">${detalheCliente(clienteDoPedidoSap(s.p))}</div></td>
         <td>${formatDataBR(s.p.dataEntrega)}</td><td>${esc(s.p.tipoFrete) || '—'}</td>
         <td class="quebra" title="${esc(produtosDoPedido(s).join('\n'))}">${esc(resumoProdutos(s))}</td>
         <td class="num">${formatVolume(s.volume)}</td>
@@ -1833,7 +1909,7 @@ function renderPedidosDisponiveisNovo() {
     <div class="pedidos-cards">${mostrados.map((s) => `
       <div class="pedido-card">
         <div class="pedido-card-topo"><strong>Pedido ${esc(s.p.nrPedido)}</strong><span class="vol">${formatVolume(s.volume)}</span></div>
-        <div class="pedido-card-cli">${[s.p.clienteNome, s.p.clienteCidade, s.p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
+        <div class="pedido-card-cli">${cartaoCliente(s.p)}</div>
         <div class="pedido-card-cli">${esc(nomeBase(s))} · faturamento ${formatDataBR(s.p.dataEntrega)}</div>
         <div class="pedido-card-cli">${esc(resumoProdutos(s))}</div>
         ${botao(s, motivo(s), 'style="width:100%"')}
@@ -1973,6 +2049,7 @@ function msgBaseIndisponivel(pedido, base) {
 
 function renderPedidosAgendamento() {
   renderPedidosDisponiveisNovo(); // a lista acompanha a carreta (base, data, sobra do veículo) e os agendamentos
+  if (etapaWizard === ETAPA.compartimentos) renderAlocacaoNovo(); // a alocação depende dos pedidos (saldo)
   const el = document.getElementById('pedidoResumo');
   const pedidos = STATE.novo.pedidos;
   if (!pedidos.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
@@ -1994,7 +2071,7 @@ function renderPedidosAgendamento() {
     return itens.map((i, idx) => {
       const x = produto(p, i);
       const disponivel = `<strong>${formatVolume(x.saldo)}</strong>${x.nota ? `<div class="form-hint" style="margin:0">${x.nota}</div>` : ''}`;
-      const doPedido = idx > 0 ? '' : `<td${span}><strong>${esc(p.nrPedido)}</strong></td><td${span} class="quebra">${esc(p.clienteNome)}</td><td${span} class="quebra">${esc(p.clienteCidade) || '—'}</td><td${span}>${esc(p.tipoFrete) || '—'}</td>`;
+      const doPedido = idx > 0 ? '' : `<td${span}><strong>${esc(p.nrPedido)}</strong></td><td${span} class="quebra">${esc(p.clienteNome)}${p.clienteCnpj ? `<div class="form-hint" style="margin:0">${htmlCnpj(p.clienteCnpj)}</div>` : ''}</td><td${span} class="quebra">${esc(p.clienteCidade) || '—'}</td><td${span}>${esc(p.tipoFrete) || '—'}</td>`;
       const remover = idx > 0 ? '' : `<td${span}><button type="button" class="item-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></td>`;
       return `<tr>${doPedido}<td class="quebra">${x.nome}</td><td class="num">${disponivel}</td>${remover}</tr>`;
     }).join('');
@@ -2004,7 +2081,7 @@ function renderPedidosAgendamento() {
     <div class="pedido-card">
       <div class="pedido-card-topo"><strong>Pedido ${esc(p.nrPedido)}</strong>
         <button type="button" class="item-remove" onclick="removerPedido(${jsArg(p.nrPedido)})" title="Tirar este pedido do agendamento">✕</button></div>
-      <div class="pedido-card-cli">${[p.clienteNome, p.clienteCidade, p.tipoFrete].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="pedido-card-cli">${cartaoCliente(p)}</div>
       ${itensDe(p).map((i) => {
         const x = produto(p, i);
         return `<div class="pedido-card-item"><span>${x.nome}</span><span class="vol"><strong>${formatVolume(x.saldo)}</strong>${x.nota ? `<small>${x.nota}</small>` : ''}</span></div>`;
@@ -2095,12 +2172,263 @@ function renderSlotGrid() {
 }
 function selecionarSlot(horario) { STATE.novo.slotHorario = horario; renderSlotGrid(); }
 
-/* ── ASSISTENTE: Veículo → Motorista → Pedidos → Data e horário ── */
+/* ── ASSISTENTE: Veículo → Motorista → Pedidos → Alocação → Data e horário ── */
 // Começa pelo veículo: com a capacidade conhecida, a etapa Pedidos mostra a ocupação e recusa pedido que não cabe.
-// Data e horário ficam por último porque dependem dos pedidos (data de entrega e base).
-const ETAPA = { veiculo: 1, motorista: 2, pedidos: 3, data: 4 };
-const ETAPAS_WIZARD = ['Veículo', 'Motorista', 'Pedidos', 'Data e horário'];
+// A alocação depende do veículo e dos pedidos; data e horário ficam por último porque dependem dos pedidos (data de
+// entrega e base).
+const ETAPA = { veiculo: 1, motorista: 2, pedidos: 3, compartimentos: 4, data: 5 };
+const ETAPAS_WIZARD = ['Veículo', 'Motorista', 'Pedidos', 'Alocação', 'Data e horário'];
 let etapaWizard = 1;
+
+/* ── ALOCAÇÃO NOS COMPARTIMENTOS (opcional, no agendamento) ── */
+// Quem agenda pode adiantar a alocação que o motorista faz no check-in do quiosque: a etapa Alocação pergunta
+// "Deseja realizar a alocação nos compartimentos agora?" e, marcada, abre a tabela dos compartimentos. Mesmas regras do quiosque: cada
+// compartimento leva uma linha (pedido + produto) só, cada linha vai inteira e enche os seus compartimentos em ordem, e
+// nenhum compartimento sobra. Compartimentos só do cadastro: perfil SAP de cada placa do tanque (perfisCompartimento).
+// Veículo provisório ou placa sem perfil deixa a alocação para o check-in (a liberação manual da equipe só vem depois).
+// Gravada em agendamentos/<id>/alocacaoCompartimentos: no check-in o quiosque abre o resumo já preenchido e o motorista
+// confere com o veículo (troca o produto de um compartimento ou refaz). Trocar o veículo ou os pedidos no portal apaga a
+// alocação; o quiosque também descarta a que não bate mais com o veículo e os pedidos e o motorista aloca do zero.
+const MAX_COMPARTIMENTOS = 12; // o quiosque aceita até 12 compartimentos no veículo (somando as carretas)
+// Perfis de compartimento das placas do tanque do veículo digitado (só recurso do SAP). Consulta uma vez por recurso;
+// repete se a leitura falhou e alguém marcar a alocação. Nunca rejeita.
+function carregarCompartimentosNovo() {
+  const veiculo = veiculoDasPlacas();
+  const r = STATE.novo.recurso;
+  if (!veiculo || veiculo.origem !== 'sap') return Promise.resolve();
+  const atual = STATE.novo.compart;
+  if (atual?.chave === veiculo.chave && !atual.erro) return atual.busca;
+  if (atual?.chave !== veiculo.chave) STATE.novo.alocacao = []; // era de outro veículo
+  const [placaCavalo, placaCarreta, placaCarreta2] = lerPlacas();
+  const placas = placasTanqueDaLiberacao({ placaCavalo, placaCarreta, placaCarreta2 });
+  const c = { chave: veiculo.chave, placas: undefined }; // placas: undefined = consultando; [{ placa, perfil, cfg }]
+  c.busca = Promise.all(placas.map((placa) => {
+    const perfil = perfilDaPlaca(r.dados, placa, placas.length);
+    return perfil ? window._fb.carregarPerfilCompartimento(perfil.chave).then((cfg) => ({ placa, perfil: perfil.perfil, cfg }))
+      : { placa, perfil: '', cfg: null };
+  })).then((lista) => { c.placas = lista; }, (e) => { console.warn('Perfis de compartimento não consultados', e); c.placas = null; c.erro = true; })
+    .then(() => { if (STATE.novo.compart === c && etapaWizard === ETAPA.compartimentos) renderAlocacaoNovo(); });
+  STATE.novo.compart = c;
+  return c.busca;
+}
+// Linhas a alocar: uma por pedido + produto (a mesma chave do quiosque, "<pedido>|<produto>"), com o volume deste carregamento
+function linhasAlocacaoNovo() {
+  const neste = volumesNesteAgendamento();
+  return STATE.novo.pedidos.flatMap((p) => itensDe(p).filter((i) => neste[refItem(p.nrPedido, i.codigo)] > 0).map((i) => ({
+    chave: refItem(p.nrPedido, i.codigo), ordemVenda: String(p.nrPedido), produto: String(i.codigo),
+    descricao: i.descricao || `Produto ${i.codigo}`, volume: neste[refItem(p.nrPedido, i.codigo)],
+    clienteNome: p.clienteNome || '', clienteCidade: p.clienteCidade || '', clienteCnpj: p.clienteCnpj || '',
+  })));
+}
+function htmlPedidoDaLinha(l) { return htmlPedidoCliente(l.ordemVenda, { nome: l.clienteNome, cidade: l.clienteCidade, cnpj: l.clienteCnpj }); }
+// Compartimentos do tanque, na ordem do quiosque (placas do tanque, CT 1, 2… em cada uma): { comps: [{ placa,
+// indicePlaca, capacidade }], linhas } quando dá para alocar; { carregando } ou { motivo } quando não
+function tanqueNovo() {
+  const veiculo = veiculoDasPlacas();
+  if (!veiculo) return { carregando: true };
+  if (veiculo.origem !== 'sap') return { motivo: 'O veículo está com cadastro provisório: os compartimentos dele ainda não estão no sistema.' };
+  const c = STATE.novo.compart;
+  if (!c || c.chave !== veiculo.chave || c.placas === undefined) return { carregando: true };
+  if (c.erro) return { motivo: 'Não foi possível consultar os compartimentos do veículo. Verifique a conexão e marque de novo.', erro: true };
+  const semPerfil = c.placas.filter((x) => !configCompartimentosValida(x.cfg)).map((x) => x.placa);
+  if (semPerfil.length) return { motivo: `A placa ${semPerfil.join(' e ')} está sem compartimentos no cadastro.` };
+  const comps = c.placas.flatMap(({ placa, cfg }) => cfg.capacidadesLitros.map((capacidade, i) => ({ placa, indicePlaca: i + 1, capacidade })));
+  if (comps.length > MAX_COMPARTIMENTOS) return { motivo: `O veículo tem ${comps.length} compartimentos e o autoatendimento aceita até ${MAX_COMPARTIMENTOS}.` };
+  const variasPlacas = c.placas.length > 1; // com uma placa só, o compartimento é só "CT 01"
+  const linhas = linhasAlocacaoNovo();
+  const caps = comps.map((x) => x.capacidade), vols = linhas.map((l) => l.volume);
+  const totalCaps = caps.reduce((s, v) => s + v, 0), totalPedidos = vols.reduce((s, v) => s + v, 0);
+  if (totalPedidos > totalCaps) return { motivo: `Os pedidos somam ${formatVolume(totalPedidos)} e os compartimentos do veículo, ${formatVolume(totalCaps)}.` };
+  if (linhas.length && !planejarAlocacao(caps, vols)) {
+    return { motivo: `Os pedidos não cabem inteiros nos ${comps.length} compartimentos do veículo (cada compartimento leva um produto só). No check-in, o quiosque registra a inconsistência para o faturamento.` };
+  }
+  return { comps, linhas, variasPlacas };
+}
+// Linha escolhida em cada compartimento, só com as linhas que ainda estão no carregamento ('' = vazio)
+function alocacaoNovoAtual(t) {
+  const chaves = new Set(t.linhas.map((l) => l.chave));
+  STATE.novo.alocacao = t.comps.map((_, i) => (chaves.has(STATE.novo.alocacao[i]) ? STATE.novo.alocacao[i] : ''));
+  return STATE.novo.alocacao;
+}
+// Divisão em que cada linha cabe inteira, cada compartimento leva uma linha só e nenhum compartimento sobra (a mesma
+// do quiosque). Aqui só diz se há divisão possível: a escolha dos compartimentos é de quem agenda.
+// Programação dinâmica sobre os subconjuntos de compartimentos (até 12 = 4096). Devolve os índices por linha, ou null.
+function planejarAlocacao(caps, vols) {
+  const n = caps.length, todos = (1 << n) - 1;
+  const soma = new Array(todos + 1).fill(0), menor = new Array(todos + 1).fill(Infinity), qtd = new Array(todos + 1).fill(0);
+  for (let m = 1; m <= todos; m++) {
+    const bit = 31 - Math.clz32(m & -m), resto = m & (m - 1);
+    soma[m] = soma[resto] + caps[bit];
+    menor[m] = Math.min(menor[resto], caps[bit]);
+    qtd[m] = qtd[resto] + 1;
+  }
+  const ordem = vols.map((_, j) => j).sort((a, b) => vols[b] - vols[a]); // maiores primeiro: corta mais cedo
+  const memo = new Map();
+  const melhor = (p, livres) => {
+    if (p === ordem.length) return { folga: 0, usados: 0, masks: [] };
+    const chave = p * (todos + 1) + livres;
+    if (memo.has(chave)) return memo.get(chave);
+    const v = vols[ordem[p]];
+    let best = null;
+    for (let s = livres; s > 0; s = (s - 1) & livres) {
+      if (soma[s] < v || soma[s] - menor[s] >= v) continue; // não cabe, ou tem compartimento sobrando
+      const resto = melhor(p + 1, livres & ~s);
+      if (!resto) continue;
+      const folga = soma[s] - v + resto.folga, usados = qtd[s] + resto.usados;
+      if (!best || folga < best.folga || (folga === best.folga && (usados < best.usados || (usados === best.usados && s < best.masks[0])))) {
+        best = { folga, usados, masks: [s, ...resto.masks] };
+      }
+    }
+    memo.set(chave, best);
+    return best;
+  };
+  const r = melhor(0, todos);
+  if (!r) return null;
+  const plano = vols.map(() => []);
+  r.masks.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
+  return plano;
+}
+function refCompartimento(t, i) { const c = t.comps[i]; return `${t.variasPlacas ? c.placa + ' · ' : ''}CT ${pad2(c.indicePlaca)}`; }
+// Situação de cada linha (mesma conta do quiosque): a linha enche os seus compartimentos em ordem; o que vem depois
+// de ela já caber está sobrando. previstos[i] = volume que vai no compartimento i
+function situacaoAlocacaoNovo(t, aloc) {
+  const previstos = t.comps.map(() => 0);
+  const linhas = t.linhas.map((l) => {
+    const idx = t.comps.map((_, i) => i).filter((i) => aloc[i] === l.chave);
+    let acumulado = 0, sobrando = -1, resta = l.volume;
+    for (const i of idx) {
+      if (acumulado >= l.volume && sobrando < 0) sobrando = i;
+      acumulado += t.comps[i].capacidade;
+      previstos[i] = Math.max(Math.min(t.comps[i].capacidade, resta), 0);
+      resta -= previstos[i];
+    }
+    return { l, idx, cap: acumulado, falta: Math.max(l.volume - acumulado, 0), sobrando };
+  });
+  return { linhas, previstos };
+}
+function nomeLinhaAlocacao(l) { return `${l.descricao} (pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''})`; }
+// O que impede de seguir ('' = tudo certo), em frases curtas
+function problemasAlocacaoNovo(t, aloc) {
+  return situacaoAlocacaoNovo(t, aloc).linhas.flatMap((s) => {
+    if (!s.idx.length) return [`Escolha o compartimento de ${nomeLinhaAlocacao(s.l)}.`];
+    if (s.falta) return [`Falta lugar para ${nomeLinhaAlocacao(s.l)}: faltam ${formatVolume(s.falta)}.`];
+    if (s.sobrando >= 0) return [`${refCompartimento(t, s.sobrando)} ficou sem produto (${nomeLinhaAlocacao(s.l)} já coube antes): deixe vazio.`];
+    return [];
+  });
+}
+
+function marcarAlocarAgora(marcado) {
+  STATE.novo.alocar = marcado;
+  if (marcado && STATE.novo.compart?.erro) carregarCompartimentosNovo(); // a leitura anterior falhou: tenta de novo
+  mostrarErroWizard('');
+  renderAlocacaoNovo();
+}
+
+// Etapa Alocação: a pergunta e, marcada, uma tabela por placa do tanque (CT recomeça em cada uma) com o produto de cada
+// compartimento e a situação de cada produto (cabe inteiro, falta lugar, compartimento sobrando). Quando não dá para
+// alocar (veículo provisório, placa sem perfil, pedidos que não cabem), a pergunta fica desmarcada e travada, com o motivo
+function renderAlocacaoNovo() {
+  const el = document.getElementById('alocacaoNovo');
+  const check = document.getElementById('f-alocar');
+  const txt = document.getElementById('alocarAgoraTxt');
+  const veiculo = veiculoDasPlacas();
+  // Consulta os perfis de compartimento das placas ao abrir a etapa (uma vez por veículo)
+  if (veiculo?.origem === 'sap' && STATE.novo.compart?.chave !== veiculo.chave) carregarCompartimentosNovo();
+  const t = tanqueNovo();
+  const indisponivel = !!t.motivo && !t.erro;
+  if (indisponivel) STATE.novo.alocar = false;
+  const alocar = STATE.novo.alocar;
+  check.disabled = indisponivel || (t.carregando && !alocar);
+  check.checked = alocar;
+  txt.className = 'form-hint' + (indisponivel || (t.erro && alocar) ? ' aviso' : '');
+  txt.textContent = indisponivel ? `${t.motivo} O motorista faz a alocação no check-in do quiosque.`
+    : t.erro && alocar ? t.motivo
+    : t.carregando ? 'Consultando os compartimentos do veículo…'
+    : alocar ? 'Escolha o produto de cada compartimento: cada um leva um produto só, e cada produto vai inteiro. No check-in, o motorista confere com o veículo e pode ajustar.'
+    : 'Opcional. Sem marcar, o motorista faz a alocação no check-in do quiosque.';
+  if (!alocar || t.carregando || t.motivo) { el.innerHTML = ''; return; }
+  const aloc = alocacaoNovoAtual(t);
+  const { linhas: situacao, previstos } = situacaoAlocacaoNovo(t, aloc);
+  // Saldo de cada produto sem contar o compartimento i (como a pergunta do quiosque): quanto ainda falta alocar.
+  // O que já coube inteiro nos outros compartimentos fica desabilitado. A opção já escolhida mostra o que vai no
+  // compartimento (o volume do pedido inteiro confundia, a pedido do usuário em 11/11/2026)
+  const faltaSem = (i, l) => l.volume - t.comps.reduce((s, c, j) => s + (j !== i && aloc[j] === l.chave ? c.capacidade : 0), 0);
+  const volumeDaOpcao = (i, l, falta) => (aloc[i] === l.chave ? (previstos[i] ? formatVolume(previstos[i]) : 'sem produto')
+    : falta <= 0 ? 'já coube' : falta < l.volume ? `faltam ${formatVolume(falta)} de ${formatVolume(l.volume)}` : formatVolume(l.volume));
+  // A opção traz só produto e volume (o que decide a escolha). Pedido, cliente, cidade e CNPJ ficam no título do grupo
+  // da lista aberta (separa pedidos com o mesmo produto) e, depois da escolha, na linha cinza embaixo do select
+  const rotuloPedido = (l) => [`Pedido ${l.ordemVenda}`, l.clienteNome, l.clienteCidade, rotuloCnpj(l.clienteCnpj)].filter(Boolean).join(' · ');
+  const linhaDaChave = Object.fromEntries(t.linhas.map((l) => [l.chave, l]));
+  const linhasPorPedido = [...new Set(t.linhas.map((l) => l.ordemVenda))].map((nr) => t.linhas.filter((l) => l.ordemVenda === nr));
+  const opcao = (i, l) => {
+    const escolhido = aloc[i] === l.chave;
+    const falta = escolhido ? l.volume : faltaSem(i, l);
+    return `<option value="${esc(l.chave)}" ${escolhido ? 'selected' : falta <= 0 ? 'disabled' : ''}>${esc(`${l.descricao} · ${volumeDaOpcao(i, l, falta)}`)}</option>`;
+  };
+  const opcoes = (i) => linhasPorPedido.map((ls) => `<optgroup label="${esc(rotuloPedido(ls[0]))}">${ls.map((l) => opcao(i, l)).join('')}</optgroup>`).join('');
+  const placas = [...new Set(t.comps.map((c) => c.placa))];
+  const tabelas = placas.map((placa) => {
+    const indices = t.comps.map((c, i) => (c.placa === placa ? i : -1)).filter((i) => i >= 0);
+    const total = indices.reduce((s, i) => s + t.comps[i].capacidade, 0);
+    return `<div class="aloc-placa">
+      <div class="aloc-placa-titulo">${esc(placa)} <span>· ${indices.length} compartimento${indices.length === 1 ? '' : 's'} · ${formatVolume(total)}</span></div>
+      <div class="tabela-scroll"><table class="tabela-itens tabela-alocacao">
+        <thead><tr><th>CT</th><th class="num">Capacidade</th><th>Produto</th><th class="num">Vai no compartimento</th></tr></thead>
+        <tbody>${indices.map((i) => `<tr class="${aloc[i] ? '' : 'vazio'}">
+          <td class="ct">CT ${pad2(t.comps[i].indicePlaca)}</td>
+          <td class="num">${formatVolume(t.comps[i].capacidade)}</td>
+          <td><select id="aloc-${i}" aria-label="Produto do ${esc(refCompartimento(t, i))}" onchange="escolherCompartimentoNovo(${i}, this.value)">
+            <option value="">Vazio</option>
+            ${opcoes(i)}
+          </select>${aloc[i] ? `<div class="aloc-pedido">${htmlPedidoDaLinha(linhaDaChave[aloc[i]])}</div>` : ''}</td>
+          <td class="num${aloc[i] && !previstos[i] ? ' texto-aviso' : ''}">${!aloc[i] ? '—' : previstos[i] ? formatVolume(previstos[i]) : 'sem produto'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+  }).join('');
+  const linhaSituacao = (s) => {
+    const onde = s.idx.map((i) => refCompartimento(t, i)).join(', ');
+    const [cls, texto] = !s.idx.length ? ['falta', 'Sem compartimento']
+      : s.falta ? ['falta', `Faltam ${formatVolume(s.falta)}`]
+      : s.sobrando >= 0 ? ['sobra', `${refCompartimento(t, s.sobrando)} ficaria sem produto: deixe vazio`]
+      : ['ok', 'Cabe inteiro' + (s.cap > s.l.volume ? ` · livre ${formatVolume(s.cap - s.l.volume)}` : '')];
+    return `<div class="aloc-linha"><div>${esc(s.l.descricao)} <strong>${formatVolume(s.l.volume)}</strong><small>${htmlPedidoDaLinha(s.l)}${onde ? ' · ' + esc(onde) : ''}</small></div>
+      <div class="sit ${cls}">${esc(texto)}</div></div>`;
+  };
+  el.innerHTML = `${tabelas}
+    <div class="aloc-situacao"><div class="card-title" style="margin-bottom:4px">Produtos do carregamento</div>${situacao.map(linhaSituacao).join('')}</div>
+    ${aloc.some(Boolean) ? '<button type="button" class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="limparAlocacaoNovo()">Deixar todos vazios</button>' : ''}`;
+}
+function escolherCompartimentoNovo(i, chave) {
+  STATE.novo.alocacao[i] = chave;
+  mostrarErroWizard('');
+  renderAlocacaoNovo();
+  document.getElementById('aloc-' + i)?.focus(); // a tabela foi redesenhada
+}
+function limparAlocacaoNovo() {
+  STATE.novo.alocacao = [];
+  mostrarErroWizard('');
+  renderAlocacaoNovo();
+}
+// Registro em agendamentos/<id>/alocacaoCompartimentos: todos os compartimentos do tanque, na ordem do quiosque, com a
+// linha (ordemVenda + produto) e o volume previsto dos que levam produto. recursoChave e a capacidade de cada um deixam
+// o quiosque conferir se a alocação ainda vale para o veículo do check-in
+function montarAlocacaoNovo(veiculo) {
+  const t = tanqueNovo();
+  const aloc = alocacaoNovoAtual(t);
+  const { previstos } = situacaoAlocacaoNovo(t, aloc);
+  return {
+    feitaEm: new Date().toISOString(),
+    feitaPor: STATE.usuario.nome || STATE.usuario.email,
+    feitaPorUid: STATE.usuario.uid,
+    recursoChave: veiculo.chave,
+    compartimentos: t.comps.map((c, i) => {
+      const l = t.linhas.find((x) => x.chave === aloc[i]);
+      return { placa: c.placa, indicePlaca: c.indicePlaca, capacidadeLitros: c.capacidade,
+        ...(l ? { ordemVenda: l.ordemVenda, produto: l.produto, descricao: l.descricao, volumeLitros: previstos[i] } : {}) };
+    }),
+  };
+}
 
 // Campos de veículo e motorista: os das etapas 1 e 2 do assistente e os da janela Alterar veículo e motorista (mesmos
 // ids com o prefixo "alt-"). Cada formulário guarda as consultas de cadastro (recurso, motoristaCad) no próprio estado;
@@ -2220,6 +2548,7 @@ function renderStatusVeiculo(form = FORM_NOVO) {
     elForm(form, 'veiculoProvisorioTxt').textContent = `As placas ${lerPlacas(form).filter(Boolean).join(' + ')} não estão no cadastro de recursos. `
       + 'Confira se estão certas. Se estiverem, informe a capacidade total e siga com um cadastro provisório: a equipe Nexta valida depois.';
   }
+  if (form === FORM_NOVO) renderVeiculosRecentes(); // marca o veículo das placas digitadas
 }
 
 // Motorista = cadastro de motoristas do SAP (Cadastros → Motoristas) pelo CPF; sem cadastro, vale o provisório
@@ -2289,6 +2618,7 @@ function renderStatusMotorista(form = FORM_NOVO) {
       + 'Confira se está certo. Se estiver, informe o nome completo e siga com um cadastro provisório: a equipe Nexta valida depois.';
   }
   renderOpcoesMotorista(form);
+  if (form === FORM_NOVO) renderMotoristasRecentes(); // marca o motorista do CPF digitado
 }
 
 // Equipe interna: o campo do nome busca no cadastro de motoristas (SAP + provisórios) e escolher um preenche o CPF.
@@ -2369,6 +2699,72 @@ function enterNaBuscaMotorista(form) {
   return true;
 }
 
+// Atalho nas etapas Veículo e Motorista do assistente: os 5 veículos e motoristas usados por último, para escolher com
+// um clique (pedido dos usuários em 11/11/2026). Equipe interna: de todos os agendamentos. Cliente e transportadora: só
+// dos que o próprio login agendou (o cliente também enxerga os que a Nexta agendou para ele, com a frota das entregas
+// CIF, que não é dele). Cancelado não entra: pode ter sido placa ou CPF errado. Vale a última criação ou alteração.
+const MAX_RECENTES = 5;
+let cacheRecentes = { fonte: null }; // refeito quando chega outra leitura dos agendamentos (o listener troca o objeto)
+function recentesDoUsuario() {
+  if (cacheRecentes.fonte === STATE.agendamentos) return cacheRecentes;
+  const interno = STATE.usuario?.tipo === 'interno', uid = STATE.usuario?.uid;
+  const ags = Object.values(STATE.agendamentos || {})
+    .filter((a) => a && a.status !== 'cancelado' && (interno || a.criadoPorUid === uid))
+    .map((a) => ({ a, em: String(a.editadoEm || a.criadoEm || '') }))
+    .sort((x, y) => (x.em < y.em ? 1 : x.em > y.em ? -1 : 0))
+    .map((x) => x.a);
+  const distintos = (itens, chave) => {
+    const vistos = new Set();
+    return itens.filter((i) => { const k = chave(i); if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, MAX_RECENTES);
+  };
+  cacheRecentes = {
+    fonte: STATE.agendamentos,
+    veiculos: distintos(ags.map((a) => ({ placas: placasDoAgendamento(a).filter(Boolean), capacidade: a.capacidadeVeiculo }))
+      .filter((v) => v.placas.length && v.placas.every(placaValida)), (v) => chaveRecurso(v.placas)),
+    motoristas: distintos(ags.map((a) => ({ cpf: soDigitos(a.motoristaCpf), nome: a.motorista }))
+      .filter((m) => m.nome && cpfValido(m.cpf)), (m) => m.cpf),
+  };
+  return cacheRecentes;
+}
+function htmlRecentes(botoes) {
+  return botoes.length ? `<div class="recentes"><div class="recentes-tit">Usados recentemente (clique para preencher)</div>
+    <div class="recentes-lista">${botoes.join('')}</div></div>` : '';
+}
+function renderVeiculosRecentes() {
+  const atual = chaveDasPlacas();
+  document.getElementById('veiculoRecentes').innerHTML = htmlRecentes(recentesDoUsuario().veiculos.map((v) => {
+    const escolhido = chaveRecurso(v.placas) === atual;
+    return `<button type="button" class="recente${escolhido ? ' escolhido' : ''}" aria-pressed="${escolhido}" onclick="usarVeiculoRecente(${jsArg(v.placas.join('+'))})">
+      <span class="placa">${esc(v.placas.join(' + '))}</span>${v.capacidade ? `<small>${formatVolume(v.capacidade)}</small>` : ''}</button>`;
+  }));
+}
+function renderMotoristasRecentes() {
+  const { cpf } = lerMotorista();
+  document.getElementById('motoristaRecentes').innerHTML = htmlRecentes(recentesDoUsuario().motoristas.map((m) => {
+    const escolhido = m.cpf === cpf;
+    return `<button type="button" class="recente${escolhido ? ' escolhido' : ''}" aria-pressed="${escolhido}" onclick="usarMotoristaRecente(${jsArg(m.cpf)}, ${jsArg(m.nome)})">
+      <span>${esc(m.nome)}</span><small>CPF ${esc(cpfOculto(m.cpf))}</small></button>`;
+  }));
+}
+// Preenche as placas e já consulta o cadastro (o status aparece na hora); Enter no Próximo segue
+function usarVeiculoRecente(placas) {
+  const p = placas.split('+');
+  ['f-placa-cavalo', 'f-placa-carreta', 'f-placa-carreta2'].forEach((id, i) => { document.getElementById(id).value = p[i] || ''; });
+  mostrarErroWizard('');
+  buscarRecursoDasPlacas();
+  renderStatusVeiculo();
+  document.getElementById('btnWizardProximo').focus();
+}
+// Preenche o CPF e consulta: com cadastro, o nome vem dele e trava; sem cadastro (provisório recusado), fica o nome
+// do último agendamento, que quem agenda pode corrigir
+function usarMotoristaRecente(cpf, nome) {
+  mostrarErroWizard('');
+  escolherMotorista(FORM_NOVO, cpf);
+  const campoNome = document.getElementById('f-motorista');
+  if (!campoNome.dataset.doCadastro) campoNome.value = nome;
+  document.getElementById('btnWizardProximo').focus();
+}
+
 // Problema nos campos de veículo ('' quando está tudo certo): etapa Veículo e alteração de veículo
 function erroVeiculo(form = FORM_NOVO) {
   const [cavalo, carreta1, carreta2] = lerPlacas(form);
@@ -2429,6 +2825,14 @@ function erroDaEtapa(n) {
     if (veiculo?.volume && total > veiculo.volume) return `O volume dos pedidos (${formatVolume(total)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). Tire pedido ou volte à etapa Veículo e troque o veículo.`;
     return '';
   }
+  if (n === ETAPA.compartimentos) {
+    if (!STATE.novo.alocar) return '';
+    const t = tanqueNovo();
+    if (t.carregando) return 'Consultando os compartimentos do veículo. Tente de novo em instantes.';
+    if (t.motivo) return `${t.motivo} Não dá para alocar agora: o motorista faz a alocação no check-in.`;
+    const problemas = problemasAlocacaoNovo(t, alocacaoNovoAtual(t));
+    return problemas.length ? problemas[0] + (problemas.length > 1 ? ` (e mais ${problemas.length - 1} ${problemas.length === 2 ? 'ajuste' : 'ajustes'})` : '') : '';
+  }
   // Data e horário
   const data = document.getElementById('f-data').value;
   if (base.tipo === 'fila' && !document.getElementById('f-turno').value) return 'Selecione o turno de carregamento.';
@@ -2460,6 +2864,8 @@ async function irParaEtapa(n) {
   // Sair das etapas Veículo e Motorista exige as consultas de cadastro (placas e CPF) terminadas
   if (n > ETAPA.veiculo) await buscarRecursoDasPlacas();
   if (n > ETAPA.motorista) await buscarMotorista();
+  // Sair da etapa Alocação (marcada) exige a consulta dos perfis terminada
+  if (n > ETAPA.compartimentos && STATE.novo.alocar) await carregarCompartimentosNovo();
   for (let k = 1; k < n; k++) {
     const msg = erroDaEtapa(k);
     if (msg) { mostrarEtapa(k, msg); return false; }
@@ -2485,6 +2891,7 @@ function mostrarEtapa(n, erro = '') {
   if (n === ETAPA.veiculo) renderStatusVeiculo();
   if (n === ETAPA.motorista) renderStatusMotorista();
   if (n === ETAPA.pedidos) renderPedidosAgendamento(); // ocupação do veículo
+  if (n === ETAPA.compartimentos) renderAlocacaoNovo();
   if (n === ETAPA.data) { renderInfoBaseEtapa(); renderRevisaoAgendamento(); }
   document.querySelector('#modalNovo .wizard-body').scrollTop = 0;
   // Sem cadastro (veículo ou motorista): o cursor vai direto para o dado do cadastro provisório (capacidade ou
@@ -2499,6 +2906,7 @@ function mostrarErroWizard(msg) {
   const el = document.getElementById('wizardErro');
   el.textContent = msg || '';
   el.classList.toggle('hidden', !msg);
+  if (msg) el.scrollIntoView({ block: 'nearest' }); // etapa longa (Compartimentos): o erro fica embaixo da tabela
 }
 // Enter nos campos de placa, capacidade e motorista passa para a próxima etapa (na última não confirma sozinho)
 function onTeclaWizard(ev) {
@@ -2531,7 +2939,15 @@ function renderRevisaoAgendamento() {
     ${item('Pedidos', STATE.novo.pedidos.map((p) => esc(p.nrPedido)).join(', '), ETAPA.pedidos)}
     ${item('Volume', `<span class="${veiculo?.volume && total > veiculo.volume ? 'texto-perigo' : ''}">${formatVolume(total)}</span>`
       + (veiculo?.volume ? `<div class="form-hint">capacidade do veículo ${formatVolume(veiculo.volume)}</div>` : ''), ETAPA.pedidos)}
+    ${item('Alocação', STATE.novo.alocar ? `Feita agora${textoAlocacaoNovo()}` : 'O motorista aloca no check-in', ETAPA.compartimentos)}
   </div>`;
+}
+// "· 3 de 5 com produto" para o resumo da última etapa
+function textoAlocacaoNovo() {
+  const t = tanqueNovo();
+  if (!t.comps) return '';
+  const usados = alocacaoNovoAtual(t).filter(Boolean).length;
+  return `<div class="form-hint">${usados} de ${t.comps.length} compartimentos com produto</div>`;
 }
 
 /* ── SUBMISSÃO DO AGENDAMENTO ── */
@@ -2541,6 +2957,7 @@ async function confirmarAgendamento() {
   // Cadastro e capacidade do veículo precisam da consulta das placas atuais terminada
   btn.disabled = true;
   await buscarRecursoDasPlacas();
+  if (STATE.novo.alocar) await carregarCompartimentosNovo();
   btn.disabled = false;
   // Revalida tudo: o horário pode ter sido reservado por outro usuário enquanto preenchia
   for (let k = 1; k <= ETAPAS_WIZARD.length; k++) {
@@ -2565,6 +2982,7 @@ async function confirmarAgendamento() {
     const { dados: dadosAgendamento, provisorios } = montarAgendamento({
       protocolo, pedidos, neste, baseId: STATE.novo.baseId, base, data, turno, slotHorario,
       placas: [placaCavalo, placaCarreta, placaCarreta2], veiculo, motorista, motoristaCpf, motoristaCad: cadMotorista,
+      extras: STATE.novo.alocar ? { alocacaoCompartimentos: montarAlocacaoNovo(veiculo) } : {},
     });
     await window._fb.criarAgendamento(dadosAgendamento, provisorios);
     STATE.ultimoAgendamento = dadosAgendamento; // botão "Baixar comprovante" da janela de confirmação
@@ -2692,7 +3110,8 @@ function cadastrosProvisorios({ protocolo, em, placas, veiculo, motorista, motor
 }
 // clientes/<código> e pedidos/<nr> do agendamento (assistente, importação e troca de pedidos)
 function registroClienteAgendamento(p) {
-  return { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}) };
+  return { nome: p.clienteNome, ...(p.clienteCidade ? { cidade: p.clienteCidade } : {}), ...(p.canalDistribuicao ? { canal: p.canalDistribuicao } : {}),
+    ...(p.clienteCnpj ? { cnpj: p.clienteCnpj } : {}) };
 }
 function registroPedidoAgendamento(p, neste) {
   const itens = {};
@@ -2713,6 +3132,9 @@ function resetarFormularioAgendamento() {
   STATE.novo.motoristaCad = null;
   STATE.novo.motoristasNome = STATE.novo.buscaMotoristasNome = null; // o próximo agendamento lê os provisórios de novo
   STATE.novo.turnoSugerido = '';
+  STATE.novo.alocar = false;
+  STATE.novo.compart = null;
+  STATE.novo.alocacao = [];
   renderStatusVeiculo(); // esconde os cadastros provisórios
   renderStatusMotorista(); // e libera o nome do motorista
   atualizarBaseDosPedidos(); // desliga os listeners de horários
@@ -2898,6 +3320,12 @@ function fecharHistoricoAutoatendimento() {
   STATE.historicoAutoatendimento = null;
   fecharModal('modalHistoricoAutoatendimento');
 }
+// alocacaoAgendamento.situacao gravada pelo quiosque quando o agendamento veio com a alocação feita no portal
+const TEXTO_ALOCACAO_AGENDAMENTO = {
+  confirmada: 'Do agendamento, confirmada pelo motorista',
+  ajustada: 'Do agendamento, ajustada pelo motorista',
+  descartada: 'Feita no quiosque (a do agendamento não valia mais)',
+};
 function renderHistoricoAutoatendimento() {
   const protocolo = STATE.historicoAutoatendimento;
   const el = document.getElementById('modalHistoricoAutoatendimentoConteudo');
@@ -2951,6 +3379,7 @@ function renderHistoricoAutoatendimento() {
       <div class="info-item"><div class="info-lbl">Quiosque</div><div class="info-val">${esc(registro.quiosqueNome) || '—'}</div></div>
       <div class="info-item"><div class="info-lbl">Runner</div><div class="info-val placa">${esc(p.runnerId) || '—'}</div></div>
       <div class="info-item"><div class="info-lbl">Início</div><div class="info-val">${esc(p.iniciadoEm ? dataHoraBR(p.iniciadoEm) : registro.criadoEm ? dataHoraBR(registro.criadoEm) : '—')}</div></div>
+      ${registro.alocacaoAgendamento ? `<div class="info-item"><div class="info-lbl">Alocação</div><div class="info-val">${esc(TEXTO_ALOCACAO_AGENDAMENTO[registro.alocacaoAgendamento.situacao] || 'Feita no quiosque')}</div></div>` : ''}
     </div>
     ${detalhesErro}
     <div class="card-title" style="margin-top:22px">Histórico completo</div>
@@ -3002,7 +3431,7 @@ function renderListaAgendamentos() {
       <td><strong>${esc(a.protocolo)}</strong></td>
       <td class="quebra">${Object.keys(a.pedidos || {}).map(esc).join(', ')}</td>
       <td>${formatDataBR(a.dataCarregamento)}</td>
-      <td class="quebra" title="${esc(Object.values(a.clientes || {}).map((c) => c.nome).join('\n'))}">${esc(resumoClientes(a))}</td>
+      <td class="quebra" title="${esc(Object.values(a.clientes || {}).map((c) => [c.nome, c.cidade, rotuloCnpj(c.cnpj)].filter(Boolean).join(' · ')).join('\n'))}">${esc(resumoClientes(a))}</td>
       <td class="quebra">${esc(a.baseNome)}</td>
       <td>${a.baseTipo === 'agendamento' ? esc(a.slotHorario) : esc(labelTurno(a.turno))}</td>
       <td>${placaComCadastro(a)}</td>
@@ -3165,7 +3594,7 @@ function abrirDetalheAgendamento(id) {
         <thead><tr><th class="col-opc">Cód. Cliente</th><th>Cliente</th><th>Pedido</th><th>Situação</th><th>Frete</th><th>Cidade</th><th class="col-opc">Canal</th></tr></thead>
         <tbody>${Object.values(a.pedidos || {}).map((p) => {
           const c = clienteDoPedido(a, p);
-          return `<tr><td class="col-opc">${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${seloSituacaoPedido((a.situacaoPedidos || {})[p.nrPedido])}</td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td class="col-opc">${esc(c.canal) || '—'}</td></tr>`;
+          return `<tr><td class="col-opc">${esc(p.clienteCodigo)}</td><td class="quebra">${esc(p.clienteNome)}${c.cnpj ? `<div class="form-hint" style="margin:0">${htmlCnpj(c.cnpj)}</div>` : ''}</td><td><strong>${esc(p.nrPedido)}</strong></td><td>${seloSituacaoPedido((a.situacaoPedidos || {})[p.nrPedido])}</td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(c.cidade) || '—'}</td><td class="col-opc">${esc(c.canal) || '—'}</td></tr>`;
         }).join('')}</tbody>
       </table></div>
       ${a.situacaoPedidosEm ? `<div class="form-hint">Situação dos pedidos no SAP atualizada em ${dataHoraBR(a.situacaoPedidosEm)}.</div>` : ''}
@@ -3176,6 +3605,7 @@ function abrirDetalheAgendamento(id) {
         <tbody>${itensDoAgendamento(a).map((i) => `<tr><td>${esc(i.pedido)}</td><td class="col-opc">${esc(i.codigo)}</td><td class="quebra">${esc(i.descricao)}</td><td class="num">${formatVolume(i.volume)}</td></tr>`).join('')}</tbody>
       </table></div>
     </div>
+    ${htmlAlocacaoDoAgendamento(a)}
     ${a.status === 'cancelado' ? `<div class="form-hint">Cancelado por ${esc(a.canceladoPor)} em ${a.canceladoEm ? new Date(a.canceladoEm).toLocaleString('pt-BR') : ''}</div>` : ''}
     ${liberacaoTxt ? `<div class="aviso-revisar"><div class="cp-titulo">Liberação temporária do autoatendimento</div><div class="form-hint">${esc(liberacaoTxt)}</div></div>` : ''}
     <div class="modal-actions">
@@ -3396,9 +3826,41 @@ function fecharLiberacaoCadastro(reabrirDetalhe = true) {
 function itensDoAgendamento(a) {
   return Object.values(a.pedidos || {}).flatMap((p) => Object.values(p.itens || {}).map((i) => ({ pedido: p.nrPedido, ...i })));
 }
-// Cidade e canal gravados no agendamento; os antigos (sem canal) usam o cadastro, quando carregado
+// Alocação nos compartimentos feita no agendamento (alocacaoCompartimentos), uma linha por compartimento do tanque
+function compartimentosAlocados(a) {
+  const lista = a.alocacaoCompartimentos?.compartimentos;
+  return (Array.isArray(lista) ? lista : Object.values(lista || {})).filter(Boolean);
+}
+function descricaoCompartimento(a, c) {
+  return c.descricao || a.pedidos?.[c.ordemVenda]?.itens?.[c.produto]?.descricao || `Produto ${c.produto}`;
+}
+function htmlAlocacaoDoAgendamento(a) {
+  const comps = compartimentosAlocados(a);
+  if (!comps.length) return '';
+  const aloc = a.alocacaoCompartimentos;
+  return `<div class="info-item" style="margin-bottom:14px"><div class="info-lbl">Alocação nos compartimentos</div>
+    <div class="form-hint" style="margin:2px 0 0">Feita por ${esc(aloc.feitaPor || '—')}${aloc.feitaEm ? ` em ${dataHoraBR(aloc.feitaEm)}` : ''}. No check-in, o motorista confere com o veículo e pode ajustar.</div>
+    <div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
+      <thead><tr><th>Placa</th><th>CT</th><th class="num">Capacidade</th><th>Produto</th><th>Pedido</th><th class="num">Volume</th></tr></thead>
+      <tbody>${comps.map((c) => `<tr><td>${esc(c.placa)}</td><td>CT ${pad2(c.indicePlaca)}</td><td class="num">${formatVolume(c.capacidadeLitros)}</td>
+        ${c.ordemVenda ? `<td class="quebra">${esc(descricaoCompartimento(a, c))}</td><td class="quebra">${htmlPedidoDoAgendamento(a, c.ordemVenda)}</td><td class="num">${formatVolume(c.volumeLitros)}</td>`
+          : '<td class="texto-mudo" colspan="3">Vazio</td>'}</tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+// Cidade, canal e CNPJ gravados no agendamento; os antigos (sem canal ou sem CNPJ) usam o cadastro, quando carregado
+// (só o admin), e o CNPJ do pedido na carteira, enquanto ele estiver nela
 function clienteDoPedido(a, p) {
-  return { ...(STATE.clientes[p.clienteCodigo] || {}), ...((a.clientes || {})[p.clienteCodigo] || {}) };
+  const c = { ...(STATE.clientes[p.clienteCodigo] || {}), ...((a.clientes || {})[p.clienteCodigo] || {}) };
+  if (!c.cnpj) c.cnpj = STATE.pedidosCarteira?.[p.nrPedido]?.clienteCnpj || '';
+  return c;
+}
+// Pedido de um agendamento com o cliente: "Pedido 935958 · nome · cidade · CNPJ …"
+function htmlPedidoDoAgendamento(a, nr) {
+  const p = a.pedidos?.[nr];
+  if (!p) return htmlPedidoCliente(nr);
+  const c = clienteDoPedido(a, p);
+  return htmlPedidoCliente(nr, { ...c, nome: p.clienteNome || c.nome });
 }
 
 async function cancelarAgendamento(id) {
@@ -3474,7 +3936,8 @@ function abrirTrocaPedidos(id) {
     <div class="modal-sub">${esc([a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`, a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`,
       a.placaCavalo, a.motorista].filter(Boolean).join(' · '))}</div>
     <div class="form-hint" style="margin:0 0 12px">O agendamento continua o mesmo (protocolo, ${a.baseTipo === 'agendamento' ? 'horário' : 'turno'}, veículo e motorista); muda só a lista de pedidos.
-      Entra pedido do mesmo cliente, com todo o saldo de todos os produtos.</div>
+      Entra pedido do mesmo cliente, com todo o saldo de todos os produtos.${compartimentosAlocados(a).length
+        ? ' Salvar apaga a alocação nos compartimentos feita no agendamento: o motorista aloca no check-in.' : ''}</div>
     <div id="trocaLista"></div>
     <div class="form-hint" id="trocaStatus"></div>
     <div id="trocaCandidatos"></div>
@@ -3510,8 +3973,9 @@ function renderTrocaPedidos() {
   if (!atual) return;
   const { t, a } = atual;
   const { agendados, novos, foraDaCarteira, total } = resultadoTroca(t, a);
-  const linha = (p, troca, situacao, volume, acao) => `<tr class="${troca === 'sai' ? 'troca-sai' : ''}">
-    <td><strong>${esc(p.nrPedido)}</strong></td><td class="quebra">${esc(p.clienteNome)}</td><td>${esc(p.tipoFrete) || '—'}</td>
+  // `cliente`: o gravado no agendamento (pedidos que ficam ou saem) ou o da carteira (pedidos que entram)
+  const linha = (p, troca, situacao, volume, acao, cliente) => `<tr class="${troca === 'sai' ? 'troca-sai' : ''}">
+    <td><strong>${esc(p.nrPedido)}</strong></td><td class="quebra">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${detalheCliente({ ...cliente, codigo: '' })}</div></td><td>${esc(p.tipoFrete) || '—'}</td>
     <td>${situacao}</td><td class="num">${volume}</td><td>${TROCA_SELO[troca]}</td><td>${acao}</td></tr>`;
   const botao = (texto, onclick, titulo, cls = 'btn-secondary') => `<button type="button" class="btn ${cls} btn-sm" onclick="${onclick}" title="${titulo}">${texto}</button>`;
   const desistir = (nr) => `<button type="button" class="item-remove" onclick="removerPedidoNovoTroca(${jsArg(nr)})" title="Desistir deste pedido">✕</button>`;
@@ -3520,10 +3984,11 @@ function renderTrocaPedidos() {
     const sai = t.saem.has(p.nrPedido);
     return linha(p, sai ? 'sai' : 'fica', seloSituacaoPedido((a.situacaoPedidos || {})[p.nrPedido]), formatVolume(volumeNoAgendamento(p)),
       sai ? botao('Manter', `manterPedidoTroca(${jsArg(p.nrPedido)})`, 'Deixar este pedido no agendamento')
-        : botao('Tirar', `tirarPedidoTroca(${jsArg(p.nrPedido)})`, 'Tirar este pedido do agendamento'));
+        : botao('Tirar', `tirarPedidoTroca(${jsArg(p.nrPedido)})`, 'Tirar este pedido do agendamento'),
+      clienteDoPedido(a, p));
   });
   const entram = [
-    ...novos.map((p) => linha(p, 'entra', '—', volumeComTotal(saldoDoPedido(p, agendados), p), desistir(p.nrPedido))),
+    ...novos.map((p) => linha(p, 'entra', '—', volumeComTotal(saldoDoPedido(p, agendados), p), desistir(p.nrPedido), clienteDoPedidoSap(p))),
     ...foraDaCarteira.map((nr) => `<tr><td><strong>${esc(nr)}</strong></td><td colspan="5" class="texto-perigo">Saiu da carteira (faturado ou cancelado): tire e escolha outro.</td><td>${desistir(nr)}</td></tr>`),
   ];
   const capacidade = a.capacidadeVeiculo;
@@ -3536,7 +4001,7 @@ function renderTrocaPedidos() {
 
   const el = document.getElementById('trocaCandidatos');
   const clientes = Object.entries(a.clientes || {});
-  const titulo = `<div class="info-lbl" style="margin-top:18px">Pedidos vigentes de ${esc(clientes.map(([cd, c]) => `${c.nome || cd} (${cd})`).join(', '))}</div>`;
+  const titulo = `<div class="info-lbl" style="margin-top:18px">Pedidos vigentes de ${esc(clientes.map(([cd, c]) => `${c.nome || cd} (${[cd, c.cidade, rotuloCnpj(c.cnpj || STATE.clientes[cd]?.cnpj)].filter(Boolean).join(' · ')})`).join(', '))}</div>`;
   if (!STATE.pedidosCarteira) { el.innerHTML = titulo + '<div class="chip-empty" style="margin-top:6px">Carregando a carteira de pedidos…</div>'; return; }
   const { entram: podem, naoEntram, outrasBases } = candidatosTroca(t, a);
   const variosClientes = clientes.length > 1;
@@ -3545,7 +4010,7 @@ function renderTrocaPedidos() {
     <div class="tabela-scroll" style="margin-top:6px"><table class="tabela-itens">
       <thead><tr><th>Pedido</th>${variosClientes ? '<th>Cliente</th>' : ''}<th>DT. Faturamento</th><th>Frete</th><th>Produtos</th><th class="num">Volume</th><th></th></tr></thead>
       <tbody>${podem.map(({ p, volume }) => `<tr>
-        <td><strong>${esc(p.nrPedido)}</strong></td>${variosClientes ? `<td class="quebra">${esc(p.clienteNome)}</td>` : ''}
+        <td><strong>${esc(p.nrPedido)}</strong></td>${variosClientes ? `<td class="quebra">${esc(p.clienteNome)}<div class="form-hint" style="margin:0">${detalheCliente({ ...clienteDoPedidoSap(p), codigo: '' })}</div></td>` : ''}
         <td>${formatDataBR(p.dataEntrega)}</td><td>${esc(p.tipoFrete) || '—'}</td><td class="quebra">${esc(produtos(p))}</td>
         <td class="num">${volumeComTotal(volume, p)}</td>
         <td>${botao('Adicionar', `adicionarPedidoTroca(${jsArg(p.nrPedido)})`, 'Colocar este pedido no agendamento', 'btn-primary')}</td></tr>`).join('')}</tbody>
@@ -3683,6 +4148,9 @@ function montarTrocaPedidos(id, a, sairam, novos, neste, total) {
   }
   const agora = new Date().toISOString();
   const por = STATE.usuario.nome || STATE.usuario.email;
+  // A alocação feita no agendamento era destes pedidos: sai junto (o motorista aloca no check-in)
+  const apagaAlocacao = !!a.alocacaoCompartimentos;
+  if (apagaAlocacao) updates[`${raiz}/alocacaoCompartimentos`] = null;
   Object.assign(updates, {
     [`${raiz}/clientesLista`]: [...clientes],
     [`${raiz}/volumeTotal`]: total,
@@ -3693,6 +4161,7 @@ function montarTrocaPedidos(id, a, sairam, novos, neste, total) {
       em: agora, por, porUid: STATE.usuario.uid,
       saiu: sairam.map((nr) => ({ nrPedido: nr, situacao: (a.situacaoPedidos || {})[nr] || null, volume: volumeNoAgendamento(a.pedidos[nr]) })),
       entrou,
+      ...(apagaAlocacao ? { alocacaoApagada: true } : {}),
     },
   });
   return updates;
@@ -3729,7 +4198,8 @@ function abrirAlteracao(id) {
   document.getElementById('alt-titulo').textContent = `Alterar veículo e motorista · ${a.protocolo}`;
   document.getElementById('alt-sub').textContent = [a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`,
     a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`].filter(Boolean).join(' · ');
-  document.getElementById('alt-volumeTxt').textContent = `O veículo precisa levar o volume deste carregamento: ${formatVolume(a.volumeTotal)}.`;
+  document.getElementById('alt-volumeTxt').textContent = `O veículo precisa levar o volume deste carregamento: ${formatVolume(a.volumeTotal)}.`
+    + (compartimentosAlocados(a).length ? ' Trocar as placas apaga a alocação nos compartimentos feita no agendamento: o motorista aloca no check-in.' : '');
   mostrarErroAlteracao('');
   renderStatusVeiculo(f);
   renderStatusMotorista(f);
@@ -3845,10 +4315,14 @@ function montarAlteracao(id, a, m, veiculo, motoristaCad) {
     editadoEm: agora, editadoPor: por, editadoPorUid: STATE.usuario.uid,
   };
   const updates = Object.fromEntries(Object.entries(campos).map(([campo, valor]) => [`${raiz}/${campo}`, valor]));
+  // A alocação feita no agendamento é dos compartimentos do veículo antigo: sai junto (o motorista aloca no check-in)
+  const apagaAlocacao = !!veiculo && !!a.alocacaoCompartimentos;
+  if (apagaAlocacao) updates[`${raiz}/alocacaoCompartimentos`] = null;
   updates[`${raiz}/edicoes/${window._fb.novaChave(raiz + '/edicoes')}`] = {
     em: agora, por, porUid: STATE.usuario.uid,
     ...(veiculo ? { veiculo: { de: placasDoAgendamento(a).filter(Boolean), para: m.placas.filter(Boolean) } } : {}),
     ...(motoristaCad ? { motorista: { de: { nome: a.motorista || null, cpf: a.motoristaCpf || null }, para: { nome: m.nome, cpf: m.cpf } } } : {}),
+    ...(apagaAlocacao ? { alocacaoApagada: true } : {}),
   };
   return Object.assign(updates, cadastrosProvisorios({ protocolo: a.protocolo, em: agora, placas: m.placas, veiculo, motorista: m.nome, motoristaCpf: m.cpf, motoristaCad }));
 }
@@ -4896,16 +5370,26 @@ async function gerarPdfAgendamento(a) {
   };
   const direita = (v) => ({ content: v, styles: { halign: 'right' } });
 
-  tabela('PEDIDOS', ['Cód. cliente', 'Cliente', 'Pedido', 'Frete', 'Cidade', 'Canal'],
+  // CNPJ por extenso; CPF (cliente pessoa física) mascarado como o do motorista, porque o comprovante circula impresso
+  const docPdf = (doc) => (soDigitos(doc).length === 11 ? cpfOculto(doc) : formatCnpj(doc) || '-');
+  tabela('PEDIDOS', ['Cód. cliente', 'Cliente', 'Pedido', 'Frete', 'Cidade', 'CNPJ', 'Canal'],
     Object.values(a.pedidos || {}).map((p) => {
       const c = clienteDoPedido(a, p);
-      return [p.clienteCodigo, p.clienteNome, p.nrPedido, p.tipoFrete || '-', c.cidade || '-', c.canal || '-'].map(pdfTxt);
+      return [p.clienteCodigo, p.clienteNome, p.nrPedido, p.tipoFrete || '-', c.cidade || '-', docPdf(c.cnpj), c.canal || '-'].map(pdfTxt);
     }),
     { columnStyles: { 2: { fontStyle: 'bold' } } });
 
   tabela('PRODUTOS', ['Pedido', 'Código', 'Produto', direita('Volume')],
     itensDoAgendamento(a).map((i) => [pdfTxt(i.pedido), pdfTxt(i.codigo), pdfTxt(i.descricao), direita(formatVolume(i.volume))]),
     { foot: [['', '', 'Total', direita(formatVolume(a.volumeTotal))]], showFoot: 'lastPage' });
+
+  // Alocação feita no agendamento: o motorista confere no check-in
+  const alocados = compartimentosAlocados(a);
+  if (alocados.length) {
+    tabela(pdfTxt('ALOCAÇÃO NOS COMPARTIMENTOS (O MOTORISTA CONFERE NO CHECK-IN)'), ['Placa', 'CT', direita('Capacidade'), 'Produto', 'Pedido', direita('Volume')],
+      alocados.map((c) => [pdfTxt(c.placa), `CT ${pad2(c.indicePlaca)}`, direita(formatVolume(c.capacidadeLitros)),
+        ...(c.ordemVenda ? [pdfTxt(descricaoCompartimento(a, c)), pdfTxt(c.ordemVenda), direita(formatVolume(c.volumeLitros))] : ['Vazio', '-', direita('-')])]));
+  }
 
   // Rodapé em todas as páginas
   const geradoEm = new Date().toLocaleString('pt-BR');
@@ -5210,7 +5694,7 @@ function renderCadastroClientes() {
   const lista = objList(STATE.clientes).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   el.innerHTML = lista.length ? lista.map((c) => `
     <div class="list-item">
-      <div><strong>${esc(c.nome)}</strong> <span class="meta">${[esc(c.codigo), esc(c.cidade), c.canal ? 'canal ' + esc(c.canal) : ''].filter(Boolean).join(' · ')}</span></div>
+      <div><strong>${esc(c.nome)}</strong> <span class="meta">${[esc(c.codigo), esc(c.cidade), htmlCnpj(c.cnpj), c.canal ? 'canal ' + esc(c.canal) : ''].filter(Boolean).join(' · ')}</span></div>
       <div class="list-item-actions">
         <span class="badge ${c.ativo === false ? 'badge-muted' : 'badge-success'}">${c.ativo === false ? 'Inativo' : 'Ativo'}</span>
         <button class="btn btn-secondary btn-sm" onclick="toggleAtivo('Cliente',${jsArg(c.id)},${c.ativo === false})">${c.ativo === false ? 'Ativar' : 'Desativar'}</button>
