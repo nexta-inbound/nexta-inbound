@@ -187,6 +187,8 @@
             </div>
             <label class="campo" data-se="transportador"><span>Transportador</span><select id="inb-transportador"></select></label>
             <label class="marcacao" data-se="staff"><input type="checkbox" id="inb-admin"> Admin do Inbound</label>
+            <label class="marcacao" data-se="staff"><input type="checkbox" id="inb-estorno"> Estorno pedágio</label>
+            <p class="nota" data-se="staff">Estorno pedágio: depois de estornar o vale-pedágio na Pamcard, a pessoa libera no Gerenciar Viagem a viagem travada pela compra.</p>
             <div class="campo" data-se="abas"><span>Abas do portal</span>
               <div class="opcoes-linha" role="radiogroup" aria-label="Abas do Inbound">
                 <label class="marcacao"><input type="radio" name="inb-abas-modo" value="todas"> Todas as abas</label>
@@ -316,7 +318,7 @@
   const normalizar = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const PADRAO = {
-    inbound: { tipo: 'staff', transportadorNome: '', admin: false, abas: null },
+    inbound: { tipo: 'staff', transportadorNome: '', admin: false, abas: null, estornoPedagio: false },
     agendamento: { tipo: 'interno', clientes: [], admin: false },
     solicitacoes: { papeis: [], admin: false, telefone: '' },
     simulador: { perfil: '', regiao: '', bases: [], editaAberturas: false },
@@ -547,6 +549,7 @@
       bloco.querySelectorAll('input[name="inb-tipo"]').forEach(r => { r.checked = r.value === p.tipo; });
       preencherTransportadores(p.transportadorNome);
       $('inb-admin').checked = p.admin;
+      $('inb-estorno').checked = p.estornoPedagio === true;
       bloco.querySelectorAll('input[name="inb-abas-modo"]').forEach(r => { r.checked = r.value === (p.abas ? 'personalizado' : 'todas'); });
       preencherAbasInbound(p.abas);
     } else if (sistema === 'agendamento') {
@@ -574,7 +577,8 @@
 
   function lerPerfil(sistema) {
     if (sistema === 'inbound') {
-      const perfil = { tipo: valorRadio('inb-tipo') || 'staff', transportadorNome: $('inb-transportador').value, admin: $('inb-admin').checked };
+      const perfil = { tipo: valorRadio('inb-tipo') || 'staff', transportadorNome: $('inb-transportador').value, admin: $('inb-admin').checked,
+        estornoPedagio: $('inb-estorno').checked };  // o servidor apaga para transportador
       if (abasInbound().length) {  // null = todas (também para admin e transportador, que não usam o campo)
         const personalizado = perfil.tipo === 'staff' && !perfil.admin && valorRadio('inb-abas-modo') === 'personalizado';
         perfil.abas = personalizado ? lerAbasInbound() : null;
