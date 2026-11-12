@@ -17086,6 +17086,12 @@ async function informarEstornoPedagio() {
     ped.idViagemPamcard ? `Pamcard ${ped.idViagemPamcard}` : '',
     ped.valorPedagio ? `R$ ${Number(ped.valorPedagio).toFixed(2).replace('.', ',')}` : '',
   ].filter(Boolean).join(' · ');
+  // Pergunta separada antes do motivo (2026-11-12, pedido da Logística: "perguntar: tem certeza que o pedágio foi
+  // cancelado?") — o aviso dentro do prompt passava despercebido. Cancelar aqui não muda nada.
+  if (!confirm(
+    `⚠️ Tem certeza que o pedágio da viagem ${v.idViagem} já foi ESTORNADO na Pamcard?` + (compra ? `\n(${compra})` : '') + '\n\n'
+    + 'Só clique em OK se o time de pagamento de frete já confirmou o estorno. Se ainda não, clique em Cancelar.'
+  )) return;
   const motivo = (prompt(
     `Liberar a viagem ${v.idViagem} para edição?` + (compra ? ` (${compra})` : '') + '\n\n'
     + 'Confirme só depois que o vale-pedágio foi estornado na Pamcard. A compra automática de pedágio fica '
