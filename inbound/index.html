@@ -8720,7 +8720,7 @@ function renderViagensTable() {
             onclick="toggleSelectViagem(${realIdx}, this.checked)"
             style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">
         </td>
-        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Programador, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>` : ''}${cancelada ? ` <span style="cursor:help" title="Viagem cancelada — somente leitura. Para reabrir, solicitar a um administrador.">⛔</span>` : ''}</td>
+        <td class="cell-id-viagem">${v.idViagem}${pedagioTravado ? (podeInformarEstornoPedagio() ? ` <span style="cursor:pointer" title="Pedágio já comprado. Clique para liberar a viagem (só depois do estorno na Pamcard)." onclick="liberarPedagioPelaTabela(${realIdx})">🔒</span>` : ` <span style="cursor:help" title="Pedágio já comprado — edição de transportador/placa/status/volume/pedido MIS bloqueada. Só Destino (mesmo CNPJ), Datas, Programador, Motorista e Observação continuam editáveis. Para liberar, solicitar ao time de pagamento frete estornar o pedágio e à equipe indicadores excluir o log Pamcard.">🔒</span>`) : ''}${cancelada ? ` <span style="cursor:help" title="Viagem cancelada — somente leitura. Para reabrir, solicitar a um administrador.">⛔</span>` : ''}</td>
         <td class="cell-pedido-mis col-pedido-mis">
           <input class="placa-input" style="width:100px;text-transform:none;font-size:12px;font-family:var(--font-cond)"
             value="${esc(v.cadenciaOrigem || '')}" placeholder="Pedido MIS" title="${esc(v.cadenciaOrigem)}"
@@ -17067,6 +17067,20 @@ function orientacaoEstornoPedagio() {
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   return 'Para alterar, peça ao time de pagamento de frete o estorno do pedágio na Pamcard; depois do estorno, a viagem é liberada por quem tem a permissão "Estorno pedágio"'
     + (nomes.length ? ': ' + nomes.join(', ') + '.' : '.');
+}
+
+// Liberar direto no 🔒 da tabela Gerir Viagens (2026-11-12, pedido da Logística: "no próprio pedágio tivesse pra eu
+// editar"), sem abrir o Gerenciar Viagem. Mesmo fluxo do botão do modal (confirmação do estorno + motivo).
+async function liberarPedagioPelaTabela(realIdx) {
+  if (!podeInformarEstornoPedagio()) return;
+  const modalAberto = () => document.getElementById('modalOverlay').classList.contains('open');
+  if (modalAberto()) return;
+  editingIdx = realIdx;
+  try {
+    await informarEstornoPedagio();
+  } finally {
+    if (!modalAberto()) editingIdx = null;
+  }
 }
 
 async function informarEstornoPedagio() {
