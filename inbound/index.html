@@ -8738,8 +8738,8 @@ function renderViagensTable() {
           ${renderSeletorDestino(v, realIdx)}
         </td>
         <td class="cell-periodo col-data-desejada"${(isTransportador() || cancelada) ? '' : ` style="cursor:pointer" onclick="abrirModalDataDesejada(${realIdx})" title="Clique para editar a Data Desejada"`}>
-          <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtDataAno(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtCarregOriginal)) + '">✎</span>' : ''}</div>
-          <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtDataAno(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtDescOriginal)) + '">✎</span>' : ''}</div>
+          <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtDataAno(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtCarregOriginal)) + '">✎</span>' : ''} ${marcaAvisoData(problemaData(v.dtCarreg, 'Data Desejada (carregamento)'))}</div>
+          <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtDataAno(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtDescOriginal)) + '">✎</span>' : ''} ${marcaAvisoData(problemaData(v.dtDesc, 'Data Desejada (descarga)'))}</div>
         </td>
         <td class="cell-periodo col-data-programacao" data-label="Data Programação">
           <div style="display:flex;align-items:center;gap:4px">
@@ -8823,9 +8823,25 @@ function parseDMY(s) {
 // Data Programação a mais de 15 dias da Data Desejada da mesma viagem. Ano errado = ~365 dias, sempre cai
 // aqui; reprogramação real longa também, e vale conferir. Só avisa: não bloqueia nem altera nada.
 const DIAS_AVISO_DATA_DISTANTE = 15;
+// Data "estranha" (2026-11-12, pedido da Logística: "se for uma data estranha, meio que mostra tbm"):
+// formato quebrado (ex.: "141/07/2026", "04/07" sem ano), dia/mês que não existe, ou ano a mais de 1 ano de hoje.
+function problemaData(s, nome) {
+  if (!s || s === '-') return '';
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return `${nome} com formato estranho (${s}). Use DD/MM/AAAA.`;
+  const dia = +m[1], mes = +m[2], ano = +m[3];
+  const d = new Date(ano, mes - 1, dia);
+  if (d.getFullYear() !== ano || d.getMonth() !== mes - 1 || d.getDate() !== dia) return `${nome} não existe no calendário (${s}).`;
+  const atual = new Date().getFullYear();
+  if (ano < atual - 1 || ano > atual + 1) return `${nome} com ano estranho (${s}). Confira o ano.`;
+  return '';
+}
+
 function avisoDataDistante(dataProg, dataDesejada) {
+  const estranha = problemaData(dataProg, 'Data Programação');
+  if (estranha) return estranha;
   const a = parseDMY(dataProg), b = parseDMY(dataDesejada);
-  if (!a || !b || isNaN(a) || isNaN(b)) return '';
+  if (!a || !b || isNaN(a) || isNaN(b) || problemaData(dataDesejada, 'x')) return '';
   const dias = Math.round((a - b) / 86400000);
   if (Math.abs(dias) <= DIAS_AVISO_DATA_DISTANTE) return '';
   return `Data Programação (${dataProg}) está ${Math.abs(dias)} dias ${dias > 0 ? 'depois' : 'antes'} da Data Desejada (${dataDesejada}). Confira o ano e a data.`;
