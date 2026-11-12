@@ -8712,7 +8712,7 @@ function renderViagensTable() {
     const pedagioTravado = pedagioComprado(v);
     const cancelada = viagemCancelada(v);
     const alertaCarreg = avisoDataDistante(progCarreg, v.dtCarreg);
-    const alertaDesc = avisoDataDistante(progDesc, v.dtDesc);
+    const alertaDesc = descargaAntesDoCarregamento(progCarreg, horaCarreg, progDesc, horaDesc) || avisoDataDistante(progDesc, v.dtDesc);
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -8848,6 +8848,14 @@ function avisoDataDistante(dataProg, dataDesejada) {
 }
 function marcaAvisoData(texto) {
   return texto ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="${esc(texto)}">⚠</span>` : '';
+}
+// Trava (2026-11-12, pedido da Logística: "deixar bloqueado uma data de descarga antes do dia de carregar"):
+// devolve a mensagem quando a descarga (data+hora) cai antes do carregamento; '' se ok ou se falta data.
+// Usada para BLOQUEAR o salvamento (edição inline, agendamento, Data Desejada) e para marcar ⚠ nas viagens antigas.
+function descargaAntesDoCarregamento(dtCarreg, horaCarreg, dtDesc, horaDesc) {
+  const c = parseDataHora(dtCarreg, horaCarreg), d = parseDataHora(dtDesc, horaDesc);
+  if (!c || !d || isNaN(c) || isNaN(d) || d >= c) return '';
+  return `Descarga (${dtDesc} ${horaDesc || '12:00'}) está ANTES do carregamento (${dtCarreg} ${horaCarreg || '12:00'}).`;
 }
 
 // Filtro de período "DD/MM" sem ano — assume o ano atual (evita digitar o ano a cada filtro).
@@ -15197,6 +15205,11 @@ async function salvarModalDataDesejada() {
     return;
   }
 
+  if (novoCarreg !== '-' && parseDMY(novoDesc) < parseDMY(novoCarreg)) {
+    alert(`⛔ A Data de Descarga (${novoDesc}) não pode ser antes da Data de Carregamento (${novoCarreg}).`);
+    return;
+  }
+
   const anteriorCarreg = v.dtCarreg || '-';
   const anteriorDesc = v.dtDesc || '-';
   if (novoCarreg === anteriorCarreg && novoDesc === anteriorDesc) { fecharModalDataDesejada(); return; }
@@ -15302,6 +15315,20 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
   }
   if (novo === anterior && novaHora === horaAnterior) return;
   if (bloqueadoPorCancelamento(v)) { renderViagensTable(); return; }
+  // Trava descarga antes do carregamento. Carregamento com leadtime cadastrado recalcula a descarga
+  // (sempre depois), então só checa o carregamento quando a rota não tem leadtime.
+  if (novo !== '-') {
+    const semLt = buscarLeadtimeHorasParaViagem(v) === null;
+    const erro = tipo === 'desc'
+      ? descargaAntesDoCarregamento(v.dtCarregProg || v.dtCarreg, v.horaCarregProg, novo, novaHora)
+      : (semLt ? descargaAntesDoCarregamento(novo, novaHora, v.dtDescProg || v.dtDesc, v.horaDescProg) : '');
+    if (erro) {
+      alert(`⛔ Não salvo: ${erro}\n\nA descarga não pode ser antes do carregamento.` +
+        (tipo === 'carreg' ? '\nEsta rota não tem leadtime cadastrado, então a descarga não se recalcula sozinha: ajuste a descarga primeiro (ou cadastre a rota na aba Leadtime).' : ''));
+      renderViagensTable();
+      return;
+    }
+  }
   let motivo = null;
   if (novo !== anterior) {
     motivo = await pedirMotivoProgramacao();
@@ -15739,6 +15766,13 @@ async function salvarAgendamentoInline(realIdx, valor) {
     if (!confirmado) { renderViagensTable(); return; }
     if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
     if (confirmado.data !== dataProgAtual || confirmado.hora !== horaProgAtual) {
+      const erroDesc = buscarLeadtimeHorasParaViagem(v) === null
+        ? descargaAntesDoCarregamento(confirmado.data, confirmado.hora, v.dtDescProg || v.dtDesc, v.horaDescProg) : '';
+      if (erroDesc) {
+        alert(`⛔ Não salvo: ${erroDesc}\n\nA descarga não pode ser antes do carregamento. Esta rota não tem leadtime cadastrado: ajuste a descarga primeiro (ou cadastre a rota na aba Leadtime).`);
+        renderViagensTable();
+        return;
+      }
       let motivo = null;
       if (confirmado.data !== dataProgAtual) {
         motivo = await pedirMotivoProgramacao();
