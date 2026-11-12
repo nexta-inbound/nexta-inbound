@@ -1096,7 +1096,7 @@
   }
   th.col-data-desejada, th.col-data-programacao, th.col-eta-herrlog {
     white-space: normal;
-    max-width: 96px;
+    max-width: 120px;
     line-height: 1.3;
   }
   /* Quebra automática em Origem/Destino (aba Monitoramento) — reduz a largura dessas
@@ -8711,6 +8711,8 @@ function renderViagensTable() {
     const descEditavel = v.status === 'CIF' && !isTransportador();
     const pedagioTravado = pedagioComprado(v);
     const cancelada = viagemCancelada(v);
+    const alertaCarreg = avisoDataDistante(progCarreg, v.dtCarreg);
+    const alertaDesc = avisoDataDistante(progDesc, v.dtDesc);
     return `
       <tr class="${isSelected ? 'row-selected' : ''}">
         <td class="col-checkbox" style="padding:10px 8px;width:36px;text-align:center">
@@ -8736,27 +8738,29 @@ function renderViagensTable() {
           ${renderSeletorDestino(v, realIdx)}
         </td>
         <td class="cell-periodo col-data-desejada"${(isTransportador() || cancelada) ? '' : ` style="cursor:pointer" onclick="abrirModalDataDesejada(${realIdx})" title="Clique para editar a Data Desejada"`}>
-          <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtShort(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtCarregOriginal)) + '">✎</span>' : ''}</div>
-          <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtShort(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtShort(v.dtDescOriginal)) + '">✎</span>' : ''}</div>
+          <div class="date-start">↑ ${v.dtCarreg && v.dtCarreg !== '-' ? esc(fmtDataAno(v.dtCarreg)) : '—'}${v.dtCarregOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtCarregOriginal)) + '">✎</span>' : ''}</div>
+          <div class="date-end">↓ ${v.dtDesc && v.dtDesc !== '-' ? esc(fmtDataAno(v.dtDesc)) : '—'}${v.dtDescOriginal ? ' <span style="color:var(--text-dim);font-size:11px" title="Ajustada manualmente — original da cadência: ' + esc(fmtDataAno(v.dtDescOriginal)) + '">✎</span>' : ''}</div>
         </td>
         <td class="cell-periodo col-data-programacao" data-label="Data Programação">
           <div style="display:flex;align-items:center;gap:4px">
             <span class="filter-sep" style="font-size:10px">↑</span>
-            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)"
-              value="${progCarreg === '-' ? '' : esc(fmtShort(progCarreg)) + ' ' + esc(horaCarreg)}" placeholder="DD/MM HH:mm" maxlength="11"
+            <input class="placa-input" style="width:108px;text-transform:none;font-family:var(--font-cond)${alertaCarreg ? ';border:2px solid var(--danger)' : ''}"
+              value="${progCarreg === '-' ? '' : esc(fmtDataAno(progCarreg)) + ' ' + esc(horaCarreg)}" placeholder="DD/MM/AA HH:mm" maxlength="16"
               onblur="salvarDataProgramacaoInline(${realIdx}, 'carreg', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
               ${(isTransportador() || cancelada) ? 'disabled' : ''}>
+            ${marcaAvisoData(alertaCarreg)}
             ${v.alertaProgramacao ? `<span style="color:var(--accent2);font-size:13px;cursor:help;flex-shrink:0" title="Data alterada após o aceite — confira com o transportador">⚠</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
             <span class="filter-sep" style="font-size:10px">↓</span>
-            <input class="placa-input" style="width:88px;text-transform:none;font-family:var(--font-cond)${descEditavel ? '' : ';opacity:0.7;cursor:not-allowed'}"
-              value="${progDesc === '-' ? '' : esc(fmtShort(progDesc)) + ' ' + esc(horaDesc)}" placeholder="DD/MM HH:mm" maxlength="11"
+            <input class="placa-input" style="width:108px;text-transform:none;font-family:var(--font-cond)${descEditavel ? '' : ';opacity:0.7;cursor:not-allowed'}${alertaDesc ? ';border:2px solid var(--danger);opacity:1' : ''}"
+              value="${progDesc === '-' ? '' : esc(fmtDataAno(progDesc)) + ' ' + esc(horaDesc)}" placeholder="DD/MM/AA HH:mm" maxlength="16"
               onblur="salvarDataProgramacaoInline(${realIdx}, 'desc', this.value)"
               onkeydown="if(event.key==='Enter')this.blur()"
               ${descEditavel ? '' : 'disabled'}
               title="${descEditavel ? 'Viagem CIF — data de descarga editável manualmente' : 'Calculado automaticamente a partir do carregamento + leadtime (Fornecedores + aba Leadtime) — não editável diretamente'}">
+            ${marcaAvisoData(alertaDesc)}
             ${(!descEditavel && semLeadtime) ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="Sem leadtime cadastrado para Origem × Destino desta viagem — a descarga não é calculada automaticamente. Cadastre a rota na aba Leadtime (casando as cidades de Fornecedores e Bases) e reedite o carregamento.">⚠</span>` : ''}
           </div>
         </td>
@@ -8815,6 +8819,21 @@ function parseDMY(s) {
   return new Date(+p[2], +p[1] - 1, +p[0]);
 }
 
+// Aviso visual (2026-11-12, pedido da Logística: "aparecer alguma corzinha avisando que o ano ta errado"):
+// Data Programação a mais de 15 dias da Data Desejada da mesma viagem. Ano errado = ~365 dias, sempre cai
+// aqui; reprogramação real longa também, e vale conferir. Só avisa: não bloqueia nem altera nada.
+const DIAS_AVISO_DATA_DISTANTE = 15;
+function avisoDataDistante(dataProg, dataDesejada) {
+  const a = parseDMY(dataProg), b = parseDMY(dataDesejada);
+  if (!a || !b || isNaN(a) || isNaN(b)) return '';
+  const dias = Math.round((a - b) / 86400000);
+  if (Math.abs(dias) <= DIAS_AVISO_DATA_DISTANTE) return '';
+  return `Data Programação (${dataProg}) está ${Math.abs(dias)} dias ${dias > 0 ? 'depois' : 'antes'} da Data Desejada (${dataDesejada}). Confira o ano e a data.`;
+}
+function marcaAvisoData(texto) {
+  return texto ? `<span style="color:var(--danger);font-size:13px;cursor:help;flex-shrink:0" title="${esc(texto)}">⚠</span>` : '';
+}
+
 // Filtro de período "DD/MM" sem ano — assume o ano atual (evita digitar o ano a cada filtro).
 function parseDMSemAno(s) {
   const m = (s || '').trim().match(/^(\d{1,2})\/(\d{1,2})$/);
@@ -8828,6 +8847,31 @@ function fmtShort(s) {
   if (!s || s === '-') return '—';
   const p = s.split('/');
   return p.length >= 2 ? `${p[0]}/${p[1]}` : s;
+}
+
+// Data com o ano curto, "DD/MM/AA" (2026-11-12: sem o ano na tela, viagem gravada no ano errado
+// ficava invisível). Usada nas colunas Data Desejada e Data Programação.
+function fmtDataAno(s) {
+  if (!s || s === '-') return '—';
+  const p = s.split('/');
+  return p.length >= 3 && p[2] ? `${p[0]}/${p[1]}/${p[2].slice(-2)}` : fmtShort(s);
+}
+
+// Data digitada num campo de texto -> "DD/MM/AAAA". Aceita DD/MM/AA ou DD/MM/AAAA; sem o ano,
+// usa o ano que deixa a data mais perto de hoje (antes copiava o ano da data anterior da viagem,
+// o que propagava um ano errado e errava na virada de dezembro para janeiro).
+function dataDigitadaComAno(parteData) {
+  const p = (parteData || '').split('/');
+  if (p.length < 2 || !p[0] || !p[1]) return parteData;
+  const dd = p[0].padStart(2, '0'), mm = p[1].padStart(2, '0');
+  if (p[2]) return `${dd}/${mm}/${p[2].length === 2 ? '20' + p[2] : p[2]}`;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  let melhor = null;
+  for (const a of [hoje.getFullYear() - 1, hoje.getFullYear(), hoje.getFullYear() + 1]) {
+    const dist = Math.abs(new Date(a, +mm - 1, +dd) - hoje);
+    if (!melhor || dist < melhor.dist) melhor = { a, dist };
+  }
+  return `${dd}/${mm}/${melhor.a}`;
 }
 
 // Formata um ISO datetime (gravado pelo extracao_herrlog.py via .isoformat()) como "DD/MM HH:mm".
@@ -15217,11 +15261,9 @@ async function salvarDataProgramacaoInline(realIdx, tipo, valorInput) {
     novaHora = '12:00';
   } else {
     const [parteData, parteHora] = valor.split(/\s+/);
-    const partes = (parteData || '').split('/');
-    const ano = (anterior !== '-' ? anterior : desejado || '').split('/')[2] || String(new Date().getFullYear());
-    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : parteData;
+    novo = dataDigitadaComAno(parteData);
     if (!parseDMY(novo)) {
-      alert('Data inválida. Use o formato DD/MM HH:mm.');
+      alert('Data inválida. Use o formato DD/MM/AA HH:mm.');
       renderViagensTable();
       return;
     }
@@ -16868,10 +16910,10 @@ function renderMonitoramento() {
   const ehCarreg = subViewMonitoramento === 'carregamento';
   tbody.innerHTML = linhasFiltradas.map((l) => {
     const { v, mon, vsProgramacao, vsDesejada, vsProgramacaoCarreg, vsDesejadaCarreg } = l;
-    const dataDesejadaTxt = fmtShort(ehCarreg ? v.dtCarreg : v.dtDesc);
+    const dataDesejadaTxt = fmtDataAno(ehCarreg ? v.dtCarreg : v.dtDesc);
     const dataProgTxt = ehCarreg
-      ? `${fmtShort(v.dtCarregProg || v.dtCarreg)} ${esc(v.horaCarregProg || '12:00')}`
-      : `${fmtShort(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}`;
+      ? `${fmtDataAno(v.dtCarregProg || v.dtCarreg)} ${esc(v.horaCarregProg || '12:00')}`
+      : `${fmtDataAno(v.dtDescProg || v.dtDesc)} ${esc(v.horaDescProg || '12:00')}`;
     const etaCelula = ehCarreg ? renderChegadaOrigemHerrlog(mon) : renderEtaCelulaMon(v, mon);
     const badgeProg = badgeAderencia(ehCarreg ? vsProgramacaoCarreg : vsProgramacao);
     const badgeDes  = badgeAderencia(ehCarreg ? vsDesejadaCarreg : vsDesejada);
@@ -16913,11 +16955,11 @@ function renderBadgeFrete(v) {
 // Demais viagens continuam somente leitura, vindas da Herrlog (ver renderEtaHerrlog).
 function renderEtaCelulaMon(v, mon) {
   if (v.status !== 'CIF') return renderEtaHerrlog(mon);
-  const valorAtual = v.etaManualData ? `${fmtShort(v.etaManualData)} ${v.etaManualHora || '12:00'}` : '';
+  const valorAtual = v.etaManualData ? `${fmtDataAno(v.etaManualData)} ${v.etaManualHora || '12:00'}` : '';
   const idPicker = `eta-picker-${v.idViagem}`;
   return `
     <input class="placa-input" style="width:100%;text-transform:none;font-family:var(--font-cond)"
-      value="${esc(valorAtual)}" placeholder="DD/MM HH:mm" maxlength="11"
+      value="${esc(valorAtual)}" placeholder="DD/MM/AA HH:mm" maxlength="16"
       onblur="salvarEtaManualInline('${esc(v.idViagem)}', this.value)"
       onkeydown="if(event.key==='Enter')this.blur()"
       title="ETA informado por telefone pelo fornecedor (viagem CIF) — não vem da Herrlog">
@@ -17210,11 +17252,9 @@ function salvarEtaManualInline(idViagem, valorInput) {
     novaHora = '12:00';
   } else {
     const [parteData, parteHora] = valor.split(/\s+/);
-    const partes = (parteData || '').split('/');
-    const ano = (anterior !== '-' ? anterior.split('/')[2] : null) || String(new Date().getFullYear());
-    novo = partes.length >= 2 ? `${partes[0].padStart(2,'0')}/${partes[1].padStart(2,'0')}/${ano}` : parteData;
+    novo = dataDigitadaComAno(parteData);
     if (!parseDMY(novo)) {
-      alert('Data inválida. Use o formato DD/MM HH:mm.');
+      alert('Data inválida. Use o formato DD/MM/AA HH:mm.');
       renderMonitoramento();
       return;
     }
