@@ -312,13 +312,18 @@ function aberturaAtrasada(){if(record._registrosCombinados)return record._regist
 // laranja pra qualquer atraso, mas vermelho a partir de alguns dias (DIAS_ABERTURA_GRAVE). No modo
 // combinado usa a leitura MAIS atrasada entre as bases somadas (pior caso, mais conservador).
 const DIAS_ABERTURA_GRAVE=3;
+// Abertura que veio do MIS porque a base nao lancou no portal ate' as 10h (usuaria, 2026-11-13: "com uma cor diferente
+// ... com uma borda, pra avisar que nao puxou do portal"). sheet='MIS' vem do atualizar_dados.py; na base unificada
+// cada empresa fica em record.componentes (origem), no modo combinado em _registrosCombinados.
+function aberturaDoMis(){if(!record)return false;const regs=record._registrosCombinados||[record];return regs.some(r=>r&&(r.sheet==='MIS'||r.componentes?.some(c=>c.origem==='MIS')));}
+const AVISO_ABERTURA_MIS='Abertura do MIS: a base não preencheu no portal até as 10h. Se preencher depois, o valor do portal substitui este.';
 function diasAtrasoAbertura(){
  if(!record)return 0;
  const datas=(record._registrosCombinados?record._registrosCombinados.map(r=>r.aberturaEm):[record.aberturaEm]).filter(d=>d&&d!==D.date);
  if(!datas.length)return 0;
  return Math.max(...datas.map(d=>Math.round((new Date(D.date+'T12:00:00')-new Date(d+'T12:00:00'))/86400000)));
 }
-function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
+function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaDoMis()?'Abertura do MIS (base não preencheu no portal até 10h)':aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
 // Capacidade 0 = base/produto fora da planilha de tancagem (venda no bico): "Sem capacidade estabelecida".
 function semCapacidade(){return record?.capacidadeFisica===0;}
 // Modo combinado (2026-11-09: abertura do historico vinha "—"): o record sintetico nao tem chave no historico,
@@ -585,14 +590,16 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
  // Celula de abertura (dia 0) ganha um aviso visual quando a leitura nao e' de hoje — pedido da
  // usuaria, 2026-10-05: "mostra a ultima data que puxou... uma cor diferente pra mostrar que nao e'
  // a do dia". O detalhe de qual base exatamente (no combinado) fica no popup, ao passar o mouse/clicar.
- document.querySelectorAll('[data-result]').forEach(td=>{const i=+td.dataset.day,k=td.dataset.result;const v=i<0?valorPassado(k,i,result):result[i][k];const ehAbertura=k==='opening'&&i===0,dias=ehAbertura?diasAtrasoAbertura():0;td.textContent=(dias>0?'⚠ ':'')+fmt(v);td.className=(i<0?'history ': '')+(i===0?'today ':'')+(dias>0?(dias>=DIAS_ABERTURA_GRAVE?'atrasada-grave ':'atrasada '):'')+(k==='opening'?capBand(v):(['close','available'].includes(k)?(v==null?'':status(v)):''));});
+ document.querySelectorAll('[data-result]').forEach(td=>{const i=+td.dataset.day,k=td.dataset.result;const v=i<0?valorPassado(k,i,result):result[i][k];const ehAbertura=k==='opening'&&i===0,dias=ehAbertura?diasAtrasoAbertura():0,doMis=ehAbertura&&aberturaDoMis();td.textContent=(dias>0?'⚠ ':'')+fmt(v);if(ehAbertura)td.title=doMis?AVISO_ABERTURA_MIS:'';td.className=(i<0?'history ': '')+(i===0?'today ':'')+(doMis?'abertura-mis ':'')+(dias>0?(dias>=DIAS_ABERTURA_GRAVE?'atrasada-grave ':'atrasada '):'')+(k==='opening'?capBand(v):(['close','available'].includes(k)?(v==null?'':status(v)):''));});
  // Borda roxa no FOB que tem volume empurrado pra D+1 pela regra das 15h (detalhe no popup da celula).
  // Borda roxa do D+1 na celula saiu em 2026-10-21 (so' o aviso no popup).
  document.querySelectorAll('[data-row="fob"]').forEach(input=>{const i=+input.dataset.day;input.parentElement.classList.remove('fob-d1');
   // No "Tudo": borda amarela tracejada no FOB do dia que tem cadencia MIS que ainda nao virou viagem (usuaria,
   // 2026-10-19: "so' pra realmente o analista saber").
+  // Sem a borda ambar desde 2026-11-12 (usuaria: "essa parte de cor ambar eh estranha, pode deixar sem essa cor"):
+  // a cadencia continua somando no FOB; so' a dica ao passar o mouse conta quanto dela e' planejamento.
   const mis=cadenciaAmbar(i);
-  input.parentElement.classList.toggle('fob-cadencia',mis>0);
+  input.parentElement.classList.remove('fob-cadencia');
   if(mis>0)input.title=`Inclui ${fmt(mis)} m³ de cadência do MIS (só planejamento, ainda sem viagem no portal).`;});
  document.querySelectorAll('[data-row]').forEach(input=>input.parentElement.classList.toggle('edited',state.movements[input.dataset.row][+input.dataset.day]!==baseline.movements[input.dataset.row][+input.dataset.day]));
  document.querySelectorAll('[data-row="planned"]').forEach(input=>{const aviso=avisosSugestao[+input.dataset.day];input.parentElement.classList.toggle('sugestao-nao-cabe',Boolean(aviso));if(aviso)input.title=`O estoque fica abaixo ${aviso.motivo||`de ${Math.round(GATILHO_SUGESTAO*100)}% do tanque`} neste dia (${fmt(aviso.semSugestao)} m³), mas uma carga de ${CARGA_SUGESTAO} m³ não cabe${aviso.limite?' '+aviso.limite:''}${aviso.diaLimite>+input.dataset.day?' por causa da entrada já prevista em '+label(aviso.diaLimite):''}.`;});
@@ -727,7 +734,8 @@ function chart(result,original,offsets){
    // (usuaria, 2026-10-17: "coloca o fundo cinza mesmo da barrinha, so coloca a borda de outra cor").
    // No "Tudo", a parte do FOB que e' cadencia MIS sem viagem no portal fica num pedaco proprio (cinza, borda
    // ambar tracejada): conta, mas ainda e' so' planejamento.
-   const misFob=k==='fob'?Math.min(Math.max(v-d1,0),cadenciaAmbar(i)):0;
+   // Sem pedaco ambar desde 2026-11-12 (usuaria: "pode deixar sem essa cor"): a cadencia fica dentro do FOB cinza.
+   const misFob=0;
    // Nao programado (viagens do portal sem placa) em azul claro, separado do FOB com placa (usuaria, 2026-10-21:
    // "na visao LE / programado e nao programado, coloca essa outra cor + azul pra falar que nao ta programado").
    const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),fobNaoProgramadoDia(i)):0;

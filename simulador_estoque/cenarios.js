@@ -229,7 +229,8 @@
   // Parte da cadencia MIS que esta' no FOB do dia (borda ambar no botao LE): aparece aqui tambem (usuaria,
   // 2026-10-21: "pq ta pontilhado?" — o popup so' mostrava a viagem, nao a cadencia somada).
   const cad=modal==='fob'?cadenciaAmbar(index):0;
-  const cadHtml=cad>0?`<p style="color:#FBBF24">+ ${fmt(cad)} m³ de cadência MIS do dia (planejamento, ainda sem viagem) · borda âmbar pontilhada</p>`:'';
+  // Sem a cor ambar desde 2026-11-12; a linha continua pra explicar o que a celula soma alem das viagens.
+  const cadHtml=cad>0?`<p>+ ${fmt(cad)} m³ de cadência MIS do dia (planejamento, ainda sem viagem no portal)</p>`:'';
   const realizadas=viagens.filter(v=>v.grupo!=='programado'),programadas=viagens.filter(v=>v.grupo==='programado');
   const nReal=realizadas.length+transfJunto.length,volReal=realizadas.reduce((s,v)=>s+v.volume,0)+transfJunto.reduce((s,t)=>s+(t.volume||0),0);
   // Conferencia (usuaria, 2026-10-27: "tem que ter as informacoes das viagens... se nao tiver, temos que mapear"):
@@ -255,13 +256,15 @@
  // Betim que a usuaria perguntou antes.
  function diasDesde(dataIso){return Math.round((new Date(D.date+'T12:00:00')-new Date(dataIso+'T12:00:00'))/86400000);}
  function avisoAtraso(dataAbertura){if(!dataAbertura||dataAbertura===D.date)return'';const dias=diasDesde(dataAbertura);return ` ⚠ há ${dias} dia${dias===1?'':'s'}`;}
+ // Origem MIS (2026-11-13): base nao lancou no portal ate' as 10h -> abertura do MIS do dia (borda azul na celula).
+ const marcaMis=origem=>origem==='MIS'?' · <span style="color:#60A5FA">MIS (não preenchida no portal até 10h)</span>':'';
  function conteudoPopupAbertura(){
   const combinados=record._registrosCombinados;
   // Base unificada (2026-10-27): deposito compartilhado soma a abertura de cada empresa (atualizar_dados.unificar_registros).
   const partes=record.componentes;
-  if(!combinados&&partes?.length)return `<strong>Estoque inicial · abertura · ${dateLabel(D.date)}</strong><dl>${partes.map(c=>`<div><dt>${esc(c.base)}</dt><dd>${fmt(c.opening)} m³ · ${dateLabel(c.aberturaEm||D.date)}${avisoAtraso(c.aberturaEm)}</dd></div>`).join('')}</dl><p>Depósito compartilhado: ${partes.length} empresa(s) somadas · total ${fmt(record.opening)} m³</p>`;
-  if(!combinados)return `<strong>Estoque inicial · abertura</strong><p>${fmt(record.opening)} m³ · ${dateLabel(record.aberturaEm||D.date)}${avisoAtraso(record.aberturaEm)}</p>`;
-  const linha=r=>`<div><dt>${esc(depositoDe(r))} · ${esc(empresaDe(r))}</dt><dd>${fmt(r.opening)} m³ · ${dateLabel(r.aberturaEm||D.date)}${avisoAtraso(r.aberturaEm)}</dd></div>`;
+  if(!combinados&&partes?.length)return `<strong>Estoque inicial · abertura · ${dateLabel(D.date)}</strong><dl>${partes.map(c=>`<div><dt>${esc(c.base)}</dt><dd>${fmt(c.opening)} m³ · ${dateLabel(c.aberturaEm||D.date)}${avisoAtraso(c.aberturaEm)}${marcaMis(c.origem)}</dd></div>`).join('')}</dl><p>Depósito compartilhado: ${partes.length} empresa(s) somadas · total ${fmt(record.opening)} m³</p>`;
+  if(!combinados)return `<strong>Estoque inicial · abertura</strong><p>${fmt(record.opening)} m³ · ${dateLabel(record.aberturaEm||D.date)}${avisoAtraso(record.aberturaEm)}${marcaMis(record.sheet)}</p>`;
+  const linha=r=>`<div><dt>${esc(depositoDe(r))} · ${esc(empresaDe(r))}</dt><dd>${fmt(r.opening)} m³ · ${dateLabel(r.aberturaEm||D.date)}${avisoAtraso(r.aberturaEm)}${marcaMis(r.sheet)}${(r.componentes||[]).some(c=>c.origem==='MIS')?marcaMis('MIS'):''}</dd></div>`;
   return `<strong>Estoque inicial · abertura · ${dateLabel(D.date)}</strong><dl>${combinados.map(linha).join('')}</dl><p>${combinados.length} base(s) · total ${fmt(record.opening)} m³</p>`;
  }
  function showPopup(input){
