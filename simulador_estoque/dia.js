@@ -61,8 +61,11 @@
   }
 
   // Situacao de um registro (base + deposito + empresa + produto) na janela hoje..hoje+5.
-  function avaliar(r) {
-    const content = fresh(r, CENARIO, 'auto'), resultado = E.calculate(content, n);
+  // Filtro "Vendas" dos Alertas (usuaria, 2026-11-13: "o alerta mudar com base no filtro que eu coloco na saida"):
+  // mesmas 4 opcoes dos botoes de venda do simulador (cenarios.js:modes). Abre sempre na VMD reprojetada.
+  const ROTULO_VENDA = {VMD: 'VMD reprojetada', 'Disp MIS': 'Disp. MIS', 'Pedidos em tela': 'Pedidos em tela', Real: 'Faturamento'};
+  function avaliar(r, cenario = CENARIO) {
+    const content = fresh(r, cenario, 'auto'), resultado = E.calculate(content, n);
     const inicio = indiceHoje(), fim = Math.min(resultado.length - 1, inicio + DIAS_A_FRENTE);
     if (inicio > fim) return null;
     let primeiroCritico = null, atencao = false, menor = Infinity, diaMenor = null, ruptura = null;
@@ -76,8 +79,10 @@
     }
     const situacao = primeiroCritico !== null ? (primeiroCritico === inicio ? 'critico-hoje' : 'critico') : atencao ? 'atencao' : 'ok';
     // Sem venda prevista (VMD) na janela: fica fora dos Alertas (usuaria, 2026-10-14), mas segue no Cenario.
+    // Quem entra nos Alertas continua decidido pela VMD em qualquer filtro de vendas: com Pedidos em tela, por
+    // exemplo, os dias sem pedido valem 0 e o produto sumiria da matriz justo quando a abertura e' o que importa.
     let vendaJanela = 0;
-    for (let i = inicio; i <= fim; i++) vendaJanela += content.movements.sale[i] || 0;
+    for (let i = inicio; i <= fim; i++) vendaJanela += (cenario === 'VMD' ? content.movements.sale[i] : r.bi?.days?.[iso(i)]?.vmd) || 0;
     // Pro ranking de dias de estoque: abertura de hoje (ja' projetada, se a planilha for de dia anterior)
     // e a VMD reprojetada de hoje.
     return {situacao, semVmd: vendaJanela <= 0, aberturaHoje: resultado[inicio].opening, vmdHoje: content.movements.sale[inicio] || 0,
@@ -89,10 +94,10 @@
       ruptura: ruptura === null ? null : iso(ruptura), inicio: iso(inicio), fim: iso(fim)};
   }
 
-  function calcular() {
+  function calcular(cenario = CENARIO) {
     const itens = [];
     for (const r of D.records) {
-      try { const av = avaliar(r); if (av) itens.push({registro: r, cidade: cidadeDe(r), produto: r.product, ...av}); }
+      try { const av = avaliar(r, cenario); if (av) itens.push({registro: r, cidade: cidadeDe(r), produto: r.product, ...av}); }
       catch { /* registro sem dado suficiente pro calculo (ex.: sem abertura); fica fora */ }
     }
     return itens;
@@ -128,7 +133,7 @@
   }
 
   const campoRegiao = $('semana-regiao'), campoBusca = $('semana-base'), campoSituacao = $('semana-situacao'),
-    statusEl = $('semana-status'), barra = $('semana-barra'), tabela = $('matriz-risco'), popup = $('matriz-popover'),
+    campoVenda = $('semana-venda'), statusEl = $('semana-status'), barra = $('semana-barra'), tabela = $('matriz-risco'), popup = $('matriz-popover'),
     campoProdutoRanking = $('ranking-produto'), ranking = $('ranking-lista'), campoTransito = $('ranking-transito');
 
   // Ranking de dias de estoque por cidade (pedido da usuaria, 2026-10-14, igual ao visual "Ranking Dias
@@ -228,7 +233,8 @@
 
   function render() {
     statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
-    let itens = calcular();
+    const cenario = campoVenda.value || CENARIO;
+    let itens = calcular(cenario);
     const regiao = campoRegiao.value, busca = campoBusca.value.trim().toLowerCase();
     // Fora dos Alertas: sem VMD na janela e sem capacidade de tanque estabelecida (venda no bico, 2026-10-14).
     itens = itens.filter(it => !it.semVmd && it.registro.capacidadeFisica !== 0 && (!regiao || cloud.regionOf(it.registro.base) === regiao) && (!busca || it.cidade.toLowerCase().includes(busca)));
@@ -245,7 +251,7 @@
     const visiveis = cidades.flatMap(cid => colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(c => c && passaSituacao(c)));
     const resumo = visiveis.reduce((acc, c) => ({...acc, [c.pior.situacao]: (acc[c.pior.situacao] || 0) + 1}), {});
     const amostra = itens[0];
-    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas pela VMD reprojetada · `
+    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas: ${ROTULO_VENDA[cenario] || cenario}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `
       + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
       + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
     barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
@@ -287,9 +293,10 @@
     const botao = event.target.closest('[data-abrir]'); if (!botao) return;
     fecharPopup();
     const [base, produto] = botao.dataset.abrir.split('|');
-    abrirCenario(base, produto);
+    abrirCenario(base, produto, campoVenda.value || CENARIO);
   });
-  [campoRegiao, campoSituacao].forEach(el => el.onchange = render);
+  campoVenda.value = CENARIO;
+  [campoRegiao, campoSituacao, campoVenda].forEach(el => el.onchange = render);
   let atraso;
   campoBusca.oninput = () => { clearTimeout(atraso); atraso = setTimeout(render, 250); };
 
