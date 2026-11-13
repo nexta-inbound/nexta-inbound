@@ -3882,7 +3882,8 @@ async function cancelarAgendamento(id) {
 // de compartimentos no quiosque (check-in "inconsistente": depois da alteração o motorista refaz o check-in).
 // O agendamento continua o mesmo (protocolo, data, horário/turno, veículo e motorista): muda só a lista de pedidos.
 // Entra só pedido vigente (na carteira, em nenhum outro agendamento) de um cliente que já está no agendamento, com as
-// conferências do assistente (mesma base, entrega no dia do carregamento ou depois, capacidade), inteiro. Também não mistura
+// conferências do assistente (mesma base, entrega no dia do carregamento — ou depois, se a viagem veio da roteirização —,
+// capacidade), inteiro. Também não mistura
 // tipo de frete: o quiosque manda para o guichê. A janela lista os pedidos vigentes desses clientes (carteira da aba Pedidos).
 // Gravado num único update() multi-path (pedidos, clientes, clientesLista, volumeTotal, agendamentosPorCliente e o
 // histórico em edicoes/<id>). A regra do banco só aceita da equipe interna, com o agendamento aberto, sem check-in no
@@ -4060,8 +4061,14 @@ function erroPedidoNaTroca(t, a, p) {
   }
   if (!p.dataEntrega) return `O pedido ${nr} está sem data de entrega. Ajuste no portal do revendedor; a mudança aparece aqui em até 30 minutos.`;
   if (p.dataEntrega < hoje()) return `A data de entrega do pedido ${nr} (${formatDataBR(p.dataEntrega)}) já passou.`;
-  if (p.dataEntrega < a.dataCarregamento) {
-    return `O pedido ${nr} é para ${formatDataBR(p.dataEntrega)}, antes deste carregamento (${formatDataBR(a.dataCarregamento)}): o carregamento pode ser no dia da entrega ou antes.`;
+  // Viagem da roteirização pode carregar antes da entrega (o roteirizador planeja a véspera); o resto, como no
+  // assistente, só junta pedidos com entrega no dia do carregamento
+  if (a.roteirizacao) {
+    if (p.dataEntrega < a.dataCarregamento) {
+      return `O pedido ${nr} é para ${formatDataBR(p.dataEntrega)}, antes deste carregamento (${formatDataBR(a.dataCarregamento)}): o carregamento pode ser no dia da entrega ou antes.`;
+    }
+  } else if (p.dataEntrega !== a.dataCarregamento) {
+    return `O pedido ${nr} é para ${formatDataBR(p.dataEntrega)} e este carregamento é em ${formatDataBR(a.dataCarregamento)}: um agendamento só junta pedidos com a mesma data de entrega.`;
   }
   const { agendados, ficam, novos } = resultadoTroca(t, a);
   const outros = [...ficam, ...novos.filter((n) => n.nrPedido !== nr)];
