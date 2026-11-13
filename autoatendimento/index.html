@@ -348,6 +348,10 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .tl-campo.lido:not(.erro) input:not(:focus) { border-color: var(--success); background: var(--success-dim); }
 .tl-campo.erro input, .tl-campo.erro input:focus { border-color: var(--danger); background: var(--danger-dim); }
 .tl-campo .msg-erro { font-size: 13px; line-height: 1.3; margin-top: 4px; }
+/* Envelopes travados até todos os lacres estarem lidos: tracejado e apagado, com o aviso dentro do campo */
+.tl-campo input:disabled { border-style: dashed; opacity: .6; cursor: not-allowed; }
+.tl-campo input:disabled::placeholder { opacity: 1; font-family: var(--font); font-size: 15px; }
+.tl-campo:has(input:disabled) .tl-rot, .envelopes-bloqueados .tl-cabecalho .tl-codigos > :last-child { opacity: .55; }
 /* Tela estreita: cada compartimento vira um bloco, os códigos quebram em 2 colunas e cada um mostra o seu nome */
 @media (max-width: 700px) {
   .tl-cabecalho { display: none; }
@@ -636,15 +640,17 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
     <div id="alocacao-conteudo"></div>
   </section>
 
-  <!-- Etapa 4: lacres e envelope de amostra de cada compartimento carregado; lidos todos, a conferência deles -->
+  <!-- Etapa 4: lacres e envelope de amostra de cada compartimento carregado (a coluna dos envelopes abre com todos os
+       lacres lidos); lidos todos, a conferência deles -->
   <section class="tela lacres" id="tela-lacres">
     <div class="titulo">Lacres e envelopes</div>
     <div id="lacres-leitura">
-      <div class="sub">Passe o leitor nos lacres de cada compartimento e depois nos envelopes de amostra.</div>
+      <div class="sub" id="lacres-instrucao">Passe o leitor nos lacres de cada compartimento e depois nos envelopes de amostra.</div>
       <div class="alerta hidden" id="alerta-lacres" role="alert"></div>
       <div class="tabela-lacres" id="lista-lacres"></div>
       <div class="acoes">
         <button class="btn btn-secundario" type="button" onclick="voltarParaAlocacao()">Voltar</button>
+        <button class="btn btn-secundario" id="btn-limpar-lacres" type="button" onclick="abrirLimparLacres()">Limpar</button>
         <div class="lacres-progresso" id="lacres-progresso" aria-live="polite"></div>
         <button class="btn btn-primario" type="button" onclick="concluirLeituraLacres()">Continuar</button>
       </div>
@@ -709,7 +715,7 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
       <div class="sub" id="fim-texto">Aguarde ser chamado para o carregamento.</div>
       <div class="cartao documentos-impressao hidden" id="fim-documentos">
         <div class="cartao-titulo">Documentos para impressão</div>
-        <div class="sub">Abra cada documento e use o botão de imprimir do visualizador de PDF.</div>
+        <div class="sub">Os documentos serão enviados automaticamente para a impressora desta estação.</div>
         <div class="documentos-acoes" id="fim-documentos-acoes">
           <button class="btn btn-secundario" id="btn-ordem-carregamento" type="button" onclick="abrirDocumentoImpressao('ordemCarregamento')">Abrir Ordem de Carregamento</button>
           <button class="btn btn-secundario" id="btn-formulario-amostragem" type="button" onclick="abrirDocumentoImpressao('formularioAmostragem')">Abrir Formulário de Amostragem</button>
@@ -767,6 +773,18 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
   </div>
 </div>
 
+<!-- Etapa 4: o motorista leu (ou digitou) códigos errados e quer recomeçar a leitura do zero -->
+<div class="sobreposicao" id="limpar-lacres" role="dialog" aria-modal="true" aria-labelledby="limpar-lacres-titulo">
+  <div class="caixa">
+    <div class="titulo" id="limpar-lacres-titulo" style="font-size:26px">Limpar todos os códigos?</div>
+    <div class="sub" id="limpar-lacres-texto"></div>
+    <div class="caixa-acoes">
+      <button class="btn btn-primario" type="button" onclick="limparLacres()">Limpar tudo</button>
+      <button class="btn btn-secundario" type="button" onclick="fecharLimparLacres()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="sobreposicao" id="inatividade" role="dialog" aria-modal="true" aria-labelledby="inatividade-titulo">
   <div class="caixa">
     <div class="titulo" id="inatividade-titulo" style="font-size:26px">Ainda está aí?</div>
@@ -818,6 +836,7 @@ const TEMPO_TELA_FIM = 120;          // tempo para abrir e imprimir os dois PDFs
 const TEMPO_TELA_AVISO = 30;
 const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
 const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
+const CHAVE_IMPRESSOES = 'nexta-autoatendimento.impressoes.v1'; // evita duplicidade ao recarregar o quiosque
 // Limites de cockpit_transporte.py (normalizar_*): lacre até 15 dígitos, envelope até 20, motorista até 10,
 // ordem de venda até 20 e produto até 18
 const LIMITES = { lacre: 15, envelope: 20, motorista: 10, ordem: 20, produto: 18 };
@@ -857,6 +876,7 @@ let _registroProcessamento = null;
 // percentual já mostrado (a barra nunca volta)
 let _progresso = null;
 let _urlsDocumentos = [];
+const _impressoesProtocolosEmAndamento = new Set();
 
 /* ── UTILITÁRIOS (mesmos do portal de agendamento) ── */
 function esc(s) {
@@ -1020,6 +1040,7 @@ function reiniciar() {
   document.getElementById('btn-criar-agendamento').classList.toggle('hidden', Q.bases[Q.terminal]?.tipo !== 'fila');
   fecharInatividade();
   fecharMenuQuiosque();
+  fecharLimparLacres();
   if (document.activeElement) document.activeElement.blur(); // fecha o teclado do tablet
   mostrarTela('inicio');
 }
@@ -1047,6 +1068,148 @@ function renderDocumentosFim(documentos) {
     botao.addEventListener('click', () => abrirDanfeImpressao(indice, botao));
     acoes.appendChild(botao);
   });
+}
+
+function documentosParaImpressao(documentos) {
+  const danfes = Array.isArray(documentos?.notasFiscaisPdf) ? documentos.notasFiscaisPdf : [];
+  return [
+    documentos?.ordemCarregamento,
+    documentos?.formularioAmostragem,
+    ...danfes,
+  ].filter((documento) => documento?.storagePath);
+}
+
+function controleImpressoes() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_IMPRESSOES) || '{}');
+    return salvo && typeof salvo === 'object' && !Array.isArray(salvo) ? salvo : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function chaveImpressao(protocolo, documento) {
+  return `${Q.terminal}|${protocolo}|${documento.storagePath}`;
+}
+
+function documentoJaImpresso(protocolo, documento) {
+  return Boolean(controleImpressoes()[chaveImpressao(protocolo, documento)]);
+}
+
+function registrarDocumentoImpresso(protocolo, documento) {
+  try {
+    const controle = controleImpressoes();
+    controle[chaveImpressao(protocolo, documento)] = new Date().toISOString();
+    const recentes = Object.entries(controle)
+      .sort((a, b) => String(b[1]).localeCompare(String(a[1])))
+      .slice(0, 300);
+    localStorage.setItem(CHAVE_IMPRESSOES, JSON.stringify(Object.fromEntries(recentes)));
+  } catch (e) {
+    console.warn('Não foi possível salvar o controle local de impressão.', e);
+  }
+}
+
+function aguardar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function imprimirPdfNaEstacao(blob, rotulo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const frame = document.createElement('iframe');
+    let encerrado = false;
+    let limite;
+    const removerDepois = () => setTimeout(() => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    }, 15000);
+    const encerrar = (erro) => {
+      if (encerrado) return;
+      encerrado = true;
+      clearTimeout(limite);
+      removerDepois();
+      if (erro) reject(erro); else resolve();
+    };
+    frame.title = rotulo || 'Documento para impressão';
+    frame.setAttribute('aria-hidden', 'true');
+    Object.assign(frame.style, {
+      position: 'fixed',
+      right: '0',
+      bottom: '0',
+      width: '1px',
+      height: '1px',
+      border: '0',
+      opacity: '0',
+      pointerEvents: 'none',
+    });
+    frame.onload = () => setTimeout(() => {
+      try {
+        if (!frame.contentWindow) throw new Error('janela de impressão indisponível');
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        // O Chrome não dispara afterprint de forma consistente para o visualizador de PDF.
+        // A chamada acima já entrega o trabalho ao diálogo/fila de impressão.
+        setTimeout(() => encerrar(), 2500);
+      } catch (e) {
+        encerrar(e);
+      }
+    }, 1500);
+    frame.onerror = () => encerrar(new Error('o PDF não abriu para impressão'));
+    limite = setTimeout(() => encerrar(new Error('tempo esgotado ao abrir o PDF')), 25000);
+    frame.src = url;
+    document.body.appendChild(frame);
+  });
+}
+
+async function carregarEImprimirDocumento(documento) {
+  let ultimoErro;
+  for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
+    try {
+      const blob = await window._fb.carregarDocumento(documento.storagePath);
+      if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
+      if (!(await blob.slice(0, 5).text()).startsWith('%PDF-')) throw new Error('arquivo PDF inválido');
+      await imprimirPdfNaEstacao(blob, documento.rotulo);
+      return;
+    } catch (e) {
+      ultimoErro = e;
+      if (tentativa < 3) await aguardar(2000);
+    }
+  }
+  throw ultimoErro;
+}
+
+async function imprimirDocumentosAutomaticamente(registro) {
+  const protocolo = String(registro?.protocolo || '');
+  if (!protocolo || _impressoesProtocolosEmAndamento.has(protocolo)) return;
+  const todos = documentosParaImpressao(registro.documentos);
+  const pendentes = todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
+  const status = document.getElementById('fim-documentos-status');
+  if (!pendentes.length) {
+    if (todos.length) status.textContent = 'Documentos já enviados para a impressora desta estação.';
+    return;
+  }
+
+  _impressoesProtocolosEmAndamento.add(protocolo);
+  const falhas = [];
+  try {
+    for (let indice = 0; indice < pendentes.length; indice += 1) {
+      const documento = pendentes[indice];
+      status.textContent = `Enviando documento ${indice + 1} de ${pendentes.length} para a impressora…`;
+      try {
+        await carregarEImprimirDocumento(documento);
+        registrarDocumentoImpresso(protocolo, documento);
+      } catch (e) {
+        console.error(`Falha ao imprimir ${documento.rotulo || documento.storagePath}`, e);
+        falhas.push(documento.rotulo || documento.nomeArquivo || 'documento');
+      }
+      await aguardar(1000);
+    }
+    status.textContent = falhas.length
+      ? `Não foi possível imprimir automaticamente: ${falhas.join(', ')}. Use os botões acima para tentar novamente.`
+      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} automaticamente para a impressora desta estação.`;
+  } finally {
+    _impressoesProtocolosEmAndamento.delete(protocolo);
+  }
 }
 
 async function abrirDocumentoImpressao(chave) {
@@ -2155,7 +2318,7 @@ function avancarParaLacres() {
 
 /* ── ETAPA 4: LACRES E ENVELOPES ── */
 // Uma linha por compartimento carregado. Cada perfil define quantos lacres a
-// linha possui; o envelope continua sendo lido por último.
+// linha possui; o envelope continua sendo lido por último (a coluna dele só abre com todos os lacres lidos).
 // Lacre N sempre na coluna N e o envelope na última (perfis diferentes podem ter quantidades diferentes de lacres):
 // os nomes dos campos ficam num cabeçalho só, na etapa de lacres e na revisão
 function colunasDosCodigos(usados) {
@@ -2241,7 +2404,24 @@ function conferirLacre(el) {
     if (msg.startsWith('Repetido') && !erroDoLacre(Number(j), outro)) marcarErroLacre(Number(j), outro, '');
   }
   if (!document.getElementById('alerta-lacres').classList.contains('hidden')) atualizarAlertaLacres();
+  atualizarBloqueioEnvelopes();
   return !erro;
+}
+// Os envelopes abrem só com todos os lacres lidos e sem problema: o motorista confundia a coluna e lia o envelope no
+// meio dos lacres. Se um lacre volta a ficar vazio ou errado, a coluna trava de novo (o que já foi lido fica)
+function envelopesLiberados() {
+  return compartimentosUsados().every(({ i, c }) => c.lacres.every((v, k) => v && !atd.erros[`${i}.lacre${k + 1}`]));
+}
+function atualizarBloqueioEnvelopes() {
+  const liberados = envelopesLiberados(), lista = document.getElementById('lista-lacres');
+  lista.classList.toggle('envelopes-bloqueados', !liberados);
+  lista.querySelectorAll('input[data-campo="envelope"]').forEach((el) => {
+    el.disabled = !liberados;
+    el.placeholder = liberados ? '' : 'Após os lacres';
+  });
+  document.getElementById('lacres-instrucao').textContent = liberados
+    ? 'Todos os lacres foram lidos. Agora passe o leitor nos envelopes de amostra.'
+    : 'Passe o leitor nos lacres de cada compartimento. Os envelopes de amostra abrem quando todos os lacres estiverem lidos.';
 }
 // Aviso acima da tabela (só depois de tocar em Continuar): quantos campos ainda estão em vermelho
 function atualizarAlertaLacres() {
@@ -2257,9 +2437,9 @@ function enterNoLacre(el) {
   const proximo = proximoLacreVazio(el);
   if (proximo) proximo.focus(); else concluirLeituraLacres();
 }
-// Campos na ordem do leitor: todos os lacres (linha a linha) e só depois todos os envelopes
+// Campos na ordem do leitor: todos os lacres (linha a linha) e só depois todos os envelopes (travados, ficam de fora)
 function camposNaOrdemDeLeitura() {
-  const campos = [...document.querySelectorAll('#lista-lacres input')];
+  const campos = [...document.querySelectorAll('#lista-lacres input:not(:disabled)')];
   const doTipo = (tipo) => campos.filter((c) => TIPO_CODIGO(c.dataset.campo) === tipo);
   return [...doTipo('lacre'), ...doTipo('envelope')];
 }
@@ -2272,10 +2452,36 @@ function proximoLacreVazio(atual = null) {
 function atualizarProgressoLacres() {
   const usados = compartimentosUsados();
   const total = usados.reduce((n, { c }) => n + camposDoCompartimento(c).length, 0);
-  const lidos = usados.reduce((n, { c }) => n + camposDoCompartimento(c).filter(([campo]) => valorDoCampo(c, campo)).length, 0);
+  const lidos = quantidadeLacresLidos();
   const el = document.getElementById('lacres-progresso');
   el.textContent = lidos === total ? `✓ Todos os ${total} códigos lidos` : `${lidos} de ${total} códigos lidos`;
   el.classList.toggle('completo', lidos === total);
+  document.getElementById('btn-limpar-lacres').disabled = !lidos;
+  atualizarBloqueioEnvelopes();
+}
+// Limpar: leu ou digitou errado e quer recomeçar. Pergunta antes, porque apaga todos os códigos de uma vez
+function quantidadeLacresLidos() {
+  return compartimentosUsados().reduce((n, { c }) => n + camposDoCompartimento(c).filter(([campo]) => valorDoCampo(c, campo)).length, 0);
+}
+function abrirLimparLacres() {
+  const lidos = quantidadeLacresLidos();
+  if (!lidos) return;
+  if (document.activeElement) document.activeElement.blur(); // fecha o teclado
+  document.getElementById('limpar-lacres-texto').textContent = (lidos === 1
+    ? 'O código já lido será apagado.'
+    : `Os ${lidos} códigos já lidos (lacres e envelopes) serão apagados.`) + ' A leitura recomeça pelo lacre 1 do primeiro compartimento.';
+  document.getElementById('limpar-lacres').classList.add('aberta');
+}
+function fecharLimparLacres() { document.getElementById('limpar-lacres').classList.remove('aberta'); }
+function limparLacres() {
+  fecharLimparLacres();
+  if (!atd) return;
+  for (const c of atd.comps) { c.lacres = c.lacres.map(() => ''); c.envelope = ''; }
+  atd.erros = {};
+  mostrarAlerta('alerta-lacres', '');
+  renderLacres();
+  window.scrollTo(0, 0);
+  proximoLacreVazio()?.focus(); // o leitor já pode recomeçar
 }
 // Bipe grave e vibração quando uma leitura é recusada: com o leitor na mão, nem sempre se olha a tela
 let _somErro = null;
@@ -2317,11 +2523,13 @@ function modoLacres(conferencia) {
 }
 function concluirLeituraLacres() {
   atd.erros = validarLacres();
+  // Com lacre faltando, os envelopes ficam travados: só os lacres aparecem em vermelho
+  if (!envelopesLiberados()) for (const chave of Object.keys(atd.erros)) if (chave.endsWith('.envelope')) delete atd.erros[chave];
   renderLacres();
   if (atualizarAlertaLacres()) {
     const el = camposNaOrdemDeLeitura().find((c) => c.closest('.campo').classList.contains('erro'));
-    el.focus(); // selecionado (onfocus): a próxima leitura já substitui
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.focus(); // selecionado (onfocus): a próxima leitura já substitui
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
   }
   if (document.activeElement) document.activeElement.blur();
@@ -2671,6 +2879,7 @@ function atualizarProcessamento(registro) {
       : `Protocolo ${registro.protocolo}. Aguarde ser chamado para o carregamento.`;
     renderDocumentosFim(registro.documentos);
     mostrarTela('fim');
+    void imprimirDocumentosAutomaticamente(registro);
     iniciarContagem('fim-contagem', TEMPO_TELA_FIM);
   } else if (status === 'erro' || status === 'revisao_manual') {
     // Código e motivo técnico ficam no histórico do portal de agendamento; o motorista só precisa do caminho
