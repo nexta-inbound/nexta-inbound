@@ -316,14 +316,14 @@ const DIAS_ABERTURA_GRAVE=3;
 // ... com uma borda, pra avisar que nao puxou do portal"). sheet='MIS' vem do atualizar_dados.py; na base unificada
 // cada empresa fica em record.componentes (origem), no modo combinado em _registrosCombinados.
 function aberturaDoMis(){if(!record)return false;const regs=record._registrosCombinados||[record];return regs.some(r=>r&&(r.sheet==='MIS'||r.componentes?.some(c=>c.origem==='MIS')));}
-const AVISO_ABERTURA_MIS='Abertura do MIS: a base não preencheu no portal até as 9h. Se preencher depois, o valor do portal substitui este.';
+const AVISO_ABERTURA_MIS='Abertura do MIS: a base ainda não preencheu no portal. Quando preencher, o valor do portal substitui este.';
 function diasAtrasoAbertura(){
  if(!record)return 0;
  const datas=(record._registrosCombinados?record._registrosCombinados.map(r=>r.aberturaEm):[record.aberturaEm]).filter(d=>d&&d!==D.date);
  if(!datas.length)return 0;
  return Math.max(...datas.map(d=>Math.round((new Date(D.date+'T12:00:00')-new Date(d+'T12:00:00'))/86400000)));
 }
-function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaDoMis()?'Abertura do MIS (base não preencheu no portal até 9h)':aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
+function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$('premises').innerHTML=parameters.map(([k,l])=>`<label>${l}<input type="number" readonly data-param="${k}" aria-label="${l}" value="${state[k]===null?'':Math.round(state[k])}" placeholder="Ausente na fonte" title="Valor fixo, carregado da planilha de política."><small>${k==='opening'?(aberturaDoMis()?'Abertura do MIS (base ainda não preencheu no portal)':aberturaAtrasada()?`⚠ Abertura de ${new Date(record.aberturaEm+'T12:00:00').toLocaleDateString('pt-BR')} (não é de hoje)`:'Abertura importada'):(k==='capacity'?(semCapacidade()?'Sem capacidade estabelecida':'Planilha de tancagem'):`Política: ${fmt(baseline[k])} m³`)}</small></label>`).join('');}
 // Capacidade 0 = base/produto fora da planilha de tancagem (venda no bico): "Sem capacidade estabelecida".
 function semCapacidade(){return record?.capacidadeFisica===0;}
 // Modo combinado (2026-11-09: abertura do historico vinha "—"): o record sintetico nao tem chave no historico,
