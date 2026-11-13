@@ -256,8 +256,8 @@
  // Betim que a usuaria perguntou antes.
  function diasDesde(dataIso){return Math.round((new Date(D.date+'T12:00:00')-new Date(dataIso+'T12:00:00'))/86400000);}
  function avisoAtraso(dataAbertura){if(!dataAbertura||dataAbertura===D.date)return'';const dias=diasDesde(dataAbertura);return ` ⚠ há ${dias} dia${dias===1?'':'s'}`;}
- // Origem MIS (2026-11-13): base nao lancou no portal ate' as 10h -> abertura do MIS do dia (borda azul na celula).
- const marcaMis=origem=>origem==='MIS'?' · <span style="color:#60A5FA">MIS (não preenchida no portal até 10h)</span>':'';
+ // Origem MIS (2026-11-13): base nao lancou no portal ate' as 9h -> abertura do MIS do dia (borda azul na celula).
+ const marcaMis=origem=>origem==='MIS'?' · <span style="color:#60A5FA">MIS (não preenchida no portal até 9h)</span>':'';
  function conteudoPopupAbertura(){
   const combinados=record._registrosCombinados;
   // Base unificada (2026-10-27): deposito compartilhado soma a abertura de cada empresa (atualizar_dados.unificar_registros).

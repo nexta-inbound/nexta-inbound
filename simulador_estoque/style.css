@@ -95,7 +95,7 @@ main{padding-top:18px}.title{margin-bottom:12px}.title h1{font-size:27px}.produc
 #grid td.atrasada{box-shadow:inset 0 0 0 2px var(--orange);font-weight:700}
 /* 3+ dias atrasada (DIAS_ABERTURA_GRAVE em app.js): aviso mais forte, vermelho em vez de laranja. */
 #grid td.atrasada-grave{box-shadow:inset 0 0 0 2px var(--danger);font-weight:700;color:var(--danger)!important}
-/* Abertura do MIS porque a base nao lancou no portal ate' as 10h (usuaria, 2026-11-13): borda azul, diferente
+/* Abertura do MIS porque a base nao lancou no portal ate' as 9h (usuaria, 2026-11-13): borda azul, diferente
    do laranja/vermelho de leitura atrasada. Mesma ideia: avisa a ORIGEM do numero, sem brigar com a cor de nivel. */
 #grid td.abertura-mis{box-shadow:inset 0 0 0 2px #60A5FA;font-weight:700;color:#93C5FD!important}
 #grid th.today{box-shadow:inset 0 3px 0 #EEFE7A}
