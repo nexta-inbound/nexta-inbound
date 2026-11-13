@@ -417,6 +417,27 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 #toastContainer { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100% - 32px); }
 .toast { background: var(--navy); color: var(--navy-ink); padding: 14px 20px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 16px; }
 .toast-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
+
+/* ── TECLADO NA TELA (monitor touch no Windows) ── preso embaixo. Com ele aberto, a página ganha embaixo a altura dele
+   (--teclado-h) para poder rolar, e o scroll-padding faz o campo em uso parar acima dele */
+.teclado { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--panel-soft); border-top: 1px solid var(--border-dk); box-shadow: 0 -8px 24px rgba(16, 40, 58, .14); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.teclado-in { display: grid; gap: 8px; max-width: 1080px; margin: 0 auto; }
+.teclado[data-layout="numerico"] .teclado-in { max-width: 560px; }
+.tecla { min-width: 0; height: 56px; display: grid; place-items: center; padding: 0 4px; border: 1px solid var(--border-dk); border-bottom-width: 3px; border-radius: 10px; background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 24px; font-weight: 500; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.teclado[data-layout="numerico"] .tecla { height: 64px; font-size: 30px; }
+.tecla:active { background: var(--accent-dim); border-color: var(--accent); }
+.tecla-acao { background: var(--border); font-family: var(--font); font-size: 17px; font-weight: 600; }
+.teclado[data-layout="numerico"] .tecla-acao { font-size: 18px; }
+.tecla-acao.ligada { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.tecla-ok { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-family: var(--font); font-size: 19px; font-weight: 600; }
+.teclado[data-layout="numerico"] .tecla-ok { font-size: 21px; }
+.tecla-ok:active { background: var(--accent); filter: brightness(.9); }
+.teclado-aberto body { padding-bottom: var(--teclado-h, 0px); }
+html.teclado-aberto { scroll-padding: 40px 0 calc(var(--teclado-h, 0px) + 16px); }
+html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--teclado-h, 0px) + 104px); } /* + barra de botões */
+.teclado-aberto :is(.conferencia, .alocacao, .lacres, .revisao) .acoes { bottom: var(--teclado-h, 0px); }
+.teclado-aberto .sobreposicao { align-items: safe center; overflow-y: auto; padding-bottom: calc(var(--teclado-h, 0px) + 16px); scroll-padding-bottom: calc(var(--teclado-h, 0px) + 16px); }
+.teclado-aberto #toastContainer { bottom: calc(var(--teclado-h, 0px) + 16px); }
 </style>
 </head>
 <body>
@@ -753,6 +774,7 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
     <button class="btn btn-primario" type="button" onclick="continuarAtendimento()">Continuar</button>
   </div>
 </div>
+<div class="teclado hidden" id="teclado" role="group" aria-label="Teclado na tela"></div>
 <div id="toastContainer"></div>
 
 <script>
@@ -2760,6 +2782,197 @@ document.addEventListener('keydown', (ev) => {
   const proximo = campos[campos.indexOf(ev.target) + 1];
   if (proximo) proximo.focus(); else ev.target.blur();
 });
+
+/* ── TECLADO NA TELA ── Monitor touch num computador Windows: o teclado do Windows abre flutuando por cima do campo e o
+   Chrome não rola a página para o campo aparecer. Nesse aparelho o quiosque usa o próprio teclado, preso embaixo da
+   tela: a página ganha espaço para rolar e o campo em uso fica logo acima dele. Abre com o toque no campo (com o
+   mouse, não), como o teclado do tablet; o foco que a própria tela põe num campo (lacre 1, para o leitor) não abre.
+   Os campos ganham inputmode="none" para o teclado do Windows não abrir junto. Tablet (Android/iPad) continua com o
+   teclado dele. Na URL, ?teclado=tela liga em qualquer aparelho (abre também com o mouse, para testar no computador)
+   e ?teclado=sistema desliga */
+const TECLADO_MODO = (() => {
+  const p = new URLSearchParams(location.search).get('teclado');
+  if (p === 'tela') return 'sempre';
+  if (p === 'sistema') return '';
+  return /Windows/i.test(navigator.userAgent) && navigator.maxTouchPoints > 0 ? 'toque' : '';
+})();
+const ICONE_TECLA = {
+  apagar: '<svg width="32" height="24" viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3h18a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 28 21H10l-8-9z"/><path d="M15 8l8 8M23 8l-8 8"/></svg>',
+  ocultar: '<svg width="32" height="28" viewBox="0 0 32 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="28" height="15" rx="2"/><path d="M7 7h2M12 7h2M18 7h2M23 7h2M10 12h12"/><path d="M11 21l5 4 5-4"/></svg>',
+  maiusc: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 9h-5v8H8v-8H3z"/></svg>',
+};
+// Uma lista por linha (só para ler: a grade quebra sozinha pela soma das larguras). Texto de 1 caractere = tecla que
+// digita; mais longo = ação; { span } = tecla mais larga
+const TECLADOS = {
+  numerico: { colunas: '1fr 1fr 1fr 1.3fr', linhas: [
+    [...'123', 'apagar'], [...'456', 'limpar'], [...'789', 'ocultar'], [{ c: '0', span: 2 }, { k: 'ok', span: 2 }],
+  ] },
+  placa: { colunas: 'repeat(10, minmax(0, 1fr))', linhas: [
+    [...'1234567890'], [...'QWERTYUIOP'], [...'ASDFGHJKL', 'apagar'], ['ocultar', ...'ZXCVBNM', { k: 'ok', span: 2 }],
+  ] },
+  // E-mail e senha (equipe Nexta: login e menu do quiosque)
+  texto: { colunas: 'repeat(11, minmax(0, 1fr))', linhas: [
+    [...'1234567890', 'apagar'], [...'qwertyuiop@'], [...'asdfghjkl.-'], [{ k: 'maiusc', span: 2 }, ...'zxcvbnm,_'],
+    [{ k: 'camada', span: 2 }, { k: 'espaco', span: 5 }, 'ocultar', { k: 'ok', span: 3 }],
+  ] },
+  simbolos: { colunas: 'repeat(11, minmax(0, 1fr))', linhas: [
+    [...'1234567890', 'apagar'], [...'!#$%&*()+=@'], [..."?/\\:;'\",.-_"], [...'[]{}<>~^|`°'],
+    [{ k: 'camada', span: 2 }, { k: 'espaco', span: 5 }, 'ocultar', { k: 'ok', span: 3 }],
+  ] },
+};
+const TEC = { el: null, layout: '', simbolos: false, maiusc: false, toqueEm: null, toqueT: 0, apertado: false };
+function campoDoTeclado(el) {
+  return el instanceof HTMLInputElement && /^(text|email|password|search|tel|url)$/.test(el.type) && !el.disabled && !el.readOnly;
+}
+// Teclado de cada campo pelo inputmode/autocapitalize do HTML, guardado antes de trocar o inputmode por "none"
+function prepararCampo(el) {
+  if (!el.dataset.teclado) {
+    el.dataset.teclado = el.inputMode === 'numeric' ? 'numerico' : el.getAttribute('autocapitalize') === 'characters' ? 'placa' : 'texto';
+    el.inputMode = 'none';
+  }
+  return el.dataset.teclado;
+}
+function htmlTecla(t, rotuloOk) {
+  if (typeof t === 'string') t = t.length === 1 ? { c: t } : { k: t };
+  const span = t.span ? ` style="grid-column:span ${t.span}"` : '';
+  if (t.c != null) {
+    const c = TEC.maiusc ? t.c.toUpperCase() : t.c;
+    return `<button class="tecla" type="button" tabindex="-1" data-c="${esc(c)}"${span}>${esc(c)}</button>`;
+  }
+  const [classe, conteudo, rotulo] = {
+    apagar: ['tecla-acao', ICONE_TECLA.apagar, 'Apagar'],
+    limpar: ['tecla-acao', 'Limpar'],
+    ocultar: ['tecla-acao', ICONE_TECLA.ocultar, 'Esconder o teclado'],
+    maiusc: ['tecla-acao' + (TEC.maiusc ? ' ligada' : ''), ICONE_TECLA.maiusc, 'Letra maiúscula'],
+    camada: ['tecla-acao', TEC.simbolos ? 'abc' : '#+='],
+    espaco: ['tecla-acao', 'espaço'],
+    ok: ['tecla-ok', esc(rotuloOk)],
+  }[t.k];
+  return `<button class="tecla ${classe}" type="button" tabindex="-1" data-k="${t.k}"${rotulo ? ` aria-label="${rotulo}"` : ''}${span}>${conteudo}</button>`;
+}
+function desenharTeclado() {
+  const painel = document.getElementById('teclado');
+  const nome = TEC.layout === 'texto' && TEC.simbolos ? 'simbolos' : TEC.layout;
+  const rotuloOk = { next: 'Próximo', send: 'Enviar' }[TEC.el.enterKeyHint] || 'OK';
+  const chave = `${nome}|${TEC.maiusc}|${rotuloOk}`;
+  if (painel.dataset.chave === chave) return;
+  painel.dataset.chave = chave;
+  painel.dataset.layout = TEC.layout;
+  const { colunas, linhas } = TECLADOS[nome];
+  painel.innerHTML = `<div class="teclado-in" style="grid-template-columns:${colunas}">${linhas.flat().map((t) => htmlTecla(t, rotuloOk)).join('')}</div>`;
+}
+function abrirTeclado(el) {
+  const trocou = TEC.el !== el;
+  const layout = prepararCampo(el);
+  if (layout !== TEC.layout) { TEC.layout = layout; TEC.simbolos = false; TEC.maiusc = false; }
+  TEC.el = el;
+  desenharTeclado();
+  document.getElementById('teclado').classList.remove('hidden');
+  ajustarAlturaTeclado();
+  if (trocou) requestAnimationFrame(() => mostrarCampoAcimaDoTeclado(el));
+}
+function ajustarAlturaTeclado() {
+  document.documentElement.style.setProperty('--teclado-h', document.getElementById('teclado').offsetHeight + 'px');
+  document.documentElement.classList.add('teclado-aberto');
+}
+// O campo com o nome e a mensagem de erro (no lacre, a linha do compartimento) para acima do teclado: o scroll-padding
+// da página desconta a altura dele
+function mostrarCampoAcimaDoTeclado(el) {
+  if (TEC.el === el) (el.closest('.tl-linha') || el.closest('.campo') || el).scrollIntoView({ block: 'nearest' });
+}
+function fecharTeclado() {
+  if (!TEC.el) return;
+  TEC.el = null;
+  document.getElementById('teclado').classList.add('hidden');
+  document.documentElement.classList.remove('teclado-aberto');
+}
+// O foco saiu do campo (outro toque, a tela mudou, o campo foi redesenhado): acompanha o campo novo ou fecha. Com o
+// dedo ainda na tela espera soltar, senão a página encolhe embaixo do toque e o botão tocado sai do lugar
+function sincronizarTeclado() {
+  if (!TEC.el || TEC.apertado) return;
+  const el = document.activeElement;
+  if (campoDoTeclado(el) && el.getClientRects().length) { if (el !== TEC.el) abrirTeclado(el); } else fecharTeclado();
+}
+// Digita como o teclado do aparelho: no cursor (ou no lugar do texto selecionado, como no lacre), respeitando o
+// maxlength, e avisa o oninput do campo (máscara do CPF, protocolo, placa, lacre)
+function digitarNoCampo(el, txt) {
+  const temCursor = el.selectionStart != null; // e-mail não expõe o cursor: digita no fim
+  const ini = temCursor ? el.selectionStart : el.value.length, fim = temCursor ? el.selectionEnd : el.value.length;
+  if (el.maxLength >= 0 && el.value.length - (fim - ini) + txt.length > el.maxLength) return;
+  if (temCursor) el.setRangeText(txt, ini, fim, 'end'); else el.value += txt;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function apagarNoCampo(el) {
+  const temCursor = el.selectionStart != null;
+  let ini = temCursor ? el.selectionStart : el.value.length;
+  const fim = temCursor ? el.selectionEnd : el.value.length;
+  if (ini === fim) {
+    if (!ini) return;
+    ini--;
+    // Ponto ou traço da máscara do CPF: apaga também o número antes dele, senão a máscara devolve o separador
+    while (ini > 0 && TEC.layout === 'numerico' && /\D/.test(el.value[ini])) ini--;
+  }
+  if (temCursor) el.setRangeText('', ini, fim, 'end'); else el.value = el.value.slice(0, ini) + el.value.slice(fim);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function teclaDigitada(b) {
+  const el = TEC.el;
+  if (!el || document.activeElement !== el) { sincronizarTeclado(); return; }
+  if (b.dataset.c != null) {
+    digitarNoCampo(el, b.dataset.c);
+    if (TEC.maiusc) { TEC.maiusc = false; desenharTeclado(); } // maiúscula vale para uma letra
+    return;
+  }
+  switch (b.dataset.k) {
+    case 'apagar': apagarNoCampo(el); break;
+    case 'limpar': el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); break;
+    case 'espaco': digitarNoCampo(el, ' '); break;
+    case 'maiusc': TEC.maiusc = !TEC.maiusc; desenharTeclado(); break;
+    case 'camada': TEC.simbolos = !TEC.simbolos; TEC.maiusc = false; desenharTeclado(); break;
+    case 'ocultar': el.blur(); fecharTeclado(); break;
+    case 'ok':
+      // Mesmo Enter do teclado do tablet. "Próximo" leva ao campo seguinte com o teclado aberto; nos outros, o teclado
+      // fecha antes (a tela aparece inteira, com os avisos), a não ser que a ação ponha o foco em outro campo
+      if (el.enterKeyHint !== 'next') el.blur();
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      break;
+  }
+}
+if (TECLADO_MODO) {
+  document.querySelectorAll('input').forEach((el) => { if (campoDoTeclado(el)) prepararCampo(el); });
+  const painel = document.getElementById('teclado');
+  painel.addEventListener('mousedown', (ev) => ev.preventDefault()); // a tecla não tira o foco (nem o cursor) do campo
+  painel.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  painel.addEventListener('click', (ev) => { const b = ev.target.closest('.tecla'); if (b) teclaDigitada(b); });
+  document.addEventListener('pointerdown', (ev) => {
+    TEC.apertado = true;
+    if (ev.target.closest('#teclado')) return;
+    const el = ev.target.closest('label')?.control || ev.target;
+    if (!campoDoTeclado(el)) return;
+    prepararCampo(el); // antes do foco, para o teclado do Windows não abrir junto (campos dos lacres são redesenhados)
+    if (TECLADO_MODO === 'toque' && ev.pointerType === 'mouse') return;
+    TEC.toqueEm = el;
+    TEC.toqueT = Date.now();
+  }, true);
+  for (const tipo of ['pointerup', 'pointercancel']) {
+    document.addEventListener(tipo, () => { TEC.apertado = false; setTimeout(sincronizarTeclado, 0); }, true);
+  }
+  // Abre no fim do toque (click), também no campo que já tinha o foco (o do leitor), e só depois do evento: abrindo
+  // no meio do toque, a página (ou a caixa do menu) mudava de lugar e o toque terminava em outro botão
+  document.addEventListener('click', (ev) => {
+    const el = ev.target;
+    if (!campoDoTeclado(el) || TEC.toqueEm !== el || Date.now() - TEC.toqueT > 1500) return;
+    setTimeout(() => { if (document.activeElement === el) abrirTeclado(el); }, 0);
+  }, true);
+  // Foco mudou com o teclado aberto ("Próximo", leitor, tela nova): acompanha o campo ou fecha, também depois do evento
+  document.addEventListener('focusin', (ev) => {
+    if (campoDoTeclado(ev.target)) prepararCampo(ev.target);
+    setTimeout(sincronizarTeclado, 0);
+  });
+  document.addEventListener('focusout', () => setTimeout(sincronizarTeclado, 0));
+  window.addEventListener('resize', () => { if (TEC.el) ajustarAlturaTeclado(); });
+  setInterval(sincronizarTeclado, 300); // campo redesenhado ou escondido com o foco nele não avisa (sem focusout)
+}
 
 atualizarRelogio();
 setInterval(atualizarRelogio, 15000);
