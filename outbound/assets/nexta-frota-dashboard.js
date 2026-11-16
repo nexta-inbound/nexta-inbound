@@ -1,0 +1,7933 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// NEXTA — MAPA DE VIAGEM + DASHBOARD DE OPERAÇÕES
+// ═══════════════════════════════════════════════════════════════════════════
+// Terceiro <script> não-module, carregado após Leaflet/html2canvas (tags
+// <script src> imediatamente acima no documento). Continuação do mesmo
+// escopo global do Roteirizador (script anterior) — usa variáveis e funções
+// definidas ali (pedidos, veiculos, ultimoResultado, showToast, etc).
+//
+// ÍNDICE
+//   MAPA DE VIAGEM .............. waypoints arrastáveis + exportação de imagem do mapa
+//   DASHBOARD DE OPERAÇÕES — IIFE isolada, com seu próprio armazenamento:
+//     Armazenamento ................. snapshots de roteirizações salvas em localStorage
+//     Salvar roteirização atual ..... window.dashSalvarAtual()
+//     Popular select de meses ....... window.dashPopularMeses()
+//     Extrair dados agregados ....... agrega snapshots de um ou mais meses
+//     Renderizar Dashboard .......... monta a tela com KPIs e gráficos
+//     Gráfico de barras horizontal ... gráfico inline (sem libs externas)
+//     Gráfico Km vs Volume ........... gráfico de dispersão
+//     Gráfico de ocupação (canvas) .... gráfico de ocupação por viagem
+//     Mapa Histórico .................. mapa Leaflet com rotas agregadas
+//     Carregar por mês selecionado .... window.dashCarregarMes()
+//     Carregar todos os períodos ...... window.dashCarregarTodos()
+//     Hook: popular meses .............. dispara ao abrir a aba do dashboard
+// ═══════════════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════
+   MAPA DE VIAGEM — waypoints arrastáveis + exportação
+══════════════════════════════════════════════════════ */
+// IMPORTANTE: var (não let/const). abrirModalViagem() — que inicia o mapa de
+// viagem — está definida no <script> do Roteirizador, um escopo de script
+// SEPARADO deste. Ela lê/escreve estas variáveis sem prefixo "window." (ex.:
+// "_mvWaypoints = [...]"), o que só funciona se elas forem propriedades reais
+// de window — daí "var" em vez de "let/const" aqui. Com let/const, essa escrita
+// criava uma variável global *desconectada* (non-strict) ou lançava
+// ReferenceError, e o mapa de viagem nunca via os dados que abrirModalViagem
+// pensava ter preenchido — causa raiz de "traçado não aparece"/"km não atualiza".
+var _mvWaypoints = [];       // [{lat,lon,marker,tipo,nome}] pontos originais (origem, paradas, retorno)
+var _mvUserWaypoints = [];   // waypoints intermediários inseridos pelo usuário arrastando a linha
+var _mvViaIdSeq = 1;         // gera ids estáveis pras vias, pra poder referenciar no popup (onclick)
+var _mvPolylines = [];       // polylines desenhadas (uma por segmento)
+var _mvDistSpan = null;
+var _mvDragMarker = null;    // marcador fantasma que aparece ao hover na linha
+var _mvRenderToken = 0;      // token incremental — evita que uma chamada antiga de mvDesenharRota
+                              // sobrescreva o resultado de uma chamada mais recente (race condition)
+var _mvCanvasRenderer = null; // renderer Canvas dedicado para a polyline (evita bug de SVG no html2canvas)
+var _mvRoutePoints = [];     // [{lat,lon}] pontos REAIS do traçado (extraídos das polylines do OSRM),
+                              // em ordem, do início ao fim da viagem — usado pra detectar pedágio
+                              // ao longo do trajeto de verdade, não só numa linha reta entre paradas.
+// ─── State para salvar rota ajustada na viagem ────────────────────────────
+// Salva os waypoints do usuário por chave "vId||iV" para persistir durante a sessão
+var _mvRotasSalvas = {};
+function _mvChaveViagem() {
+  return `${window._mvVeiculoId || ''}||${window._mvIdxViagem ?? ''}`;
+}
+// ─── Garantir mapa ──────────────────────────────────────────────────────────
+function garantirMapaViagem() {
+  if (!mapaViagem) {
+    mapaViagem = L.map('mv-mapa', { zoomControl: true });
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${window.CARTO_API_KEY ? '?key=' + window.CARTO_API_KEY : ''}`, {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      crossOrigin: true // permite que o html2canvas leia os tiles sem "tainted canvas" (CORS)
+    }).addTo(mapaViagem);
+    // Renderer Canvas dedicado para a linha da rota. O Leaflet, por padrão, desenha
+    // polylines em SVG — e o html2canvas tem um bug documentado e conhecido onde o
+    // SVG do Leaflet fica deslocado/cortado na imagem exportada (_updateSvgViewport
+    // não é interpretado corretamente). Usar Canvas para esta camada evita o problema
+    // por completo, já que <canvas> é capturado de forma direta e fiel pelo html2canvas.
+    _mvCanvasRenderer = null; // não usado (polylines usam SVG padrão do Leaflet)
+  }
+  if (camadaViagem) camadaViagem.remove();
+  camadaViagem = L.layerGroup().addTo(mapaViagem);
+  _mvPolylines = [];
+  _mvRoutePoints = [];
+  _mvUserWaypoints = [];
+  _mvWaypoints = [];
+  const badge = document.getElementById('mv-vias-badge');
+  if (badge) badge.style.display = 'none';
+  setTimeout(() => mapaViagem.invalidateSize(), 50);
+}
+// ─── Desenhar marcador de parada (fixo, não arrastável) ────────────────────
+function mvAdicionarWaypointArrastavel(p, idx) {
+  const isOrigem  = p.tipo === 'origem';
+  const isRetorno = p.tipo === 'retorno';
+  const iconHtml = `<div style="
+    width:24px;height:24px;border-radius:50%;
+    background:${isOrigem ? '#111827' : isRetorno ? '#6B7280' : '#4F46E5'};
+    color:#fff;font-size:11px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    border:2.5px solid #fff;
+    box-shadow:0 2px 8px rgba(0,0,0,0.4);
+    font-family:Inter,sans-serif;
+    pointer-events:auto;
+  ">${isOrigem ? '⬤' : isRetorno ? '↩' : String(idx)}</div>`;
+  const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [24,24], iconAnchor: [12,12] });
+  // Pontos de parada NÃO são arrastáveis — apenas as vias intermediárias o são
+  const marker = L.marker([p.lat, p.lon], { icon, draggable: false }).addTo(camadaViagem);
+  if (p._popup) marker.bindPopup(p._popup, { maxWidth: 300 });
+  _mvWaypoints[idx].marker = marker;
+}
+// ─── Desenhar rota completa com waypoints intermediários ───────────────────
+// Monta a sequência: wp[0] → [vias entre 0 e 1] → wp[1] → [vias entre 1 e 2] → wp[2] ...
+async function mvDesenharRota() {
+  // Token desta execução — se outra chamada de mvDesenharRota for disparada
+  // antes desta terminar (ex.: clique seguido de arraste rápido), a execução
+  // mais antiga detecta que não é mais a "atual" e descarta seu resultado,
+  // evitando que o km e o traçado fiquem presos num estado anterior.
+  const myToken = ++_mvRenderToken;
+  let obsoleta = false; // true = outra chamada mais recente assumiu — não recalcular km aqui
+  try {
+    // Monta sequência completa intercalando vias do usuário
+    const sequencia = _mvMontarSequencia();
+    const novasPolylines = [];
+    for (let i = 0; i < sequencia.length - 1; i++) {
+      try {
+        const { coords } = await osrmFetchSegmento(sequencia[i], sequencia[i+1]);
+        if (myToken !== _mvRenderToken) {
+          novasPolylines.forEach(pl => { try { camadaViagem.removeLayer(pl); } catch(e){} });
+          obsoleta = true;
+          return; // execução obsoleta — abandona e limpa o que já tinha desenhado
+        }
+        const pl = L.polyline(coords, {
+          color: '#00A499', weight: 5, opacity: 0.85,
+          lineCap: 'round', lineJoin: 'round'
+        }).addTo(camadaViagem);
+        // Torna cada segmento clicável para inserir nova via
+        _mvBindPolylineClick(pl, i, sequencia);
+        novasPolylines.push(pl);
+      } catch(e) {
+        if (myToken !== _mvRenderToken) {
+          novasPolylines.forEach(pl => { try { camadaViagem.removeLayer(pl); } catch(e2){} });
+          obsoleta = true;
+          return; // execução obsoleta — abandona e limpa o que já tinha desenhado
+        }
+        const pl = L.polyline(
+          [[sequencia[i].lat, sequencia[i].lon],[sequencia[i+1].lat, sequencia[i+1].lon]],
+          { color: '#00A499', weight: 4, opacity: 0.5, dashArray: '6,4' }
+        ).addTo(camadaViagem);
+        novasPolylines.push(pl);
+      }
+    }
+    if (myToken !== _mvRenderToken) {
+      // Outra chamada mais recente já está em andamento — descarta o que foi desenhado aqui
+      novasPolylines.forEach(pl => { try { camadaViagem.removeLayer(pl); } catch(e){} });
+      obsoleta = true;
+      return;
+    }
+    // Só agora, com a certeza de que esta é a execução mais recente, remove as
+    // polylines antigas e assume as novas.
+    _mvPolylines.forEach(pl => { try { camadaViagem.removeLayer(pl); } catch(e){} });
+    _mvPolylines = novasPolylines;
+    // Extrai os pontos REAIS do traçado (em ordem) pra detecção de pedágio
+    // ao longo do trajeto de verdade — não só entre as pontas das paradas.
+    try {
+      _mvRoutePoints = novasPolylines
+        .flatMap(pl => pl.getLatLngs())
+        .map(ll => ({ lat: ll.lat, lon: ll.lng }));
+    } catch (e) {
+      _mvRoutePoints = [];
+      console.warn('[mvDesenharRota] não foi possível extrair pontos do traçado real:', e);
+    }
+    // Re-desenhar marcadores de via por cima das polylines
+    _mvUserWaypoints.forEach(uw => {
+      if (uw.marker) { try { camadaViagem.removeLayer(uw.marker); } catch(e){} }
+      _mvDesenharMarcadorVia(uw);
+    });
+    // Traçado real agora disponível em _mvRoutePoints — recalcula o custo/pedágio
+    // com o caminho de verdade em vez da aproximação por linha reta, e atualiza
+    // isso toda vez que a rota é redesenhada (abertura do modal OU arrasto manual).
+    if (typeof renderCustoMapaViagem === 'function') {
+      try { renderCustoMapaViagem(); } catch (e) { console.warn('[mvDesenharRota] falha ao atualizar custo com traçado real:', e); }
+    }
+    // Defensivo: se por alguma condição de corrida (modal reaberto rápido, drag
+    // simultâneo) w.marker ainda não for um L.Marker de verdade, isso não pode
+    // interromper o resto da função — daí o typeof + try/catch por item.
+    _mvWaypoints.forEach(w => {
+      if (w.marker && typeof w.marker.bringToFront === 'function') {
+        try { w.marker.bringToFront(); } catch (e) { console.warn('[mvDesenharRota] falha ao trazer marcador para frente:', e); }
+      }
+    });
+  } catch (e) {
+    // Qualquer erro inesperado não previsto pelos try/catch internos acima
+    // (ex.: falha ao desenhar um marcador) cai aqui. Não é re-lançado: graças
+    // ao finally abaixo, o km ainda será recalculado com o que for possível,
+    // em vez de deixar o badge "preso" sem nunca atualizar.
+    console.error('mvDesenharRota: erro inesperado', e);
+  } finally {
+    // Recalcula o km SEMPRE que esta não for uma execução obsoleta — mesmo que
+    // algo tenha falhado acima. Isso garante que o usuário sempre veja o km
+    // atualizado (ou ao menos "calculando…" seguido de um valor), nunca um
+    // badge ausente para sempre.
+    if (!obsoleta) {
+      await mvRecalcularDistancia(myToken);
+    }
+  }
+}
+// ─── Monta sequência intercalando vias entre waypoints fixos ──────────────
+function _mvMontarSequencia() {
+  const seq = [];
+  for (let i = 0; i < _mvWaypoints.length; i++) {
+    seq.push(_mvWaypoints[i]);
+    // Adicionar vias do usuário que pertencem ao segmento i → i+1
+    const viasSegmento = _mvUserWaypoints
+      .filter(uw => uw.segmento === i)
+      .sort((a, b) => a.ordem - b.ordem);
+    viasSegmento.forEach(v => seq.push(v));
+  }
+  return seq;
+}
+// ─── Bind clique na polyline para inserir via ──────────────────────────────
+function _mvBindPolylineClick(pl, segIdx, sequencia) {
+  // Cursor crosshair ao hover
+  pl.on('mouseover', () => { document.getElementById('mv-mapa').style.cursor = 'crosshair'; });
+  pl.on('mouseout',  () => { document.getElementById('mv-mapa').style.cursor = 'default'; });
+  pl.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    // Descobrir em qual segmento fixo estamos
+    // segIdx é o índice na sequência completa; mapear para segmento fixo
+    const segFixo = _mvMapearSegmentoFixo(segIdx, sequencia);
+    const ordem = _mvUserWaypoints.filter(uw => uw.segmento === segFixo).length;
+    const via = {
+      id: _mvViaIdSeq++,
+      lat: e.latlng.lat,
+      lon: e.latlng.lng,
+      segmento: segFixo,
+      ordem,
+      marker: null
+    };
+    _mvUserWaypoints.push(via);
+    _mvAtualizarBadgeVias();
+    mvDesenharRota();
+  });
+}
+// ─── Mapear índice da sequência completa para segmento fixo ──────────────
+function _mvMapearSegmentoFixo(seqIdx, sequencia) {
+  // Conta quantos waypoints fixos passamos até seqIdx
+  let fixos = 0;
+  for (let i = 0; i <= seqIdx && i < sequencia.length; i++) {
+    if (_mvWaypoints.includes(sequencia[i])) fixos++;
+  }
+  return Math.max(0, fixos - 1);
+}
+// ─── Desenhar marcador de via (arrastável, removível) ─────────────────────
+function _mvDesenharMarcadorVia(via) {
+  const iconHtml = `<div style="
+    width:18px;height:18px;
+    background:#4F46E5;border:2.5px solid #fff;
+    border-radius:4px;transform:rotate(45deg);
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    cursor:grab;
+  "></div>`;
+  const icon = L.divIcon({ className: '', html: iconHtml, iconSize:[18,18], iconAnchor:[9,9] });
+  const marker = L.marker([via.lat, via.lon], { icon, draggable: true, zIndexOffset: 1000 })
+    .addTo(camadaViagem);
+  // Antes o clique removia a via na hora. Trocado por um popup — dá acesso ao
+  // Street View do ponto (pedido do usuário) e mantém a remoção só um clique
+  // a mais de distância, no botão "Remover via" dentro do popup.
+  if (via.id == null) via.id = _mvViaIdSeq++; // vias restauradas de salvamentos antigos podem não ter id
+  const popupHtml = `<div style="font-family:Inter,sans-serif;min-width:170px;">
+    <div style="font-weight:700;font-size:12px;margin-bottom:2px;">📍 Via</div>
+    <div style="font-size:10px;color:#6B7280;margin-bottom:6px;">Arraste para ajustar a posição.</div>
+    ${streetViewBotaoHtml(via.lat, via.lon)}
+    <button type="button" onclick="mvRemoverViaPorId(${via.id})"
+      style="display:flex;align-items:center;gap:4px;margin-top:6px;padding:4px 8px;background:#FEF2F2;color:#B91C1C;border-radius:5px;font-size:11px;font-weight:600;border:1px solid #FECACA;cursor:pointer;width:100%;justify-content:center;">
+      🗑️ Remover via</button>
+  </div>`;
+  marker.bindPopup(popupHtml, { maxWidth: 220 });
+  marker.bindTooltip('Arraste para ajustar · Clique para ver opções', { direction:'top', offset:[0,-12] });
+  marker.on('click', (e) => {
+    L.DomEvent.stopPropagation(e); // não deixa o clique "vazar" pra polyline por baixo e criar outra via
+  });
+  marker.on('drag', (e) => {
+    via.lat = e.latlng.lat;
+    via.lon = e.latlng.lng;
+  });
+  marker.on('dragend', () => {
+    mvDesenharRota();
+  });
+  via.marker = marker;
+}
+// Remove uma via pelo id — chamado pelo botão dentro do popup da via.
+function mvRemoverViaPorId(id) {
+  const via = _mvUserWaypoints.find(uw => uw.id === id);
+  if (!via) return;
+  _mvUserWaypoints = _mvUserWaypoints.filter(uw => uw.id !== id);
+  if (via.marker) { try { via.marker.closePopup(); camadaViagem.removeLayer(via.marker); } catch(e){} }
+  _mvAtualizarBadgeVias();
+  mvDesenharRota();
+}
+window.mvRemoverViaPorId = mvRemoverViaPorId;
+// ─── Badge de vias ─────────────────────────────────────────────────────────
+function _mvAtualizarBadgeVias() {
+  const badge = document.getElementById('mv-vias-badge');
+  if (!badge) return;
+  const n = _mvUserWaypoints.length;
+  if (n === 0) { badge.style.display = 'none'; return; }
+  badge.style.display = 'inline-block';
+  badge.textContent = `${n} via(s)`;
+}
+// ─── Recalcular distância total ────────────────────────────────────────────
+async function mvRecalcularDistancia(token = null) {
+  const myToken = token != null ? token : ++_mvRenderToken;
+  const el = document.getElementById('mv-dist-total');
+  if (!el) return;
+  el.style.display = 'inline-block';
+  el.textContent = '📏 calculando…';
+  const seq = _mvMontarSequencia();
+  let totalKm = 0;
+  for (let i = 0; i < seq.length - 1; i++) {
+    try {
+      const res = await osrmFetchSegmento(seq[i], seq[i+1]);
+      totalKm += res.distKm;
+    } catch(e) {}
+  }
+  if (myToken !== _mvRenderToken) return; // outra atualização mais recente já está em curso
+  // Atualiza o texto exibido primeiro — é a parte mais importante para o usuário
+  // e não deve depender do sucesso das etapas de persistência abaixo.
+  el.textContent = `📏 ${totalKm.toFixed(1)} km`;
+  try {
+    // Salvar km e vias na viagem do resultado (para que o card de resultados atualize)
+    const chave = _mvChaveViagem();
+    _mvRotasSalvas[chave] = {
+      userWaypoints: _mvUserWaypoints.map(uw => ({ lat: uw.lat, lon: uw.lon, segmento: uw.segmento, ordem: uw.ordem })),
+      kmAjustado: totalKm
+    };
+    // Atualizar distanciaKm na viagem do ultimoResultado se estiver disponível
+    const vId = window._mvVeiculoId;
+    const iV  = window._mvIdxViagem;
+    if (vId != null && iV != null && ultimoResultado?.[vId]?.[iV]) {
+      ultimoResultado[vId][iV]._kmAjustado = totalKm;
+      ultimoResultado[vId][iV]._userWaypoints = _mvRotasSalvas[chave].userWaypoints;
+    }
+    if (typeof window.renderCustoMapaViagem === 'function') window.renderCustoMapaViagem();
+  } catch (e) {
+    console.error('mvRecalcularDistancia: erro ao persistir km/vias', e);
+  }
+}
+// ─── Resetar para rota original ────────────────────────────────────────────
+async function mvResetarRota() {
+  _mvUserWaypoints.forEach(uw => { try { camadaViagem.removeLayer(uw.marker); } catch(e){} });
+  _mvUserWaypoints = [];
+  _mvAtualizarBadgeVias();
+  // Limpar rota salva para esta viagem
+  const chave = _mvChaveViagem();
+  delete _mvRotasSalvas[chave];
+  if (window._mvVeiculoId != null && window._mvIdxViagem != null && ultimoResultado?.[window._mvVeiculoId]?.[window._mvIdxViagem]) {
+    delete ultimoResultado[window._mvVeiculoId][window._mvIdxViagem]._kmAjustado;
+    delete ultimoResultado[window._mvVeiculoId][window._mvIdxViagem]._userWaypoints;
+  }
+  await mvDesenharRota();
+}
+// ─── Compartilhar via Google Maps ──────────────────────────────────────────
+function mvCompartilharGoogleMaps() {
+  const seq = _mvMontarSequencia();
+  if (!seq || seq.length < 2) { showToast('Nenhuma rota para compartilhar.', false); return; }
+  const origem  = seq[0];
+  const destino = seq[seq.length - 1];
+  const mids = seq.slice(1, -1);
+  const waypointStr = mids.map(p => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`).join('|');
+  const url = `https://www.google.com/maps/dir/?api=1`
+    + `&origin=${origem.lat.toFixed(6)},${origem.lon.toFixed(6)}`
+    + `&destination=${destino.lat.toFixed(6)},${destino.lon.toFixed(6)}`
+    + `&travelmode=driving`
+    + (waypointStr ? `&waypoints=${encodeURIComponent(waypointStr)}` : '');
+  // Copiar para clipboard
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('Link copiado! Cole no WhatsApp para enviar ao motorista ✓');
+  }).catch(() => {
+    window.open(url, '_blank');
+  });
+}
+// ─── Exportar mapa ─────────────────────────────────────────────────────────
+function mvExportarMapa() {
+  if (!mapaViagem) return;
+  const mapaEl = document.getElementById('mv-mapa');
+  if (!mapaEl) return;
+  if (typeof html2canvas === 'undefined') {
+    mvCompartilharGoogleMaps();
+    showToast('Para salvar como imagem, use a impressão do navegador (Ctrl+P → Salvar como PDF).', true);
+    return;
+  }
+  showToast('Gerando imagem…', true);
+  let respondeu = false;
+  const watchdog = setTimeout(() => {
+    if (!respondeu) {
+      respondeu = true;
+      showToast('Não foi possível gerar a imagem (tempo esgotado). Tente novamente ou use Ctrl+P → Salvar como PDF.', false);
+    }
+  }, 15000);
+  // Esconde controles de zoom e atribuição para imagem limpa
+  const zoomCtrl = mapaEl.querySelector('.leaflet-control-zoom');
+  const zoomOrig = zoomCtrl ? zoomCtrl.style.display : null;
+  if (zoomCtrl) zoomCtrl.style.display = 'none';
+  // ── Estratégia: html2canvas captura tiles + marcadores (DOM/divIcon).
+  //    A polyline SVG do Leaflet é problemática no html2canvas (SVG enorme
+  //    com viewBox mal recalculado após pan). Solução: após capturar o DOM,
+  //    redesenhar a polyline diretamente no canvas resultado usando a projeção
+  //    geográfica do Leaflet — assim o traçado fica perfeitamente alinhado
+  //    com os tiles capturados.
+  html2canvas(mapaEl, {
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: '#ffffff',
+    scale: 2,
+    logging: false,
+    // No onclone: ocultar o SVG das polylines (será redesenhado manualmente)
+    // e corrigir translate3d → translate nos panes de marcadores/tiles
+    onclone: (clonedDoc) => {
+      const clonedMapa = clonedDoc.getElementById('mv-mapa');
+      if (!clonedMapa) return;
+      // Oculta o pane SVG (polylines) — será re-desenhado manualmente
+      const overlayPane = clonedMapa.querySelector('.leaflet-overlay-pane');
+      if (overlayPane) overlayPane.style.display = 'none';
+      // Corrige translate3d → translate em todos os panes (tiles, marcadores)
+      // O leaflet-map-pane tem offset enorme — zeramos e compensamos nos filhos
+      const mapPane = clonedMapa.querySelector('.leaflet-map-pane');
+      function parseXY(t) {
+        if (!t) return { x: 0, y: 0 };
+        const m = t.match(/translate3d\(\s*([^,]+),\s*([^,]+)/) ||
+                  t.match(/translate\(\s*([^,]+),\s*([^)]+)/);
+        return m ? { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 } : { x: 0, y: 0 };
+      }
+      if (mapPane) {
+        const off = parseXY(mapPane.style.transform);
+        mapPane.style.transform = 'translate(0px,0px)';
+        mapPane.style.webkitTransform = 'translate(0px,0px)';
+        Array.from(mapPane.children).forEach(child => {
+          if (child === overlayPane) return; // já oculto
+          const c = parseXY(child.style.transform);
+          const nx = c.x + off.x, ny = c.y + off.y;
+          child.style.transform = `translate(${nx}px,${ny}px)`;
+          child.style.webkitTransform = `translate(${nx}px,${ny}px)`;
+          // Corrige translate3d residuais em netos (ex: tiles individuais)
+          child.querySelectorAll('[style*="translate3d"]').forEach(el => {
+            el.style.transform = (el.style.transform || '').replace(
+              /translate3d\(([^,]+),([^,]+),[^)]+\)/, 'translate($1,$2)');
+          });
+        });
+      } else {
+        clonedMapa.querySelectorAll('[style*="translate3d"]').forEach(el => {
+          el.style.transform = (el.style.transform || '').replace(
+            /translate3d\(([^,]+),([^,]+),[^)]+\)/, 'translate($1,$2)');
+        });
+      }
+    }
+  }).then(canvas => {
+    if (respondeu) return;
+    respondeu = true;
+    clearTimeout(watchdog);
+    if (zoomCtrl) zoomCtrl.style.display = zoomOrig;
+    try {
+      const scale = 2; // deve coincidir com o scale do html2canvas
+      const ctx = canvas.getContext('2d');
+      const mapRect = mapaEl.getBoundingClientRect();
+      // ── Redesenha cada polyline da rota usando projeção Leaflet → pixel ──
+      // _mvPolylines contém os objetos L.polyline ativos no mapa.
+      if (Array.isArray(_mvPolylines) && _mvPolylines.length > 0) {
+        _mvPolylines.forEach(pl => {
+          if (!pl || !pl.getLatLngs) return;
+          let latlngs = pl.getLatLngs();
+          // Achata arrays aninhados (multipolyline)
+          if (latlngs.length && Array.isArray(latlngs[0])) latlngs = latlngs.flat();
+          if (latlngs.length < 2) return;
+          const opts = pl.options || {};
+          const cor = opts.color || '#00A499';
+          const peso = (opts.weight || 5) * scale;
+          ctx.beginPath();
+          ctx.strokeStyle = cor;
+          ctx.lineWidth = peso;
+          ctx.lineCap = opts.lineCap || 'round';
+          ctx.lineJoin = opts.lineJoin || 'round';
+          ctx.globalAlpha = opts.opacity !== undefined ? opts.opacity : 0.85;
+          if (opts.dashArray) {
+            const parts = String(opts.dashArray).split(/[\s,]+/).map(n => parseFloat(n) * scale);
+            ctx.setLineDash(parts);
+          } else {
+            ctx.setLineDash([]);
+          }
+          latlngs.forEach((ll, i) => {
+            // containerPointToLatLng inverso: latLngToContainerPoint
+            const pt = mapaViagem.latLngToContainerPoint(ll);
+            const px = pt.x * scale;
+            const py = pt.y * scale;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([]);
+      }
+      const titulo = (document.getElementById('mv-titulo')?.textContent || 'Mapa_Viagem')
+        .replace(/[^a-zA-Z0-9]/g, '_');
+      const a = document.createElement('a');
+      a.download = titulo + '.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      showToast('Mapa exportado! ✅');
+    } catch (e2) {
+      console.error('mvExportarMapa canvas draw:', e2);
+      showToast('Não foi possível salvar a imagem (restrição do navegador). Use Ctrl+P → Salvar como PDF.', false);
+    }
+  }).catch(err => {
+    if (respondeu) return;
+    respondeu = true;
+    clearTimeout(watchdog);
+    if (zoomCtrl) zoomCtrl.style.display = zoomOrig;
+    console.error('mvExportarMapa html2canvas:', err);
+    showToast('Erro ao gerar imagem. Tente Ctrl+P → Salvar como PDF.', false);
+  });
+}
+/* ── OSRM Road Routing ──────────────────────────────────────────
+   Busca trajeto real por estradas via OSRM público (OpenStreetMap).
+   Recebe array de {lat, lon}, devolve array de [lat, lng] do trajeto.
+   Faz chamadas sequenciais par-a-par para suportar múltiplos waypoints.
+─────────────────────────────────────────────────────────────────*/
+/* ── OSRM Routing ────────────────────────────────────────────────
+   Perfil: truck (caminhão) com fallback para car se indisponível.
+   Retorna array de distâncias acumuladas por ponto (em km) via
+   window._osrmDistancias[layer._leaflet_id] para uso nos popups.
+──────────────────────────────────────────────────────────────── */
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD DE OPERAÇÕES
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+// ── Armazenamento ──────────────────────────────────────────────────────────
+// Snapshots guardados em localStorage: { [chaveYYYYMM]: [snapshot, ...] }
+const DASH_KEY = 'nexta_dash_v1';
+function dashGetStore() {
+  try { return JSON.parse(localStorage.getItem(DASH_KEY) || '{}'); } catch { return {}; }
+}
+function dashSetStore(store) {
+  try { localStorage.setItem(DASH_KEY, JSON.stringify(store)); } catch(e) {
+    showToast('Armazenamento cheio. Remova períodos antigos.', false);
+  }
+}
+function dashChave(snapshot) {
+  const d = new Date(snapshot.savedAt || snapshot.datasEntrega?.[0] || Date.now());
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function dashChaveLabel(k) {
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${meses[parseInt(k.slice(4))-1]}/${k.slice(0,4)}`;
+}
+// ── Lê snapshots do histórico em disco (dirHandleHistorico) ─────────────────
+async function dashLerHistoricoDisco() {
+  console.log('[DASH] dashLerHistoricoDisco iniciado. dirHandleHistorico=', window.dirHandleHistorico);
+  if (!window.dirHandleHistorico) {
+    console.warn('[DASH] dirHandleHistorico não definido — pasta do histórico não selecionada.');
+    return {};
+  }
+  let permOk = false;
+  try { permOk = (await window.dirHandleHistorico.queryPermission({ mode: 'read' })) === 'granted'; } catch(e) { console.warn('[DASH] queryPermission erro:', e); }
+  if (!permOk) {
+    try { permOk = (await window.dirHandleHistorico.requestPermission({ mode: 'read' })) === 'granted'; } catch(e) { console.warn('[DASH] requestPermission erro:', e); }
+  }
+  console.log('[DASH] permissão leitura:', permOk);
+  if (!permOk) return {};
+  const store = {};
+  let total = 0, aceitos = 0, rejeitados = 0;
+  for await (const [name, handle] of window.dirHandleHistorico.entries()) {
+    if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
+    total++;
+    try {
+      const file = await handle.getFile();
+      const text = await file.text();
+      const data = JSON.parse(text);
+      console.log(`[DASH] arquivo: ${name} | versao=${data.versao} | savedAt=${data.savedAt} | temResultado=${!!data.resultado} | datasEntrega=`, data.datasEntrega);
+      // Arquivo já substituído por uma revisão posterior (correção salva por
+      // cima) não é mais a versão vigente daquela programação — a versão
+      // nova (que aponta pra este via revisaoDe) já está em outro arquivo e
+      // será contada normalmente. Contar os dois ao mesmo tempo inflava
+      // viagens/km/volume/entregas do Dashboard a cada correção, igual à
+      // regra que a aba Histórico já aplica (linha ~7786: vigentes = entries
+      // sem substituidoPor).
+      if (data.substituidoPor) {
+        console.warn(`[DASH] rejeitado (substituído por revisão posterior: ${data.substituidoPor}): ${name}`);
+        rejeitados++;
+        continue;
+      }
+      // Antes, arquivo sem "versao" OU sem "savedAt" era descartado inteiro —
+      // igual ao Frete, agora só exige QUE HAJA DADOS DE ROTEIRIZAÇÃO
+      // (resultado ou pedidos), e preenche savedAt que falte com a data de
+      // modificação do arquivo (mesmo fallback já usado no Frete), em vez de
+      // simplesmente jogar a roteirização inteira fora. Isso fazia o
+      // Dashboard mostrar menos viagens/km/volume que o Frete pro "mesmo"
+      // período, porque roteirizações salvas antes de o campo "versao" achar
+      // uma casa no JSON (ou qualquer salvamento sem savedAt) sumiam aqui
+      // mas continuavam contando lá.
+      if (!data.resultado && !data.pedidos && !data.versao) {
+        console.warn(`[DASH] rejeitado (sem resultado/pedidos/versao): ${name}`);
+        rejeitados++;
+        continue;
+      }
+      if (!data.savedAt) data.savedAt = new Date(file.lastModified).toISOString();
+      const dataRef = (() => {
+        const de = data.datasEntrega && data.datasEntrega[0];
+        if (de) {
+          const pts = de.split('/');
+          if (pts.length === 3) {
+            const d = new Date(parseInt(pts[2]), parseInt(pts[1])-1, parseInt(pts[0]));
+            if (!isNaN(d.getTime())) return d;
+          }
+          const d2 = new Date(de);
+          if (!isNaN(d2.getTime())) return d2;
+        }
+        return new Date(data.savedAt);
+      })();
+      const chave = `${dataRef.getFullYear()}${String(dataRef.getMonth()+1).padStart(2,'0')}`;
+      console.log(`[DASH] aceito: ${name} → chave ${chave}`);
+      aceitos++;
+      const snap = {
+        versao:       data.versao,
+        savedAt:      data.savedAt,
+        salvoPor:     data.salvoPor || 'Desconhecido',
+        datasEntrega: data.datasEntrega || [],
+        resumo:       data.resumo || {},
+        pedidos:      data.pedidos   || [],
+        terminais:    data.terminais || [],
+        veiculos:     data.veiculos  || [],
+        resultado:    data.resultado || {},
+        controleTempo: data.controleTempo || {},
+        _fonte:       'disco',
+        _filename:    name,
+      };
+      if (!store[chave]) store[chave] = [];
+      store[chave].push(snap);
+    } catch(e) {
+      console.error(`[DASH] erro ao ler ${name}:`, e);
+      rejeitados++;
+    }
+  }
+  console.log(`[DASH] total arquivos json: ${total} | aceitos: ${aceitos} | rejeitados: ${rejeitados}`);
+  console.log('[DASH] chaves geradas:', Object.keys(store));
+  return store;
+}
+// ── Fonte dos dados do Dashboard ──────────────────────────────────────────
+// Antes mesclava a pasta compartilhada em disco com um "estoque" à parte em
+// localStorage (alimentado por dashSalvarAtual, uma função que ficou órfã —
+// não está mais ligada a nenhum botão da tela). Isso fazia o Dashboard somar
+// roteirizações que só existiam no navegador de quem um dia usou aquele
+// botão, e que nunca apareceram na pasta compartilhada — daí os totais do
+// Dashboard ficarem sistematicamente maiores que os da aba Histórico, que
+// sempre leu só a pasta. Agora as duas telas leem exatamente a mesma fonte
+// (a pasta em disco, com o mesmo filtro de "só vigente, nunca substituída"),
+// então os números batem.
+async function dashGetStoreMerged() {
+  return await dashLerHistoricoDisco();
+}
+// ── Salvar roteirização atual no Dashboard ─────────────────────────────────
+window.dashSalvarAtual = function() {
+  if (!ultimoResultado) { showToast('Execute a otimização primeiro.', false); return; }
+  const snapshot = {
+    versao: 1,
+    savedAt: new Date().toISOString(),
+    datasEntrega: [...new Set((pedidos||[]).map(p=>p.dataEntregaLogistica).filter(Boolean))],
+    pedidos:    JSON.parse(JSON.stringify(pedidos||[])),
+    terminais:  JSON.parse(JSON.stringify(terminaisCad||[])),
+    veiculos:   JSON.parse(JSON.stringify(veiculos||[])),
+    resultado:  JSON.parse(JSON.stringify(ultimoResultado||{})),
+  };
+  const chave = dashChave(snapshot);
+  const store = dashGetStore();
+  if (!store[chave]) store[chave] = [];
+  store[chave].push(snapshot);
+  dashSetStore(store);
+  dashPopularMeses();
+  showToast(`Roteirização salva no Dashboard — ${dashChaveLabel(chave)} ✓`);
+};
+// ── Popular lista de meses (multi-seleção) ──────────────────────────────────
+let _dashTodasChavesMeses = [];        // cache das chaves disponíveis ("202608", ...), mais recente primeiro
+let _dashRotulosMeses = {};            // chave -> "Ago/2026 (155 rot.)"
+let _dashMesesSelecionados = null;     // Set de chaves marcadas, ou null = nenhum filtro específico de mês (equivalente a "Todos")
+let _dashPeriodoPersonalizado = null;  // {ini:'YYYY-MM-DD', fim:'YYYY-MM-DD'} ou null
+window.dashPopularMeses = async function() {
+  const store = await dashGetStoreMerged();
+  _dashTodasChavesMeses = Object.keys(store).sort().reverse();
+  _dashRotulosMeses = {};
+  _dashTodasChavesMeses.forEach(k => { _dashRotulosMeses[k] = `${dashChaveLabel(k)} (${store[k].length} rot.)`; });
+  // Se havia meses marcados que sumiram do histórico (arquivo excluído etc.),
+  // mantém só os que ainda existem — mesmo cuidado já usado nos filtros de
+  // Cidade/Cliente.
+  if (_dashMesesSelecionados) {
+    const validos = new Set(_dashTodasChavesMeses);
+    const atualizado = new Set([..._dashMesesSelecionados].filter(k => validos.has(k)));
+    _dashMesesSelecionados = atualizado.size ? atualizado : null;
+  }
+  _dashRenderListaMeses();
+};
+function _dashRenderListaMeses() {
+  const list = document.getElementById('dash-periodo-mes-list');
+  if (!list) return;
+  const sel = _dashMesesSelecionados;
+  list.innerHTML = _dashTodasChavesMeses.map(k => {
+    const checked = !!(sel && sel.has(k));
+    return `<div data-val="${k}" data-checked="${checked ? '1' : '0'}"
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-radius:6px;margin:0 4px;user-select:none;">
+      <span class="dash-cb-box" style="flex-shrink:0;width:18px;height:18px;border-radius:5px;border:2px solid ${checked ? 'var(--pet-green,#b5e51d)' : '#bbb'};background:${checked ? 'var(--pet-green,#b5e51d)' : 'transparent'};display:flex;align-items:center;justify-content:center;">${checked ? _dashCheckSVG() : ''}</span>
+      <span style="font-size:12px;color:#111827;flex:1;">${_dashRotulosMeses[k] || dashChaveLabel(k)}</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('div[data-val]').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = 'rgba(0,0,0,0.04)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const checked = row.dataset.checked !== '1';
+      row.dataset.checked = checked ? '1' : '0';
+      _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), checked);
+    });
+  });
+}
+function dashTogglePainelPeriodo() {
+  const panel = document.getElementById('dash-periodo-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) _dashRenderListaMeses();
+}
+function dashSelecionarTodosMeses(sel) {
+  document.querySelectorAll('#dash-periodo-mes-list div[data-val]').forEach(row => {
+    row.dataset.checked = sel ? '1' : '0';
+    _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), sel);
+  });
+  // Marcar/limpar meses é sempre a intenção explícita — desiste do
+  // intervalo personalizado que porventura estivesse preenchido, senão o
+  // clique em "Aplicar" logo em seguida ignoraria os meses (a data tem
+  // prioridade) e pareceria que o clique em "Todos"/"Limpar" não fez nada.
+  const _ini = document.getElementById('dash-periodo-data-ini'); if (_ini) _ini.value = '';
+  const _fim = document.getElementById('dash-periodo-data-fim'); if (_fim) _fim.value = '';
+}
+function _dashAtualizarBadgePeriodo() {
+  const badge = document.getElementById('dash-periodo-badge');
+  const label = document.getElementById('dash-periodo-label');
+  if (!badge || !label) return;
+  if (_dashPeriodoPersonalizado) {
+    label.textContent = '🗓️ Período';
+    badge.textContent = '📅 personalizado';
+    badge.style.display = '';
+  } else if (_dashMesesSelecionados) {
+    label.textContent = '🗓️ Período';
+    badge.textContent = `${_dashMesesSelecionados.size} ${_dashMesesSelecionados.size === 1 ? 'mês' : 'meses'}`;
+    badge.style.display = '';
+  } else {
+    label.textContent = '🗓️ Período';
+    badge.style.display = 'none';
+  }
+}
+function _dashFmtDataBr(iso) {
+  const [y, m, d] = (iso || '').split('-');
+  return (y && m && d) ? `${d}/${m}/${y}` : iso;
+}
+window.dashAplicarFiltroPeriodo = async function() {
+  const panel = document.getElementById('dash-periodo-panel');
+  const dataIni = document.getElementById('dash-periodo-data-ini')?.value || '';
+  const dataFim = document.getElementById('dash-periodo-data-fim')?.value || '';
+  if (dataIni && dataFim) {
+    _dashPeriodoPersonalizado = { ini: dataIni, fim: dataFim };
+    _dashMesesSelecionados = null;
+    if (panel) panel.style.display = 'none';
+    await dashCarregarPeriodoPersonalizado(dataIni, dataFim);
+    return;
+  }
+  const marcados = new Set();
+  document.querySelectorAll('#dash-periodo-mes-list div[data-checked="1"]').forEach(row => marcados.add(row.dataset.val));
+  _dashPeriodoPersonalizado = null;
+  if (panel) panel.style.display = 'none';
+  if (!marcados.size || marcados.size === _dashTodasChavesMeses.length) {
+    // nada marcado, ou tudo marcado — equivale a "Todos os períodos"
+    _dashMesesSelecionados = null;
+    await window.dashCarregarTodos();
+    return;
+  }
+  _dashMesesSelecionados = marcados;
+  await dashCarregarMesesSelecionados([...marcados]);
+};
+// ── Carregar 1 ou mais meses selecionados ───────────────────────────────────
+window.dashCarregarMesesSelecionados = async function(chaves) {
+  const store = await dashGetStoreMerged();
+  const combinados = chaves.flatMap(k => store[k] || []);
+  _dashPeriodoAtualDescricao = chaves.slice().sort().map(k => dashChaveLabel(k)).join(', ');
+  _dashRenderListaMeses();
+  _dashAtualizarBadgePeriodo();
+  dashRender(combinados);
+};
+// ── Carregar intervalo de datas personalizado ───────────────────────────────
+// Filtra pela data de ENTREGA real das viagens (datasEntrega), mesmo
+// critério já usado em "Hoje" — uma roteirização salva num dia pode ter
+// entregas de outro, o intervalo precisa refletir quando a operação
+// aconteceu, não quando alguém mexeu no sistema.
+window.dashCarregarPeriodoPersonalizado = async function(dataIniISO, dataFimISO) {
+  const store = await dashGetStoreMerged();
+  const todos = Object.values(store).flat();
+  const filtrados = todos.filter(s => Array.isArray(s.datasEntrega) && s.datasEntrega.some(dBr => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dBr || '');
+    if (!m) return false;
+    const iso = `${m[3]}-${m[2]}-${m[1]}`;
+    return iso >= dataIniISO && iso <= dataFimISO;
+  }));
+  _dashPeriodoAtualDescricao = `${_dashFmtDataBr(dataIniISO)} a ${_dashFmtDataBr(dataFimISO)}`;
+  _dashAtualizarBadgePeriodo();
+  dashRender(filtrados);
+};
+// ── Extrair dados agregados de snapshots ───────────────────────────────────
+// ── Chave de unificação de cliente ────────────────────────────────────────
+// Prioridade: codigoSAP > nome normalizado (sem acentos, sem sufixo jurídico, maiúsculo)
+// ── Normaliza nome de cliente pra comparação (remove acentos, sufixos
+// jurídicos, pontuação e espaços extras) — extraído de dashChaveCliente()
+// pra poder ser reaproveitado na busca de Segmento (ver dashClienteSegmento).
+function dashNormalizarNomeCliente(nome) {
+  return (nome || '?').toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toUpperCase()
+    // "&" e "E" isolado significam a MESMA coisa em razão social brasileira
+    // ("Moraes & Moraes" == "Moraes E Moraes") — sem unificar os dois ANTES
+    // do resto da limpeza, o "&" sumia (removido como pontuação) enquanto o
+    // "E" ficava, fazendo as duas grafias do MESMO cliente virarem chaves
+    // diferentes ("MORAES MORAES" vs "MORAES E MORAES") — o cliente
+    // aparecia duplicado no filtro, e selecionar uma grafia excluía os
+    // pedidos gravados com a outra.
+    .replace(/\s*&\s*/g, ' E ')
+    .replace(/\b(LTDA|EIRELI|ME|EPP|SA|S\.A\.|COMERCIO|COMERCIAL|INDUSTRIA|IND|COM)\b\.?/g, '')
+    .replace(/[^A-Z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+// Compara um nome CRU de pedido (que pode estar gravado com qualquer
+// grafia — "& " ou " E ", acento ou sem, sufixo jurídico ou não) contra o
+// conjunto de clientes filtrados (que contém os nomes CANÔNICOS, já
+// mesclados por dashAgregar/dashChaveCliente). Usa nomes normalizados dos
+// dois lados — sem isso, um pedido gravado como "MORAES & MORAES" nunca
+// batia com o filtro aplicado em "MORAES E MORAES" (ou vice-versa), mesmo
+// depois do KPI principal já ter mesclado os dois como 1 cliente só.
+function _dashNormalizarSetClientes(efetivos) {
+  if (!efetivos) return null;
+  return new Set([...efetivos].map(dashNormalizarNomeCliente));
+}
+function _dashNomeBateFiltro(nomeRaw, efetivosNorm) {
+  if (!efetivosNorm) return true; // sem filtro ativo
+  return efetivosNorm.has(dashNormalizarNomeCliente(nomeRaw));
+}
+function dashChaveCliente(ped) {
+  const sap = (ped.codigoSAP || ped.codSAP || ped.sap || '').toString().trim();
+  if (sap) return 'SAP:' + sap;
+  // Fallback: normaliza o nome removendo acentos, sufixos jurídicos e espaços extras
+  const nome = (ped.cliente || ped.nomeCliente || ped.nome || '?').toString();
+  return 'NM:' + dashNormalizarNomeCliente(nome);
+}
+// ── Nome canônico preferido (mais curto = menos abreviado) ─────────────────
+function dashNomeCanônico(atual, novo) {
+  if (!atual) return novo;
+  // "& " vs " E " é a mesma coisa em razão social brasileira (dois nomes já
+  // se fundem em UM cliente via dashChaveCliente/dashNormalizarNomeCliente
+  // antes de chegar aqui) — entre as duas grafias, prefere sempre "E" por
+  // extenso como nome de exibição.
+  const temAmpAtual = atual.includes('&');
+  const temAmpNovo  = novo.includes('&');
+  if (temAmpAtual && !temAmpNovo) return novo;
+  if (temAmpNovo && !temAmpAtual) return atual;
+  // Sem diferença de "&"/"E": prefere o nome mais longo (mais completo), sem truncamentos
+  return novo.length > atual.length ? novo : atual;
+}
+// Retorna a cidade da operação (terminal) de uma viagem — usa terminalOrigem
+// da própria viagem (mais preciso) com fallback pro terminal cadastrado no
+// veículo. Terminal já tem campo `cidade` próprio (import Excel), separado
+// do nome da base (ex.: nome "Betim POTENCIAL Nexta" → cidade "Betim").
+function dashCidadeOperacaoViagem(vi, v, terms) {
+  const nomeTerm = vi.terminalOrigem || v.terminal || '';
+  const term = terms.find(t => t.nome === nomeTerm);
+  return term?.cidade || '(sem cidade)';
+}
+// Mapa "petId__pedidoId" -> volume a descontar (só devolução total/parcial,
+// nunca reentrega) — construído a partir do MESMO cache que já alimenta os
+// selos de ocorrência do Histórico (_devTodosRegistrosCache, definido em
+// roteirizador.js — os dois arquivos compartilham o mesmo escopo global).
+// Se ainda não carregou, dispara o carregamento em segundo plano e
+// re-renderiza o Dashboard sozinho quando chegar (mesmo princípio já usado
+// pros selos "⚠️ N ocorrência(s)" do Histórico) — assim o desconto aparece
+// mesmo que a 1ª renderização do Dashboard tenha saído antes de carregar.
+function _dashMapaDevolucoesPorEntrega() {
+  const mapa = new Map();
+  if (typeof _devTodosRegistrosCache === 'undefined' || !_devTodosRegistrosCache) {
+    if (typeof _devCarregarCacheRegistros === 'function') {
+      _devCarregarCacheRegistros().then(() => {
+        if (document.getElementById('dk-volume')) dashRenderComFiltro();
+      });
+    }
+    return mapa; // vazio por enquanto — a re-renderização acima corrige assim que carregar
+  }
+  _devTodosRegistrosCache.forEach(r => {
+    if (r.tipo !== 'devolucao_total' && r.tipo !== 'devolucao_parcial') return; // reentrega não desconta
+    const chave = (r.viagemId || '') + '__' + (r.pedidoId ?? '');
+    mapa.set(chave, (mapa.get(chave) || 0) + (r.volumeAfetadoM3 || 0));
+  });
+  return mapa;
+}
+function dashAgregar(snapshots, cidadesFiltro = null, transportadorasFiltro = null, devolucoesPorEntrega = null) {
+  const clientes = {};   // key=nome: {entregas, volume, km, lat, lon, cidade, capTotal}
+  const operacoes = {};  // key=cidade da operação: {cidade, volume, capTotal, viagens} — pro gráfico Ocupação vs Volume por Operação
+  const viagens_ocup = []; // {label, ocup}
+  let totalViagens = 0, totalKm = 0, totalVol = 0, totalCap = 0;
+  let totalViagensComPedagio = 0; // pra "% de Rotas Pedagiadas" e "Tempo Gasto com Lançamento de Pedágios"
+  // veiculos_escalados: lista de {id, snapIdx, capV, viagensIds} para cálculo de ocupação filtrada
+  const veiculos_escalados = [];
+  const rotasMap = [];   // para o mapa: [{termLat,termLon,paradas:[{lat,lon,nome}]}]
+  // Entradas cruas por viagem, usadas pelo Ranking de Transportadoras
+  // (dashAgregarTransportadoras) — evita rodar esse loop duas vezes.
+  const entradasTransportadora = [];
+  // "placa normalizada + dia" de todo veículo que teve viagem de verdade
+  // naquele dia (respeitando o filtro de cidade) — usado pelo indicador de
+  // Ociosidade pra saber se um veículo marcado "Disponível" no Painel de
+  // Disponibilidade (fonte de verdade de quem foi ESCALADO no dia — ver
+  // dashCarregarOciosidade) foi realmente utilizado ou ficou parado.
+  const diasComViagemPorPlaca = new Set();
+  // placa normalizada -> cidade — construído a partir do MESMO critério usado
+  // pra filtrar tudo o mais no Dashboard (terminal do veículo, via
+  // dashCidadeOperacaoViagem), não do campo "Operação" cadastrado
+  // separadamente na tela de Placas. Os dois podiam divergir (nomes
+  // diferentes, cadastro desatualizado), fazendo a Ociosidade nunca bater
+  // com nenhuma cidade do filtro e sempre voltar 0/0 quando filtrado —
+  // usando essa mesma fonte, ela fica automaticamente consistente com
+  // Jornada/Ranking/Viagens/etc.
+  // Guardado POR DIA (placa+data), não só por placa: um mesmo veículo pode
+  // operar de terminais/cidades diferentes em dias diferentes (troca de
+  // operação), e usar só a "primeira cidade vista" pra placa inteira fazia a
+  // Ociosidade comparar com a cidade errada nesses casos — sempre dando 0/0
+  // ao filtrar uma operação que na verdade tinha viagens daquela placa.
+  const placaCidadePorDia = new Map();
+  const placaCidade = new Map(); // fallback: última cidade vista pra placa, sem dia (cobre disponibilidade sem viagem correspondente naquele dia)
+  snapshots.forEach((snap, snapIdx) => {
+    const res = snap.resultado || {};
+    const vecs = snap.veiculos || [];
+    const terms = snap.terminais || [];
+    const mesKeySnap = (snap.savedAt || '').slice(0,7);
+    const dataSnap = (snap.savedAt || '').slice(0,10);
+    vecs.forEach(v => {
+      // Filtro de Transportadora: exclui o veículo inteiro (não só viagens
+      // individuais como o filtro de cidade abaixo) — transportadora é um
+      // atributo do veículo, não varia viagem a viagem. Aplicado antes de
+      // qualquer acumulação (inclusive placaCidade/Ociosidade), pra esse
+      // veículo simplesmente não existir em nada da tela quando filtrado.
+      if (transportadorasFiltro && !transportadorasFiltro.has(v.transportadora || '')) return;
+      const pNormMap = (v.placa || '').trim().toUpperCase();
+      const viagensTodas = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas||[]).length);
+      if (pNormMap) {
+        // Cidade de CADA viagem de fato realizada (vi.terminalOrigem||v.terminal,
+        // o mesmo critério usado pra filtrar Viagens/Entregas/etc.) — guardada
+        // como conjunto, pois um veículo pode ter rodado de terminais/cidades
+        // diferentes no MESMO dia. Usar só o terminal padrão do veículo (v.terminal)
+        // aqui, ignorando o terminal real de cada viagem, fazia esse mapa
+        // divergir da cidade que realmente contou pro filtro em cada viagem.
+        const cidadesDoDia = viagensTodas.length
+          ? viagensTodas.map(vi => dashCidadeOperacaoViagem(vi, v, terms))
+          : [dashCidadeOperacaoViagem({}, v, terms)]; // sem viagem no dia: usa terminal padrão do veículo como melhor palpite
+        cidadesDoDia.forEach(c => {
+          if (dataSnap) {
+            const chaveDia = pNormMap + '__' + dataSnap;
+            if (!placaCidadePorDia.has(chaveDia)) placaCidadePorDia.set(chaveDia, new Set());
+            placaCidadePorDia.get(chaveDia).add(c);
+          }
+          if (!placaCidade.has(pNormMap)) placaCidade.set(pNormMap, new Set());
+          placaCidade.get(pNormMap).add(c);
+        });
+      }
+      // Jornada (Consumo de Jornada) mede só quem teve viagem de verdade —
+      // veículo sem nenhuma viagem no dia simplesmente não entra nessa conta.
+      if (!viagensTodas.length) return;
+      // Filtro de cidade da operação: aplica ANTES de qualquer acumulação, pra
+      // que viagens, entregas, ocupação, km — tudo — reflita só a(s) cidade(s)
+      // selecionada(s). null = sem filtro (todas as cidades).
+      const viagens = cidadesFiltro
+        ? viagensTodas.filter(vi => cidadesFiltro.has(dashCidadeOperacaoViagem(vi, v, terms)))
+        : viagensTodas;
+      if (!viagens.length) return;
+      diasComViagemPorPlaca.add((v.placa || '').trim().toUpperCase() + '__' + dataSnap);
+      // capV é acumulado por VIAGEM realizada (dentro do loop de viagens abaixo)
+      const capV = v.capacidade || v.capacidadeTotal || 0;
+      viagens.forEach((vi, iV) => {
+        totalViagens++;
+        // Terminal DESTA viagem específica — prioriza o terminal do PEDIDO
+        // (vi.paradas[x].pedido.terminal), não o do veículo (v.terminal).
+        // Desde que passou a ser possível um veículo carregar em mais de uma
+        // base da mesma cidade, v.terminal ficou vazio de propósito (o
+        // veículo não tem mais UM terminal fixo) — usar só v.terminal fazia
+        // a detecção de pedágio (e o ponto de origem no mapa) nunca achar
+        // NENHUM terminal pra NENHUMA viagem, silenciosamente. Mantém
+        // v.terminal como fallback só pra arquivos antigos, de antes dessa
+        // mudança, que ainda tinham o campo preenchido no veículo.
+        const termNomeViagem = vi.terminalOrigem || vi.paradas?.find(p => p.pedido?.terminal)?.pedido?.terminal || v.terminal;
+        const term = terms.find(t => t.nome === termNomeViagem);
+        const tLat = term?.lat, tLon = term?.lon;
+        const rotaPontos = { termLat: tLat, termLon: tLon, placa: v.placa, paradas: [] };
+        // Pontos pra detecção de pedágio (% de Rotas Pedagiadas / Tempo Gasto
+        // com Lançamento de Pedágios): terminal de origem + cada parada na
+        // ordem da viagem — mesmo formato que detectarPedagiosNaRota espera.
+        // Usa a LINHA RETA entre os pontos (não o trajeto real via OSRM, que
+        // exigiria uma chamada de rede por viagem — inviável para centenas
+        // de viagens históricas de uma vez), com raioKm=3 igual ao fallback
+        // já usado pelo relatório de Frete pro mesmo cenário (ver comentário
+        // em detectarPedagiosNaRota, em pedagios-utils.js). Isso é uma
+        // ESTIMATIVA: pode errar pra mais (raio largo pega pedágio perto mas
+        // fora do trajeto real) ou pra menos (trajeto real com curva que a
+        // reta não capta) — serve como indicador de tendência, não como
+        // conferência financeira exata (essa já existe no Roteirizador/Frete,
+        // com o trajeto real).
+        const pontosPedagio = (tLat != null && tLon != null && !isNaN(parseFloat(tLat)) && !isNaN(parseFloat(tLon)))
+          ? [{ lat: parseFloat(tLat), lon: parseFloat(tLon) }]
+          : [];
+        let volViagem = 0;
+        const volumePorClienteViagem = {}; // nome do cliente -> volume nesta viagem (pra filtrar o Ranking de Transportadoras por Clientes sem excluir/incluir a viagem inteira numa tacada só)
+        let kmIdaViagem = 0; // soma do km "base" (sem duplicar ida+volta) — usado no Ranking de Transportadoras
+        // Km real da viagem — fonte única: NextaKm.obterKmViagem() (ver
+        // assets/km-utils.js). Se o usuário ajustou a rota manualmente no
+        // mapa, ou se o Dashboard já rodou o recálculo em lote,
+        // vi._kmAjustado guarda a distância real via rota — essa é a fonte
+        // mais fiel disponível. Quando não há isso ainda, mantém o cálculo
+        // padrão (Haversine sequencial entre paradas, sem fator de inflação).
+        const _kmInfoViagem = NextaKm.obterKmViagem(vi);
+        const _kmAjustadoViagem = _kmInfoViagem.real ? _kmInfoViagem.km : null;
+        let _somaKmOriginalViagem = null;
+        if (_kmAjustadoViagem != null) {
+          _somaKmOriginalViagem = NextaKm.estimativaLinhaReta(vi);
+        }
+        vi.paradas.forEach(par => {
+          const ped = par.pedido || {};
+          const nome = ped.cliente || ped.nomeCliente || par.nome || '?';
+          const cidade = ped.cidade || '-';
+          // Volume LÍQUIDO — desconta devolução total/parcial já registrada
+          // pra essa entrega específica (viagemId+pedidoId), no combustível
+          // o produto devolvido é sempre repassado pra outro cliente, nunca
+          // volta pro estoque, então não pode contar como entregue aqui.
+          // Reentrega NÃO desconta (ainda vai ser entregue, só depois). Esse
+          // é o ÚNICO ponto onde volume vira `vol` — feito aqui, o desconto
+          // já propaga sozinho pra TODOS os relatórios que dependem disso
+          // (KPI do topo, Ocupação por Operação, Ranking de Transportadoras,
+          // Clientes, Balanceamento de Frota), sem precisar mexer em cada um.
+          const volumeBruto = par.volumeTotal || 0;
+          const chaveDevol = (vi.petId || '') + '__' + (ped.id ?? '');
+          const volumeDevolvido = devolucoesPorEntrega?.get(chaveDevol) || 0;
+          const vol = Math.max(0, volumeBruto - volumeDevolvido);
+          const coords = latLonEfetivo ? latLonEfetivo(ped) : { lat: par.lat, lon: par.lon };
+          const lat = coords?.lat || par.lat;
+          const lon = coords?.lon || par.lon;
+          // Km base da parada: distanciaKm calculado na roteirização (Haversine
+          // sequencial entre paradas), com fallback para Haversine terminal→cliente.
+          const kmBase = par.distanciaKm > 0 ? par.distanciaKm
+            : ((tLat && tLon && lat && lon) ? haversine(tLat, tLon, lat, lon) : 0);
+          // Se a viagem foi ajustada manualmente no mapa, rateia o km real (OSRM)
+          // entre as paradas na mesma proporção do km original de cada uma —
+          // preserva o km médio por cliente mesmo com a rota redesenhada.
+          const km = (_kmAjustadoViagem != null)
+            ? (_somaKmOriginalViagem > 0
+                ? _kmAjustadoViagem * (kmBase / _somaKmOriginalViagem)
+                : _kmAjustadoViagem / vi.paradas.length)
+            : kmBase;
+          const chave = dashChaveCliente(ped);
+          if (!clientes[chave]) clientes[chave] = { nome, cidade, entregas:0, volume:0, km:0, kmTotal:0, lat, lon, capTotal:0, viagensIds: new Set(), codigoSAP: '' };
+          clientes[chave].nome = dashNomeCanônico(clientes[chave].nome, nome);
+          if (!clientes[chave].codigoSAP && ped.codigoSAP) clientes[chave].codigoSAP = String(ped.codigoSAP).trim();
+          clientes[chave].entregas++;
+          clientes[chave].volume += vol;
+          // capTotal por cliente: acumula a capacidade do veículo UMA VEZ por viagem
+          // (não por parada), para que volume/capTotal dê a ocupação real dessa viagem.
+          const _viagemId = v.id + '_' + iV;
+          if (capV > 0 && !clientes[chave].viagensIds.has(_viagemId)) {
+            clientes[chave].capTotal += capV;
+            clientes[chave].viagensIds.add(_viagemId);
+          }
+          clientes[chave].kmTotal = (clientes[chave].kmTotal || 0) + km;
+          clientes[chave].km = clientes[chave].kmTotal / clientes[chave].entregas; // km médio por entrega
+          totalVol += vol;
+          volViagem += vol;
+          volumePorClienteViagem[nome] = (volumePorClienteViagem[nome] || 0) + vol;
+          totalKm += km;
+          kmIdaViagem += km;
+          rotaPontos.paradas.push({ lat, lon, nome, vol });
+          // Mesma trava de coordenada usada no km real — centralizada em
+          // NextaKm.coordenadaValida (ver assets/km-utils.js).
+          if (NextaKm.coordenadaValida(lat, lon)) {
+            pontosPedagio.push({ lat: parseFloat(lat), lon: parseFloat(lon) });
+          }
+        });
+        rotasMap.push(rotaPontos);
+        // Detecção de pedágio desta viagem (ver comentário acima de
+        // pontosPedagio) — conta 1 viagem "pedagiada" se pelo menos 1 praça
+        // for detectada no trajeto, independente de quantas praças tenha.
+        if (pontosPedagio.length >= 2) {
+          const _eixosV = v.eixos || 2;
+          const _pedagiosDetectados = (typeof detectarPedagiosNaRota === 'function')
+            ? detectarPedagiosNaRota(pontosPedagio, _eixosV, 3)
+            : [];
+          if (_pedagiosDetectados.length > 0) totalViagensComPedagio++;
+        }
+        // Data REAL da entrega desta viagem (não a data em que a
+        // roteirização foi SALVA) — uma sessão/arquivo pode cobrir vários
+        // dias de entrega de uma vez (comum, ver datasEntrega), então usar
+        // "dataSnap" (savedAt) aqui juntava jornada de dias diferentes no
+        // mesmo balde, inflando o "Estouro de Jornada" pra números
+        // impossíveis (ex.: 90h somadas de 8 dias diferentes, todos com o
+        // mesmo savedAt, aparecendo como se fosse 1 dia só).
+        const _dataEntregaBr = vi.paradas?.[0]?.pedido?.dataEntregaLogistica || vi.paradas?.[0]?.pedido?.dataEntrega || '';
+        const _mtDataEntrega = String(_dataEntregaBr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        const dataViagemReal = _mtDataEntrega
+          ? `${_mtDataEntrega[3]}-${_mtDataEntrega[2].padStart(2,'0')}-${_mtDataEntrega[1].padStart(2,'0')}`
+          : dataSnap;
+        // Entrada crua desta viagem para o Ranking de Transportadoras — cálculo
+        // de custo (contrato) é feito depois, em dashAgregarTransportadoras,
+        // porque precisa do total de viagens do mês (rateio do valor fixo).
+        entradasTransportadora.push({
+          transportadora: v.transportadora || '(sem transportadora)',
+          placa: v.placa,
+          data: dataViagemReal,
+          dataSnap, // data em que a roteirização foi salva (formato do Painel de Disponibilidade) — usada só pra reconstruir diasComViagemPorPlaca filtrado por cliente, ver dashOciosidadeDiasFiltradoPorCliente
+          cidadeOp: dashCidadeOperacaoViagem(vi, v, terms), // idem, pra reconstruir operacoes_ocup filtrado por cliente
+          capV, // idem
+          mesKey: mesKeySnap,
+          termOrigem: vi.terminalOrigem || v.terminal || '',
+          destinos: Array.from(new Set(vi.paradas.map(p => (p.pedido?.cidade || p.pedido?.cliente || '')))).join(', '),
+          petId: vi.petId || '', // nº da viagem (Histórico por veículo)
+          rotaCidades: Array.from(new Set(vi.paradas.map(p => String(p.pedido?.cidade || '').trim()).filter(Boolean))), // destinos na ordem de entrega
+          clientesViagem: vi.paradas.map(p => p.pedido?.cliente || '').filter(Boolean),
+          kmIda: kmIdaViagem,
+          volume: volViagem,
+          volumePorCliente: volumePorClienteViagem,
+          jornadaDispMin: Number(v.jornadaMin) || (typeof duracaoJornadaMin === 'function' ? duracaoJornadaMin(v.jornadaInicio || '06:00', v.jornadaFim || '18:00') : 720) || 720,
+          jornadaUsadaMin: Number(vi.tempoConsumidoMin) || vi.paradas.reduce((s,p,idx) =>
+            s + (idx === 0 ? (p.tempoCarregamentoMin || 0) : 0)
+              + (p.waitAfterLoadingMin || 0) + (p.deslocCarregadoMin || 0)
+              // Espera overnight (motorista descansando de madrugada até o
+              // cliente abrir) NÃO conta como jornada trabalhada — mesma
+              // isenção já usada no cálculo "ao vivo" da tela (renderResultado)
+              // e no Herrlog. Sem isso, um trecho overnight de 8-12h de
+              // espera inflava a jornada usada pra números impossíveis
+              // (90h+ num dia), mesmo depois da correção da data.
+              + (p.overnight ? 0 : (p.tempoEsperaRestricaoMin || 0))
+              + (p.tempoDescargaMin || 0) + (p.deslocVazioMin || 0), 0),
+        });
+        // Acumula por OPERAÇÃO (cidade do terminal desta viagem) — volume e
+        // capacidade, uma vez por viagem (mesma regra usada pra ocupação de
+        // cliente/frota acima), pro gráfico "Ocupação vs Volume por Operação".
+        // Já sai filtrado corretamente porque `viagens` acima já respeitou
+        // cidadesFiltro antes de chegar aqui. NÃO filtra por Cliente aqui —
+        // isso é feito depois, em dashRecalcularOperacoesOcupPorCliente,
+        // a partir de entradasTransportadora (mesmo padrão do Ranking de
+        // Transportadoras/Jornada), porque o filtro de Clientes só fica
+        // disponível DEPOIS que dashAgregar já rodou uma vez (a lista de
+        // clientes do picker vem do resultado dele).
+        {
+          const cidadeOp = dashCidadeOperacaoViagem(vi, v, terms);
+          if (!operacoes[cidadeOp]) operacoes[cidadeOp] = { cidade: cidadeOp, volume: 0, capTotal: 0, viagens: 0 };
+          operacoes[cidadeOp].volume += volViagem;
+          operacoes[cidadeOp].viagens += 1;
+          if (capV > 0) operacoes[cidadeOp].capTotal += capV;
+        }
+        if (capV > 0) {
+          const ocup = Math.round((volViagem / capV) * 100);
+          viagens_ocup.push({ label: `${v.placa} V${iV+1}`, ocup, snapIdx, vid: v.id, iV });
+          // Capacidade acumulada por viagem realizada: veículo de 35m³ que fez 2 viagens = 70m³
+          totalCap += capV;
+          veiculos_escalados.push({ snapIdx, vid: v.id, capV, iV });
+        }
+      });
+    });
+  });
+  const totalVec = totalCap > 0 ? Math.round((totalVol / totalCap) * 100) : 0;
+  const totalEntregas = Object.values(clientes).reduce((s,c)=>s+c.entregas, 0);
+  // Ocupação por cliente: volume do cliente / capacidade acumulada dos veículos que o atenderam
+  const clientes_ocup = Object.values(clientes)
+    .filter(c => c.capTotal > 0)
+    .map(c => ({
+      nome: c.nome,
+      ocup: Math.min(100, Math.round((c.volume / c.capTotal) * 100)),
+      volMedio: parseFloat((c.volume / c.entregas).toFixed(1))
+    }))
+    .sort((a, b) => b.ocup - a.ocup);
+  // Ocupação por operação (cidade): volume da operação / capacidade acumulada
+  // dos veículos que operaram a partir dela — mesma lógica de clientes_ocup,
+  // só que agrupado por cidade em vez de por cliente.
+  const operacoes_ocup = Object.values(operacoes)
+    .filter(o => o.capTotal > 0)
+    .map(o => ({
+      nome: o.cidade,
+      ocup: Math.min(100, Math.round((o.volume / o.capTotal) * 100)),
+      volume: parseFloat(o.volume.toFixed(1)),
+      viagens: o.viagens,
+    }))
+    .sort((a, b) => b.volume - a.volume);
+  return {
+    clientes: Object.values(clientes).sort((a,b)=>b.volume-a.volume),
+    viagens_ocup,
+    clientes_ocup,
+    operacoes_ocup,
+    veiculos_escalados, // [{snapIdx, vid, capV}] para cálculo de ocupação filtrada
+    totalViagens,
+    totalViagensComPedagio,
+    totalEntregas,
+    totalVol: parseFloat(totalVol.toFixed(1)),
+    totalKm: Math.round(totalKm),
+    totalOcup: totalVec,
+    totalClientes: Object.keys(clientes).length,
+    rotasMap,
+    entradasTransportadora,
+    diasComViagemPorPlaca,
+    placaCidade,
+    placaCidadePorDia,
+  };
+}
+// ── Ranking de Transportadoras ───────────────────────────────────────────────
+// Reaproveita os contratos já cadastrados na aba Frete (freteCarregarContratos/
+// freteCarregarSpot) e replica as MESMAS fórmulas de custo usadas lá
+// (kmEfetivo + custoViagem), pra o valor pago aqui bater com o que aparece
+// no relatório de Frete. Se uma placa não tiver contrato cadastrado, o custo
+// dela entra como 0 e ela é marcada `semContrato: true` — aparece no ranking
+// por volume/km normalmente, só o valor pago fica indefinido (mostrado como
+// "—", nunca inventado).
+function _dashKmEfetivoRanking(entry, contrato) {
+  const modo = (contrato && contrato.kmModo) || 'ida_volta';
+  return modo === 'ida' ? entry.kmIda : entry.kmIda * 2;
+}
+function _dashCustoViagemRanking(entry, contrato, nViagensMesPlaca, spots) {
+  const nViagMes = nViagensMesPlaca || 1;
+  const fixo = parseFloat(contrato.fixo) || 0;
+  const fixoRateado = fixo / Math.max(nViagMes, 1);
+  const km = _dashKmEfetivoRanking(entry, contrato);
+  if (contrato.tipo === 'fixo_km') return fixoRateado + (parseFloat(contrato.km)||0) * km;
+  if (contrato.tipo === 'fixo_m3') return fixoRateado + (parseFloat(contrato.m3)||0) * entry.volume;
+  // Diária = obrigação por dia corrido do veículo Dedicado (viajou ou não) —
+  // mesma regra aplicada no Frete. entry._diariaFlatHoje marca qual entrada
+  // do dia leva a cobrança cheia (evita duplicar em dias com 2+ viagens).
+  if (contrato.tipo === 'diaria')  return (parseFloat(contrato.diaria) || 0) * (entry._diariaFlatHoje ? 1 : 0);
+  if (contrato.tipo === 'diaria_km') return ((parseFloat(contrato.diaria)||0) * (entry._diariaFlatHoje ? 1 : 0)) + (parseFloat(contrato.km)||0) * km;
+  if (contrato.tipo === 'spot') {
+    const sp = (spots || []).find(s =>
+      entry.termOrigem.toLowerCase().includes((s.origem||'').toLowerCase()) &&
+      entry.destinos.toLowerCase().includes((s.destino||'').toLowerCase()) &&
+      (!s.transportadora || s.transportadora === contrato.transportadora)
+    );
+    return sp ? (parseFloat(sp.valor)||0) * entry.volume : 0;
+  }
+  return 0;
+}
+// Completa os dias sem viagem de placas com contrato "diaria"/"diaria_km"
+// com uma entrada vazia (0 km, 0 m³) só pra carregar a cobrança da diária
+// daquele dia — mesma lógica do Frete. Período de referência: min/max data
+// já presente nas entradas carregadas (reflete o mês/período que o usuário
+// escolheu no filtro do Dashboard).
+function _dashCompletarDiasParados(entradas, contratos) {
+  const normPlaca = (typeof _freteNormPlaca === 'function') ? _freteNormPlaca : (p => (p||'').toString().trim().toUpperCase());
+  const placasDiaria = new Set();
+  contratos.forEach(c => { if ((c.tipo === 'diaria' || c.tipo === 'diaria_km') && c.placa) placasDiaria.add(normPlaca(c.placa)); });
+  if (!placasDiaria.size) return entradas;
+  // Período de referência: usa o intervalo dos snapshots REALMENTE carregados
+  // (mês selecionado / todos os períodos) — não só os dias com viagem, senão
+  // dias parados no fim do mês (sem NENHUMA viagem de ninguém naquele dia)
+  // ficariam de fora da cobrança por engano.
+  const datasSnap = (typeof _dashSnapshotsAtivos !== 'undefined' ? _dashSnapshotsAtivos : [])
+    .map(s => (s.savedAt || '').slice(0,10)).filter(Boolean).sort();
+  if (!datasSnap.length) return entradas;
+  const dIni = new Date(datasSnap[0] + 'T00:00:00');
+  const dFim = new Date(datasSnap[datasSnap.length-1] + 'T00:00:00');
+  if (isNaN(dIni) || isNaN(dFim)) return entradas;
+
+  const porPlaca = {};
+  entradas.forEach(e => { (porPlaca[e.placa] ||= []).push(e); });
+  // Garante que TODA placa com contrato de diária entra no loop abaixo, mesmo
+  // que nunca tenha feito nenhuma viagem no período carregado (senão ela nem
+  // aparece em `entradas` e ficaria de fora da cobrança e do próprio ranking).
+  contratos.forEach(c => {
+    if ((c.tipo !== 'diaria' && c.tipo !== 'diaria_km') || !c.placa) return;
+    const placaNorm = normPlaca(c.placa);
+    const jaExiste = Object.keys(porPlaca).some(p => normPlaca(p) === placaNorm);
+    if (!jaExiste) porPlaca[c.placa] = [];
+  });
+  const extras = [];
+  Object.keys(porPlaca).forEach(placa => {
+    if (!placasDiaria.has(normPlaca(placa))) return;
+    const porDia = {};
+    porPlaca[placa].forEach(e => { (porDia[e.data] ||= []).push(e); });
+    const vCad = (typeof veiculos !== 'undefined') ? veiculos.find(v => normPlaca(v.placa) === normPlaca(placa)) : null;
+    const contratoDaPlaca = contratos.find(c => normPlaca(c.placa) === normPlaca(placa));
+    const transp = (porPlaca[placa][0] && porPlaca[placa][0].transportadora) || (contratoDaPlaca && contratoDaPlaca.transportadora) || (vCad && vCad.transportadora) || '(sem transportadora)';
+    const mesKeyOf = d => d.slice(0,7);
+    for (let d = new Date(dIni); d <= dFim; d.setDate(d.getDate()+1)) {
+      const diaStr = d.toISOString().slice(0,10);
+      const entradasHoje = porDia[diaStr];
+      if (entradasHoje && entradasHoje.length) {
+        entradasHoje.forEach((e, idx) => { e._diariaFlatHoje = (idx === 0); });
+      } else {
+        extras.push({
+          transportadora: transp, placa, data: diaStr, mesKey: mesKeyOf(diaStr),
+          termOrigem: '', destinos: '(sem viagem — diária)', kmIda: 0, volume: 0,
+          jornadaDispMin: 720, jornadaUsadaMin: 0, fatorJornada: 0,
+          _semViagem: true, _diariaFlatHoje: true,
+        });
+      }
+    }
+  });
+  return entradas.concat(extras);
+}
+function dashAgregarTransportadoras(entradasTransportadora, clientesEfetivos = null) {
+  const _efetivosNormRanking = _dashNormalizarSetClientes(clientesEfetivos);
+  const contratos = (typeof freteCarregarContratos === 'function') ? freteCarregarContratos() : [];
+  const spots     = (typeof freteCarregarSpot === 'function') ? freteCarregarSpot() : [];
+  const normPlaca = (typeof _freteNormPlaca === 'function') ? _freteNormPlaca : (p => (p||'').toString().trim().toUpperCase());
+  // Índice placa normalizada → contrato, montado UMA VEZ (O(m)) em vez de
+  // varrer a lista de contratos pra cada viagem (O(n×m) — era o gargalo que
+  // travava o dashboard em qualquer filtro com muitos dados).
+  const contratoPorPlaca = new Map();
+  contratos.forEach(c => { if (c.placa) contratoPorPlaca.set(normPlaca(c.placa), c); });
+  // Completa dias parados de veículos com diária ANTES de tudo — precisa
+  // rodar cedo pra esses dias entrarem na contagem de nViagensPorPlacaMes
+  // (que, note, exclui _semViagem logo abaixo) e no fatorJornada.
+  const entradasCompletas = _dashCompletarDiasParados(entradasTransportadora, contratos);
+  // fatorJornada por entrada (precisa antes do custo, igual ao Frete)
+  entradasCompletas.forEach(e => {
+    e.fatorJornada = e.jornadaDispMin > 0 ? Math.min(1, Math.max(0, e.jornadaUsadaMin / e.jornadaDispMin)) : 0;
+  });
+  // Nº de viagens por placa+mês, pra ratear o valor fixo mensal (igual ao
+  // Frete) — exclui os dias parados sintéticos, senão dilui o rateio do fixo.
+  const nViagensPorPlacaMes = {};
+  entradasCompletas.forEach(e => {
+    if (e._semViagem) return;
+    const k = e.placa + '__' + e.mesKey;
+    nViagensPorPlacaMes[k] = (nViagensPorPlacaMes[k] || 0) + 1;
+  });
+  const porTransportadora = {};
+  entradasCompletas.forEach(e => {
+    const contrato = contratoPorPlaca.get(normPlaca(e.placa));
+    const nMes = nViagensPorPlacaMes[e.placa + '__' + e.mesKey] || 1;
+    const custo = contrato ? _dashCustoViagemRanking(e, contrato, nMes, spots) : 0;
+    const key = e.transportadora;
+    if (!porTransportadora[key]) porTransportadora[key] = { transportadora: key, volume: 0, km: 0, viagens: 0, custo: 0, temContrato: false, placas: new Set() };
+    // Volume: com filtro de Clientes ativo, conta só a fatia dessa viagem que
+    // pertence a cliente(s) filtrado(s) — sem isso, filtrar por 1 cliente
+    // específico deixava os KPIs do topo em 0 mas o Ranking continuava
+    // mostrando o volume TOTAL da transportadora (de todos os clientes),
+    // parecendo contraditório/quebrado. Viagens/km/custo continuam sobre a
+    // operação inteira do veículo (não dá pra ratear jornada/custo fixo por
+    // cliente dentro de uma viagem com várias paradas).
+    const volumeConsiderado = clientesEfetivos
+      ? Object.entries(e.volumePorCliente || {}).reduce((s, [nome, vol]) => s + (_dashNomeBateFiltro(nome, _efetivosNormRanking) ? vol : 0), 0)
+      : e.volume;
+    porTransportadora[key].volume += volumeConsiderado;
+    porTransportadora[key].km += _dashKmEfetivoRanking(e, contrato || { kmModo: 'ida_volta' });
+    if (!e._semViagem) porTransportadora[key].viagens += 1; // dia parado (diária) não conta como viagem
+    porTransportadora[key].placas.add(e.placa);
+    if (contrato) { porTransportadora[key].custo += custo; porTransportadora[key].temContrato = true; }
+  });
+  return Object.values(porTransportadora)
+    .filter(t => !clientesEfetivos || t.volume > 0)
+    .map(t => ({ ...t, nPlacas: t.placas.size, placas: undefined }))
+    .sort((a, b) => b.volume - a.volume);
+}
+// ── Consumo de Jornada por Transportadora ────────────────────────────────────
+// Jornada DISPONÍVEL de um veículo é uma capacidade DIÁRIA (ex.: 12h/dia) —
+// não pode ser somada uma vez por VIAGEM, senão um veículo que fez 3 viagens
+// no mesmo dia contaria 3x a jornada disponível dele naquele dia. Por isso
+// agrupa primeiro por veículo+dia (chave placa+data), pega a jornada
+// disponível UMA VEZ por essa chave, e soma a jornada USADA de todas as
+// viagens daquele veículo naquele dia (essa sim soma normalmente, porque
+// cada viagem realmente consome tempo adicional da jornada do dia).
+function dashAgregarJornada(entradasTransportadora, clientesEfetivos = null) {
+  const _efetivosNormJornada = _dashNormalizarSetClientes(clientesEfetivos);
+  const porVeiculoDia = new Map(); // chave: placa+data
+  (entradasTransportadora || []).forEach(e => {
+    if (e._semViagem) return; // dia parado sintético (só diária, do Frete) — sem jornada real pra contar
+    // Com filtro de Clientes ativo: só conta esse veículo/dia se ele
+    // realmente atendeu pelo menos um dos clientes filtrados nesse dia —
+    // sem essa checagem, filtrar por 1 cliente específico continuava
+    // somando a jornada de TODAS as viagens do veículo (de qualquer
+    // cliente), fazendo o KPI "Consumo Jornada" e o gráfico "Consumo de
+    // Jornada por Transportadora" mostrarem números cheios mesmo quando o
+    // resto da tela já estava filtrado e zerado.
+    if (clientesEfetivos) {
+      const atendeFiltrado = Object.keys(e.volumePorCliente || {}).some(nome => _dashNomeBateFiltro(nome, _efetivosNormJornada));
+      if (!atendeFiltrado) return;
+    }
+    const key = e.placa + '__' + e.data;
+    if (!porVeiculoDia.has(key)) {
+      porVeiculoDia.set(key, { placa: e.placa, data: e.data, transportadora: e.transportadora, dispMin: e.jornadaDispMin || 0, usadoMin: 0 });
+    }
+    porVeiculoDia.get(key).usadoMin += e.jornadaUsadaMin || 0;
+  });
+  const porTransportadora = {};
+  let totalDispMin = 0, totalUsadoMin = 0;
+  // ── Estouro de jornada ─────────────────────────────────────────────────
+  // O agregado por transportadora acima (usadoMin/dispMin somados de TODOS
+  // os veículos) já pinta em âmbar quando passa de 100%, mas isso é uma
+  // MÉDIA — 1 veículo estourando feio num dia com 19 outros dentro do
+  // normal quase não move o agregado. Aqui conta CADA veículo/dia
+  // individualmente: estourou (usadoMin > dispMin) ou não, sem diluir.
+  let diasComEstouro = 0, minutosEstouroTotal = 0;
+  const estourosPorTransportadora = {};
+  const estourosDetalhe = [];
+  porVeiculoDia.forEach(reg => {
+    totalDispMin  += reg.dispMin;
+    totalUsadoMin += reg.usadoMin;
+    const key = reg.transportadora;
+    if (!porTransportadora[key]) porTransportadora[key] = { transportadora: key, dispMin: 0, usadoMin: 0, veiculosDia: 0 };
+    porTransportadora[key].dispMin  += reg.dispMin;
+    porTransportadora[key].usadoMin += reg.usadoMin;
+    porTransportadora[key].veiculosDia += 1;
+
+    if (!estourosPorTransportadora[key]) estourosPorTransportadora[key] = { transportadora: key, diasComEstouro: 0, minutosEstouroTotal: 0, veiculosDia: 0 };
+    estourosPorTransportadora[key].veiculosDia += 1;
+    if (reg.dispMin > 0 && reg.usadoMin > reg.dispMin) {
+      const estouroMin = reg.usadoMin - reg.dispMin;
+      diasComEstouro++;
+      minutosEstouroTotal += estouroMin;
+      estourosPorTransportadora[key].diasComEstouro += 1;
+      estourosPorTransportadora[key].minutosEstouroTotal += estouroMin;
+      estourosDetalhe.push({
+        placa: reg.placa,
+        transportadora: reg.transportadora,
+        data: reg.data,
+        dispMin: reg.dispMin,
+        usadoMin: reg.usadoMin,
+        estouroMin,
+        estouroPct: Math.round((reg.usadoMin / reg.dispMin) * 100),
+      });
+    }
+  });
+  const porTransportadoraArr = Object.values(porTransportadora)
+    .map(t => ({ ...t, pct: t.dispMin > 0 ? Math.round((t.usadoMin / t.dispMin) * 100) : 0 }))
+    .sort((a, b) => b.usadoMin - a.usadoMin);
+  const totalVeiculoDia = porVeiculoDia.size;
+  const estourosPorTransportadoraArr = Object.values(estourosPorTransportadora)
+    .filter(t => t.diasComEstouro > 0)
+    .map(t => ({ ...t, pctDiasComEstouro: t.veiculosDia > 0 ? Math.round((t.diasComEstouro / t.veiculosDia) * 100) : 0 }))
+    .sort((a, b) => b.diasComEstouro - a.diasComEstouro);
+  estourosDetalhe.sort((a, b) => b.estouroMin - a.estouroMin);
+  return {
+    totalDispMin,
+    totalUsadoMin,
+    totalPct: totalDispMin > 0 ? Math.round((totalUsadoMin / totalDispMin) * 100) : 0,
+    porTransportadora: porTransportadoraArr,
+    // Estouro de jornada
+    totalVeiculoDia,
+    diasComEstouro,
+    pctDiasComEstouro: totalVeiculoDia > 0 ? Math.round((diasComEstouro / totalVeiculoDia) * 100) : 0,
+    minutosEstouroTotal,
+    estourosPorTransportadora: estourosPorTransportadoraArr,
+    estourosDetalhe: estourosDetalhe.slice(0, 30), // top 30 piores dias-veículo, pra não pesar a tela
+  };
+}
+// ── Normalização de nome de operação/cidade — usada só pra AGRUPAR (nunca
+// pra exibir): tira acento, maiúscula, e o sufixo " - UF" (ex.: "Ribeirão
+// Preto - SP" e "Ribeirão Preto" viram a MESMA chave). Sem isso, a mesma
+// cidade virava duas linhas no relatório de Balanceamento de Frota — cada
+// sinal (demanda, ocupação, utilização, jornada) resolve o nome da cidade
+// de um jeito ligeiramente diferente (cadastro do terminal vs cadastro da
+// placa vs inferência da viagem).
+function _dashNormOperacaoKey(nome) {
+  return (nome || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*-\s*[a-zA-Z]{2}$/, '')
+    .trim().toUpperCase();
+}
+// Entre dois nomes que colidiram na mesma chave normalizada, prefere o que
+// tem o sufixo " - UF" (mais informativo pra exibir na tela); no empate,
+// fica com o mais longo.
+function _dashMelhorNomeOperacao(atual, novo) {
+  if (!atual) return novo;
+  if (!novo) return atual;
+  const atualTemUf = /\s-\s[a-zA-Z]{2}$/.test(atual);
+  const novoTemUf = /\s-\s[a-zA-Z]{2}$/.test(novo);
+  if (novoTemUf && !atualTemUf) return novo;
+  if (atualTemUf && !novoTemUf) return atual;
+  return novo.length > atual.length ? novo : atual;
+}
+// ── Apelidos de operação — pra unificar nomes que são GENUINAMENTE
+// diferentes por escrito mas representam o mesmo lugar (ex.: "São Caetano"
+// e "São Caetano do Sul"). Isso é diferente da normalização acima (que só
+// resolve acento/maiúscula/sufixo UF) — aqui não tem como o sistema
+// adivinhar sozinho, por isso é editável por você (⚙️ na seção de
+// Balanceamento de Frota), persistido no navegador, e vale pra sempre a
+// partir de quando cadastrado.
+let _dashOperacaoAliases = {}; // chave normalizada (variante) -> chave normalizada (canônica)
+function _dashCarregarAliasesOperacao() {
+  try {
+    const raw = localStorage.getItem('nexta_dash_aliases_operacao');
+    _dashOperacaoAliases = raw ? JSON.parse(raw) : {};
+  } catch (e) { _dashOperacaoAliases = {}; }
+}
+function _dashSalvarAliasesOperacao() {
+  try { localStorage.setItem('nexta_dash_aliases_operacao', JSON.stringify(_dashOperacaoAliases)); } catch (e) {}
+}
+_dashCarregarAliasesOperacao();
+// Chave de agrupamento DEFINITIVA — normaliza e, se houver apelido
+// cadastrado pra essa variante, resolve pra chave canônica. É isso que deve
+// ser usado em todo lugar que hoje agrupa por operação (nunca chame
+// _dashNormOperacaoKey direto pra fins de agrupamento).
+function _dashChaveOperacaoFinal(nome) {
+  const chave = _dashNormOperacaoKey(nome);
+  return _dashOperacaoAliases[chave] || chave;
+}
+function dashAdicionarAliasOperacao(nomeVariante, nomeCanonico) {
+  const chaveVariante = _dashNormOperacaoKey(nomeVariante);
+  const chaveCanonica = _dashNormOperacaoKey(nomeCanonico);
+  if (!chaveVariante || !chaveCanonica || chaveVariante === chaveCanonica) return false;
+  _dashOperacaoAliases[chaveVariante] = chaveCanonica;
+  _dashSalvarAliasesOperacao();
+  return true;
+}
+function dashRemoverAliasOperacao(chaveVariante) {
+  delete _dashOperacaoAliases[chaveVariante];
+  _dashSalvarAliasesOperacao();
+}
+// ── UI do painel de apelidos (⚙️ Unificar nomes, dentro do Balanceamento de Frota) ──
+function dashToggleAliasesOperacao() {
+  const painel = document.getElementById('dash-aliases-panel');
+  if (!painel) return;
+  const visivel = painel.style.display !== 'none';
+  painel.style.display = visivel ? 'none' : 'block';
+  if (!visivel) _dashRenderAliasesOperacaoLista();
+}
+function _dashRenderAliasesOperacaoLista() {
+  const box = document.getElementById('dash-aliases-lista');
+  if (!box) return;
+  const pares = Object.entries(_dashOperacaoAliases);
+  if (!pares.length) {
+    box.innerHTML = '<div style="font-size:11.5px;color:var(--text-3);">Nenhuma unificação cadastrada ainda.</div>';
+    return;
+  }
+  box.innerHTML = pares.map(([variante, canonica]) => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 0;">
+      <span>"<b>${variante}</b>" é a mesma operação que "<b>${canonica}</b>"</span>
+      <span onclick="dashRemoverAliasOperacaoUI('${variante.replace(/'/g, "\\'")}')" style="cursor:pointer;color:#DC2626;font-size:11px;" title="Remover essa unificação">✕ remover</span>
+    </div>`).join('');
+}
+function dashAdicionarAliasOperacaoUI() {
+  const de = document.getElementById('dash-alias-de').value.trim();
+  const para = document.getElementById('dash-alias-para').value.trim();
+  if (!de || !para) { alert('Preenche os dois nomes.'); return; }
+  const ok = dashAdicionarAliasOperacao(de, para);
+  if (!ok) { alert('Esses dois nomes já apontam pra mesma coisa (ou estão vazios) — nada pra unificar.'); return; }
+  document.getElementById('dash-alias-de').value = '';
+  document.getElementById('dash-alias-para').value = '';
+  _dashRenderAliasesOperacaoLista();
+  showToast('Unificado — gera o relatório de novo pra aplicar.', true);
+}
+function dashRemoverAliasOperacaoUI(chaveVariante) {
+  dashRemoverAliasOperacao(chaveVariante);
+  _dashRenderAliasesOperacaoLista();
+}
+window.dashToggleAliasesOperacao = dashToggleAliasesOperacao;
+window.dashAdicionarAliasOperacaoUI = dashAdicionarAliasOperacaoUI;
+window.dashRemoverAliasOperacaoUI = dashRemoverAliasOperacaoUI;
+// ── Estouro de jornada por OPERAÇÃO (mesma lógica de dashAgregarJornada
+// acima, só que agrupada por cidade da operação em vez de transportadora —
+// usada no relatório de Balanceamento de Frota) ────────────────────────────
+function dashAgregarJornadaPorOperacao(entradasTransportadora) {
+  const porVeiculoDia = new Map();
+  (entradasTransportadora || []).forEach(e => {
+    if (e._semViagem) return;
+    const key = e.placa + '__' + e.data;
+    if (!porVeiculoDia.has(key)) {
+      porVeiculoDia.set(key, { placa: e.placa, data: e.data, cidadeOp: e.cidadeOp || '(sem operação)', dispMin: e.jornadaDispMin || 0, usadoMin: 0 });
+    }
+    porVeiculoDia.get(key).usadoMin += e.jornadaUsadaMin || 0;
+  });
+  const porOperacao = {};
+  porVeiculoDia.forEach(reg => {
+    const key = _dashChaveOperacaoFinal(reg.cidadeOp);
+    if (!porOperacao[key]) porOperacao[key] = { operacao: key, nomeExibido: reg.cidadeOp, veiculosDia: 0, diasComEstouro: 0, minutosEstouroTotal: 0 };
+    porOperacao[key].nomeExibido = _dashMelhorNomeOperacao(porOperacao[key].nomeExibido, reg.cidadeOp);
+    porOperacao[key].veiculosDia += 1;
+    if (reg.dispMin > 0 && reg.usadoMin > reg.dispMin) {
+      porOperacao[key].diasComEstouro += 1;
+      porOperacao[key].minutosEstouroTotal += (reg.usadoMin - reg.dispMin);
+    }
+  });
+  return Object.values(porOperacao).map(o => ({
+    ...o,
+    pctDiasComEstouro: o.veiculosDia > 0 ? Math.round((o.diasComEstouro / o.veiculosDia) * 100) : 0,
+  }));
+}
+
+// dashAgregar() não recebe filtro de Cliente (ele PRODUZ a lista de nomes
+// que alimenta o próprio picker — dependência circular). Por isso, igual a
+// dashAgregarTransportadoras/dashAgregarJornada acima, essas duas
+// reconstroem o resultado a partir de entradasTransportadora (que já tem
+// tudo por viagem, inclusive o detalhe por cliente) respeitando o filtro —
+// sem isso, "Ociosidade da Frota" e "Ocupação vs Volume por Operação"
+// continuavam cheios mesmo com o resto do Dashboard já filtrado por Cliente.
+function dashOciosidadeDiasFiltradoPorCliente(entradasTransportadora, clientesEfetivos) {
+  if (!clientesEfetivos) return null; // sem filtro — quem chama usa d.diasComViagemPorPlaca original
+  const efetivosNorm = _dashNormalizarSetClientes(clientesEfetivos);
+  const set = new Set();
+  (entradasTransportadora || []).forEach(e => {
+    if (e._semViagem || !e.dataSnap) return;
+    const atende = Object.keys(e.volumePorCliente || {}).some(nome => _dashNomeBateFiltro(nome, efetivosNorm));
+    if (!atende) return;
+    set.add((e.placa || '').trim().toUpperCase() + '__' + e.dataSnap);
+  });
+  return set;
+}
+function dashOperacoesOcupFiltradoPorCliente(entradasTransportadora, clientesEfetivos) {
+  const efetivosNorm = _dashNormalizarSetClientes(clientesEfetivos);
+  const operacoes = {};
+  (entradasTransportadora || []).forEach(e => {
+    if (e._semViagem) return;
+    const cidadeOp = e.cidadeOp || '(sem cidade)';
+    if (!operacoes[cidadeOp]) operacoes[cidadeOp] = { cidade: cidadeOp, volume: 0, capTotal: 0, viagens: 0 };
+    const volumeConsiderado = clientesEfetivos
+      ? Object.entries(e.volumePorCliente || {}).reduce((s, [nome, vol]) => s + (_dashNomeBateFiltro(nome, efetivosNorm) ? vol : 0), 0)
+      : e.volume;
+    operacoes[cidadeOp].volume += volumeConsiderado;
+    const atende = !clientesEfetivos || Object.keys(e.volumePorCliente || {}).some(nome => _dashNomeBateFiltro(nome, efetivosNorm));
+    if (atende) {
+      operacoes[cidadeOp].viagens += 1;
+      if (e.capV > 0) operacoes[cidadeOp].capTotal += e.capV;
+    }
+  });
+  return Object.values(operacoes)
+    .filter(o => o.capTotal > 0)
+    .map(o => ({
+      nome: o.cidade,
+      ocup: Math.min(100, Math.round((o.volume / o.capTotal) * 100)),
+      volume: parseFloat(o.volume.toFixed(1)),
+      viagens: o.viagens,
+    }))
+    .sort((a, b) => b.volume - a.volume);
+}
+function _dashFmtHoras(min) {
+  return (min / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'h';
+}
+let _dashUltimaJornada = { porTransportadora: [] };
+let _dashJornadaDirecao = 'desc'; // 'desc' = maior primeiro, 'asc' = menor primeiro
+function dashJornadaSetDirecao(direcao) {
+  _dashJornadaDirecao = direcao;
+  document.querySelectorAll('.dash-jornadadir-tab').forEach(b => {
+    const ativo = b.dataset.dir === direcao;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderJornadaTransportadoras(_dashUltimaJornada);
+}
+function dashRenderJornadaTransportadoras(dados) {
+  _dashUltimaJornada = dados;
+  const box = document.getElementById('dash-jornada-transp');
+  if (!box) return;
+  const lista = [...(dados.porTransportadora || [])]
+    .sort((a, b) => _dashJornadaDirecao === 'asc' ? a.pct - b.pct : b.pct - a.pct);
+  if (!lista.length) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Nenhum dado de jornada para este período/filtro.</div>`;
+    return;
+  }
+  const max = Math.max(...lista.map(t => t.pct), 1);
+  box.innerHTML = lista.map((t) => {
+    const pct = Math.max(2, (t.pct / max) * 100);
+    // Acima de 100% (veículo trabalhando além da jornada nominal) pinta em
+    // âmbar como aviso; do contrário, segue a cor padrão do indicador.
+    const cor = t.pct > 100 ? '#f0be40' : '#00d9c0';
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border-dk);">
+        <div style="width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:var(--text);" title="${t.transportadora}">${t.transportadora}</div>
+        <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:20px;position:relative;overflow:hidden;">
+          <div style="height:100%;width:${Math.min(pct,100)}%;background:${cor};border-radius:6px;transition:width .3s;"></div>
+        </div>
+        <div style="width:60px;flex-shrink:0;text-align:right;font-size:12.5px;font-weight:700;color:var(--text);">${t.pct}%</div>
+        <div style="width:170px;flex-shrink:0;text-align:right;font-size:10.5px;color:var(--text-3);">${_dashFmtHoras(t.usadoMin)} / ${_dashFmtHoras(t.dispMin)} · ${t.veiculosDia} veíc./dia</div>
+      </div>`;
+  }).join('');
+}
+// Diferente da Jornada (que mede aproveitamento de TEMPO de quem trabalhou,
+// vindo das roteirizações), Ociosidade mede quantos VEÍCULOS foram
+// DISPONIBILIZADOS pelo transportador no dia — e essa é uma pergunta do
+// Painel de Disponibilidade (coleção "availability" do Firestore, um
+// registro por placa/dia), não da roteirização. Usar a roteirização pra
+// "disponibilizados" inflava o número: quando há mais de uma roteirização
+// salva no mesmo dia (turnos/terminais diferentes, não uma correção da
+// outra), o mesmo veículo aparecia contado 2x, 3x... — o Painel tem UM
+// registro por veículo/dia, então não tem esse risco de duplicar.
+// Token pra descartar resultado de uma busca antiga se o filtro mudar de
+// novo antes dela terminar (mesmo padrão usado no refino de pedágio do Frete).
+let _dashOciosidadeToken = 0;
+// Cache simples por intervalo de datas — evita reconsultar o Firestore toda
+// vez que o Dashboard re-renderiza (troca de filtro de cidade/cliente, por
+// exemplo) pedindo o MESMO período de novo. TTL curto o suficiente pra não
+// mostrar dado velho por muito tempo, longo o suficiente pra absorver uma
+// sequência de cliques em filtros dentro de poucos minutos.
+const _dashOciosidadeCacheDocs = new Map(); // "dataIni_dataFim" -> { docs, expiraEm }
+const _DASH_OCIOSIDADE_CACHE_TTL_MS = 120_000; // 2 minutos
+async function dashCarregarOciosidade(snapshotsAtivos, cidadesFiltro, diasComViagemPorPlaca, placaCidade, placaCidadePorDia, transportadorasFiltro) {
+  const vazio = { totalDisponibilizados: 0, totalUsados: 0, pctOciosidade: 0, porTransportadora: [] };
+  if (!window.fbDb || !window.fbCollection || !window.fbQuery || !window.fbWhere || !window.fbGetDocs || typeof window.dbGetPlates !== 'function') {
+    console.warn('[Ociosidade] Firestore/dbGetPlates não disponível ainda.');
+    return vazio;
+  }
+  const datas = (snapshotsAtivos || []).map(s => (s.savedAt || '').slice(0,10)).filter(Boolean).sort();
+  if (!datas.length) return vazio;
+  const dataIni = datas[0], dataFim = datas[datas.length - 1];
+  const normPlaca = p => (p || '').toString().trim().toUpperCase();
+  const normCidade = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  const cidadesFiltroNorm = cidadesFiltro ? new Set([...cidadesFiltro].map(normCidade)) : null;
+  // Placas ativas cadastradas por transportadora — usa config/plates (mesma
+  // consulta) pra saber quem está ativo (placa desativada não conta) E qual
+  // a OPERAÇÃO cadastrada em cada placa (campo "operacao" do cadastro no
+  // sistema pai) — essa é a fonte PRIMÁRIA de cidade/operação pra Ociosidade,
+  // por ser o dado cadastrado manualmente e não uma inferência. Como fallback
+  // (placa sem operação cadastrada), cai pra cidade inferida do terminal
+  // usado na roteirização (placaCidadePorDia/placaCidade, vindos do resto do
+  // Dashboard) — mesma lógica usada em Jornada/Ranking/Viagens/etc.
+  let todasPlacas = {};
+  try { todasPlacas = await window.dbGetPlates(); } catch(e) { console.warn('[Ociosidade] falha ao ler placas:', e); }
+  const placaAtiva = new Map(); // placaNorm -> ativo
+  const placaOperacao = new Map(); // placaNorm -> operação cadastrada na placa
+  Object.values(todasPlacas || {}).forEach(placas => {
+    (placas || []).forEach(p => {
+      const pNormCad = normPlaca(p.placa);
+      placaAtiva.set(pNormCad, p.ativo !== false);
+      if (p.operacao) placaOperacao.set(pNormCad, p.operacao);
+    });
+  });
+  // Consulta a coleção "availability" no intervalo de datas do período
+  // carregado (mês selecionado, ou min/max de "Todos os períodos") — só
+  // depende do intervalo, não do filtro de cidade (esse é aplicado depois,
+  // em cima do resultado), então dá pra cachear por dataIni+dataFim.
+  const chaveCache = `${dataIni}_${dataFim}`;
+  let docs;
+  const cacheado = _dashOciosidadeCacheDocs.get(chaveCache);
+  if (cacheado && cacheado.expiraEm > Date.now()) {
+    docs = cacheado.docs;
+  } else {
+    try {
+      const q = window.fbQuery(
+        window.fbCollection(window.fbDb, 'availability'),
+        window.fbWhere('dateStr', '>=', dataIni),
+        window.fbWhere('dateStr', '<=', dataFim)
+      );
+      const snap = await window.fbGetDocs(q);
+      docs = snap.docs.map(d => d.data());
+      _dashOciosidadeCacheDocs.set(chaveCache, { docs, expiraEm: Date.now() + _DASH_OCIOSIDADE_CACHE_TTL_MS });
+    } catch(e) {
+      console.warn('[Ociosidade] falha ao consultar disponibilidade:', e);
+      return vazio;
+    }
+  }
+  const porTransportadora = {};
+  const porOperacaoUtil = {}; // usado no relatório de Balanceamento de Frota (dias usado vs disponibilizado, por operação)
+  let totalDisponibilizados = 0, totalUsados = 0;
+  docs.forEach(rec => {
+    if (rec.status !== 'disponivel') return; // só conta quem foi marcado Disponível naquele dia no Painel
+    const pNorm = normPlaca(rec.plate);
+    if (!placaAtiva.has(pNorm) || placaAtiva.get(pNorm) === false) return; // placa desconhecida/desativada no cadastro atual — fora da conta
+    if (transportadorasFiltro && !transportadorasFiltro.has(rec.carrier || '(sem transportadora)')) return;
+    if (cidadesFiltroNorm) {
+      // Reúne todos os "candidatos" de cidade/operação pra essa placa nesse
+      // registro: (1) operação cadastrada na placa — fonte primária; (2)
+      // cidades das viagens de fato realizadas por ela NAQUELE DIA; (3) cidades
+      // já vistas pra essa placa em qualquer dia (fallback final, cobre
+      // disponibilidade marcada num dia sem roteirização salva). Comparação
+      // ignora acento/maiúscula pra não quebrar por diferença de digitação
+      // entre o cadastro da placa e o cadastro do terminal (ex.: "Paulinia" x
+      // "Paulínia").
+      const candidatos = [
+        placaOperacao.get(pNorm),
+        ...(placaCidadePorDia.get(pNorm + '__' + rec.dateStr) || []),
+        ...(placaCidade.get(pNorm) || []),
+      ].filter(Boolean);
+      const bate = candidatos.some(c => cidadesFiltroNorm.has(normCidade(c)));
+      if (!bate) return; // nenhuma cidade/operação conhecida bate com o filtro selecionado
+    }
+    const usado = diasComViagemPorPlaca.has(pNorm + '__' + rec.dateStr);
+    totalDisponibilizados++;
+    if (usado) totalUsados++;
+    const key = rec.carrier || '(sem transportadora)';
+    if (!porTransportadora[key]) porTransportadora[key] = { transportadora: key, disponibilizados: 0, usados: 0 };
+    porTransportadora[key].disponibilizados++;
+    if (usado) porTransportadora[key].usados++;
+    // Operação resolvida com a mesma prioridade usada no filtro acima:
+    // cadastro da placa > cidade da viagem daquele dia > qualquer cidade já
+    // vista pra essa placa > "(sem operação)" como último recurso.
+    const opResolvida = placaOperacao.get(pNorm)
+      || (placaCidadePorDia.get(pNorm + '__' + rec.dateStr) || [])[0]
+      || (placaCidade.get(pNorm) || [])[0]
+      || '(sem operação)';
+    if (!porOperacaoUtil[opResolvida]) porOperacaoUtil[opResolvida] = { operacao: opResolvida, disponibilizados: 0, usados: 0, placas: new Set() };
+    porOperacaoUtil[opResolvida].disponibilizados++;
+    porOperacaoUtil[opResolvida].placas.add(pNorm);
+    if (usado) porOperacaoUtil[opResolvida].usados++;
+  });
+  // Diagnóstico: se um filtro de cidade está ativo e ZERO placas bateram,
+  // loga uma amostra pra investigar direto do console do navegador (nomes
+  // reais de operação/cidade cadastrados x nomes selecionados no filtro) —
+  // sem isso, um "0/0" não diz se é falta de dado ou divergência de nome.
+  if (cidadesFiltroNorm && totalDisponibilizados === 0 && docs.length) {
+    const amostra = docs.filter(r => r.status === 'disponivel').slice(0, 5).map(r => {
+      const pN = normPlaca(r.plate);
+      return {
+        placa: r.plate,
+        data: r.dateStr,
+        operacaoCadastrada: placaOperacao.get(pN) || null,
+        cidadesDoDia: [...(placaCidadePorDia.get(pN + '__' + r.dateStr) || [])],
+        cidadesConhecidas: [...(placaCidade.get(pN) || [])],
+      };
+    });
+    console.warn('[Ociosidade] 0 placas bateram com o filtro de cidade selecionado. Filtro:', [...cidadesFiltro], 'Amostra de disponibilidade não-batida:', amostra);
+  }
+  const porTransportadoraArr = Object.values(porTransportadora)
+    .map(t => ({ ...t, pctOciosidade: t.disponibilizados > 0 ? Math.round((1 - t.usados / t.disponibilizados) * 100) : 0 }))
+    .sort((a, b) => b.pctOciosidade - a.pctOciosidade);
+  const porOperacaoUtilArr = Object.values(porOperacaoUtil)
+    .map(o => ({ operacao: o.operacao, disponibilizados: o.disponibilizados, usados: o.usados, qtdPlacas: o.placas.size,
+      pctUtilizacao: o.disponibilizados > 0 ? Math.round((o.usados / o.disponibilizados) * 100) : 0 }))
+    .sort((a, b) => b.disponibilizados - a.disponibilizados);
+  return {
+    totalDisponibilizados,
+    totalUsados,
+    pctOciosidade: totalDisponibilizados > 0 ? Math.round((1 - totalUsados / totalDisponibilizados) * 100) : 0,
+    porTransportadora: porTransportadoraArr,
+    porOperacaoUtilizacao: porOperacaoUtilArr, // pro relatório de Balanceamento de Frota — % de dias disponibilizados que tiveram viagem, por operação
+  };
+}
+let _dashUltimaOciosidade = { porTransportadora: [] };
+let _dashOciosidadeDirecao = 'desc'; // 'desc' = maior primeiro, 'asc' = menor primeiro
+function dashOciosidadeSetDirecao(direcao) {
+  _dashOciosidadeDirecao = direcao;
+  document.querySelectorAll('.dash-ociosidadedir-tab').forEach(b => {
+    const ativo = b.dataset.dir === direcao;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderOciosidadeTransportadora(_dashUltimaOciosidade);
+}
+function dashRenderOciosidadeTransportadora(dados) {
+  _dashUltimaOciosidade = dados;
+  const box = document.getElementById('dash-ociosidade-transp');
+  if (!box) return;
+  const lista = [...(dados.porTransportadora || [])]
+    .sort((a, b) => _dashOciosidadeDirecao === 'asc' ? a.pctOciosidade - b.pctOciosidade : b.pctOciosidade - a.pctOciosidade);
+  if (!lista.length) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Nenhum dado de ociosidade para este período/filtro.</div>`;
+    return;
+  }
+  const max = Math.max(...lista.map(t => t.pctOciosidade), 1);
+  box.innerHTML = lista.map((t) => {
+    const pct = Math.max(2, (t.pctOciosidade / max) * 100);
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border-dk);">
+        <div style="width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:var(--text);" title="${t.transportadora}">${t.transportadora}</div>
+        <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:20px;position:relative;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:var(--pet-green,#b5e51d);border-radius:6px;transition:width .3s;"></div>
+        </div>
+        <div style="width:60px;flex-shrink:0;text-align:right;font-size:12.5px;font-weight:700;color:var(--text);">${t.pctOciosidade}%</div>
+        <div style="width:170px;flex-shrink:0;text-align:right;font-size:10.5px;color:var(--text-3);">${t.usados} usados / ${t.disponibilizados} disponibilizados</div>
+      </div>`;
+  }).join('');
+}
+// ── Histórico por Veículo ────────────────────────────────────────────────────
+// Tabela dia a dia de UM veículo: dia da semana, data, status marcado no
+// Painel de Disponibilidade (Firestore) e km planejado nas roteirizações
+// (reaproveita _dashUltimoAgregado, o mesmo cálculo já usado pela Jornada).
+// Mesmo mapeamento de STATUS_OPTS do main.js — mantido aqui em separado
+// porque não é exposto em window; se os status do cadastro mudarem lá,
+// replicar aqui também.
+const _DASH_HISTVEIC_STATUS = {
+  disponivel:   { label: 'Disponível',           cor: '#4caf1f', bg: 'rgba(110,224,74,.16)',  borda: 'rgba(76,175,31,.35)' },
+  indisponivel: { label: 'Indisponível',         cor: '#e23c3c', bg: 'rgba(240,96,96,.14)',   borda: 'rgba(226,60,60,.35)' },
+  manutencao:   { label: 'Manutenção',           cor: '#c98a00', bg: 'rgba(240,190,64,.18)',  borda: 'rgba(201,138,0,.35)' },
+  folga:        { label: 'Folga',                cor: '#3b7fd6', bg: 'rgba(112,168,240,.16)', borda: 'rgba(59,127,214,.35)' },
+  programado:   { label: 'Programado/Em viagem', cor: '#8a4fd6', bg: 'rgba(176,126,240,.16)', borda: 'rgba(138,79,214,.35)' },
+};
+const _DASH_HISTVEIC_DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+let _dashHistVeiculoOpcoesPlacas = []; // lista bruta {placa, transportadora} — cacheada pra alimentar o filtro de transportadora sem reconsultar
+let _dashHistVeiculoAguardandoPlates = false;
+async function dashPopularSeletorHistVeiculo() {
+  const sel = document.getElementById('dash-histveic-placa');
+  if (!sel) return;
+  // main.js carrega como módulo ES, em paralelo ao dashboard.js — pode não
+  // ter terminado de expor window.dbGetPlates ainda quando o Dashboard
+  // renderiza pela primeira vez. Sem essa espera, o seletor ficava preso
+  // pra sempre em "Carregando placas...", porque a função só era chamada
+  // de novo se algum filtro do Dashboard mudasse depois.
+  if (typeof window.dbGetPlates !== 'function') {
+    if (_dashHistVeiculoAguardandoPlates) return;
+    _dashHistVeiculoAguardandoPlates = true;
+    let tentativas = 0;
+    const timer = setInterval(() => {
+      tentativas++;
+      if (typeof window.dbGetPlates === 'function') {
+        clearInterval(timer);
+        _dashHistVeiculoAguardandoPlates = false;
+        dashPopularSeletorHistVeiculo();
+      } else if (tentativas >= 50) { // ~10s
+        clearInterval(timer);
+        _dashHistVeiculoAguardandoPlates = false;
+        sel.innerHTML = '<option value="">Não foi possível carregar as placas</option>';
+      }
+    }, 200);
+    return;
+  }
+  try {
+    const todasPlacas = await window.dbGetPlates();
+    const opcoes = [];
+    Object.entries(todasPlacas || {}).forEach(([transportadora, placas]) => {
+      (placas || []).forEach(p => {
+        const placa = (p && p.placa || '').trim().toUpperCase();
+        if (placa) opcoes.push({ placa, transportadora });
+      });
+    });
+    opcoes.sort((a, b) => a.placa.localeCompare(b.placa));
+    _dashHistVeiculoOpcoesPlacas = opcoes;
+    dashPopularSeletorTranspHistVeiculo();
+    dashFiltrarPlacasHistVeiculo();
+  } catch(e) {
+    console.warn('[HistVeiculo] falha ao popular placas', e);
+    sel.innerHTML = '<option value="">Erro ao carregar placas</option>';
+  }
+}
+// Seletor de transportadora — só filtra a lista de placas já carregada, não
+// reconsulta o Firestore (é o mesmo documento único, com todas as
+// transportadoras dentro; separar por transportadora aqui é só organização
+// visual pra achar a placa mais rápido, não economiza leitura).
+function dashPopularSeletorTranspHistVeiculo() {
+  const selT = document.getElementById('dash-histveic-transp');
+  if (!selT) return;
+  const transportadoras = Array.from(new Set(_dashHistVeiculoOpcoesPlacas.map(o => o.transportadora))).sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const atual = selT.value;
+  selT.innerHTML = '<option value="">Todas as transportadoras</option>' +
+    transportadoras.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (atual && transportadoras.includes(atual)) selT.value = atual;
+}
+function dashFiltrarPlacasHistVeiculo() {
+  const sel = document.getElementById('dash-histveic-placa');
+  const selT = document.getElementById('dash-histveic-transp');
+  if (!sel) return;
+  const transpFiltro = selT ? selT.value : '';
+  const filtradas = transpFiltro
+    ? _dashHistVeiculoOpcoesPlacas.filter(o => o.transportadora === transpFiltro)
+    : _dashHistVeiculoOpcoesPlacas;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Selecione um veículo...</option>' +
+    filtradas.map(o => `<option value="${o.placa}">${o.placa} — ${o.transportadora}</option>`).join('');
+  if (atual && filtradas.some(o => o.placa === atual)) sel.value = atual;
+}
+// Lista de todos os dias (YYYY-MM-DD) — por padrão, entre o menor e o maior
+// savedAt dos snapshots carregados (mesmo período do Dashboard), mas pode
+// ser sobreposta pelo calendário "De/Até" da própria seção, pra ver um
+// intervalo diferente sem precisar mudar o filtro geral do Dashboard.
+function _dashHistVeiculoListaDias() {
+  const elDe  = document.getElementById('dash-histveic-de');
+  const elAte = document.getElementById('dash-histveic-ate');
+  let min = elDe  && elDe.value  ? elDe.value  : null;
+  let max = elAte && elAte.value ? elAte.value : null;
+  if (!min || !max) return []; // sem os dois extremos definidos, não há o que listar
+  if (min > max) { const tmp = min; min = max; max = tmp; } // datas trocadas, inverte
+  const dias = [];
+  const cursor = new Date(min + 'T00:00:00');
+  const fim = new Date(max + 'T00:00:00');
+  let seguranca = 0; // trava contra intervalo absurdamente longo por engano
+  while (cursor <= fim && seguranca < 366) {
+    dias.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+    seguranca++;
+  }
+  return dias;
+}
+// Chamada ao trocar de veículo no seletor — NÃO busca nada sozinha. A
+// consulta ao Firestore só roda quando o usuário define o período (De/Até)
+// e aperta "Buscar", de propósito: evita gerar leitura toda vez que algum
+// filtro do Dashboard mudar (cidade, cliente, mês) com um veículo já
+// selecionado, que era o padrão antigo — cada troca de filtro relia a
+// consulta sozinha, mesmo sem o usuário pedir.
+function dashSelecionarVeiculoHistVeiculo(placaEscolhida) {
+  _dashHistVeiculoPlacaAtual = placaEscolhida || '';
+  _dashHistVeiculoDados = [];
+  const box = document.getElementById('dash-histveic-tabela');
+  if (!box) return;
+  if (!placaEscolhida) {
+    box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Selecione um veículo acima.</div>';
+    return;
+  }
+  box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Escolha o período (De/Até) e clique em "Buscar".</div>';
+}
+function dashLimparFiltroDataHistVeiculo() {
+  const elDe  = document.getElementById('dash-histveic-de');
+  const elAte = document.getElementById('dash-histveic-ate');
+  if (elDe)  elDe.value  = '';
+  if (elAte) elAte.value = '';
+  const box = document.getElementById('dash-histveic-tabela');
+  if (box) box.innerHTML = _dashHistVeiculoPlacaAtual
+    ? '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Escolha o período (De/Até) e clique em "Buscar".</div>'
+    : '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Selecione um veículo acima.</div>';
+  _dashHistVeiculoDados = [];
+}
+// Disparo explícito, único ponto que efetivamente consulta o Firestore.
+function dashBuscarHistoricoVeiculo() {
+  const selPlaca = document.getElementById('dash-histveic-placa');
+  const placa = selPlaca ? selPlaca.value : _dashHistVeiculoPlacaAtual;
+  if (!placa) { showToast('Selecione um veículo antes de buscar.', false); return; }
+  const elDe  = document.getElementById('dash-histveic-de');
+  const elAte = document.getElementById('dash-histveic-ate');
+  if (!elDe?.value || !elAte?.value) { showToast('Defina o período (De e Até) antes de buscar.', false); return; }
+  dashCarregarHistoricoVeiculo(placa);
+}
+// Km planejado por dia pra uma placa — soma o km de ida e volta de todas as
+// viagens daquela placa naquele dia (kmIda × 2), a partir do que a Jornada
+// já calcula.
+function _dashHistVeiculoKmPorDia(placaNorm) {
+  const mapa = {};
+  (_dashUltimoAgregado?.entradasTransportadora || []).forEach(e => {
+    if (e._semViagem) return; // não é uma viagem de verdade
+    if ((e.placa || '').trim().toUpperCase() !== placaNorm) return;
+    mapa[e.data] = (mapa[e.data] || 0) + (e.kmIda || 0) * 2; // ida + volta
+  });
+  return mapa;
+}
+// Viagens por dia pra uma placa (nº da viagem + rota), na ordem da viagem.
+function _dashHistVeiculoViagensPorDia(placaNorm) {
+  const mapa = {};
+  (_dashUltimoAgregado?.entradasTransportadora || []).forEach(e => {
+    if (e._semViagem) return;
+    if ((e.placa || '').trim().toUpperCase() !== placaNorm) return;
+    (mapa[e.data] = mapa[e.data] || []).push({
+      petId: e.petId || '', origem: (e.cidadeOp && e.cidadeOp !== '(sem cidade)') ? e.cidadeOp : (e.termOrigem || ''), destinos: e.rotaCidades || [],
+      clientes: e.clientesViagem || [], km: (e.kmIda || 0) * 2, volume: e.volume || 0,
+    });
+  });
+  Object.values(mapa).forEach(l => l.sort((a, b) => String(a.petId).localeCompare(String(b.petId), 'pt-BR', { numeric: true })));
+  return mapa;
+}
+// "MOGI GUACU" → "Mogi Guacu"; "SAO JOSE DOS CAMPOS - SP" → "Sao Jose dos Campos"
+function _dashHistCidade(c) {
+  const semUf = String(c || '').replace(/\s*[-/]\s*[A-Za-z]{2}$/, '').trim();
+  const min = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
+  return semUf.toLowerCase().split(/\s+/).map((w, i) => (i && min.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+// Cache por placa — evita reconsultar TODO o histórico daquela placa toda vez
+// que um filtro do Dashboard muda (cidade, cliente, mês...), já que
+// dashRender() re-chama esta função sempre que há um veículo selecionado.
+// TTL curto o bastante pra não esconder uma atualização de status por muito
+// tempo, longo o bastante pra absorver uma sequência de cliques em filtros.
+const _dashHistVeiculoCacheDocs = new Map(); // placa -> { docs, expiraEm }
+const _DASH_HISTVEIC_CACHE_TTL_MS = 120_000; // 2 minutos
+async function dashCarregarHistoricoVeiculo(placaEscolhida) {
+  const box = document.getElementById('dash-histveic-tabela');
+  if (!box) return;
+  _dashHistVeiculoPlacaAtual = placaEscolhida || '';
+  if (!placaEscolhida) {
+    box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Selecione um veículo acima.</div>';
+    _dashHistVeiculoDados = [];
+    return;
+  }
+  box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando...</div>';
+  const pNorm = placaEscolhida.trim().toUpperCase();
+  const dias = _dashHistVeiculoListaDias();
+  if (!dias.length) {
+    box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Escolha o período (De/Até) e clique em "Buscar".</div>';
+    _dashHistVeiculoDados = [];
+    return;
+  }
+  const dataIni = dias[0], dataFim = dias[dias.length - 1];
+  let statusPorDia = {};
+  let erroBusca = null;
+  if (window.fbDb && window.fbCollection && window.fbQuery && window.fbWhere && window.fbGetDocs) {
+    try {
+      let docs;
+      const cacheado = _dashHistVeiculoCacheDocs.get(pNorm);
+      if (cacheado && cacheado.expiraEm > Date.now()) {
+        docs = cacheado.docs;
+      } else {
+        // Só filtra por placa no Firestore (filtro de igualdade simples, não
+        // precisa de índice composto) — o intervalo de datas é aplicado aqui
+        // em JS depois. Combinar "placa == X" com "data entre A e B" na
+        // mesma consulta do Firestore exige um índice composto específico
+        // que normalmente não existe por padrão; sem ele, a consulta falhava
+        // silenciosamente (só no console) e a tela mostrava "sem registro"
+        // pra tudo, mesmo tendo dado de verdade salvo.
+        const q = window.fbQuery(
+          window.fbCollection(window.fbDb, 'availability'),
+          window.fbWhere('plate', '==', pNorm)
+        );
+        const snap = await window.fbGetDocs(q);
+        docs = snap.docs.map(d => d.data());
+        _dashHistVeiculoCacheDocs.set(pNorm, { docs, expiraEm: Date.now() + _DASH_HISTVEIC_CACHE_TTL_MS });
+      }
+      docs.forEach(dd => {
+        // Normaliza a placa do próprio registro na comparação, por segurança
+        // contra qualquer inconsistência de maiúscula/minúscula salva antes.
+        if ((dd.plate || '').trim().toUpperCase() !== pNorm) return;
+        if (dd.dateStr && dd.dateStr >= dataIni && dd.dateStr <= dataFim) {
+          statusPorDia[dd.dateStr] = dd.status;
+        }
+      });
+    } catch(e) {
+      console.warn('[HistVeiculo] falha ao buscar status de disponibilidade', e);
+      erroBusca = e.message || String(e);
+    }
+  } else {
+    erroBusca = 'Firestore ainda não está pronto.';
+  }
+  // Se o usuário trocou de placa/filtro enquanto essa busca rodava, descarta
+  // — evita "piscar" dado de uma placa antiga por cima da nova selecionada.
+  if (_dashHistVeiculoPlacaAtual !== placaEscolhida) return;
+  const kmPorDia = _dashHistVeiculoKmPorDia(pNorm);
+  const viagensPorDia = _dashHistVeiculoViagensPorDia(pNorm);
+  const linhas = dias.map(dstr => {
+    const dt = new Date(dstr + 'T00:00:00');
+    return {
+      data: dstr,
+      diaSemana: _DASH_HISTVEIC_DIAS_SEMANA[dt.getDay()],
+      status: statusPorDia[dstr] || null,
+      km: kmPorDia[dstr] || 0,
+      viagens: viagensPorDia[dstr] || [],
+    };
+  });
+  _dashHistVeiculoDados = linhas;
+  dashRenderHistoricoVeiculo(linhas, pNorm, erroBusca);
+}
+function dashRenderHistoricoVeiculo(linhas, placa, erro) {
+  const box = document.getElementById('dash-histveic-tabela');
+  if (!box) return;
+  if (!linhas.length) {
+    box.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Sem dados para este veículo no período.</div>';
+    return;
+  }
+  const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const avisoErro = erro
+    ? `<div style="background:rgba(240,96,96,.12);border:1px solid rgba(226,60,60,.35);border-radius:8px;padding:8px 12px;font-size:11px;color:#e23c3c;margin-bottom:10px;">⚠️ Não foi possível buscar o status de disponibilidade (${esc(erro)}). Viagens e km abaixo continuam corretos, só o status ficou de fora.</div>`
+    : '';
+  const fmtDataCurta = dstr => { const [, m, d] = dstr.split('-'); return `${d}/${m}`; };
+  const fmtN = n => Math.round(n || 0).toLocaleString('pt-BR');
+  const fmtV = n => (Math.round((n || 0) * 10) / 10).toLocaleString('pt-BR');
+  const hoje = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const stDe = l => l.status ? (_DASH_HISTVEIC_STATUS[l.status] || { label: l.status, cor: 'var(--text-2)', bg: 'rgba(127,127,127,.08)', borda: 'var(--border-dk)' }) : null;
+  const chipStatus = l => {
+    const st = stDe(l);
+    if (!st) return `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:10px;color:var(--text-3);border:1px dashed var(--border-dk);white-space:nowrap;">sem registro</span>`;
+    return `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;color:${st.cor};background:${st.bg};border:1px solid ${st.borda};white-space:nowrap;">${st.label}</span>`;
+  };
+  const fimSemana = dstr => { const dow = new Date(dstr + 'T00:00:00').getDay(); return dow === 0 || dow === 6; };
+  const fundoDia = dstr => dstr === hoje ? 'background:rgba(59,127,214,.07);' : (fimSemana(dstr) ? 'background:rgba(127,127,127,.06);' : '');
+  const bordaCol = i => (i > 0 ? 'border-left:1px solid var(--border-dk);' : '');
+  const colRotulo = 'position:sticky;left:0;z-index:2;padding:8px 10px;font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;background:var(--surface);box-shadow:2px 0 4px -2px rgba(0,0,0,.15);vertical-align:middle;';
+  // Cartão de cada viagem: nº, rota (origem → destinos na ordem) e volume/km.
+  const cardViagem = vg => {
+    const destinos = vg.destinos.map(_dashHistCidade);
+    const rota = [vg.origem ? _dashHistCidade(vg.origem) : '', ...destinos].filter(Boolean);
+    const titulo = `${vg.petId || 'Viagem'}\n${rota.join(' → ')}\n${vg.clientes.join(' · ')}\n${fmtV(vg.volume)} m³ · ${fmtN(vg.km)} km (ida+volta)`;
+    return `<div title="${esc(titulo)}" style="text-align:left;border:1px solid var(--border-dk);border-left:3px solid #8a4fd6;border-radius:6px;padding:5px 7px;margin:0 0 5px;background:rgba(138,79,214,.05);">
+      <div style="font-family:var(--font-cond,inherit);font-size:11px;font-weight:800;letter-spacing:.03em;color:var(--text);white-space:nowrap;">${esc(vg.petId || '—')}</div>
+      <div style="font-size:10.5px;line-height:1.35;color:var(--text-2);margin-top:2px;">
+        ${vg.origem ? `<span style="color:var(--text-3);">${esc(_dashHistCidade(vg.origem))}</span> → ` : ''}${destinos.length ? destinos.map(d => `<b style="font-weight:600;color:var(--text);">${esc(d)}</b>`).join(' → ') : '<span style="color:var(--text-3);">—</span>'}
+      </div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:3px;white-space:nowrap;">${fmtV(vg.volume)} m³ · ${fmtN(vg.km)} km</div>
+    </div>`;
+  };
+  // Resumo do período
+  const totViagens = linhas.reduce((s, l) => s + l.viagens.length, 0);
+  const totKm = linhas.reduce((s, l) => s + (l.km || 0), 0);
+  const totVol = linhas.reduce((s, l) => s + l.viagens.reduce((a, v) => a + (v.volume || 0), 0), 0);
+  const diasComViagem = linhas.filter(l => l.viagens.length).length;
+  const diasDisp = linhas.filter(l => l.status === 'disponivel').length;
+  const diasDispSemViagem = linhas.filter(l => l.status === 'disponivel' && !l.viagens.length && l.data < hoje).length;
+  const kpi = (v, rot, cor) => `<div style="flex:1;min-width:120px;border:1px solid var(--border-dk);border-radius:8px;padding:8px 12px;background:var(--surface);">
+      <div style="font-size:17px;font-weight:800;color:${cor || 'var(--text)'};line-height:1.1;">${v}</div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:2px;">${rot}</div></div>`;
+  const larguraCol = linhas.some(l => l.viagens.length) ? 150 : 72;
+  box.innerHTML = `
+    ${avisoErro}
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div style="font-size:12px;color:var(--text-3);">Veículo <strong style="color:var(--text);font-size:13px;">${esc(placa)}</strong> · ${linhas.length} dia(s) no período</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${Object.values(_DASH_HISTVEIC_STATUS).map(st => `<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3);"><span style="width:8px;height:8px;border-radius:50%;background:${st.cor};display:inline-block;"></span>${st.label}</span>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      ${kpi(fmtN(totViagens), `viagens em ${diasComViagem} dia(s)`, '#8a4fd6')}
+      ${kpi(fmtN(totKm), 'km no período (ida+volta)', 'var(--pet-green,#4caf1f)')}
+      ${kpi(`${fmtV(totVol)} m³`, 'volume transportado')}
+      ${kpi(`${diasDisp}`, 'dias disponível', '#4caf1f')}
+      ${kpi(`${diasDispSemViagem}`, 'dias disponível sem viagem', diasDispSemViagem ? '#c98a00' : 'var(--text)')}
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border-dk);border-radius:10px;">
+      <table style="border-collapse:collapse;width:100%;min-width:${linhas.length * larguraCol + 120}px;table-layout:fixed;">
+        <colgroup><col style="width:120px">${linhas.map(() => `<col style="width:${larguraCol}px">`).join('')}</colgroup>
+        <thead>
+          <tr style="border-bottom:1px solid var(--border-dk);">
+            <th style="${colRotulo}text-align:left;">Dia</th>
+            ${linhas.map((l, i) => `<th style="padding:7px 4px;text-align:center;${bordaCol(i)}${fundoDia(l.data)}">
+              <div style="font-size:10px;font-weight:600;color:${fimSemana(l.data) ? '#3b7fd6' : 'var(--text-3)'};text-transform:uppercase;letter-spacing:.05em;">${l.diaSemana}</div>
+              <div style="font-size:12.5px;font-weight:800;color:var(--text);">${fmtDataCurta(l.data)}${l.data === hoje ? ' <span style="font-size:9px;font-weight:700;color:#3b7fd6;">HOJE</span>' : ''}</div>
+            </th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border-dk);">
+            <td style="${colRotulo}">Status</td>
+            ${linhas.map((l, i) => `<td style="padding:7px 4px;text-align:center;${bordaCol(i)}${fundoDia(l.data)}">${chipStatus(l)}</td>`).join('')}
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-dk);">
+            <td style="${colRotulo}">Viagens</td>
+            ${linhas.map((l, i) => `<td style="padding:7px 6px 2px;vertical-align:top;${bordaCol(i)}${fundoDia(l.data)}">${l.viagens.length
+              ? (l.viagens.length > 1 ? `<div style="font-size:9.5px;font-weight:700;color:#8a4fd6;text-align:center;margin-bottom:4px;">${l.viagens.length} viagens</div>` : '') + l.viagens.map(cardViagem).join('')
+              : `<div style="text-align:center;color:var(--text-3);font-size:11px;padding:4px 0 6px;">—</div>`}</td>`).join('')}
+          </tr>
+          <tr>
+            <td style="${colRotulo}">Km do dia</td>
+            ${linhas.map((l, i) => `<td style="padding:7px 4px;text-align:center;font-size:12px;font-weight:800;color:${l.km ? 'var(--pet-green,#4caf1f)' : 'var(--text-3)'};${bordaCol(i)}${fundoDia(l.data)}">${l.km ? fmtN(l.km) : '—'}</td>`).join('')}
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+// Linhas da exportação (CSV e Excel): uma por VIAGEM — dia com 2 viagens
+// sai em 2 linhas; dia sem viagem sai numa linha só. O km do dia vai só na
+// 1ª linha do dia, pra soma da coluna não duplicar.
+function _dashHistVeiculoLinhasExport() {
+  const fmtBr = d => { const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}`; };
+  const out = [];
+  _dashHistVeiculoDados.forEach(l => {
+    const st = l.status ? (_DASH_HISTVEIC_STATUS[l.status] || { label: l.status }) : { label: '' };
+    const base = { placa: _dashHistVeiculoPlacaAtual, data: fmtBr(l.data), dia: l.diaSemana, status: st.label };
+    const vgs = l.viagens || [];
+    if (!vgs.length) { out.push({ ...base, kmDia: l.km ? Math.round(l.km) : '', qtd: 0, petId: '', rota: '', clientes: '', vol: '', kmViagem: '' }); return; }
+    vgs.forEach((v, i) => out.push({
+      ...base, kmDia: i === 0 && l.km ? Math.round(l.km) : '', qtd: i === 0 ? vgs.length : '',
+      petId: v.petId || '', rota: [v.origem, ...(v.destinos || [])].filter(Boolean).map(_dashHistCidade).join(' → '),
+      clientes: (v.clientes || []).join(' | '), vol: Math.round((v.volume || 0) * 10) / 10, kmViagem: Math.round(v.km || 0),
+    }));
+  });
+  return out;
+}
+const _DASH_HISTVEIC_COLS_EXPORT = [
+  ['placa', 'Placa', 10], ['data', 'Data', 11], ['dia', 'Dia da Semana', 9], ['status', 'Status', 20],
+  ['kmDia', 'Km do Dia (ida+volta)', 12], ['qtd', 'Viagens no Dia', 9], ['petId', 'Nº Viagem', 12],
+  ['rota', 'Rota', 48], ['clientes', 'Clientes', 60], ['vol', 'Volume (m³)', 10], ['kmViagem', 'Km da Viagem (ida+volta)', 12],
+];
+function dashExportarHistoricoVeiculoCSV() {
+  if (!_dashHistVeiculoDados.length || !_dashHistVeiculoPlacaAtual) {
+    showToast('Selecione um veículo com dados carregados antes de exportar.', false);
+    return;
+  }
+  const cols = _DASH_HISTVEIC_COLS_EXPORT;
+  const linhasCsv = [
+    cols.map(c => c[1]).join(';'),
+    ..._dashHistVeiculoLinhasExport().map(r => cols.map(c => String(r[c[0]] ?? '').replace(/;/g, ',').replace(/→/g, '>')).join(';')),
+  ];
+  const csv = '﻿' + linhasCsv.join('\r\n'); // BOM pro Excel abrir acentos certinho
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `historico_${_dashHistVeiculoPlacaAtual}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function dashExportarHistoricoVeiculoXLSX() {
+  if (!_dashHistVeiculoDados.length || !_dashHistVeiculoPlacaAtual) {
+    showToast('Selecione um veículo com dados carregados antes de exportar.', false);
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    showToast('Biblioteca de Excel não carregada — tente recarregar a página.', false);
+    return;
+  }
+  const cols = _DASH_HISTVEIC_COLS_EXPORT;
+  const linhas = _dashHistVeiculoLinhasExport();
+  const aoa = [cols.map(c => c[1]), ...linhas.map(r => cols.map(c => r[c[0]] === '' ? null : r[c[0]]))];
+  // Total no fim (km, viagens, volume)
+  const soma = k => linhas.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  aoa.push([]);
+  aoa.push(cols.map(c => c[0] === 'placa' ? 'TOTAL' : c[0] === 'kmDia' ? soma('kmDia') : c[0] === 'qtd' ? soma('qtd') : c[0] === 'vol' ? Math.round(soma('vol') * 10) / 10 : c[0] === 'kmViagem' ? soma('kmViagem') : null));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = cols.map(c => ({ wch: c[2] }));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cols.length - 1 } }) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
+  XLSX.writeFile(wb, `historico_${_dashHistVeiculoPlacaAtual}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+let _dashRankingOrdem = 'volume'; // 'volume' | 'km' | 'custo'
+let _dashRankingDirecao = 'desc'; // 'desc' = maior primeiro, 'asc' = menor primeiro
+// ── Zoom dos gráficos por transportadora (botão maior/menor de TAMANHO) ─────
+// Usa a propriedade CSS "zoom" direto no container — escala bar, texto e
+// tudo dentro de uma vez, sem precisar tocar nas funções de render. Fica
+// guardado por box (cada gráfico lembra o zoom escolhido) e sobrevive a
+// re-renderizações porque o zoom fica no próprio elemento container (que
+// nunca é substituído, só o innerHTML dele).
+const _dashChartZoomNiveis = [0.75, 0.85, 1, 1.15, 1.3, 1.5];
+const _dashChartZoomAtual = {}; // boxId -> índice em _dashChartZoomNiveis
+function dashChartZoom(boxId, direcao) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  const atual = _dashChartZoomAtual[boxId] ?? _dashChartZoomNiveis.indexOf(1);
+  const novo = Math.min(_dashChartZoomNiveis.length - 1, Math.max(0, atual + direcao));
+  _dashChartZoomAtual[boxId] = novo;
+  box.style.zoom = _dashChartZoomNiveis[novo];
+}
+function dashRankingSetOrdem(campo) {
+  _dashRankingOrdem = campo;
+  document.querySelectorAll('.dash-rank-tab').forEach(b => {
+    const ativo = b.dataset.campo === campo;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderRankingTransportadoras(_dashUltimoRanking || []);
+}
+function dashRankingSetDirecao(direcao) {
+  _dashRankingDirecao = direcao;
+  document.querySelectorAll('.dash-rankdir-tab').forEach(b => {
+    const ativo = b.dataset.dir === direcao;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderRankingTransportadoras(_dashUltimoRanking || []);
+}
+let _dashUltimoRanking = [];
+function dashRenderRankingTransportadoras(lista) {
+  _dashUltimoRanking = lista;
+  const box = document.getElementById('dash-ranking-transp');
+  if (!box) return;
+  if (!lista.length) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Nenhum dado de transportadora para este período/filtro.</div>`;
+    return;
+  }
+  const campo = _dashRankingOrdem;
+  const ordenado = [...lista].sort((a, b) => _dashRankingDirecao === 'asc' ? a[campo] - b[campo] : b[campo] - a[campo]);
+  const max = Math.max(...ordenado.map(t => t[campo]), 0.001);
+  // Medalha só faz sentido no topo quando está ordenado do maior pro menor
+  const medalhas = _dashRankingDirecao === 'desc' ? ['🥇', '🥈', '🥉'] : [];
+  const fmtValor = (t) => {
+    if (campo === 'volume') return t.volume.toFixed(1) + ' m³';
+    if (campo === 'km')     return Math.round(t.km).toLocaleString('pt-BR') + ' km';
+    return t.temContrato ? 'R$ ' + t.custo.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+  };
+  const cores = { volume: '#f0be40', km: '#6ee04a', custo: '#70a8f0' };
+  box.innerHTML = ordenado.map((t, i) => {
+    const val = t[campo];
+    const pct = max > 0 ? Math.max(2, (val / max) * 100) : 2;
+    const rank = i < medalhas.length ? medalhas[i] : `#${i+1}`;
+    const semContratoTag = (campo === 'custo' && !t.temContrato) ? `<span title="Sem contrato cadastrado na aba Frete para nenhuma placa desta transportadora" style="font-size:9px;color:#F59E0B;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 6px;margin-left:6px;">sem contrato</span>` : '';
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border-dk);">
+        <div style="width:28px;flex-shrink:0;text-align:center;font-size:${i<medalhas.length?'16px':'12px'};font-weight:700;color:${i<medalhas.length?'inherit':'var(--text-3)'};">${rank}</div>
+        <div style="width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:var(--text);" title="${t.transportadora}">${t.transportadora}${semContratoTag}</div>
+        <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:20px;position:relative;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${cores[campo]};border-radius:6px;transition:width .3s;"></div>
+        </div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-size:12.5px;font-weight:700;color:var(--text);">${fmtValor(t)}</div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-size:10.5px;color:var(--text-3);">${t.viagens} viag. · ${t.nPlacas} placa${t.nPlacas>1?'s':''}</div>
+      </div>`;
+  }).join('');
+}
+window.dashRankingSetOrdem = dashRankingSetOrdem;
+window.dashRankingSetDirecao = dashRankingSetDirecao;
+window.dashJornadaSetDirecao = dashJornadaSetDirecao;
+window.dashOciosidadeSetDirecao = dashOciosidadeSetDirecao;
+window.dashChartZoom = dashChartZoom;
+window.dashSelecionarVeiculoHistVeiculo = dashSelecionarVeiculoHistVeiculo;
+window.dashFiltrarPlacasHistVeiculo = dashFiltrarPlacasHistVeiculo;
+window.dashBuscarHistoricoVeiculo = dashBuscarHistoricoVeiculo;
+window.dashLimparFiltroDataHistVeiculo = dashLimparFiltroDataHistVeiculo;
+window.dashExportarHistoricoVeiculoCSV = dashExportarHistoricoVeiculoCSV;
+window.dashExportarHistoricoVeiculoXLSX = dashExportarHistoricoVeiculoXLSX;
+// ── Renderizar Dashboard ───────────────────────────────────────────────────
+// ── Filtro de clientes ────────────────────────────────────────────────────
+let _dashClientesSelecionados = null; // null = todos; Set = filtro ativo
+let _dashSegmentosSelecionados = null; // GLOBAL (botão do topo) — null = todos; Set = filtro ativo (B2B/B2C/TRR/'—'). Afeta TODA a tela (KPIs, gráficos, tabela, mapa, Excel, e também o card "Clientes sem comprar" abaixo).
+let _dashSegmentosInativosSelecionados = null; // LOCAL (botão dentro do card "Clientes sem comprar") — null = todos; Set = filtro ativo. Afeta SÓ aquele card, não mexe no resto da tela.
+const _DASH_SEGMENTOS_TODOS = ['B2B', 'B2C', 'TRR', '—']; // '—' = cliente sem segmento cadastrado
+// ── Mapa nome → Código SAP ──────────────────────────────────────────────────
+// dashClientesEfetivos()/dashRenderClientesInativosUI() só têm o NOME do
+// cliente pra trabalhar (a lista de nomes do filtro já existia assim antes
+// do Segmento existir, e mudar isso mexeria no filtro de Clientes que já
+// funciona). Esse mapa é o jeito de "lembrar" qual SAP corresponde a qual
+// nome, preenchido toda vez que dashAgregar()/dashCalcularClientesInativos()
+// rodam (que SIM têm o pedido completo, com codigoSAP) — assim
+// dashClienteSegmento(nome) consegue montar a MESMA chave que
+// dashChaveCliente() usaria (SAP primeiro, nome normalizado como
+// fallback), garantindo que "mesmo cliente" aqui é exatamente "mesmo
+// cliente" no resto do Dashboard.
+let _dashMapaNomeParaSAP = {};
+function _dashAtualizarMapaNomeSAP(itens) {
+  (itens || []).forEach(it => {
+    if (it && it.nome && it.codigoSAP) _dashMapaNomeParaSAP[it.nome] = it.codigoSAP;
+  });
+}
+// ── Segmento do cliente (B2B/B2C/TRR) ───────────────────────────────────────
+// Campo vive no CADASTRO de cliente (aba Cadastros → Clientes), não no
+// pedido salvo no histórico — então sempre consulta o cadastro ATUAL
+// (window.clientes, populado pelo script do Roteirizador, ver comentário
+// "var no nível de topo vira window.X" perto da declaração de `clientes`).
+// Isso significa que o segmento aplicado é sempre o de HOJE, mesmo pra
+// pedidos antigos — não existe "segmento histórico" por pedido, e não faz
+// muito sentido ter (é um atributo do cliente, não da entrega).
+//
+// Usa a MESMA chave de identidade que dashChaveCliente() já usa pra
+// agrupar entregas por cliente em todo o resto do Dashboard: Código SAP
+// primeiro (exato, sem ambiguidade), nome normalizado (sem acento, sem
+// sufixo jurídico como "LTDA", maiúsculo, sem espaço extra) como fallback
+// só quando não há SAP. Antes comparava só o nome exato — bastava
+// qualquer diferença de maiúscula/sufixo/acento entre o nome salvo no
+// pedido histórico e o nome no cadastro pra nunca bater, e TODO cliente
+// caía em "sem segmento" mesmo já tendo sido cadastrado.
+function _dashSegmentoLookup() {
+  const arr = (typeof clientes !== 'undefined' && clientes) || window.clientes || [];
+  const map = {};
+  arr.forEach(c => {
+    if (!c || !c.segmento) return;
+    const key = dashChaveCliente({ codigoSAP: c.codigoSAP, cliente: c.nome });
+    map[key] = c.segmento;
+  });
+  return map;
+}
+function dashClienteSegmento(nome) {
+  const sap = _dashMapaNomeParaSAP[nome] || '';
+  const key = dashChaveCliente({ codigoSAP: sap, cliente: nome });
+  return _dashSegmentoLookup()[key] || '';
+}
+// ── Bandeira do cliente (Petronas, Bravo, Charrua...) — filtro GLOBAL ──────
+// Mesmo princípio do Segmento: o campo vive no CADASTRO do cliente, então
+// vale sempre a bandeira de HOJE, e a identidade do cliente usa a mesma
+// chave de dashChaveCliente() (SAP primeiro, nome normalizado de reserva).
+// As opções do filtro vêm da própria lista do formulário de cadastro
+// (<select id="cl-bandeira">) — incluir uma bandeira nova lá já faz ela
+// aparecer aqui, sem precisar mexer em duas listas. Qualquer valor que
+// exista em cliente cadastrado mas não esteja na lista também entra.
+let _dashBandeirasSelecionadas = null; // null = todas; Set = filtro ativo ('—' = sem bandeira informada)
+function _dashBandeiraLookup() {
+  const arr = (typeof clientes !== 'undefined' && clientes) || window.clientes || [];
+  const map = {};
+  arr.forEach(c => {
+    if (!c || !c.bandeira) return;
+    map[dashChaveCliente({ codigoSAP: c.codigoSAP, cliente: c.nome })] = c.bandeira;
+  });
+  return map;
+}
+function dashClienteBandeira(nome, lookup) {
+  const sap = _dashMapaNomeParaSAP[nome] || '';
+  const key = dashChaveCliente({ codigoSAP: sap, cliente: nome });
+  return (lookup || _dashBandeiraLookup())[key] || '';
+}
+function _dashBandeiraOpcoes() {
+  const valores = [];
+  const sel = document.getElementById('cl-bandeira');
+  if (sel) [...sel.options].forEach(o => { if (o.value && !valores.includes(o.value)) valores.push(o.value); });
+  const arr = (typeof clientes !== 'undefined' && clientes) || window.clientes || [];
+  arr.forEach(c => { if (c && c.bandeira && !valores.includes(c.bandeira)) valores.push(c.bandeira); });
+  return [...valores.map(v => ({ valor: v, label: v })), { valor: '—', label: 'Bandeira não informada' }];
+}
+function _dashBandeiraListHtml() {
+  const estado = _dashBandeirasSelecionadas;
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return _dashBandeiraOpcoes().map(o => {
+    const checked = !estado || estado.has(o.valor);
+    // Reaproveita _dashSegToggleRow (e a classe dash-seg-checkbox) — o
+    // comportamento do checkbox é idêntico ao do Segmento.
+    return `<div data-band="${esc(o.valor)}" data-checked="${checked ? 1 : 0}" onclick="_dashSegToggleRow(this)"
+      style="display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;font-size:12.5px;color:#111827;"
+      onmouseover="this.style.background='rgba(0,0,0,.03)'" onmouseout="this.style.background='none'">
+      <span class="dash-seg-checkbox" style="width:16px;height:16px;border-radius:4px;border:1.5px solid ${checked ? 'var(--pet-green,#b5e51d)' : '#bbb'};background:${checked ? 'var(--pet-green,#b5e51d)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${checked ? _dashCheckSVG() : ''}</span>
+      ${esc(o.label)}
+    </div>`;
+  }).join('');
+}
+function dashTogglePainelBandeira() {
+  const panel = document.getElementById('dash-band-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    const list = panel.querySelector('.dash-band-list-inner');
+    if (list) list.innerHTML = _dashBandeiraListHtml();
+  }
+}
+function dashSelecionarTodosBandeira(sel) {
+  const panel = document.getElementById('dash-band-panel');
+  if (!panel) return;
+  panel.querySelectorAll('[data-band]').forEach(el => {
+    el.dataset.checked = sel ? '1' : '0';
+    const box = el.querySelector('.dash-seg-checkbox');
+    box.style.borderColor = sel ? 'var(--pet-green,#b5e51d)' : '#bbb';
+    box.style.background  = sel ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    box.innerHTML = sel ? _dashCheckSVG() : '';
+  });
+}
+function dashAplicarFiltroBandeira() {
+  const panel = document.getElementById('dash-band-panel');
+  if (!panel) return;
+  const selecionados = new Set();
+  panel.querySelectorAll('[data-band][data-checked="1"]').forEach(el => selecionados.add(el.dataset.band));
+  const total = panel.querySelectorAll('[data-band]').length;
+  _dashBandeirasSelecionadas = selecionados.size === total ? null : selecionados;
+  panel.style.display = 'none';
+  _dashAtualizarBadgeSegmento('dash-band-badge', _dashBandeirasSelecionadas);
+  dashRenderComFiltro(); // reaplica sobre os snapshots já carregados, sem reler o disco
+  dashRenderClientesInativosUI(_dashUltimaListaInativos);
+}
+window.dashTogglePainelBandeira    = dashTogglePainelBandeira;
+window.dashSelecionarTodosBandeira = dashSelecionarTodosBandeira;
+window.dashAplicarFiltroBandeira   = dashAplicarFiltroBandeira;
+// ── Conjunto efetivo de clientes visíveis (filtro GLOBAL) ──────────────────
+// Combina (E lógico, não OU) o filtro do picker de Clientes com o filtro de
+// Segmento GLOBAL (botão do topo) — os dois se cruzam. Ex.: picker com
+// "Posto X" selecionado, mas segmento filtrado só em "TRR": se Posto X não
+// for TRR, ele fica de fora mesmo estando no picker. Retorna null quando
+// NENHUM dos dois filtros está ativo (comportamento idêntico ao "sem
+// filtro" de antes, sem custo extra). NÃO usa o filtro local do card
+// "Clientes sem comprar" — esse é aplicado só ali, ver
+// dashRenderClientesInativosUI().
+function dashClientesEfetivos(nomesBase) {
+  if (!_dashClientesSelecionados && !_dashSegmentosSelecionados && !_dashBandeirasSelecionadas) return null;
+  // Lookups montados UMA vez por chamada (não por cliente) — a lista pode ter
+  // centenas de nomes.
+  const lookupBand = _dashBandeirasSelecionadas ? _dashBandeiraLookup() : null;
+  const permitido = (nome) => {
+    if (_dashClientesSelecionados && !_dashClientesSelecionados.has(nome)) return false;
+    if (_dashSegmentosSelecionados) {
+      const seg = dashClienteSegmento(nome) || '—';
+      if (!_dashSegmentosSelecionados.has(seg)) return false;
+    }
+    if (_dashBandeirasSelecionadas) {
+      const band = dashClienteBandeira(nome, lookupBand) || '—';
+      if (!_dashBandeirasSelecionadas.has(band)) return false;
+    }
+    return true;
+  };
+  return new Set(nomesBase.filter(permitido));
+}
+const _DASH_SEGMENTO_OPCOES = [
+  { valor: 'B2B', label: 'B2B' },
+  { valor: 'B2C', label: 'B2C' },
+  { valor: 'TRR', label: 'TRR' },
+  { valor: '—',   label: 'Sem segmento cadastrado' },
+];
+// ── Dropdown de Segmento — mesmo padrão visual/comportamento do filtro de
+// Clientes (botão + painel com checkbox + Todos/Limpar/Aplicar), só que com
+// 4 opções fixas em vez de lista dinâmica. Existem DUAS instâncias na tela,
+// cada uma com seu PRÓPRIO estado — de propósito, não são a mesma coisa:
+//   • "dash-seg-panel"          (topo)  → _dashSegmentosSelecionados         → filtra a tela inteira
+//   • "dash-seg-inativos-panel" (card)  → _dashSegmentosInativosSelecionados → filtra só o card "Clientes sem comprar"
+function _dashSegEstadoDoPainel(painelId) {
+  return painelId === 'dash-seg-inativos-panel' ? _dashSegmentosInativosSelecionados : _dashSegmentosSelecionados;
+}
+function _dashSegmentoListHtml(painelId) {
+  const estado = _dashSegEstadoDoPainel(painelId);
+  return _DASH_SEGMENTO_OPCOES.map(o => {
+    const checked = !estado || estado.has(o.valor);
+    return `<div data-seg="${o.valor}" data-checked="${checked ? 1 : 0}" onclick="_dashSegToggleRow(this)"
+      style="display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;font-size:12.5px;color:#111827;"
+      onmouseover="this.style.background='rgba(0,0,0,.03)'" onmouseout="this.style.background='none'">
+      <span class="dash-seg-checkbox" style="width:16px;height:16px;border-radius:4px;border:1.5px solid ${checked ? 'var(--pet-green,#b5e51d)' : '#bbb'};background:${checked ? 'var(--pet-green,#b5e51d)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${checked ? _dashCheckSVG() : ''}</span>
+      ${o.label}
+    </div>`;
+  }).join('');
+}
+// IMPORTANTE: onclick="..." no HTML sempre resolve a função no escopo
+// GLOBAL (window), nunca dentro da IIFE — mesmo declarada com `function`
+// aqui dentro, sem window.X = X ela fica invisível pro atributo onclick, e
+// o clique não faz NADA (erro silencioso, sem aviso na tela). Foi o bug do
+// checkbox não marcar: a função existia, só não estava exposta.
+function _dashSegToggleRow(el) {
+  const novo = el.dataset.checked !== '1';
+  el.dataset.checked = novo ? '1' : '0';
+  const box = el.querySelector('.dash-seg-checkbox');
+  box.style.borderColor = novo ? 'var(--pet-green,#b5e51d)' : '#bbb';
+  box.style.background  = novo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+  box.innerHTML = novo ? _dashCheckSVG() : '';
+}
+window._dashSegToggleRow = _dashSegToggleRow;
+function dashTogglePainelSegmento(painelId) {
+  const panel = document.getElementById(painelId);
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    // Repopula toda vez que abre — reflete o estado ATUAL DESTE painel
+    // especificamente (cada painel tem o seu, ver _dashSegEstadoDoPainel).
+    const list = panel.querySelector('.dash-seg-list-inner');
+    if (list) list.innerHTML = _dashSegmentoListHtml(painelId);
+  }
+}
+function dashSelecionarTodosSegmento(painelId, sel) {
+  const panel = document.getElementById(painelId);
+  if (!panel) return;
+  panel.querySelectorAll('[data-seg]').forEach(el => {
+    el.dataset.checked = sel ? '1' : '0';
+    const box = el.querySelector('.dash-seg-checkbox');
+    box.style.borderColor = sel ? 'var(--pet-green,#b5e51d)' : '#bbb';
+    box.style.background  = sel ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    box.innerHTML = sel ? _dashCheckSVG() : '';
+  });
+}
+function _dashAtualizarBadgeSegmento(badgeId, estado) {
+  const badge = document.getElementById(badgeId);
+  if (!badge) return;
+  if (estado) {
+    badge.textContent = estado.size;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+function dashAplicarFiltroSegmento(painelId) {
+  const panel = document.getElementById(painelId);
+  if (!panel) return;
+  const selecionados = new Set();
+  panel.querySelectorAll('[data-seg][data-checked="1"]').forEach(el => selecionados.add(el.dataset.seg));
+  const novoEstado = selecionados.size === _DASH_SEGMENTOS_TODOS.length ? null : selecionados;
+  panel.style.display = 'none';
+  if (painelId === 'dash-seg-inativos-panel') {
+    // Filtro LOCAL — só o card "Clientes sem comprar". Não toca no resto
+    // da tela (não chama dashRenderComFiltro).
+    _dashSegmentosInativosSelecionados = novoEstado;
+    _dashAtualizarBadgeSegmento('dash-seg-inativos-badge', novoEstado);
+    dashRenderClientesInativosUI(_dashUltimaListaInativos);
+  } else {
+    // Filtro GLOBAL — a tela inteira, incluindo o card "Clientes sem
+    // comprar" (ver comentário no topo do arquivo: "filtra tudo").
+    _dashSegmentosSelecionados = novoEstado;
+    _dashAtualizarBadgeSegmento('dash-seg-badge', novoEstado);
+    dashRenderComFiltro(); // reaplica sobre os snapshots já carregados, sem reler o disco
+    dashRenderClientesInativosUI(_dashUltimaListaInativos);
+  }
+}
+window.dashTogglePainelSegmento  = dashTogglePainelSegmento;
+window.dashSelecionarTodosSegmento = dashSelecionarTodosSegmento;
+window.dashAplicarFiltroSegmento = dashAplicarFiltroSegmento;
+// Fecha os painéis de Segmento ao clicar fora (mesmo padrão dos outros
+// dropdowns da tela — Clientes, Operação, Ferramentas).
+document.addEventListener('click', function(e) {
+  ['dash-seg-panel', 'dash-seg-inativos-panel', 'dash-band-panel'].forEach(painelId => {
+    const btnId = painelId.replace('-panel', '-btn');
+    const panel = document.getElementById(painelId);
+    const btn   = document.getElementById(btnId);
+    if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+});
+let _dashCidadesSelecionadas  = null; // null = todas as cidades de operação; Set = filtro ativo
+let _dashTodasCidades         = [];   // lista completa de cidades de operação do período
+let _dashTransportadorasSelecionadas = null; // null = todas; Set = filtro ativo — aplicado na fonte, dentro de dashAgregar (mesmo princípio do filtro de Cidade)
+let _dashTodasTransportadoras         = [];  // lista completa de transportadoras do período
+let _dashSnapshotsAtivos = [];        // snapshots atualmente carregados
+let _dashUltimoAgregado = null;       // último retorno de dashAgregar() — reaproveitado pelo Histórico por Veículo
+let _dashHistVeiculoDados = [];       // última tabela renderizada do Histórico por Veículo — usada pelo botão de exportar CSV
+let _dashHistVeiculoPlacaAtual = '';  // placa selecionada no momento (pra re-renderizar quando o filtro do Dashboard mudar)
+let _dashTodosClientes   = [];        // lista completa de clientes do período
+let _dashUltimosProdutos = [];        // último resultado de dashAgregarProdutos() — reaproveitado ao clicar num produto
+window._dashUltimosKPIs = {};         // valores BRUTOS (não formatados) dos KPIs do topo — usado pelo Relatório de Resumo da Operação. Preso em `window` de propósito (não só `let`) pra nunca dar "is not defined" na função de relatório, não importa em que ordem/contexto o script rodar.
+let _dashUltimosKPIs = window._dashUltimosKPIs; // alias local, pros vários "_dashUltimosKPIs.campo = valor" já escritos dentro de dashRender continuarem funcionando sem precisar reescrever cada um
+let _dashUltimosClientesDropSize = []; // {nome, volume, entregas, dropSize} de cada cliente do filtro atual — o toggle Melhores/Piores reaproveita essa lista
+let _dashModoRankingDropSize = 'melhores'; // 'melhores' | 'piores' — lembra o último modo escolhido entre re-renderizações
+let _dashPeriodoAtualDescricao = '';  // texto do período atualmente carregado ("Ago/2026", "Todos os períodos", "Hoje (04/08/2026)") — sempre em sincronia com o que REALMENTE está carregado, ao contrário do rótulo do dropdown sozinho
+let _dashProdutoSelecionado = null;   // nome do produto com o painel de ciclo de compra aberto
+
+function dashToggleFiltroClientes() {
+  const panel = document.getElementById('dash-cli-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    document.getElementById('dash-cli-search').value = '';
+    dashPopularListaClientes(); // sempre redesenha com o estado atual (não depende de um render anterior ter rodado até aqui)
+    dashFiltrarListaClientes('');
+  }
+}
+
+function _dashCheckSVG() {
+  return '<svg width="11" height="9" viewBox="0 0 11 9"><polyline points="1,4.5 4,7.5 10,1" stroke="#000" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+function _dashAtualizarBoxVisual(box, checked) {
+  box.style.borderColor = checked ? 'var(--pet-green,#b5e51d)' : '#bbb';
+  box.style.background  = checked ? 'var(--pet-green,#b5e51d)' : 'transparent';
+  box.innerHTML         = checked ? _dashCheckSVG() : '';
+}
+
+function dashPopularListaClientes() {
+  const list = document.getElementById('dash-cli-list');
+  if (!list) return;
+  list.innerHTML = _dashTodosClientes.map(nome => {
+    const sel     = !_dashClientesSelecionados || _dashClientesSelecionados.has(nome);
+    const nomeSafe = nome.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const chk      = sel ? _dashCheckSVG() : '';
+    const bc       = sel ? 'var(--pet-green,#b5e51d)' : '#bbb';
+    const bg       = sel ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    return `<div data-cli="${nomeSafe}" data-checked="${sel ? '1' : '0'}"
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-radius:6px;margin:0 4px;user-select:none;">
+      <span class="dash-cb-box" style="flex-shrink:0;width:20px;height:20px;border-radius:5px;border:2px solid ${bc};background:${bg};display:flex;align-items:center;justify-content:center;transition:all .12s;">${chk}</span>
+      <span style="font-size:12px;color:var(--text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${nome}</span>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('div[data-cli]').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = 'rgba(0,0,0,0.04)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const checked = row.dataset.checked !== '1';
+      row.dataset.checked = checked ? '1' : '0';
+      _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), checked);
+    });
+  });
+}
+
+function dashSelecionarTodosClientesVisual(sel) {
+  const list = document.getElementById('dash-cli-list');
+  if (!list) return;
+  list.querySelectorAll('div[data-cli]').forEach(row => {
+    // Respeita busca ativa — só afeta itens visíveis
+    if (row.style.display === 'none') return;
+    row.dataset.checked = sel ? '1' : '0';
+    _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), sel);
+  });
+}
+
+function dashFiltrarListaClientes(busca) {
+  const list = document.getElementById('dash-cli-list');
+  if (!list) return;
+  const b = (busca || '').toLowerCase();
+  list.querySelectorAll('div[data-cli]').forEach(row => {
+    row.style.display = row.dataset.cli.toLowerCase().includes(b) ? '' : 'none';
+  });
+}
+
+function dashSelecionarTodosClientes(sel) {
+  dashSelecionarTodosClientesVisual(sel);
+}
+
+function dashAplicarFiltroClientes() {
+  const list = document.getElementById('dash-cli-list');
+  if (!list) return;
+  const selecionados = new Set();
+  // dataset.cli pode ter entidades HTML escapadas (&amp; &quot;) — decodifica antes de comparar com c.nome
+  const _dec = s => s.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  list.querySelectorAll('div[data-checked="1"]').forEach(row => selecionados.add(_dec(row.dataset.cli)));
+  // Se todos selecionados = sem filtro ativo
+  _dashClientesSelecionados = selecionados.size === _dashTodosClientes.length ? null : selecionados;
+  // Atualiza badge
+  const badge = document.getElementById('dash-cli-badge');
+  if (badge) {
+    if (_dashClientesSelecionados) {
+      badge.textContent = selecionados.size;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  document.getElementById('dash-cli-panel').style.display = 'none';
+  dashRenderComFiltro();
+}
+
+function dashRenderComFiltro() {
+  dashRender(_dashSnapshotsAtivos);
+}
+
+// Fecha painel ao clicar fora
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('dash-cli-panel');
+  const btn   = document.getElementById('dash-cli-btn');
+  if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+
+window.dashToggleFiltroClientes   = dashToggleFiltroClientes;
+window.dashFiltrarListaClientes    = dashFiltrarListaClientes;
+window.dashSelecionarTodosClientes = dashSelecionarTodosClientes;
+window.dashAplicarFiltroClientes   = dashAplicarFiltroClientes;
+
+// ── Filtro de Cidade da Operação ─────────────────────────────────────────────
+// Mesmo padrão visual/funcional do filtro de clientes acima, mas filtra pela
+// cidade cadastrada no TERMINAL (base), não pelo nome da base em si — ex.:
+// "Betim POTENCIAL Nexta" e "Betim RBZ" são bases diferentes, mas a mesma
+// cidade de operação "Betim". Esse filtro atua na FONTE dos dados (dentro de
+// dashAgregar), então todo KPI/gráfico/tabela reflete só a(s) cidade(s)
+// escolhida(s) — não é um filtro só de exibição.
+function dashToggleFiltroCidades() {
+  const panel = document.getElementById('dash-cid-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    document.getElementById('dash-cid-search').value = '';
+    dashPopularListaCidades(); // sempre redesenha com o estado atual (não depende de um render anterior ter rodado até aqui)
+    dashFiltrarListaCidades('');
+  }
+}
+function dashPopularListaCidades() {
+  const list = document.getElementById('dash-cid-list');
+  if (!list) return;
+  list.innerHTML = _dashTodasCidades.map(nome => {
+    const sel      = !_dashCidadesSelecionadas || _dashCidadesSelecionadas.has(nome);
+    const nomeSafe = nome.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const chk      = sel ? _dashCheckSVG() : '';
+    const bc       = sel ? 'var(--pet-green,#b5e51d)' : '#bbb';
+    const bg       = sel ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    return `<div data-cid="${nomeSafe}" data-checked="${sel ? '1' : '0'}"
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-radius:6px;margin:0 4px;user-select:none;">
+      <span class="dash-cb-box" style="flex-shrink:0;width:20px;height:20px;border-radius:5px;border:2px solid ${bc};background:${bg};display:flex;align-items:center;justify-content:center;transition:all .12s;">${chk}</span>
+      <span style="font-size:12px;color:var(--text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${nome}</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('div[data-cid]').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = 'rgba(0,0,0,0.04)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const checked = row.dataset.checked !== '1';
+      row.dataset.checked = checked ? '1' : '0';
+      _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), checked);
+    });
+  });
+}
+function dashSelecionarTodosCidadesVisual(sel) {
+  const list = document.getElementById('dash-cid-list');
+  if (!list) return;
+  list.querySelectorAll('div[data-cid]').forEach(row => {
+    if (row.style.display === 'none') return;
+    row.dataset.checked = sel ? '1' : '0';
+    _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), sel);
+  });
+}
+function dashFiltrarListaCidades(busca) {
+  const list = document.getElementById('dash-cid-list');
+  if (!list) return;
+  const b = (busca || '').toLowerCase();
+  list.querySelectorAll('div[data-cid]').forEach(row => {
+    row.style.display = row.dataset.cid.toLowerCase().includes(b) ? '' : 'none';
+  });
+}
+function dashSelecionarTodosCidades(sel) { dashSelecionarTodosCidadesVisual(sel); }
+function dashAplicarFiltroCidades() {
+  const list = document.getElementById('dash-cid-list');
+  if (!list) return;
+  const selecionadas = new Set();
+  const _dec = s => s.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  list.querySelectorAll('div[data-checked="1"]').forEach(row => selecionadas.add(_dec(row.dataset.cid)));
+  _dashCidadesSelecionadas = selecionadas.size === _dashTodasCidades.length ? null : selecionadas;
+  const badge = document.getElementById('dash-cid-badge');
+  if (badge) {
+    if (_dashCidadesSelecionadas) { badge.textContent = selecionadas.size; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+  document.getElementById('dash-cid-panel').style.display = 'none';
+  dashRenderComFiltro();
+}
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('dash-cid-panel');
+  const btn   = document.getElementById('dash-cid-btn');
+  if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('dash-periodo-panel');
+  const btn   = document.getElementById('dash-periodo-btn');
+  if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+// ── Filtro de Transportadora — mesmo padrão do filtro de Cidade acima ──────
+function dashTogglePainelTransportadora() {
+  const panel = document.getElementById('dash-transp-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    document.getElementById('dash-transp-search').value = '';
+    dashPopularListaTransportadoras();
+    dashFiltrarListaTransportadora('');
+  }
+}
+function dashPopularListaTransportadoras() {
+  const list = document.getElementById('dash-transp-list');
+  if (!list) return;
+  list.innerHTML = _dashTodasTransportadoras.map(nome => {
+    const sel      = !_dashTransportadorasSelecionadas || _dashTransportadorasSelecionadas.has(nome);
+    const nomeSafe = nome.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const chk      = sel ? _dashCheckSVG() : '';
+    const bc       = sel ? 'var(--pet-green,#b5e51d)' : '#bbb';
+    const bg       = sel ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    return `<div data-transp="${nomeSafe}" data-checked="${sel ? '1' : '0'}"
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-radius:6px;margin:0 4px;user-select:none;">
+      <span class="dash-cb-box" style="flex-shrink:0;width:20px;height:20px;border-radius:5px;border:2px solid ${bc};background:${bg};display:flex;align-items:center;justify-content:center;transition:all .12s;">${chk}</span>
+      <span style="font-size:12px;color:var(--text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${nome}</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('div[data-transp]').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = 'rgba(0,0,0,0.04)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const checked = row.dataset.checked !== '1';
+      row.dataset.checked = checked ? '1' : '0';
+      _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), checked);
+    });
+  });
+}
+function dashSelecionarTodosTransportadora(sel) {
+  const list = document.getElementById('dash-transp-list');
+  if (!list) return;
+  list.querySelectorAll('div[data-transp]').forEach(row => {
+    if (row.style.display === 'none') return;
+    row.dataset.checked = sel ? '1' : '0';
+    _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), sel);
+  });
+}
+function dashFiltrarListaTransportadora(busca) {
+  const list = document.getElementById('dash-transp-list');
+  if (!list) return;
+  const b = (busca || '').toLowerCase();
+  list.querySelectorAll('div[data-transp]').forEach(row => {
+    row.style.display = row.dataset.transp.toLowerCase().includes(b) ? '' : 'none';
+  });
+}
+function dashAplicarFiltroTransportadora() {
+  const list = document.getElementById('dash-transp-list');
+  if (!list) return;
+  const selecionadas = new Set();
+  const _dec = s => s.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  list.querySelectorAll('div[data-checked="1"]').forEach(row => selecionadas.add(_dec(row.dataset.transp)));
+  _dashTransportadorasSelecionadas = selecionadas.size === _dashTodasTransportadoras.length ? null : selecionadas;
+  const badge = document.getElementById('dash-transp-badge');
+  if (badge) {
+    if (_dashTransportadorasSelecionadas) { badge.textContent = selecionadas.size; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+  document.getElementById('dash-transp-panel').style.display = 'none';
+  dashRenderComFiltro();
+}
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('dash-transp-panel');
+  const btn   = document.getElementById('dash-transp-btn');
+  if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+window.dashTogglePainelTransportadora    = dashTogglePainelTransportadora;
+window.dashFiltrarListaTransportadora    = dashFiltrarListaTransportadora;
+window.dashSelecionarTodosTransportadora = dashSelecionarTodosTransportadora;
+window.dashAplicarFiltroTransportadora   = dashAplicarFiltroTransportadora;
+window.dashToggleFiltroCidades   = dashToggleFiltroCidades;
+window.dashFiltrarListaCidades    = dashFiltrarListaCidades;
+window.dashSelecionarTodosCidades = dashSelecionarTodosCidades;
+window.dashAplicarFiltroCidades   = dashAplicarFiltroCidades;
+window.dashTogglePainelPeriodo    = dashTogglePainelPeriodo;
+window.dashSelecionarTodosMeses   = dashSelecionarTodosMeses;
+
+// ── Recolher/expandir seções do Dashboard — clique no cabeçalho ────────────
+// A tela cresceu muito (12+ blocos empilhados); por padrão TODAS as seções
+// começam recolhidas (só o cabeçalho visível), e cada clique lembra do
+// estado no navegador (localStorage), pra não ter que reabrir tudo de novo
+// toda vez que trocar de aba.
+function dashToggleSecaoDash(classeSecao) {
+  const els = document.querySelectorAll('.' + classeSecao);
+  if (!els.length) return;
+  const abrindo = els[0].style.display === 'none';
+  els.forEach(el => { el.style.display = abrindo ? '' : 'none'; });
+  const seta = document.getElementById(classeSecao + '-seta');
+  if (seta) seta.textContent = abrindo ? '▲' : '▼';
+  try { localStorage.setItem('nexta_dash_sec_' + classeSecao, abrindo ? '1' : '0'); } catch (e) {}
+}
+function dashRestaurarEstadoSecoes() {
+  const classes = new Set();
+  document.querySelectorAll('[class*="dash-secbody-"]').forEach(el => {
+    el.classList.forEach(c => { if (c.startsWith('dash-secbody-')) classes.add(c); });
+  });
+  classes.forEach(classeSecao => {
+    let aberto = null;
+    try { aberto = localStorage.getItem('nexta_dash_sec_' + classeSecao); } catch (e) {}
+    const mostrar = aberto === '1'; // padrão: recolhido, a não ser que já tenha sido aberto antes
+    document.querySelectorAll('.' + classeSecao).forEach(el => { el.style.display = mostrar ? '' : 'none'; });
+    const seta = document.getElementById(classeSecao + '-seta');
+    if (seta) seta.textContent = mostrar ? '▲' : '▼';
+  });
+}
+window.dashToggleSecaoDash = dashToggleSecaoDash;
+// O mapa (Leaflet) fica com o tile quebrado se ele for inicializado — ou
+// ficar escondido e reaparecer — sem chamar invalidateSize() depois que o
+// container volta a ter tamanho de verdade. Um pequeno atraso garante que o
+// display:none já foi desfeito antes de recalcular.
+function dashToggleSecaoMapa() {
+  dashToggleSecaoDash('dash-secbody-mapa');
+  setTimeout(() => { if (typeof _dashMap !== 'undefined' && _dashMap) _dashMap.invalidateSize(); }, 60);
+}
+window.dashToggleSecaoMapa = dashToggleSecaoMapa;
+function dashRender(snapshots) {
+  _dashSnapshotsAtivos = snapshots || [];
+  window._dashSnapshotsAtivos = _dashSnapshotsAtivos; // acessível pra funções fora deste IIFE (ex.: dashDiagnosticarPedagioHoje)
+  if (!snapshots || !snapshots.length) {
+    document.querySelectorAll('#dk-viagens,#dk-entregas,#dk-volume,#dk-ocup,#dk-km,#dk-clientes,#dk-jornada,#dk-ociosidade,#dk-drop-entregas,#dk-drop-volume,#dk-drop-cliente,#dk-perc-pedagiadas,#dk-tempo-pedagio')
+      .forEach(el => { if(el) el.textContent = '-'; });
+    const _elJH = document.getElementById('dk-jornada-horas'); if (_elJH) _elJH.textContent = '';
+    const _elOQ = document.getElementById('dk-ociosidade-qtd'); if (_elOQ) _elOQ.textContent = '';
+    document.getElementById('dash-tabela-cli-body').innerHTML =
+      '<tr><td colspan="6" style="color:var(--text-3);text-align:center;padding:32px;">Nenhum dado para este período</td></tr>';
+    return;
+  }
+  // Atualiza lista global de cidades de operação (pro filtro) — olha TODOS os
+  // terminais dos snapshots carregados, mesmo antes de aplicar o filtro,
+  // senão o próprio filtro nunca teria opções pra mostrar.
+  const _novaListaCidades = Array.from(new Set(
+    snapshots.flatMap(s => (s.terminais || []).map(t => t.cidade).filter(Boolean))
+  )).sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const _listaCidIgual = _novaListaCidades.length === _dashTodasCidades.length &&
+    _novaListaCidades.every((n,i) => n === _dashTodasCidades[i]);
+  if (!_listaCidIgual) {
+    _dashTodasCidades = _novaListaCidades;
+    if (_dashCidadesSelecionadas) {
+      const novasCid = new Set(_dashTodasCidades);
+      const filtroAtualizadoCid = new Set([..._dashCidadesSelecionadas].filter(n => novasCid.has(n)));
+      _dashCidadesSelecionadas = filtroAtualizadoCid.size === _dashTodasCidades.length ? null : filtroAtualizadoCid;
+    }
+  }
+  dashPopularListaCidades();
+  // Atualiza lista global de transportadoras (pro filtro) — mesmo princípio
+  // acima, olha os veículos de TODOS os snapshots carregados antes de
+  // aplicar o filtro, senão ele nunca teria opções pra mostrar.
+  const _novaListaTransp = Array.from(new Set(
+    snapshots.flatMap(s => (s.veiculos || []).map(v => v.transportadora).filter(Boolean))
+  )).sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const _listaTranspIgual = _novaListaTransp.length === _dashTodasTransportadoras.length &&
+    _novaListaTransp.every((n,i) => n === _dashTodasTransportadoras[i]);
+  if (!_listaTranspIgual) {
+    _dashTodasTransportadoras = _novaListaTransp;
+    if (_dashTransportadorasSelecionadas) {
+      const novasTransp = new Set(_dashTodasTransportadoras);
+      const filtroAtualizadoTransp = new Set([..._dashTransportadorasSelecionadas].filter(n => novasTransp.has(n)));
+      _dashTransportadorasSelecionadas = filtroAtualizadoTransp.size === _dashTodasTransportadoras.length ? null : filtroAtualizadoTransp;
+    }
+  }
+  dashPopularListaTransportadoras();
+  // Filtro de cidade da operação aplicado NA FONTE (dentro de dashAgregar) —
+  // por isso todo o resto do dashboard (KPIs, gráficos, mapa, ranking) já sai
+  // filtrado corretamente, sem precisar re-filtrar depois.
+  const d = dashAgregar(snapshots, _dashCidadesSelecionadas, _dashTransportadorasSelecionadas, _dashMapaDevolucoesPorEntrega());
+  _dashAtualizarMapaNomeSAP(d.clientes); // alimenta a busca de Segmento por SAP (ver dashClienteSegmento)
+  _dashUltimoAgregado = d; // reaproveitado pelo Histórico por Veículo (km por dia), sem recalcular
+  // Atualiza lista global de clientes para o filtro
+  // Só reinicia a lista visual se não houver filtro ativo (evita resetar seleção do usuário)
+  const _novaListaClientes = d.clientes.map(c => c.nome).sort();
+  const _listaIgual = _novaListaClientes.length === _dashTodosClientes.length &&
+    _novaListaClientes.every((n,i) => n === _dashTodosClientes[i]);
+  if (!_listaIgual) {
+    _dashTodosClientes = _novaListaClientes;
+    // Se havia filtro ativo, mantém apenas os clientes que ainda existem
+    if (_dashClientesSelecionados) {
+      const novosNomes = new Set(_dashTodosClientes);
+      const filtroAtualizado = new Set([..._dashClientesSelecionados].filter(n => novosNomes.has(n)));
+      _dashClientesSelecionados = filtroAtualizado.size === _dashTodosClientes.length ? null : filtroAtualizado;
+    }
+  }
+  dashPopularListaClientes();
+  // Conjunto efetivo (picker de Clientes ∩ filtro de Segmento) — ver
+  // dashClientesEfetivos(). null = nenhum dos dois filtros ativo.
+  const _efetivos = dashClientesEfetivos(_novaListaClientes.length ? _novaListaClientes : _dashTodosClientes);
+  // Versão normalizada de _efetivos (acentos/maiúsculas/"&" vs "E"/sufixo
+  // jurídico) — usada em toda comparação abaixo que testa um nome CRU de
+  // pedido (que pode estar gravado com grafia diferente da canônica que
+  // aparece no filtro) contra o filtro de Clientes.
+  const _efetivosNorm = _dashNormalizarSetClientes(_efetivos);
+  // Aplica filtro se ativo
+  const clientesFiltrados = _efetivos
+    ? d.clientes.filter(c => _efetivos.has(c.nome))
+    : d.clientes;
+  const ocupFiltrados = _efetivos
+    ? d.clientes_ocup.filter(c => _efetivos.has(c.nome))
+    : d.clientes_ocup;
+  // KPIs — calculados sobre os clientes filtrados (respeita filtro de cliente ativo)
+  const set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  // Recalcula totais a partir dos clientes filtrados
+  const _kpiEntregas = clientesFiltrados.reduce((s,c) => s+c.entregas, 0);
+  const _kpiVol      = clientesFiltrados.reduce((s,c) => s+c.volume,   0);
+  const _kpiKm       = clientesFiltrados.reduce((s,c) => s+(c.kmTotal||c.km*c.entregas||0), 0);
+  // Ocupação = volume total de pedidos / capacidade total da frota escalada.
+  // Sem filtro: d.totalOcup (calculado em dashAgregar: totalVol / totalCap por veículo).
+  // Com filtro de cliente: volume dos clientes filtrados / cap dos veículos que os atenderam.
+  // As duas re-varreduras abaixo (ocupação e viagens) respeitam TAMBÉM o
+  // filtro de cidade ativo (_dashCidadesSelecionadas), já que elas iteram os
+  // snapshots crus (não passam por dashAgregar).
+  let _kpiOcup = d.totalOcup;
+  if (_efetivos) {
+    let _filtVol = 0, _filtCap = 0;
+    const _nomesF = _efetivos;
+    _dashSnapshotsAtivos.forEach((snap, sIdx) => {
+      const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+      vecs.forEach(v => {
+        if (_dashTransportadorasSelecionadas && !_dashTransportadorasSelecionadas.has(v.transportadora || '')) return;
+        const capV = v.capacidade || v.capacidadeTotal || 0;
+        const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas||[]).length);
+        viagens.forEach(vi => {
+          if (_dashCidadesSelecionadas && !_dashCidadesSelecionadas.has(dashCidadeOperacaoViagem(vi, v, terms))) return;
+          // Verifica se esta viagem atende ao menos um cliente filtrado
+          const atendeCliente = vi.paradas.some(par => {
+            const n = (par.pedido||{}).cliente||(par.pedido||{}).nomeCliente||par.nome||'';
+            return _dashNomeBateFiltro(n, _efetivosNorm);
+          });
+          if (!atendeCliente) return;
+          // Capacidade: soma capV desta viagem (veículo de 35m³ × 2 viagens = 70m³)
+          if (capV > 0) _filtCap += capV;
+          // Volume: apenas paradas dos clientes filtrados nesta viagem
+          vi.paradas.forEach(par => {
+            const n = (par.pedido||{}).cliente||(par.pedido||{}).nomeCliente||par.nome||'';
+            if (_dashNomeBateFiltro(n, _efetivosNorm)) _filtVol += par.volumeTotal || 0;
+          });
+        });
+      });
+    });
+    _kpiOcup = _filtCap > 0 ? Math.round((_filtVol / _filtCap) * 100) : 0;
+  }
+  // Viagens: conta apenas viagens que atendem ao menos um cliente filtrado
+  const _nomesFilter = _efetivos;
+  let _kpiViagens = d.totalViagens;
+  let _kpiViagensComPedagio = d.totalViagensComPedagio;
+  if (_nomesFilter) {
+    _kpiViagens = 0;
+    _kpiViagensComPedagio = 0;
+    _dashSnapshotsAtivos.forEach(snap => {
+      const res  = snap.resultado || {};
+      const vecs = snap.veiculos  || [];
+      const terms = snap.terminais || [];
+      vecs.forEach(v => {
+        if (_dashTransportadorasSelecionadas && !_dashTransportadorasSelecionadas.has(v.transportadora || '')) return;
+        (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas||[]).length).forEach(vi => {
+          const termNomeViagem = vi.terminalOrigem || vi.paradas?.find(p => p.pedido?.terminal)?.pedido?.terminal || v.terminal;
+          const term = terms.find(t => t.nome === termNomeViagem);
+          const tLat = term?.lat, tLon = term?.lon;
+          if (_dashCidadesSelecionadas && !_dashCidadesSelecionadas.has(dashCidadeOperacaoViagem(vi, v, terms))) return;
+          const temCliente = vi.paradas.some(par => {
+            const nome = (par.pedido||{}).cliente || (par.pedido||{}).nomeCliente || par.nome || '';
+            return _dashNomeBateFiltro(nome, _efetivosNorm);
+          });
+          if (temCliente) {
+            _kpiViagens++;
+            // Mesma detecção (linha reta, raioKm=3) usada em dashAgregar — ver
+            // comentário lá pra detalhes/limitações. Só recalcula aqui porque
+            // o filtro de cliente muda quais viagens contam, e esse filtro é
+            // aplicado depois do dashAgregar já ter rodado.
+            const pontosPedagio = [];
+            if (NextaKm.coordenadaValida(tLat, tLon)) {
+              pontosPedagio.push({ lat: parseFloat(tLat), lon: parseFloat(tLon) });
+            }
+            vi.paradas.forEach(par => {
+              const coords = latLonEfetivo ? latLonEfetivo(par.pedido) : { lat: par.lat, lon: par.lon };
+              const lat = coords?.lat ?? par.lat, lon = coords?.lon ?? par.lon;
+              if (NextaKm.coordenadaValida(lat, lon)) {
+                pontosPedagio.push({ lat: parseFloat(lat), lon: parseFloat(lon) });
+              }
+            });
+            if (pontosPedagio.length >= 2) {
+              const _eixosV = v.eixos || 2;
+              const _pd = (typeof detectarPedagiosNaRota === 'function') ? detectarPedagiosNaRota(pontosPedagio, _eixosV, 3) : [];
+              if (_pd.length > 0) _kpiViagensComPedagio++;
+            }
+          }
+        });
+      });
+    });
+  }
+  set('dk-viagens',  _kpiViagens);
+  set('dk-entregas', _kpiEntregas);
+  set('dk-volume',   parseFloat(_kpiVol.toFixed(1)).toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:1}) + ' m³');
+  set('dk-ocup',     _kpiOcup + '%');
+  set('dk-km',       Math.round(_kpiKm).toLocaleString('pt-BR') + ' km');
+  _dashUltimosKPIs.viagens = _kpiViagens;
+  _dashUltimosKPIs.entregas = _kpiEntregas;
+  _dashUltimosKPIs.volume = _kpiVol;
+  _dashUltimosKPIs.ocupMedia = _kpiOcup;
+  _dashUltimosKPIs.km = _kpiKm;
+  // Conta NOMES distintos, não entradas cruas do array: d.clientes é
+  // agregado por chave (SAP-ou-nome-normalizado — ver dashChaveCliente), e o
+  // mesmo cliente pode acabar em DUAS entradas com o MESMO nome exibido se,
+  // por exemplo, uma entrega tinha o Código SAP preenchido e outra pro
+  // "mesmo" cliente não tinha. O painel de filtro conta por nome (um Set,
+  // que já deduplica sozinho) — esse KPI precisa contar do mesmo jeito, ou
+  // o número aqui fica maior que o total que aparece pra selecionar no
+  // filtro, o que é confuso e parece bug.
+  set('dk-clientes', new Set(clientesFiltrados.map(c => c.nome)).size);
+  _dashUltimosKPIs.clientes = new Set(clientesFiltrados.map(c => c.nome)).size;
+  // Drop médio = entregas/volume totais (já filtrados por cliente/cidade/período
+  // acima) divididos pelo total de viagens (idem, respeita os mesmos filtros).
+  const _kpiDropEntregas = _kpiViagens  > 0 ? _kpiEntregas / _kpiViagens  : 0;
+  const _kpiDropVolume   = _kpiEntregas > 0 ? _kpiVol      / _kpiEntregas : 0;
+  // Drop Médio POR CLIENTE (Drop Size da carteira) — diferente do Drop
+  // Médio Operacional acima: aquele pondera pela frequência de entrega
+  // (cliente que entrega toda semana pesa mais na média); esse aqui trata
+  // cada cliente igual, não importa quantas vezes ele apareceu no período —
+  // pra cada cliente calcula (volume do cliente ÷ entregas do cliente), e
+  // tira a média simples desses valores ÷ nº de clientes.
+  const _clientesComEntregaDrop = clientesFiltrados.filter(c => c.entregas > 0);
+  const _kpiDropPorCliente = _clientesComEntregaDrop.length > 0
+    ? _clientesComEntregaDrop.reduce((s, c) => s + (c.volume / c.entregas), 0) / _clientesComEntregaDrop.length
+    : 0;
+  set('dk-drop-entregas', _kpiViagens  > 0 ? _kpiDropEntregas.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) : '-');
+  set('dk-drop-volume',   _kpiEntregas > 0 ? (_kpiDropVolume.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' m³') : '-');
+  set('dk-drop-cliente',  _clientesComEntregaDrop.length > 0 ? (_kpiDropPorCliente.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' m³') : '-');
+  _dashUltimosKPIs.dropEntregas = _kpiViagens > 0 ? _kpiDropEntregas : null;
+  _dashUltimosKPIs.dropVolume = _kpiEntregas > 0 ? _kpiDropVolume : null;
+  _dashUltimosKPIs.dropPorCliente = _clientesComEntregaDrop.length > 0 ? _kpiDropPorCliente : null;
+  // % de Rotas Pedagiadas: viagens onde a detecção (linha reta terminal→
+  // paradas, ver dashAgregar) achou pelo menos 1 pedágio, ÷ total de viagens
+  // — mesmos filtros de cliente/cidade/período dos demais KPIs. É uma
+  // ESTIMATIVA (linha reta, não o trajeto real via OSRM) — serve pra
+  // enxergar tendência/volume de trabalho, não como conferência financeira.
+  const _kpiPercPedagiadas = _kpiViagens > 0 ? (_kpiViagensComPedagio / _kpiViagens) * 100 : 0;
+  set('dk-perc-pedagiadas', _kpiViagens > 0 ? Math.round(_kpiPercPedagiadas) + '%' : '-');
+  _dashUltimosKPIs.percPedagiadas = _kpiViagens > 0 ? _kpiPercPedagiadas : null;
+  // Tempo Gasto com Lançamento de Pedágios: 3 min de lançamento no Sem Parar
+  // por viagem pedagiada (média fixa, conforme definido pela operação),
+  // acumulado. Mostra em horas (com o total de minutos como referência).
+  const _kpiTempoPedagioMin = _kpiViagensComPedagio * 3;
+  set('dk-tempo-pedagio', _kpiTempoPedagioMin > 0 ? _dashFmtHoras(_kpiTempoPedagioMin) : '0h');
+  _dashUltimosKPIs.tempoPedagioMin = _kpiTempoPedagioMin;
+  _dashUltimosKPIs.viagensComPedagio = _kpiViagensComPedagio;
+  const _elTempoPedagioMin = document.getElementById('dk-tempo-pedagio-min');
+  if (_elTempoPedagioMin) _elTempoPedagioMin.textContent = _kpiViagensComPedagio > 0 ? `${_kpiTempoPedagioMin.toLocaleString('pt-BR')} min · ${_kpiViagensComPedagio} viagem(ns)` : '';
+  // Consumo de Jornada — usa d.entradasTransportadora (já filtrado por
+  // cidade/operação na fonte, dentro de dashAgregar). Com filtro de
+  // Clientes ativo, dashAgregarJornada já descarta veículo/dia que não
+  // atendeu nenhum cliente filtrado (ver dentro da função).
+  const _dashJornada = dashAgregarJornada(d.entradasTransportadora, _efetivos);
+  set('dk-jornada', _dashJornada.totalPct + '%');
+  _dashUltimosKPIs.jornadaPct = _dashJornada.totalPct;
+  _dashUltimosKPIs.jornadaUsadaMin = _dashJornada.totalUsadoMin;
+  _dashUltimosKPIs.jornadaDispMin = _dashJornada.totalDispMin;
+  const _elJornadaHoras = document.getElementById('dk-jornada-horas');
+  if (_elJornadaHoras) _elJornadaHoras.textContent = `${_dashFmtHoras(_dashJornada.totalUsadoMin)} / ${_dashFmtHoras(_dashJornada.totalDispMin)}`;
+  dashRenderJornadaTransportadoras(_dashJornada);
+  // Ociosidade — busca no Painel de Disponibilidade (Firestore), cruzando
+  // com diasComViagemPorPlaca (já filtrado por cidade/operação na fonte,
+  // igual à Jornada acima) pra saber quem foi disponibilizado e ficou parado.
+  // Com filtro de Clientes ativo, reconstrói esse conjunto a partir de
+  // entradasTransportadora considerando só veículo/dia que atendeu algum
+  // cliente filtrado (dashOciosidadeDiasFiltradoPorCliente) — sem isso, o
+  // card e o gráfico de Ociosidade continuavam cheios mesmo com o resto do
+  // Dashboard já filtrado por Cliente.
+  // É assíncrono (consulta ao Firestore), então atualiza o card e o gráfico
+  // quando a resposta chegar — mostra "Carregando..." enquanto isso.
+  set('dk-ociosidade', '…');
+  const _elOciosidadeQtdIni = document.getElementById('dk-ociosidade-qtd');
+  if (_elOciosidadeQtdIni) _elOciosidadeQtdIni.textContent = '';
+  const _dashOciosidadeElBox = document.getElementById('dash-ociosidade-transp');
+  if (_dashOciosidadeElBox) _dashOciosidadeElBox.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando do Painel de Disponibilidade...</div>';
+  const _meuTokenOciosidade = ++_dashOciosidadeToken;
+  const _diasComViagemOciosidade = dashOciosidadeDiasFiltradoPorCliente(d.entradasTransportadora, _efetivos) || d.diasComViagemPorPlaca;
+  dashCarregarOciosidade(_dashSnapshotsAtivos, _dashCidadesSelecionadas, _diasComViagemOciosidade, d.placaCidade, d.placaCidadePorDia, _dashTransportadorasSelecionadas)
+    .then(_dashOciosidade => {
+      if (_meuTokenOciosidade !== _dashOciosidadeToken) return; // filtro mudou de novo antes de terminar — descarta
+      set('dk-ociosidade', _dashOciosidade.pctOciosidade + '%');
+      _dashUltimosKPIs.ociosidadePct = _dashOciosidade.pctOciosidade;
+      _dashUltimosKPIs.ociosidadeUsados = _dashOciosidade.totalUsados;
+      _dashUltimosKPIs.ociosidadeDisponibilizados = _dashOciosidade.totalDisponibilizados;
+      const _elOciosidadeQtd = document.getElementById('dk-ociosidade-qtd');
+      if (_elOciosidadeQtd) _elOciosidadeQtd.textContent = `${_dashOciosidade.totalUsados} usados / ${_dashOciosidade.totalDisponibilizados} disponibilizados`;
+      dashRenderOciosidadeTransportadora(_dashOciosidade);
+    })
+    .catch(e => {
+      if (_meuTokenOciosidade !== _dashOciosidadeToken) return;
+      console.warn('[Ociosidade] erro:', e);
+      set('dk-ociosidade', '-');
+      _dashUltimosKPIs.ociosidadePct = null;
+      if (_dashOciosidadeElBox) _dashOciosidadeElBox.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Não foi possível carregar dados do Painel de Disponibilidade.</div>';
+    });
+  // Histórico por Veículo — só popula o seletor de placas na primeira vez.
+  // NÃO busca nada automaticamente aqui: a consulta só roda quando o
+  // usuário aperta "Buscar" (dashBuscarHistoricoVeiculo), de propósito —
+  // trocar cidade/cliente/mês no resto do Dashboard não deve mais gerar
+  // leitura no Firestore sozinho.
+  const _selHistVeic = document.getElementById('dash-histveic-placa');
+  if (_selHistVeic && _selHistVeic.options.length <= 1) dashPopularSeletorHistVeiculo();
+  // Gráfico de barras: volume por cliente
+  _dashUltimosClientesFiltrados = clientesFiltrados;
+  const _itensVol = [...clientesFiltrados].sort((a, b) => _dashOrdemVol === 'asc' ? a.volume - b.volume : b.volume - a.volume);
+  dashBarChart('dash-chart-vol', _itensVol, c=>c.volume.toFixed(1),
+    '#f0be40', 'm³', c=>c.nome);
+  // Gráfico de barras: entregas por cliente
+  const _itensEnt = [...clientesFiltrados].sort((a, b) => _dashOrdemEnt === 'asc' ? a.entregas - b.entregas : b.entregas - a.entregas);
+  dashBarChart('dash-chart-ent', _itensEnt,
+    c=>c.entregas, '#70a8f0', 'ent.', c=>c.nome);
+  // Ranking de Drop Size por Cliente — guarda a lista pro toggle
+  // Melhores/Piores reaproveitar sem precisar refazer o filtro.
+  _dashUltimosClientesDropSize = clientesFiltrados
+    .filter(c => c.entregas > 0)
+    .map(c => ({ nome: c.nome, volume: c.volume, entregas: c.entregas, dropSize: c.volume / c.entregas }));
+  dashRenderRankingDropSize(_dashModoRankingDropSize || 'melhores');
+  // Gráfico Km vs Volume
+  dashKmVolChart('dash-chart-km', clientesFiltrados);
+  // Gráfico de ocupação por cliente
+  dashOcupClienteChart('dash-chart-ocup', ocupFiltrados);
+  // Gráfico de Ocupação vs Volume por Operação (cidade) — já vem filtrado
+  // por cidade (dentro de dashAgregar). Com filtro de Clientes ativo,
+  // reconstrói a partir de entradasTransportadora considerando só o volume
+  // dos clientes filtrados (mesmo padrão do Ranking de Transportadoras).
+  dashOcupVolPorOperacaoChart('dash-chart-op-ocup-vol',
+    _efetivos ? dashOperacoesOcupFiltradoPorCliente(d.entradasTransportadora, _efetivos) : d.operacoes_ocup);
+  // Volume por Produto — mesma fonte crua (_dashSnapshotsAtivos) e mesmos
+  // filtros de cidade/cliente/segmento do resto do Dashboard.
+  _dashUltimosProdutos = dashAgregarProdutos(_dashSnapshotsAtivos, _dashCidadesSelecionadas, _efetivos);
+  if (_dashProdutoSelecionado && !_dashUltimosProdutos.some(p => p.nome === _dashProdutoSelecionado)) {
+    _dashProdutoSelecionado = null; // produto selecionado não existe mais neste filtro/período
+  }
+  dashProdutosChart('dash-chart-produtos', _dashUltimosProdutos);
+  dashRenderCicloProduto();
+  // Mapa — antes não respeitava NENHUM filtro de cliente (nem o do picker
+  // de Clientes, que já existia). d.rotasMap é montado direto em
+  // dashAgregar() só com o filtro de cidade aplicado; filtra aqui em cima,
+  // por parada, mantendo a rota (terminal) mesmo que fique sem nenhuma
+  // parada visível após o filtro.
+  const _rotasMapFiltradas = _efetivos
+    ? d.rotasMap.map(r => ({ ...r, paradas: (r.paradas || []).filter(p => _dashNomeBateFiltro(p.nome, _efetivosNorm)) }))
+    : d.rotasMap;
+  dashRenderMapa(_rotasMapFiltradas);
+  // Ranking de Transportadoras — já vem filtrado por cidade (d.entradasTransportadora
+  // é derivado de dashAgregar, que já aplicou o filtro de cidade na fonte).
+  // Volume respeita o filtro de Clientes também agora (via _efetivos) —
+  // viagens/km/custo continuam sobre a operação inteira do veículo, só o
+  // Volume é recortado pra fatia do(s) cliente(s) filtrado(s), senão ficava
+  // inconsistente com os KPIs do topo (que já respeitavam o filtro).
+  dashRenderRankingTransportadoras(dashAgregarTransportadoras(d.entradasTransportadora, _efetivos));
+  // Tabela
+  const tbody = document.getElementById('dash-tabela-cli-body');
+  if (tbody) {
+    tbody.innerHTML = clientesFiltrados.map((c, i) => {
+      const kmVol = c.km > 0 ? (c.volume / c.km).toFixed(2) : '-';
+      const bg = i % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+      return `<tr style="background:${bg};border-bottom:1px solid #E5E7EB;">
+        <td style="padding:10px 14px;font-size:13px;font-weight:500;color:#111827;">${c.nome}</td>
+        <td style="padding:10px 14px;font-size:12px;color:#6B7280;">${c.cidade}</td>
+        <td style="padding:10px 14px;font-size:13px;color:#111827;text-align:center;">${c.entregas}</td>
+        <td style="padding:10px 14px;font-size:13px;color:#111827;text-align:center;">${c.volume.toFixed(1)}</td>
+        <td style="padding:10px 14px;font-size:13px;color:#111827;text-align:center;">${c.km > 0 ? c.km.toFixed(0)+' km' : '-'}</td>
+        <td style="padding:10px 14px;font-size:13px;color:#111827;text-align:center;">${kmVol !== '-' ? kmVol+' m³/km' : '-'}</td>
+      </tr>`;
+    }).join('');
+  }
+  // "Clientes sem comprar" não é recalculado aqui (ele olha o histórico
+  // completo, não os snapshots do período/mês selecionado) — só reaplica o
+  // filtro de Cliente/Segmento em cima do que já foi calculado, pra ficar
+  // consistente com o resto da tela sem reler o disco a cada troca de filtro.
+  dashRenderClientesInativosUI(_dashUltimaListaInativos);
+  dashRestaurarEstadoSecoes(); // aplica o estado recolhido/expandido lembrado de cada seção
+}
+let _dashOrdemVol = 'desc'; // 'desc' = maior primeiro, 'asc' = menor primeiro
+let _dashOrdemEnt = 'desc';
+let _dashUltimosClientesFiltrados = []; // guarda o último dado renderizado, pra reordenar sem precisar re-agregar tudo
+function _dashAtualizarTabsOrdenacao(classe, ordem) {
+  document.querySelectorAll('.' + classe).forEach(b => {
+    const ativo = b.dataset.ordem === ordem;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+}
+function dashSetOrdemVol(ordem) {
+  _dashOrdemVol = ordem;
+  _dashAtualizarTabsOrdenacao('dash-ordvol-tab', ordem);
+  const itens = [..._dashUltimosClientesFiltrados].sort((a, b) => ordem === 'asc' ? a.volume - b.volume : b.volume - a.volume);
+  dashBarChart('dash-chart-vol', itens, c => c.volume.toFixed(1), '#f0be40', 'm³', c => c.nome);
+}
+function dashSetOrdemEnt(ordem) {
+  _dashOrdemEnt = ordem;
+  _dashAtualizarTabsOrdenacao('dash-ordent-tab', ordem);
+  const itens = [..._dashUltimosClientesFiltrados].sort((a, b) => ordem === 'asc' ? a.entregas - b.entregas : b.entregas - a.entregas);
+  dashBarChart('dash-chart-ent', itens, c => c.entregas, '#70a8f0', 'ent.', c => c.nome);
+}
+window.dashSetOrdemVol = dashSetOrdemVol;
+window.dashSetOrdemEnt = dashSetOrdemEnt;
+// ── Gráfico de barras horizontal inline ───────────────────────────────────
+function dashBarChart(containerId, itens, valFn, cor, sufixo, labelFn) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!itens.length) { el.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:12px">Sem dados</div>'; return; }
+  const maxV = Math.max(...itens.map(i => parseFloat(valFn(i)) || 0), 1);
+  el.innerHTML = itens.map(item => {
+    const v = parseFloat(valFn(item)) || 0;
+    const pct = Math.round((v / maxV) * 100);
+    const label = labelFn(item);
+    const display = Number.isInteger(v) ? v : parseFloat(v).toFixed(1);
+    return `<div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+        <span style="font-size:12px;font-weight:700;color:#000000;" title="${label}">${label}</span>
+        <span style="font-size:13px;font-weight:700;color:#000000;white-space:nowrap;margin-left:10px;">${display} ${sufixo}</span>
+      </div>
+      <div style="height:10px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:${cor};border-radius:99px;transition:width .5s ease;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+// ── Gráfico Km vs Volume ───────────────────────────────────────────────────
+// Ranking de Drop Size por Cliente — tabela simples (não gráfico de barra,
+// já que aqui o que importa é o RANK + os 3 números lado a lado: drop size,
+// volume total e nº de entregas, pra dar contexto de quão confiável é
+// aquele drop size). Toggle Melhores/Piores só reordena e refaz o corte de
+// 15 — não busca dado de novo.
+function dashRenderRankingDropSize(modo) {
+  // Sem argumento (chamado pelo campo "Mín. entregas") → mantém o modo
+  // Melhores/Piores que já estava selecionado, só reaplica o filtro.
+  modo = modo || _dashModoRankingDropSize || 'melhores';
+  _dashModoRankingDropSize = modo;
+  const box = document.getElementById('dash-ranking-dropsize');
+  if (!box) return;
+  const btnMelhores = document.getElementById('dash-dropsize-btn-melhores');
+  const btnPiores = document.getElementById('dash-dropsize-btn-piores');
+  if (btnMelhores) { btnMelhores.style.background = modo === 'melhores' ? 'var(--pet-green,#b5e51d)' : 'transparent'; btnMelhores.style.color = modo === 'melhores' ? '#000' : 'var(--text-2)'; }
+  if (btnPiores) { btnPiores.style.background = modo === 'piores' ? 'var(--pet-green,#b5e51d)' : 'transparent'; btnPiores.style.color = modo === 'piores' ? '#000' : 'var(--text-2)'; }
+  // Mínimo de entregas — sem isso, cliente com 1 entrega só (drop size dele
+  // é literalmente o volume daquela entrega, não é uma média de verdade)
+  // dominava as pontas do ranking sem representar um padrão real.
+  const minEntregas = Math.max(1, parseInt(document.getElementById('dash-dropsize-min-entregas')?.value, 10) || 1);
+  const lista = (_dashUltimosClientesDropSize || [])
+    .filter(c => c.entregas >= minEntregas)
+    .slice()
+    .sort((a, b) => modo === 'piores' ? a.dropSize - b.dropSize : b.dropSize - a.dropSize)
+    .slice(0, 15);
+  if (!lista.length) {
+    box.innerHTML = `<div class="empty">Nenhum cliente com pelo menos ${minEntregas} entrega${minEntregas !== 1 ? 's' : ''} nesse período/filtro — tenta baixar o "Mín. entregas".</div>`;
+    return;
+  }
+  box.innerHTML = `<div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:rgba(0,0,0,0.03);">
+        <th style="padding:7px 10px;text-align:left;color:var(--text-3);">#</th>
+        <th style="padding:7px 10px;text-align:left;color:var(--text-3);">CLIENTE</th>
+        <th style="padding:7px 10px;text-align:right;color:var(--text-3);">DROP SIZE</th>
+        <th style="padding:7px 10px;text-align:right;color:var(--text-3);">VOLUME</th>
+        <th style="padding:7px 10px;text-align:right;color:var(--text-3);">ENTREGAS</th>
+      </tr></thead>
+      <tbody>
+        ${lista.map((c, i) => `
+          <tr style="border-top:1px solid var(--border-dk);">
+            <td style="padding:6px 10px;color:var(--text-3);">${i + 1}</td>
+            <td style="padding:6px 10px;font-weight:600;">${c.nome}</td>
+            <td style="padding:6px 10px;text-align:right;font-weight:700;color:${modo === 'piores' ? '#DC2626' : '#16A34A'};">${c.dropSize.toFixed(1)} m³</td>
+            <td style="padding:6px 10px;text-align:right;">${c.volume.toFixed(1)} m³</td>
+            <td style="padding:6px 10px;text-align:right;">${c.entregas}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+window.dashRenderRankingDropSize = dashRenderRankingDropSize;
+function dashKmVolChart(containerId, clientes) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  // Mostra só clientes com km calculado, ordenados por km decrescente
+  const itens = clientes.filter(c => c.km > 0).sort((a, b) => b.km - a.km);
+  if (!itens.length) { el.innerHTML = '<div style="color:#888;font-size:12px;padding:12px">Sem dados de distância — abra o mapa de cada viagem para calcular.</div>'; return; }
+  const maxKm  = Math.max(...itens.map(c => c.km  || 0), 1);
+  const maxVol = Math.max(...itens.map(c => c.volume || 0), 1);
+  el.innerHTML = itens.map(c => {
+    const pctKm  = c.km > 0 ? Math.round((c.km  / maxKm)  * 100) : 0;
+    const pctVol = Math.round((c.volume / maxVol) * 100);
+    const kmLabel = c.km > 0 ? c.km.toFixed(0) + ' km' : '— km';
+    return `<div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:#000000;margin-bottom:5px;">${c.nome}</div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <span style="font-size:10px;font-weight:700;color:#000000;width:22px;text-align:right;">km</span>
+        <div style="flex:1;height:8px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+          <div style="width:${pctKm}%;height:100%;background:#6ee04a;border-radius:99px;"></div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:#000000;width:52px;">${kmLabel}</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+        <span style="font-size:10px;font-weight:700;color:#000000;width:22px;text-align:right;">m³</span>
+        <div style="flex:1;height:8px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+          <div style="width:${pctVol}%;height:100%;background:#f0be40;border-radius:99px;"></div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:#000000;width:52px;">${c.volume.toFixed(1)} m³</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+// ── Gráfico de Ocupação vs Volume por Operação (cidade) ────────────────────
+// Mesmo estilo de barra dupla do dashKmVolChart, mas agrupado por cidade da
+// operação (terminal) em vez de cliente. Sempre reflete o filtro de cidade
+// ativo, porque os dados já vêm filtrados de dashAgregar.
+let _dashOpOcupVolOrdem = 'volume'; // 'volume' | 'ocup'
+let _dashUltimoOpOcupVol = [];
+function dashOpOcupVolSetOrdem(campo) {
+  _dashOpOcupVolOrdem = campo;
+  document.querySelectorAll('.dash-opocup-tab').forEach(b => {
+    const ativo = b.dataset.campo === campo;
+    b.classList.toggle('active-rank', ativo);
+    b.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    b.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashOcupVolPorOperacaoChart('dash-chart-op-ocup-vol', _dashUltimoOpOcupVol);
+}
+window.dashOpOcupVolSetOrdem = dashOpOcupVolSetOrdem;
+function dashOcupVolPorOperacaoChart(containerId, operacoes) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  _dashUltimoOpOcupVol = operacoes;
+  if (!operacoes.length) {
+    el.innerHTML = '<div style="color:#888;font-size:12px;padding:12px">Sem dados de operação para este período/filtro.</div>';
+    return;
+  }
+  const itens = [...operacoes].sort((a, b) =>
+    _dashOpOcupVolOrdem === 'ocup' ? b.ocup - a.ocup : b.volume - a.volume
+  );
+  const maxVol = Math.max(...itens.map(o => o.volume || 0), 1);
+  el.innerHTML = itens.map((o, i) => {
+    const pctVol = Math.round((o.volume / maxVol) * 100);
+    const pctOcup = Math.min(Math.round(o.ocup), 100);
+    const corOcup = '#4caf50'; // sempre verde, a pedido — antes variava por faixa (verde/amarelo/vermelho)
+    const viagemLabel = o.viagens === 1 ? '1 viagem' : `${o.viagens} viagens`;
+    return `<div style="padding:14px 16px;margin-bottom:10px;background:rgba(0,0,0,0.025);border:1px solid var(--border-dk);border-radius:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;">
+        <span style="font-size:13px;font-weight:700;color:var(--text,#111);">${i+1}. ${o.nome}</span>
+        <span style="font-size:10.5px;font-weight:600;color:var(--text-3,#777);background:rgba(0,0,0,0.06);padding:2px 9px;border-radius:99px;">${viagemLabel}</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <span style="font-size:10px;font-weight:700;color:${corOcup};width:64px;text-align:right;">Ocupação</span>
+        <div style="flex:1;height:8px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+          <div style="width:${pctOcup}%;height:100%;background:${corOcup};border-radius:99px;"></div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:${corOcup};width:38px;">${pctOcup}%</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;margin-top:5px;">
+        <span style="font-size:10px;font-weight:700;color:#000000;width:64px;text-align:right;">Volume</span>
+        <div style="flex:1;height:8px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+          <div style="width:${pctVol}%;height:100%;background:#f0be40;border-radius:99px;"></div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:#000000;width:60px;">${o.volume.toFixed(1)} m³</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+// ── Volume por Produto + Ciclo de Compra ────────────────────────────────────
+// Soma o volume de TODOS os produtos com registro de entrega, respeitando os
+// mesmos filtros do resto do Dashboard (período, cidade da operação,
+// clientes, segmento — os dois últimos via clientesEfetivos, o mesmo
+// conjunto que já filtra os outros gráficos). Guarda também, por produto,
+// o volume e as datas de entrega de CADA cliente que comprou aquele
+// produto — é essa informação por trás do painel de "ciclo de compra" que
+// aparece ao clicar numa barra: quantos dias em média o cliente demora
+// entre um pedido e outro daquele produto, e quanto ele pede em média por
+// vez.
+// ══════════════════════════════════════════════════════════════════════════
+// BALANCEAMENTO DE FROTA — onde falta caminhão (e quanto), onde sobra, e
+// recomendação de realocação de frota DEDICADA entre operações.
+// ══════════════════════════════════════════════════════════════════════════
+// Demanda não atendida por operação — sinal DURO, não estimado: compara,
+// pra cada roteirização salva, TODOS os pedidos daquele dia (inclusive os
+// que não couberam em veículo nenhum — o snapshot salva a lista completa,
+// não só o que foi roteirizado) contra o que de fato foi alocado no
+// resultado. Pedido que sobrou é volume real que faltou caminhão pra
+// atender — mesmo critério já usado em "Pedidos com problema" (Resumo
+// Operação), só que aplicado a todo o histórico do período em vez de só a
+// sessão atual.
+function dashColetarDemandaPorOperacao(snapshots) {
+  const porOperacao = {};
+  (snapshots || []).forEach(snap => {
+    if (snap.substituidoPor) return; // revisão substituída — não conta (mesma regra do resto do Dashboard)
+    const terms = snap.terminais || [];
+    const res = snap.resultado || {};
+    const alocadoPorPedido = {};
+    // O id do pedido fica na PARADA (parada.pedido.id) — cada item dentro
+    // dela é só {produto, volume, completo, ordemSAP}, sem pedidoId próprio.
+    // Acessa res[v.id] pela lista de veículos (mesmo padrão usado em TODO o
+    // resto do dashboard.js) em vez de "Object.values(res)" — arquivos mais
+    // antigos do histórico podem ter chaves em `resultado` que não são um
+    // array de viagens, e iterar tudo cegamente quebrava nesses arquivos.
+    (snap.veiculos || []).forEach(v => {
+      const viagens = res[v.id];
+      if (!Array.isArray(viagens)) return;
+      viagens.forEach(vi => {
+        if (!vi || vi._vazio) return;
+        (vi.paradas || []).forEach(p => {
+          const pid = p.pedido?.id;
+          if (pid == null) return;
+          const volParada = (p.itens || []).reduce((s, it) => s + (it.volume || 0), 0);
+          alocadoPorPedido[pid] = (alocadoPorPedido[pid] || 0) + volParada;
+        });
+      });
+    });
+    (snap.pedidos || []).forEach(p => {
+      const totalVol = (p.produtos || []).reduce((s, pr) => s + (pr.volume || 0), 0);
+      if (totalVol <= 0) return;
+      const term = terms.find(t => t.nome === p.terminal);
+      const nomeOperacao = term?.cidade || p.terminal || '(sem terminal)';
+      const operacao = _dashChaveOperacaoFinal(nomeOperacao);
+      const alocado = alocadoPorPedido[p.id] || 0;
+      const faltante = Math.max(0, totalVol - alocado - 0.01);
+      if (!porOperacao[operacao]) porOperacao[operacao] = { operacao, nomeExibido: nomeOperacao, volumeDemandado: 0, volumeNaoAtendido: 0, datas: new Set(), porDia: {} };
+      porOperacao[operacao].nomeExibido = _dashMelhorNomeOperacao(porOperacao[operacao].nomeExibido, nomeOperacao);
+      porOperacao[operacao].volumeDemandado += totalVol;
+      porOperacao[operacao].volumeNaoAtendido += faltante;
+      if (p.dataEntregaLogistica) {
+        porOperacao[operacao].datas.add(p.dataEntregaLogistica);
+        porOperacao[operacao].porDia[p.dataEntregaLogistica] = (porOperacao[operacao].porDia[p.dataEntregaLogistica] || 0) + totalVol;
+      }
+    });
+  });
+  return porOperacao;
+}
+// Junta os 4 sinais (demanda não atendida, ocupação, utilização, estouro de
+// jornada) num relatório único por operação, com veredito transparente —
+// mostra os componentes, não só um score escondido.
+async function dashCarregarBalanceamentoFrota() {
+  const box = document.getElementById('dash-balanceamento-box');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">Cruzando demanda, ocupação, utilização e jornada do período carregado...</div>';
+  const snapshots = _dashSnapshotsAtivos || [];
+  if (!snapshots.length) {
+    box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">Nenhuma roteirização carregada nesse período — ajuste o filtro "🗓️ Período" no topo do Dashboard e tente de novo.</div>';
+    return;
+  }
+  // Cada etapa isolada no seu próprio try/catch, com uma etiqueta própria —
+  // se algo falhar, a mensagem na tela (e no console) já diz EM QUAL ETAPA,
+  // em vez de um erro genérico que obriga a adivinhar.
+  let etapa = 'agregação geral (dashAgregar)';
+  try {
+    // Deliberadamente SEM filtro de cidade/cliente/segmento/transportadora —
+    // esse relatório é justamente sobre comparar operações entre si; filtrar
+    // por uma delas ia esconder o resto da comparação.
+    const d = dashAgregar(snapshots, null, null, _dashMapaDevolucoesPorEntrega());
+
+    etapa = 'demanda não atendida (pedidos x resultado)';
+    const demanda = dashColetarDemandaPorOperacao(snapshots);
+
+    etapa = 'estouro de jornada por operação';
+    const jornadaOp = dashAgregarJornadaPorOperacao(d.entradasTransportadora);
+    const jornadaPorOpMap = {};
+    jornadaOp.forEach(j => { jornadaPorOpMap[j.operacao] = j; });
+
+    etapa = 'ocupação por operação';
+    const ocupacaoPorOpMap = {};
+    (d.operacoes_ocup || []).forEach(o => {
+      const chave = _dashChaveOperacaoFinal(o.nome);
+      if (!ocupacaoPorOpMap[chave]) ocupacaoPorOpMap[chave] = { ...o, nomeExibido: o.nome };
+      ocupacaoPorOpMap[chave].nomeExibido = _dashMelhorNomeOperacao(ocupacaoPorOpMap[chave].nomeExibido, o.nome);
+    });
+
+    etapa = 'utilização (Painel de Disponibilidade)';
+    let ociosidade = { porOperacaoUtilizacao: [] };
+    try {
+      ociosidade = await dashCarregarOciosidade(snapshots, null, d.diasComViagemPorPlaca, d.placaCidade, d.placaCidadePorDia, null);
+    } catch (e) { console.warn('[Balanceamento de Frota] falha ao consultar utilização (Painel de Disponibilidade), seguindo sem esse sinal:', e); }
+    const utilPorOpMap = {};
+    (ociosidade.porOperacaoUtilizacao || []).forEach(u => {
+      const chave = _dashChaveOperacaoFinal(u.operacao);
+      if (!utilPorOpMap[chave]) utilPorOpMap[chave] = { ...u, nomeExibido: u.operacao };
+      else {
+        // Mesma operação apareceu mais de uma vez com grafia diferente
+        // (ex.: cadastro da placa "Paulínia" + inferência "Paulínia - SP")
+        // — soma os dois em vez de sobrescrever, senão perderia contagem.
+        utilPorOpMap[chave].disponibilizados += u.disponibilizados;
+        utilPorOpMap[chave].usados += u.usados;
+        utilPorOpMap[chave].qtdPlacas += u.qtdPlacas;
+        utilPorOpMap[chave].pctUtilizacao = utilPorOpMap[chave].disponibilizados > 0
+          ? Math.round((utilPorOpMap[chave].usados / utilPorOpMap[chave].disponibilizados) * 100) : 0;
+      }
+      utilPorOpMap[chave].nomeExibido = _dashMelhorNomeOperacao(utilPorOpMap[chave].nomeExibido, u.operacao);
+    });
+
+    etapa = 'combinação dos sinais por operação';
+    // União de todas as operações que apareceram em QUALQUER um dos 4 sinais
+    // — já usando a chave NORMALIZADA (sem sufixo " - UF", sem acento), pra
+    // "Ribeirão Preto - SP" e "Ribeirão Preto" caírem na mesma linha.
+    const todasOperacoes = new Set([
+      ...Object.keys(demanda), ...Object.keys(jornadaPorOpMap),
+      ...Object.keys(ocupacaoPorOpMap), ...Object.keys(utilPorOpMap),
+    ]);
+    const linhas = [...todasOperacoes].map(chave => {
+      const dem = demanda[chave] || { volumeDemandado: 0, volumeNaoAtendido: 0, datas: new Set(), porDia: {} };
+      const oc = ocupacaoPorOpMap[chave] || { ocup: 0, volume: 0, viagens: 0 };
+      const jo = jornadaPorOpMap[chave] || { veiculosDia: 0, diasComEstouro: 0, pctDiasComEstouro: 0, minutosEstouroTotal: 0 };
+      const ut = utilPorOpMap[chave] || { disponibilizados: 0, usados: 0, qtdPlacas: 0, pctUtilizacao: 0 };
+      const nomeExibido = _dashMelhorNomeOperacao(
+        _dashMelhorNomeOperacao(dem.nomeExibido, oc.nomeExibido),
+        _dashMelhorNomeOperacao(jo.nomeExibido, ut.nomeExibido)
+      ) || chave;
+      // Capacidade média de veículo cadastrado nessa operação (dado real do
+      // cadastro de Veículos & Turnos) — se não achar nenhum veículo
+      // cadastrado com essa base (pode ter sido desativado/trocado desde o
+      // período analisado), cai pra média geral da frota, só pra não deixar
+      // a capacidade acumulada zerada sem necessidade.
+      const veiculosDaOp = (veiculos || []).filter(v => _dashChaveOperacaoFinal(cidadeBaseVeiculo(v)) === chave);
+      const capMediaGeral = (veiculos || []).length
+        ? (veiculos || []).reduce((s, v) => s + (v.capacidade || v.capacidadeTotal || 0), 0) / (veiculos || []).length
+        : 20;
+      const capMedia = veiculosDaOp.length
+        ? veiculosDaOp.reduce((s, v) => s + (v.capacidade || v.capacidadeTotal || 0), 0) / veiculosDaOp.length
+        : capMediaGeral;
+      const diasNoPeriodo = dem.datas.size;
+      // Volumetria acumulada da frota = capacidade média do veículo × dias
+      // que a frota dessa operação foi disponibilizada no período (Painel de
+      // Disponibilidade) — é o máximo teórico que a frota daria conta de
+      // mover, pra comparar direto com quanto realmente foi demandado.
+      const capacidadeAcumulada = capMedia * (ut.disponibilizados || 0);
+      const gapM3 = capacidadeAcumulada - dem.volumeDemandado;
+      const gapPct = dem.volumeDemandado > 0 ? (gapM3 / dem.volumeDemandado) * 100 : (capacidadeAcumulada > 0 ? 100 : 0);
+      const m = {
+        operacao: nomeExibido,
+        volumeDemandado: dem.volumeDemandado,
+        volumeNaoAtendido: dem.volumeNaoAtendido,
+        diasNoPeriodo,
+        volumeNaoAtendidoPorDia: diasNoPeriodo > 0 ? dem.volumeNaoAtendido / diasNoPeriodo : 0,
+        volumeMedioDiario: diasNoPeriodo > 0 ? dem.volumeDemandado / diasNoPeriodo : 0,
+        porDia: dem.porDia || {},
+        ocupacaoMediaPct: oc.ocup || 0,
+        volumeMovimentado: oc.volume || 0,
+        viagens: oc.viagens || 0,
+        utilizacaoPct: ut.pctUtilizacao || 0,
+        disponibilizados: ut.disponibilizados || 0,
+        usados: ut.usados || 0,
+        qtdPlacas: ut.qtdPlacas || veiculosDaOp.length,
+        estouroPct: jo.pctDiasComEstouro || 0,
+        diasComEstouro: jo.diasComEstouro || 0,
+        veiculosDia: jo.veiculosDia || 0,
+        capMedia,
+        capacidadeAcumulada,
+        gapM3,
+        gapPct,
+      };
+      const { veredito, motivosFalta, motivosSobra } = _dashClassificarOperacaoFrota(m);
+      return { ...m, veredito, motivosFalta, motivosSobra };
+    }).sort((a, b) => a.gapPct - b.gapPct); // quem tem o déficit proporcional maior (gap mais negativo) primeiro
+
+    etapa = 'geração de recomendações';
+    const recomendacoes = _dashGerarRecomendacoesFrota(linhas);
+
+    etapa = 'montagem visual do relatório';
+    _dashRenderBalanceamentoFrota(box, linhas, recomendacoes, snapshots);
+  } catch (e) {
+    console.error(`[Balanceamento de Frota] falha na etapa "${etapa}":`, e);
+    box.innerHTML = `<div style="padding:24px;text-align:center;color:#DC2626;font-size:12px;">Erro ao gerar o relatório, na etapa "<b>${etapa}</b>" — abre o console do navegador (F12) e me manda a mensagem completa que aparece lá, com essa etapa.</div>`;
+  }
+}
+// Classificação — o critério PRINCIPAL agora é a conta concreta de
+// capacidade acumulada da frota vs volume demandado (gapPct), não mais
+// "pedido não atendido": numa operação que sempre entrega tudo (mesmo sob
+// pressão, via hora extra/spot), "não atendido" nunca aparece mesmo quando
+// falta caminhão de verdade — por isso ele deixou de decidir o veredito.
+// Ocupação/utilização/estouro entram como reforço, não como base.
+function _dashClassificarOperacaoFrota(m) {
+  const motivosFalta = [], motivosSobra = [];
+  if (m.gapM3 < 0) motivosFalta.push(`déficit de capacidade: ${Math.abs(m.gapM3).toFixed(0)} m³ no período (${m.gapPct.toFixed(0)}%)`);
+  if (m.ocupacaoMediaPct >= 85) motivosFalta.push(`ocupação média de ${m.ocupacaoMediaPct}% — veículos saindo quase sempre cheios`);
+  if (m.utilizacaoPct >= 85 && m.disponibilizados >= 5) motivosFalta.push(`frota rodou em ${m.utilizacaoPct}% dos dias disponibilizados (${m.usados}/${m.disponibilizados}d) — pouca folga`);
+  if (m.estouroPct >= 15 && m.veiculosDia >= 5) motivosFalta.push(`jornada estourada em ${m.estouroPct}% dos dias-veículo (${m.diasComEstouro}/${m.veiculosDia})`);
+  if (m.volumeNaoAtendido > 0.5) motivosFalta.push(`${m.volumeNaoAtendido.toFixed(1)} m³ de pedidos ficaram fora do plano automático (pode ter sido coberto com spot/hora extra)`);
+  if (m.gapM3 > 0) motivosSobra.push(`sobra de capacidade: ${m.gapM3.toFixed(0)} m³ no período (+${m.gapPct.toFixed(0)}%)`);
+  if (m.ocupacaoMediaPct > 0 && m.ocupacaoMediaPct <= 55) motivosSobra.push(`ocupação média de só ${m.ocupacaoMediaPct}% — veículos saindo com pouca carga`);
+  if (m.utilizacaoPct > 0 && m.utilizacaoPct <= 55 && m.disponibilizados >= 5) motivosSobra.push(`frota parada boa parte do tempo (${m.usados}/${m.disponibilizados}d = ${m.utilizacaoPct}% de uso)`);
+  if (m.estouroPct === 0 && m.veiculosDia >= 5) motivosSobra.push('nenhum estouro de jornada no período — sem sinal de sobrecarga');
+  // Precisa de um mínimo de base (capacidade OU demanda reais) pra classificar
+  // com convicção — senão fica "equilibrado" por falta de dado, não por
+  // realmente estar equilibrado.
+  const temBaseSuficiente = m.disponibilizados >= 5 || m.volumeDemandado > 0;
+  let veredito = 'equilibrado';
+  if (temBaseSuficiente) {
+    if (m.gapPct <= -15 || m.estouroPct >= 25) veredito = 'falta';
+    else if (m.gapPct >= 40 && m.utilizacaoPct > 0 && m.utilizacaoPct <= 55) veredito = 'sobra';
+  }
+  return { veredito, motivosFalta, motivosSobra };
+}
+// Recomendação de realocação — sempre pareando quem tem SOBRA com quem tem
+// FALTA, quantificando com o déficit/sobra em m³ real (gapM3), nunca com
+// número inventado.
+function _dashGerarRecomendacoesFrota(linhas) {
+  const emFalta = linhas.filter(l => l.veredito === 'falta' && l.gapM3 < 0).sort((a, b) => a.gapM3 - b.gapM3);
+  const comSobra = linhas.filter(l => l.veredito === 'sobra').sort((a, b) => a.utilizacaoPct - b.utilizacaoPct);
+  const recos = [];
+  const sobraRestante = new Map(comSobra.map(s => [s.operacao, Math.max(1, s.qtdPlacas - Math.ceil(s.qtdPlacas * (s.utilizacaoPct / 100)))]));
+  emFalta.forEach(f => {
+    const origem = comSobra.find(s => (sobraRestante.get(s.operacao) || 0) > 0);
+    if (!origem) return;
+    const capParaEstimar = origem.capMedia || f.capMedia || 20;
+    const deficitPorDia = Math.abs(f.gapM3) / Math.max(1, f.diasNoPeriodo);
+    const veiculosSugeridos = Math.max(1, Math.min(sobraRestante.get(origem.operacao), Math.ceil(deficitPorDia / capParaEstimar)));
+    sobraRestante.set(origem.operacao, Math.max(0, sobraRestante.get(origem.operacao) - veiculosSugeridos));
+    recos.push({
+      de: origem.operacao, para: f.operacao, veiculosSugeridos,
+      capUsada: capParaEstimar, deficitM3: Math.abs(f.gapM3), deficitPctFalta: Math.abs(f.gapPct),
+    });
+  });
+  return recos;
+}
+// ── Renderização do relatório ──────────────────────────────────────────────
+// ── Renderização do relatório ──────────────────────────────────────────────
+// Sparkline diária simples (SVG puro, sem lib externa — mesmo princípio dos
+// outros gráficos já existentes no Dashboard, só que em linha em vez de
+// barra) — mostra a variação de volume dia a dia dentro do período, não só
+// o total acumulado.
+function _dashSparklineSvg(porDia, corLinha) {
+  const entradas = Object.entries(porDia || {}).map(([data, vol]) => {
+    const partes = (data || '').split('/');
+    const d = parseInt(partes[0], 10), m = parseInt(partes[1], 10), y = parseInt(partes[2], 10);
+    return { ts: new Date(y || 2000, (m || 1) - 1, d || 1).getTime(), data, vol: vol || 0 };
+  }).filter(e => !isNaN(e.ts)).sort((a, b) => a.ts - b.ts);
+  if (entradas.length < 2) {
+    return '<div style="font-size:10px;color:var(--text-3);padding:8px 0;">Poucos dias no período pra mostrar tendência diária.</div>';
+  }
+  const W = 300, H = 46, pad = 3;
+  const maxV = Math.max(...entradas.map(e => e.vol), 1);
+  const stepX = (W - pad * 2) / (entradas.length - 1);
+  const pontos = entradas.map((e, i) => {
+    const x = pad + i * stepX;
+    const y = H - pad - ((e.vol / maxV) * (H - pad * 2));
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const ultimaData = entradas[entradas.length - 1].data;
+  const primeiraData = entradas[0].data;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:46px;display:block;overflow:visible;">
+      <polyline points="${pontos}" fill="none" stroke="${corLinha}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-top:2px;"><span>${primeiraData}</span><span>${ultimaData}</span></div>`;
+}
+function _dashRenderBalanceamentoFrota(box, linhas, recomendacoes, snapshots) {
+  const datasIni = (snapshots || []).map(s => (s.savedAt || '').slice(0, 10)).filter(Boolean).sort();
+  const periodoTxt = datasIni.length ? `${_dashFmtDataBr ? _dashFmtDataBr(datasIni[0]) : datasIni[0]} a ${_dashFmtDataBr ? _dashFmtDataBr(datasIni[datasIni.length - 1]) : datasIni[datasIni.length - 1]}` : 'período carregado';
+  const corVeredito = v => v === 'falta' ? '#DC2626' : v === 'sobra' ? '#16A34A' : '#6B7280';
+  const rotuloVeredito = v => v === 'falta' ? '🔴 Falta de caminhão' : v === 'sobra' ? '🟢 Sobra de caminhão' : '⚪ Equilibrado';
+  const semDadoSuficiente = linhas.every(l => l.disponibilizados === 0 && l.veiculosDia === 0);
+  const recosHtml = recomendacoes.length
+    ? recomendacoes.map(r => `
+      <div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12.5px;color:#3730A3;">
+        <b>➜ Mover ~${r.veiculosSugeridos} veículo${r.veiculosSugeridos === 1 ? '' : 's'}</b> de <b>${r.de}</b> pra <b>${r.para}</b>
+        <span style="color:#6366F1;"> — capacidade média em ${r.de}: ~${r.capUsada.toFixed(0)} m³/veículo · déficit em ${r.para}: ${r.deficitM3.toFixed(0)} m³ no período (${r.deficitPctFalta.toFixed(0)}%).</span>
+      </div>`).join('')
+    : '<div style="padding:10px 14px;color:var(--text-3);font-size:12px;">Nenhuma recomendação de realocação — não há operação com sobra clara pra cobrir uma com falta clara nesse período.</div>';
+  const cardsHtml = linhas.map(l => {
+    const maxBar = Math.max(l.volumeDemandado, l.capacidadeAcumulada, 1);
+    const pctDemanda = Math.round((l.volumeDemandado / maxBar) * 100);
+    const pctCap = Math.round((l.capacidadeAcumulada / maxBar) * 100);
+    const corGap = l.gapM3 < 0 ? '#DC2626' : '#16A34A';
+    return `<div style="border:1px solid var(--border-dk);border-radius:10px;padding:14px 16px;margin-bottom:12px;background:rgba(0,0,0,0.015);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <span style="font-size:14.5px;font-weight:700;">${l.operacao}</span>
+          <span style="font-size:12px;font-weight:700;color:${corVeredito(l.veredito)};">${rotuloVeredito(l.veredito)}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:24px;align-items:start;">
+          <div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:7px;">
+              <span style="font-size:10px;font-weight:700;color:#b8860b;width:100px;flex-shrink:0;">Demanda</span>
+              <div style="flex:1;height:9px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;"><div style="width:${pctDemanda}%;height:100%;background:#f0be40;border-radius:99px;"></div></div>
+              <span style="font-size:10.5px;font-weight:700;width:76px;text-align:right;flex-shrink:0;">${l.volumeDemandado.toFixed(0)} m³</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:10px;font-weight:700;color:#4F46E5;width:100px;flex-shrink:0;">Capacidade frota</span>
+              <div style="flex:1;height:9px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;"><div style="width:${pctCap}%;height:100%;background:#4F46E5;border-radius:99px;"></div></div>
+              <span style="font-size:10.5px;font-weight:700;width:76px;text-align:right;flex-shrink:0;">${l.capacidadeAcumulada.toFixed(0)} m³</span>
+            </div>
+            <div style="font-size:11px;color:${corGap};font-weight:700;margin-top:8px;">${l.gapM3 < 0 ? 'Déficit' : 'Sobra'} de ${Math.abs(l.gapM3).toFixed(0)} m³ no período (${l.gapPct >= 0 ? '+' : ''}${l.gapPct.toFixed(0)}%)</div>
+            <div style="font-size:9.5px;color:var(--text-3);margin-top:2px;">Capacidade = ${l.capMedia.toFixed(0)} m³/veículo (cadastro) × ${l.disponibilizados} dia(s)-veículo disponibilizado(s)</div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-3);margin-bottom:2px;">Volume diário demandado (${l.diasNoPeriodo} dia(s) com pedido)</div>
+            ${_dashSparklineSvg(l.porDia, '#b8860b')}
+            <div style="font-size:9.5px;color:var(--text-3);margin-top:2px;">Média: ${l.volumeMedioDiario.toFixed(1)} m³/dia · Movimentado: ${l.volumeMovimentado.toFixed(0)} m³ em ${l.viagens} viagem(ns)</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-dk);font-size:10.5px;color:var(--text-3);">
+          <b style="color:var(--text);">Ocupação</b> ${l.ocupacaoMediaPct}% · <b style="color:var(--text);">Utilização</b> ${l.utilizacaoPct}% (${l.usados}/${l.disponibilizados}d · ${l.qtdPlacas} placa(s)) · <b style="color:var(--text);">Estouro de jornada</b> ${l.estouroPct}% (${l.diasComEstouro}/${l.veiculosDia} dias-veículo)
+          <div style="margin-top:4px;">${[...l.motivosFalta, ...l.motivosSobra].join(' · ') || 'Sem sinal forte de falta nem sobra nesse período.'}</div>
+        </div>
+      </div>`;
+  }).join('');
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;">Período analisado: <b>${periodoTxt}</b> (${snapshots.length} roteirização(ões) salva(s) carregada(s)) — sem filtro de cidade/cliente/transportadora, de propósito: aqui a ideia é comparar as operações entre si.</div>
+    ${semDadoSuficiente ? '<div style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;">⚠️ Não achei registros do Painel de Disponibilidade pra esse período — <b>capacidade da frota</b>, <b>utilização</b> e <b>estouro de jornada</b> abaixo podem estar incompletos. Demanda e ocupação continuam reais.</div>' : ''}
+    <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Recomendação de realocação</div>
+    ${recosHtml}
+    <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:18px 0 8px;">Detalhe por operação</div>
+    ${cardsHtml}
+    <div style="font-size:10px;color:var(--text-3);margin-top:8px;">
+      <b>Como ler:</b> "Capacidade frota" é a capacidade média cadastrada dos veículos dessa operação × quantos dias-veículo foram disponibilizados no período (Painel de Disponibilidade) — o máximo teórico que a frota daria conta de mover. O veredito compara isso direto com a demanda real; ocupação, utilização e estouro de jornada entram como reforço da leitura, não como base sozinha. "Fora do plano automático" é informativo (pode já ter sido coberto com spot/hora extra), não decide mais o veredito.
+    </div>`;
+}
+window.dashCarregarBalanceamentoFrota = dashCarregarBalanceamentoFrota;
+
+// ══════════════════════════════════════════════════════════════════════════
+// DEVOLUÇÕES E REENTREGAS — relatório a partir dos registros feitos no
+// Histórico (modal de detalhe → "⚠️ Registrar"). Diferente do resto do
+// Dashboard, a fonte não é o histórico de roteirizações — é a coleção
+// própria no Firestore, então busca é feita à parte e filtrada por aqui
+// pelos mesmos filtros já ativos na tela (Cliente/Operação/Transportadora),
+// pra manter a mesma experiência do resto do Dashboard.
+async function dashCarregarDevolucoes() {
+  const box = document.getElementById('dash-devolucoes-box');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">Buscando ocorrências registradas...</div>';
+  try {
+    if (!window.fbDb || !window.fbCollection || !window.fbGetDocs || !window.fbQuery || !window.fbOrderBy || !window.fbLimit) {
+      box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">Firestore indisponível agora.</div>';
+      return;
+    }
+    const q = window.fbQuery(window.fbCollection(window.fbDb, 'devolucoesReentregas'), window.fbOrderBy('criadoEm', 'desc'), window.fbLimit(3000));
+    const snap = await window.fbGetDocs(q);
+    let registros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Período: mesmo intervalo que está carregado no Dashboard (filtro
+    // "🗓️ Período" no topo), comparando pela data de entrega ORIGINAL do
+    // registro (não a data em que o registro foi criado).
+    const datasSnap = (_dashSnapshotsAtivos || []).map(s => (s.savedAt || '').slice(0, 10)).filter(Boolean).sort();
+    if (datasSnap.length) {
+      const iniISO = datasSnap[0], fimISO = datasSnap[datasSnap.length - 1];
+      registros = registros.filter(r => {
+        const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(r.dataEntregaOriginal || '');
+        if (!m) return false;
+        const iso = `${m[3]}-${m[2]}-${m[1]}`;
+        return iso >= iniISO && iso <= fimISO;
+      });
+    }
+    // Cliente/Operação/Transportadora: mesmos filtros já ativos no topo do
+    // Dashboard — Segmento não é aplicado aqui (o registro não carrega o
+    // segmento do cliente, só o nome).
+    if (_dashClientesSelecionados) {
+      const efNorm = _dashNormalizarSetClientes(_dashClientesSelecionados);
+      registros = registros.filter(r => _dashNomeBateFiltro(r.cliente || '', efNorm));
+    }
+    if (_dashCidadesSelecionadas) {
+      registros = registros.filter(r => _dashCidadesSelecionadas.has(r.operacao));
+    }
+    if (_dashTransportadorasSelecionadas) {
+      registros = registros.filter(r => _dashTransportadorasSelecionadas.has(r.transportadora || ''));
+    }
+    // Filtro por pedido — campo próprio dessa seção (não é um filtro global
+    // do Dashboard), compara com o código SAP e com o id interno do pedido.
+    const filtroPedido = (document.getElementById('dash-dev-filtro-pedido')?.value || '').trim().toLowerCase();
+    if (filtroPedido) {
+      registros = registros.filter(r =>
+        String(r.pedidoId ?? '').toLowerCase().includes(filtroPedido) ||
+        String(r.codigoSAP ?? '').toLowerCase().includes(filtroPedido)
+      );
+    }
+    _dashUltimosRegistrosDevolucao = registros; // reaproveitado pelo botão de exportar
+    _dashRenderDevolucoes(box, registros, datasSnap);
+  } catch (e) {
+    console.error('[Devoluções] falha ao gerar relatório:', e);
+    box.innerHTML = '<div style="padding:24px;text-align:center;color:#DC2626;font-size:12px;">Erro ao buscar as ocorrências — tenta de novo em alguns segundos.</div>';
+  }
+}
+let _dashUltimosRegistrosDevolucao = [];
+// Agregados compartilhados entre a tela e a exportação em PDF — calcula uma
+// vez só, os dois consomem o mesmo resultado (evita a tela e o PDF saírem
+// com números diferentes por algum ajuste feito só num dos dois lados).
+function _dashAgregarDevolucoes(registros) {
+  const totalDevolucoes = registros.filter(r => r.tipo !== 'reentrega').length;
+  const totalReentregas  = registros.filter(r => r.tipo === 'reentrega').length;
+  const volumeTotal = registros.reduce((s, r) => s + (r.volumeAfetadoM3 || 0), 0);
+  // Volume que deve ser DESCONTADO do volume do período — só devolução
+  // (total ou parcial): esse produto não foi entregue de verdade, mesmo que
+  // o veículo tenha rodado. Reentrega NÃO desconta — o produto ainda vai
+  // ser entregue, só que depois (registrar aqui não é perder o volume, é
+  // adiar); se um dia isso precisar contar só no dia da reentrega em vez do
+  // dia original, dá pra evoluir usando o campo novaDataEntrega.
+  const volumeDevolvido = registros
+    .filter(r => r.tipo === 'devolucao_total' || r.tipo === 'devolucao_parcial')
+    .reduce((s, r) => s + (r.volumeAfetadoM3 || 0), 0);
+  const porOperacao = {};
+  const porMotivo = {};
+  const porTransportadora = {};
+  const porProduto = {};
+  const porCliente = {};
+  registros.forEach(r => {
+    const op = r.operacao || '(sem operação)';
+    porOperacao[op] = (porOperacao[op] || 0) + (r.volumeAfetadoM3 || 0);
+    const mo = r.motivo || '(sem motivo)';
+    porMotivo[mo] = (porMotivo[mo] || 0) + 1;
+    const tr = r.transportadora || '(sem transportadora)';
+    porTransportadora[tr] = (porTransportadora[tr] || 0) + (r.volumeAfetadoM3 || 0);
+    // produtosAfetados só existe em registros feitos depois dessa
+    // funcionalidade — registros antigos (sem produto discriminado) caem
+    // como "(produto não informado)", não somem do gráfico.
+    if (Array.isArray(r.produtosAfetados) && r.produtosAfetados.length) {
+      r.produtosAfetados.forEach(p => {
+        const nomeProd = p.produto || '(produto não informado)';
+        porProduto[nomeProd] = (porProduto[nomeProd] || 0) + (p.volume || 0);
+      });
+    } else {
+      porProduto['(produto não informado)'] = (porProduto['(produto não informado)'] || 0) + (r.volumeAfetadoM3 || 0);
+    }
+    // Ranking de clientes "ofensores" — conta registro + soma volume por
+    // cliente, pra identificar quem gera mais devolução/reentrega.
+    const cli = r.cliente || '(sem cliente)';
+    if (!porCliente[cli]) porCliente[cli] = { qtd: 0, volume: 0 };
+    porCliente[cli].qtd += 1;
+    porCliente[cli].volume += (r.volumeAfetadoM3 || 0);
+  });
+  return {
+    totalDevolucoes, totalReentregas, volumeTotal, volumeDevolvido,
+    arrProduto: Object.entries(porProduto).map(([nome, volume]) => ({ nome, volume })).sort((a, b) => b.volume - a.volume).slice(0, 12),
+    arrOperacao: Object.entries(porOperacao).map(([nome, volume]) => ({ nome, volume })).sort((a, b) => b.volume - a.volume).slice(0, 10),
+    arrMotivo: Object.entries(porMotivo).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
+    arrTransportadora: Object.entries(porTransportadora).map(([nome, volume]) => ({ nome, volume })).sort((a, b) => b.volume - a.volume),
+    arrCliente: Object.entries(porCliente).map(([nome, v]) => ({ nome, qtd: v.qtd, volume: v.volume })).sort((a, b) => b.qtd - a.qtd || b.volume - a.volume),
+  };
+}
+// Bloco "Volume do Período" — agora que o desconto é aplicado NA FONTE
+// (dashAgregar), o card "Volume m³" do topo do Dashboard já sai LÍQUIDO
+// sozinho, e o mesmo vale pra Ocupação por Operação, Ranking de
+// Transportadoras, Clientes e Balanceamento de Frota — todos usam a mesma
+// fonte. Esse bloco só reconstrói o bruto (líquido + devolvido) pra deixar
+// visível quanto já foi descontado, sem fingir que ainda é uma conta à
+// parte.
+// Percentual de ocorrências sobre as entregas do período — usa o mesmo
+// total de entregas que já alimenta o card "Entregas" do topo do Dashboard
+// (_dashUltimosKPIs.entregas), pra ficar consistente com o resto da tela.
+function _dashPercentualOcorrenciasHtml(totalDevolucoes, totalReentregas) {
+  const totalEntregas = _dashUltimosKPIs?.entregas;
+  if (typeof totalEntregas !== 'number' || totalEntregas <= 0) {
+    return '<div style="font-size:11px;color:var(--text-3);margin-bottom:18px;">Não achei o total de entregas do período (gere o Dashboard principal primeiro, com "🔄 Sincronizar") pra calcular o percentual aqui.</div>';
+  }
+  const totalOcorrencias = totalDevolucoes + totalReentregas;
+  const pctTotal = (totalOcorrencias / totalEntregas) * 100;
+  const pctDevolucao = (totalDevolucoes / totalEntregas) * 100;
+  const pctReentrega = (totalReentregas / totalEntregas) * 100;
+  return `
+    <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border-dk);border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;">Percentual de ocorrências sobre as entregas do período</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;">
+        <div>
+          <div style="font-size:22px;font-weight:700;">${pctTotal.toFixed(2)}%</div>
+          <div style="font-size:10.5px;color:var(--text-3);">Total — ${totalOcorrencias} ocorrência${totalOcorrencias !== 1 ? 's' : ''} / ${totalEntregas} entrega${totalEntregas !== 1 ? 's' : ''}</div>
+        </div>
+        <div>
+          <div style="font-size:19px;font-weight:700;color:#DC2626;">${pctDevolucao.toFixed(2)}%</div>
+          <div style="font-size:10.5px;color:var(--text-3);">Devolução — ${totalDevolucoes} / ${totalEntregas}</div>
+        </div>
+        <div>
+          <div style="font-size:19px;font-weight:700;color:#D97706;">${pctReentrega.toFixed(2)}%</div>
+          <div style="font-size:10.5px;color:var(--text-3);">Reentrega — ${totalReentregas} / ${totalEntregas}</div>
+        </div>
+      </div>
+    </div>`;
+}
+function _dashVolumeLiquidoHtml(volumeDevolvido) {
+  const liquido = _dashUltimosKPIs?.volume;
+  if (typeof liquido !== 'number') {
+    return '<div style="font-size:11px;color:var(--text-3);margin-bottom:18px;">Não achei o volume do período (gere o Dashboard principal primeiro, com "🔄 Sincronizar") pra mostrar o desconto aqui.</div>';
+  }
+  const bruto = liquido + volumeDevolvido;
+  const pctDevolvido = bruto > 0 ? (volumeDevolvido / bruto) * 100 : 0;
+  return `
+    <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border-dk);border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;">Volume do período — já descontando devolução total/parcial</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:13px;">
+        <span>${bruto.toFixed(1)} m³ <span style="color:var(--text-3);font-size:11px;">brutos (antes da devolução)</span></span>
+        <span style="color:var(--text-3);">−</span>
+        <span style="color:#DC2626;font-weight:700;">${volumeDevolvido.toFixed(1)} m³ <span style="font-weight:400;font-size:11px;">devolvidos (${pctDevolvido.toFixed(1)}%)</span></span>
+        <span style="color:var(--text-3);">=</span>
+        <span style="font-weight:700;font-size:16px;">${liquido.toFixed(1)} m³</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:8px;">Esse valor final é o MESMO que já aparece no card "Volume m³" do topo do Dashboard, na Ocupação por Operação, no Ranking de Transportadoras e no Balanceamento de Frota — o desconto é aplicado uma vez só, na fonte, e propaga pra todos os relatórios automaticamente. Reentrega não desconta (o produto ainda vai ser entregue, só depois).</div>
+    </div>`;
+}
+function _dashRenderDevolucoes(box, registros, datasSnap) {
+  if (!registros.length) {
+    box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">Nenhuma ocorrência registrada nesse período (com os filtros atuais).</div>';
+    return;
+  }
+  const { totalDevolucoes, totalReentregas, volumeTotal, volumeDevolvido, arrOperacao, arrMotivo, arrTransportadora, arrProduto, arrCliente } = _dashAgregarDevolucoes(registros);
+  const linhasTabela = registros.slice(0, 200).map(r => `
+    <tr style="border-top:1px solid var(--border-dk);">
+      <td style="padding:6px 8px;">${r.dataEntregaOriginal || '—'}</td>
+      <td style="padding:6px 8px;">${r.viagemId || '—'} <span style="color:var(--text-3);">· ${r.placa || '—'}</span></td>
+      <td style="padding:6px 8px;">${r.cliente || '—'}${r.pedidoId != null && r.pedidoId !== '' ? ` <span style="color:var(--text-3);font-size:10px;">(pedido ${r.pedidoId})</span>` : ''}</td>
+      <td style="padding:6px 8px;">${r.tipo === 'reentrega' ? '🔁 Reentrega' : r.tipo === 'devolucao_parcial' ? '↩️ Dev. parcial' : '↩️ Dev. total'}</td>
+      <td style="padding:6px 8px;">${r.motivo || '—'}</td>
+      <td style="padding:6px 8px;font-size:10.5px;color:var(--text-2);">${(r.produtosAfetados || []).map(p => p.produto).join(', ') || '—'}</td>
+      <td style="padding:6px 8px;text-align:right;">${(r.volumeAfetadoM3 || 0).toFixed(1)} m³</td>
+      <td style="padding:6px 8px;">${r.tipo === 'reentrega' ? (r.reentregaLocal === 'outra_viagem' ? `Viagem ${r.reentregaViagemCodigo || '—'}` : 'Mesma viagem') : '—'}</td>
+      <td style="padding:6px 8px;text-align:center;"><button class="btn btn-sm" style="font-size:10px;padding:2px 7px;color:#DC2626;border-color:rgba(220,38,38,0.3);" onclick="excluirOcorrencia('${r.id}')" title="Excluir esse registro (lançado errado, duplicado, etc.)">🗑</button></td>
+    </tr>`).join('');
+  const periodoTxt = datasSnap.length ? `${_dashFmtDataBr(datasSnap[0])} a ${_dashFmtDataBr(datasSnap[datasSnap.length - 1])}` : 'período carregado';
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:14px;">Período: <b>${periodoTxt}</b> · respeitando os filtros de Cliente/Operação/Transportadora ativos no topo, e o filtro de Pedido desta seção (Segmento não se aplica aqui).</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px;">
+      <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:20px;font-weight:700;color:#DC2626;">${totalDevolucoes}</div>
+        <div style="font-size:10.5px;color:var(--text-3);">Devoluções</div>
+      </div>
+      <div style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:20px;font-weight:700;color:#D97706;">${totalReentregas}</div>
+        <div style="font-size:10.5px;color:var(--text-3);">Reentregas</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.03);border:1px solid var(--border-dk);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:20px;font-weight:700;">${volumeTotal.toFixed(1)} m³</div>
+        <div style="font-size:10.5px;color:var(--text-3);">Volume afetado no total</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.03);border:1px solid var(--border-dk);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:20px;font-weight:700;">${registros.length}</div>
+        <div style="font-size:10.5px;color:var(--text-3);">Ocorrências no total</div>
+      </div>
+    </div>
+    ${_dashVolumeLiquidoHtml(volumeDevolvido)}
+    ${_dashPercentualOcorrenciasHtml(totalDevolucoes, totalReentregas)}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-bottom:18px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Volume afetado por operação</div>
+        <div id="dash-dev-chart-operacao"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Ocorrências por motivo</div>
+        <div id="dash-dev-chart-motivo"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Volume afetado por transportadora</div>
+        <div id="dash-dev-chart-transportadora"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Volume afetado por produto</div>
+        <div id="dash-dev-chart-produto"></div>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Ranking de clientes (ofensores)</div>
+    <div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--border-dk);border-radius:10px;margin-bottom:18px;">
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:420px;">
+        <thead style="position:sticky;top:0;background:var(--surface);"><tr style="background:rgba(0,0,0,0.03);">
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">#</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">CLIENTE</th>
+          <th style="padding:7px 8px;text-align:right;color:var(--text-3);">REGISTROS</th>
+          <th style="padding:7px 8px;text-align:right;color:var(--text-3);">VOLUME AFETADO</th>
+        </tr></thead>
+        <tbody>${arrCliente.map((c, i) => `
+          <tr style="border-top:1px solid var(--border-dk);">
+            <td style="padding:6px 8px;color:var(--text-3);">${i + 1}</td>
+            <td style="padding:6px 8px;font-weight:600;">${c.nome}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#DC2626;">${c.qtd}</td>
+            <td style="padding:6px 8px;text-align:right;">${c.volume.toFixed(1)} m³</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;">Ocorrências (${registros.length > 200 ? 'últimas 200 de ' + registros.length : registros.length})</div>
+    <div style="overflow-x:auto;max-height:360px;overflow-y:auto;border:1px solid var(--border-dk);border-radius:10px;">
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:900px;">
+        <thead style="position:sticky;top:0;background:var(--surface);"><tr style="background:rgba(0,0,0,0.03);">
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">ENTREGA</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">VIAGEM</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">CLIENTE</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">TIPO</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">MOTIVO</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">PRODUTOS</th>
+          <th style="padding:7px 8px;text-align:right;color:var(--text-3);">VOLUME</th>
+          <th style="padding:7px 8px;text-align:left;color:var(--text-3);">REENTREGA</th>
+          <th style="padding:7px 8px;text-align:center;color:var(--text-3);"></th>
+        </tr></thead>
+        <tbody>${linhasTabela}</tbody>
+      </table>
+    </div>`;
+  dashBarChart('dash-dev-chart-operacao', arrOperacao, i => i.volume, '#DC2626', 'm³', i => i.nome);
+  dashBarChart('dash-dev-chart-motivo', arrMotivo, i => i.qtd, '#D97706', 'ocorr.', i => i.nome);
+  dashBarChart('dash-dev-chart-transportadora', arrTransportadora, i => i.volume, '#4F46E5', 'm³', i => i.nome);
+  dashBarChart('dash-dev-chart-produto', arrProduto, i => i.volume, '#059669', 'm³', i => i.nome);
+}
+function dashExportarDevolucoes() {
+  if (!_dashUltimosRegistrosDevolucao.length) { alert('Gere o relatório primeiro.'); return; }
+  if (typeof XLSX === 'undefined') { alert('Biblioteca SheetJS não encontrada.'); return; }
+  const linhas = _dashUltimosRegistrosDevolucao.map(r => ({
+    'Data de Entrega': r.dataEntregaOriginal || '', 'Viagem': r.viagemId || '', 'Placa': r.placa || '',
+    'Transportadora': r.transportadora || '', 'Operação': r.operacao || '', 'Cliente': r.cliente || '',
+    'Código SAP': r.codigoSAP || '', 'Pedido': r.pedidoId ?? '', 'Tipo': r.tipo || '', 'Motivo': r.motivo || '',
+    'Produtos afetados': (r.produtosAfetados || []).map(p => `${p.produto} (${(p.volume||0).toFixed(1)} m³)`).join(', '),
+    'Volume Afetado (m³)': r.volumeAfetadoM3 || 0, 'Reentrega — Local': r.reentregaLocal || '',
+    'Reentrega — Viagem': r.reentregaViagemCodigo || '', 'Nova Data de Entrega': r.novaDataEntrega || '',
+    'Observação': r.observacao || '', 'Registrado em': r.criadoEm || '',
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  XLSX.utils.book_append_sheet(wb, ws, 'Devoluções e Reentregas');
+  const { arrCliente } = _dashAgregarDevolucoes(_dashUltimosRegistrosDevolucao);
+  const wsRanking = XLSX.utils.json_to_sheet(arrCliente.map((c, i) => ({
+    '#': i + 1, 'Cliente': c.nome, 'Registros': c.qtd, 'Volume Afetado (m³)': parseFloat(c.volume.toFixed(1)),
+  })));
+  XLSX.utils.book_append_sheet(wb, wsRanking, 'Ranking de Clientes');
+  XLSX.writeFile(wb, `Devolucoes_Reentregas_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+// ── Exportação em PDF — gráficos desenhados em VETOR direto no PDF (não é
+// print de tela), mesmo padrão de marca já usado no resto do sistema
+// (cabeçalho verde-escuro NEXTA, tabela com o mesmo estilo de "Rotas -
+// Fretes", rodapé "Desenvolvido por..."). ────────────────────────────────
+function dashExportarDevolucoesPDF() {
+  if (!_dashUltimosRegistrosDevolucao.length) { alert('Gere o relatório primeiro.'); return; }
+  const { jsPDF } = window.jspdf || {};
+  if (!jsPDF || !window.jspdf) { showToast('jsPDF não carregado.', false); return; }
+  const registros = _dashUltimosRegistrosDevolucao;
+  const { totalDevolucoes, totalReentregas, volumeTotal, volumeDevolvido, arrOperacao, arrMotivo, arrTransportadora, arrProduto, arrCliente } = _dashAgregarDevolucoes(registros);
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 12;
+  let y = 0;
+
+  // Cabeçalho — mesma paleta verde-escura/lima já usada na marca NEXTA
+  doc.setFillColor(40, 60, 30);
+  doc.rect(0, 0, pageW, 24, 'F');
+  doc.setTextColor(200, 240, 50);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text('NEXTA', marginX, 14);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Gestão de Frota', marginX + 27, 14);
+  doc.setFontSize(11.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Relatório de Devoluções e Reentregas', marginX, 20.5);
+  y = 32;
+
+  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · ${registros.length} ocorrência(s) no período/filtros atuais`, marginX, y);
+  y += 8;
+
+  // KPIs — mesmas 4 caixas da tela, mesmas cores
+  const kpis = [
+    { label: 'Devoluções', valor: String(totalDevolucoes), cor: [220, 38, 38] },
+    { label: 'Reentregas', valor: String(totalReentregas), cor: [217, 119, 6] },
+    { label: 'Volume afetado', valor: volumeTotal.toFixed(1) + ' m³', cor: [55, 65, 81] },
+    { label: 'Ocorrências', valor: String(registros.length), cor: [55, 65, 81] },
+  ];
+  const gap = 4;
+  const boxW = (pageW - marginX * 2 - gap * 3) / 4;
+  kpis.forEach((k, i) => {
+    const x = marginX + i * (boxW + gap);
+    doc.setDrawColor(222, 222, 222);
+    doc.setFillColor(248, 248, 248);
+    doc.roundedRect(x, y, boxW, 20, 2, 2, 'FD');
+    doc.setTextColor(k.cor[0], k.cor[1], k.cor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(k.valor, x + 4, y + 11);
+    doc.setTextColor(120, 120, 120);
+    doc.setFontSize(7.3);
+    doc.setFont('helvetica', 'normal');
+    doc.text(k.label, x + 4, y + 17);
+  });
+  y += 28;
+
+  // Volume do período (bruto reconstruído a partir do líquido + devolvido)
+  // — mesma conta da tela; o desconto já é aplicado na fonte agora, então
+  // _dashUltimosKPIs.volume JÁ é o valor líquido.
+  const liquidoPdf = _dashUltimosKPIs?.volume;
+  if (typeof liquidoPdf === 'number') {
+    const brutoPdf = liquidoPdf + volumeDevolvido;
+    doc.setFillColor(248, 248, 248);
+    doc.setDrawColor(222, 222, 222);
+    doc.roundedRect(marginX, y, pageW - marginX * 2, 14, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+    doc.text(`Volume do período: ${brutoPdf.toFixed(1)} m³ brutos - ${volumeDevolvido.toFixed(1)} m³ devolvidos = ${liquidoPdf.toFixed(1)} m³`, marginX + 4, y + 6);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+    doc.text('Reentrega não desconta (produto ainda vai ser entregue, só depois). Esse desconto já é o mesmo aplicado no card "Volume m³" do Dashboard.', marginX + 4, y + 11);
+    y += 18;
+  }
+
+  // Percentual de ocorrências sobre as entregas do período — mesma conta da tela
+  const totalEntregasPdf = _dashUltimosKPIs?.entregas;
+  if (typeof totalEntregasPdf === 'number' && totalEntregasPdf > 0) {
+    const totalOcorrenciasPdf = totalDevolucoes + totalReentregas;
+    const pctTotalPdf = (totalOcorrenciasPdf / totalEntregasPdf) * 100;
+    const pctDevolucaoPdf = (totalDevolucoes / totalEntregasPdf) * 100;
+    const pctReentregaPdf = (totalReentregas / totalEntregasPdf) * 100;
+    doc.setFillColor(248, 248, 248);
+    doc.setDrawColor(222, 222, 222);
+    doc.roundedRect(marginX, y, pageW - marginX * 2, 14, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+    doc.text(`Ocorrências sobre entregas: ${pctTotalPdf.toFixed(2)}% total  ·  Devolução ${pctDevolucaoPdf.toFixed(2)}%  ·  Reentrega ${pctReentregaPdf.toFixed(2)}%`, marginX + 4, y + 6);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+    doc.text(`${totalOcorrenciasPdf} ocorrência(s) sobre ${totalEntregasPdf} entrega(s) do período (mesmo total do card "Entregas" do Dashboard).`, marginX + 4, y + 11);
+    y += 18;
+  }
+
+  // Gráficos de barra — desenhados direto no PDF (rect + text), não é
+  // captura de tela: fica nítido em qualquer zoom/impressão.
+  const desenharGrafico = (titulo, itens, cor, sufixo, valorFn, casasDecimais) => {
+    if (y > pageH - 34) { doc.addPage(); y = 15; } // pula de página se não sobrar espaço decente pro título + pelo menos 1 barra
+    doc.setTextColor(30, 30, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(titulo, marginX, y);
+    y += 5;
+    if (!itens.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(150, 150, 150);
+      doc.text('Sem dados.', marginX, y); y += 7;
+      return;
+    }
+    const maxV = Math.max(...itens.map(valorFn), 1);
+    // Rótulo (nome) QUEBRA em várias linhas em vez de cortar com "…" — a
+    // altura de cada linha do gráfico se ajusta sozinha ao número de linhas
+    // que o nome precisou, pra nunca truncar (ex.: nome de produto do SAP,
+    // ou motivo mais longo).
+    const rotuloW = 58, valorW = 22;
+    const barW = pageW - marginX * 2 - rotuloW - valorW;
+    doc.setFontSize(7.6);
+    itens.forEach(item => {
+      const nome = String(item.nome || '');
+      const linhasNome = doc.splitTextToSize(nome, rotuloW - 2);
+      const alturaLinha = Math.max(7, linhasNome.length * 3.3 + 2);
+      if (y + alturaLinha > pageH - 10) { doc.addPage(); y = 15; }
+      const v = valorFn(item);
+      const pct = Math.max(0.01, v / maxV);
+      doc.setFontSize(7.6);
+      doc.setTextColor(60, 60, 60);
+      doc.setFont('helvetica', 'normal');
+      doc.text(linhasNome, marginX, y + 3);
+      const barY = y + Math.max(0, (alturaLinha - 4) / 2);
+      doc.setFillColor(232, 232, 232);
+      doc.roundedRect(marginX + rotuloW, barY, barW, 4, 1, 1, 'F');
+      doc.setFillColor(cor[0], cor[1], cor[2]);
+      doc.roundedRect(marginX + rotuloW, barY, Math.max(2, barW * pct), 4, 1, 1, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(40, 40, 40);
+      doc.text(`${v.toFixed(casasDecimais)} ${sufixo}`.trim(), marginX + rotuloW + barW + 2, barY + 3.3);
+      y += alturaLinha;
+    });
+    y += 5;
+  };
+  desenharGrafico('Volume afetado por operação', arrOperacao, [220, 38, 38], 'm³', i => i.volume, 1);
+  desenharGrafico('Ocorrências por motivo', arrMotivo, [217, 119, 6], '', i => i.qtd, 0);
+  desenharGrafico('Volume afetado por transportadora', arrTransportadora, [79, 70, 229], 'm³', i => i.volume, 1);
+  desenharGrafico('Volume afetado por produto', arrProduto, [5, 150, 105], 'm³', i => i.volume, 1);
+
+  // Ranking de clientes (ofensores) — tabular, mesmo estilo das demais
+  if (typeof doc.autoTable === 'function') {
+    if (y > pageH - 30) { doc.addPage(); y = 15; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 30, 30);
+    doc.text('Ranking de clientes (ofensores)', marginX, y);
+    y += 4;
+    doc.autoTable({
+      head: [['#', 'Cliente', 'Registros', 'Volume afetado (m³)']],
+      body: arrCliente.map((c, i) => [String(i + 1), c.nome, String(c.qtd), c.volume.toFixed(1)]),
+      startY: y,
+      styles: { fontSize: 7.5, cellPadding: 1.6 },
+      headStyles: { fillColor: [40, 60, 30], textColor: [255, 255, 255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 240] },
+      margin: { left: marginX, right: marginX, bottom: 14 },
+      theme: 'grid',
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // Tabela detalhada — mesmo estilo já usado no relatório de Rotas - Fretes
+  if (typeof doc.autoTable !== 'function') {
+    showToast('jspdf-autotable não carregado — PDF gerado sem a tabela detalhada.', false);
+  } else {
+    if (y > pageH - 30) { doc.addPage(); y = 15; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 30, 30);
+    doc.text('Ocorrências', marginX, y);
+    y += 4;
+    doc.autoTable({
+      head: [['Entrega', 'Viagem', 'Placa', 'Cliente', 'Tipo', 'Motivo', 'Produtos', 'Volume (m³)', 'Reentrega']],
+      body: registros.map(r => [
+        r.dataEntregaOriginal || '', r.viagemId || '', r.placa || '', r.cliente || '',
+        r.tipo === 'reentrega' ? 'Reentrega' : r.tipo === 'devolucao_parcial' ? 'Dev. parcial' : 'Dev. total',
+        r.motivo || '', (r.produtosAfetados || []).map(p => p.produto).join(', ') || '-', (r.volumeAfetadoM3 || 0).toFixed(1),
+        r.tipo === 'reentrega' ? (r.reentregaLocal === 'outra_viagem' ? `Viagem ${r.reentregaViagemCodigo || ''}` : 'Mesma viagem') : '-',
+      ]),
+      startY: y,
+      styles: { fontSize: 7.3, cellPadding: 1.5 },
+      headStyles: { fillColor: [40, 60, 30], textColor: [255, 255, 255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 240] },
+      margin: { left: marginX, right: marginX, bottom: 14 },
+      theme: 'grid',
+      didDrawPage: (dados) => {
+        doc.setFontSize(7.3);
+        doc.setTextColor(150, 150, 150);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Desenvolvido por Natanael Lopes Pires · NEXTA Gestão de Frota', marginX, pageH - 6);
+        doc.text(`Página ${dados.pageNumber}`, pageW - marginX - 16, pageH - 6);
+      },
+    });
+  }
+  doc.save(`Devolucoes_Reentregas_${new Date().toISOString().slice(0, 10)}.pdf`);
+  showToast('PDF gerado ✓', true);
+}
+// Chamado pelo excluirOcorrencia() (definido em roteirizador.js — os dois
+// arquivos compartilham o mesmo escopo global) depois de excluir um
+// registro, pra esse relatório se atualizar sozinho se já estiver aberto
+// nessa sessão, sem precisar clicar em "Gerar Relatório" de novo.
+function dashAtualizarAposExclusaoOcorrencia() {
+  if (document.getElementById('dash-devolucoes-box')?.innerHTML.includes('Ocorrências (')) {
+    dashCarregarDevolucoes();
+  }
+}
+window.dashCarregarDevolucoes = dashCarregarDevolucoes;
+window.dashAtualizarAposExclusaoOcorrencia = dashAtualizarAposExclusaoOcorrencia;
+window.dashExportarDevolucoes = dashExportarDevolucoes;
+window.dashExportarDevolucoesPDF = dashExportarDevolucoesPDF;
+
+
+function dashAgregarProdutos(snapshots, cidadesFiltro, clientesEfetivos) {
+  const produtos = {}; // nome do produto -> { volume, porCliente: { chaveNormalizada: { nomeExibido, volume, datas:Set } } }
+  const _efetivosNormProdutos = _dashNormalizarSetClientes(clientesEfetivos);
+  (snapshots || []).forEach(snap => {
+    const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+    vecs.forEach(v => {
+      const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach(vi => {
+        if (cidadesFiltro && !cidadesFiltro.has(dashCidadeOperacaoViagem(vi, v, terms))) return;
+        (vi.paradas || []).forEach(p => {
+          const nomeCliente = (p.pedido || {}).cliente || (p.pedido || {}).nomeCliente || p.nome || '?';
+          if (clientesEfetivos && !_dashNomeBateFiltro(nomeCliente, _efetivosNormProdutos)) return;
+          // Agrupa por CLIENTE NORMALIZADO (não pelo texto cru) — assim
+          // "AUTO POSTO MORAES & MORAES LTDA" e "AUTO POSTO MORAES E
+          // MORAES LTDA" (mesmo cliente, grafias diferentes) viram UMA
+          // linha só na tabela de ciclo de compra, em vez de duas linhas
+          // com metade do volume real cada — exatamente o que fazia o
+          // volume desse cliente parecer bem menor do que realmente é.
+          const chaveCliente = dashNormalizarNomeCliente(nomeCliente);
+          const dataEntrega = p.pedido?.dataEntregaLogistica || '';
+          (p.itens || []).forEach(it => {
+            // Remove o código SAP do início ("2000031 - ") e normaliza
+            // maiúsculas/espaços — mantém o resto do nome (inclusive
+            // "PETRONAS") intacto. A normalização existe porque a MESMA
+            // descrição de produto pode vir com capitalização ou espaços
+            // levemente diferentes entre lotes de importação diferentes
+            // (ex.: um Excel com "Petronas Primax Gasolina" e outro com
+            // "PETRONAS PRIMAX GASOLINA") — sem normalizar, isso fragmentava
+            // o volume de UM produto em várias barras pequenas no gráfico,
+            // cada uma parecendo um produto raro/pouco comprado quando na
+            // verdade era tudo a mesma coisa.
+            const nomeProdBruto = (it.produto || '').toString().replace(/^\d+\s*-\s*/, '').trim();
+            const nomeProd = nomeProdBruto ? nomeProdBruto.toUpperCase().replace(/\s+/g, ' ') : 'PRODUTO NÃO IDENTIFICADO';
+            const vol = it.volume || 0;
+            if (vol <= 0) return;
+            if (!produtos[nomeProd]) produtos[nomeProd] = { volume: 0, porCliente: {} };
+            produtos[nomeProd].volume += vol;
+            if (!produtos[nomeProd].porCliente[chaveCliente]) produtos[nomeProd].porCliente[chaveCliente] = { nomeExibido: nomeCliente, volume: 0, datas: new Set() };
+            // Mesmo critério de dashNomeCanônico (prefere "E" por extenso
+            // sobre "&", depois o nome mais completo) — consistência com o
+            // nome que aparece nos KPIs/filtro pro mesmo cliente.
+            produtos[nomeProd].porCliente[chaveCliente].nomeExibido =
+              dashNomeCanônico(produtos[nomeProd].porCliente[chaveCliente].nomeExibido, nomeCliente);
+            produtos[nomeProd].porCliente[chaveCliente].volume += vol;
+            if (dataEntrega) produtos[nomeProd].porCliente[chaveCliente].datas.add(dataEntrega);
+          });
+        });
+      });
+    });
+  });
+  return Object.entries(produtos)
+    .map(([nome, info]) => ({ nome, volume: info.volume, porCliente: info.porCliente }))
+    .sort((a, b) => b.volume - a.volume);
+}
+
+// Intervalo médio (em dias) entre entregas consecutivas — recebe um Set/array
+// de datas "DD/MM/YYYY", devolve null se não há pelo menos 2 datas distintas
+// (não dá pra falar de "ciclo" com um pedido só).
+function _dashCicloMedioDias(datasIter) {
+  const tempos = [...datasIter].map(d => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d || '');
+    return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : null;
+  }).filter(t => t !== null).sort((a, b) => a - b);
+  if (tempos.length < 2) return null;
+  let somaDias = 0;
+  for (let i = 1; i < tempos.length; i++) somaDias += (tempos[i] - tempos[i - 1]) / 86400000;
+  return somaDias / (tempos.length - 1);
+}
+
+function dashProdutosChart(containerId, produtos) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!produtos.length) { el.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:12px">Sem dados de produto para este período/filtro.</div>'; return; }
+  const maxV = Math.max(...produtos.map(p => p.volume), 1);
+  el.innerHTML = produtos.map(p => {
+    const pct = Math.round((p.volume / maxV) * 100);
+    const ativo = p.nome === _dashProdutoSelecionado;
+    const nomeSafe = p.nome.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `<div onclick="dashSelecionarProduto('${nomeSafe}')"
+        style="margin-bottom:10px;cursor:pointer;padding:7px 9px;border-radius:8px;background:${ativo ? 'rgba(139,92,246,0.14)' : 'transparent'};border:1px solid ${ativo ? '#8B5CF6' : 'transparent'};transition:background .15s;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+        <span style="font-size:12px;font-weight:700;color:var(--text,#000);" title="${p.nome}">${ativo ? '▶ ' : ''}${p.nome}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text,#000);white-space:nowrap;margin-left:10px;">${p.volume.toFixed(1)} m³</span>
+      </div>
+      <div style="height:10px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:#8B5CF6;border-radius:99px;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function dashSelecionarProduto(nome) {
+  _dashProdutoSelecionado = (_dashProdutoSelecionado === nome) ? null : nome;
+  dashProdutosChart('dash-chart-produtos', _dashUltimosProdutos);
+  dashRenderCicloProduto();
+}
+window.dashSelecionarProduto = dashSelecionarProduto;
+
+// Painel de ciclo de compra: uma linha por cliente que comprou o produto
+// selecionado (dentro do filtro atual) — volume total, nº de pedidos,
+// intervalo médio entre pedidos, e volume médio por pedido (a "legenda"
+// pedida: quanto ele costuma pedir de cada vez). Se o filtro de Clientes
+// já estiver reduzido a um só, a tabela naturalmente sai com uma linha só.
+function dashRenderCicloProduto() {
+  const el = document.getElementById('dash-ciclo-produto');
+  if (!el) return;
+  if (!_dashProdutoSelecionado) {
+    el.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:12px;">Clique em um produto acima pra ver o ciclo de compra por cliente.</div>';
+    return;
+  }
+  const prod = _dashUltimosProdutos.find(p => p.nome === _dashProdutoSelecionado);
+  if (!prod) { el.innerHTML = ''; return; }
+  const linhas = Object.entries(prod.porCliente).map(([, info]) => {
+    const nPedidos = info.datas.size || 1;
+    const cicloMedio = _dashCicloMedioDias(info.datas);
+    const volMedio = info.volume / nPedidos;
+    // Consumo/dia = quanto pede de cada vez ÷ de quantos em quantos dias
+    // pede — só dá pra calcular com pelo menos 2 pedidos (senão não há
+    // ciclo nenhum pra dividir).
+    const consumoDia = cicloMedio ? volMedio / cicloMedio : null;
+    return { nomeCliente: info.nomeExibido, volume: info.volume, nPedidos, cicloMedio, volMedio, consumoDia };
+  }).sort((a, b) => b.volume - a.volume);
+  el.innerHTML = `
+    <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:2px;">📦 ${_dashProdutoSelecionado}</div>
+    <div style="font-size:10.5px;color:var(--text-3);margin-bottom:10px;">Ciclo de compra por cliente — intervalo médio entre pedidos, volume médio pedido de cada vez, e consumo médio por dia</div>
+    <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead>
+        <tr style="text-align:left;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:.03em;">
+          <th style="padding:6px 8px;">Cliente</th>
+          <th style="padding:6px 8px;">Volume Total</th>
+          <th style="padding:6px 8px;">Nº de Pedidos</th>
+          <th style="padding:6px 8px;">Ciclo Médio de Compra</th>
+          <th style="padding:6px 8px;">Volume Médio por Pedido</th>
+          <th style="padding:6px 8px;">Consumo Médio por Dia</th>
+        </tr>
+      </thead>
+      <tbody>${linhas.map(l => `
+        <tr style="border-top:1px solid var(--border-dk);">
+          <td style="padding:7px 8px;font-weight:600;color:var(--text);">${l.nomeCliente}</td>
+          <td style="padding:7px 8px;color:var(--text);">${l.volume.toFixed(1)} m³</td>
+          <td style="padding:7px 8px;color:var(--text);">${l.nPedidos}</td>
+          <td style="padding:7px 8px;color:var(--text);">${l.cicloMedio != null ? `a cada ${l.cicloMedio.toFixed(1).replace('.0','')} dia${Math.round(l.cicloMedio)===1?'':'s'}` : '— (só 1 pedido no período)'}</td>
+          <td style="padding:7px 8px;color:var(--text);font-weight:600;">${l.volMedio.toFixed(1)} m³/pedido</td>
+          <td style="padding:7px 8px;color:var(--text);font-weight:600;">${l.consumoDia != null ? `${l.consumoDia.toFixed(2)} m³/dia` : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+// ── Gráfico de ocupação por cliente (barras horizontais HTML) ──────────────
+function dashOcupClienteChart(containerId, itens) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!itens.length) {
+    el.innerHTML = '<div style="color:#888;font-size:12px;padding:12px">Sem dados de ocupação</div>';
+    return;
+  }
+  el.innerHTML = itens.map(function(item) {
+    const pct = Math.min(Math.round(item.ocup), 100);
+    const cor = pct >= 90 ? '#4caf50' : pct >= 60 ? '#f0be40' : '#f06060';
+    const vol = item.volMedio != null ? item.volMedio + ' m³/ent.' : '';
+    return '<div style="margin-bottom:14px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:8px;">'
+      + '<span style="font-size:12px;font-weight:700;color:var(--text,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + item.nome + '</span>'
+      + '<span style="display:flex;gap:12px;align-items:center;white-space:nowrap;flex-shrink:0;">'
+      + (vol ? '<span style="font-size:11px;font-weight:500;color:var(--text-3,#777);">' + vol + '</span>' : '')
+      + '<span style="font-size:13px;font-weight:800;color:' + cor + ';min-width:36px;text-align:right;">' + pct + '%</span>'
+      + '</span>'
+      + '</div>'
+      + '<div style="position:relative;height:14px;background:rgba(0,0,0,0.07);border-radius:99px;overflow:hidden;">'
+      + '<div style="width:' + pct + '%;height:100%;background:' + cor + ';border-radius:99px;transition:width .6s ease;"></div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+// ── Gráfico de ocupação por viagem (canvas) — mantido para compatibilidade ──
+function dashOcupChart(canvasId, itens) {
+  dashOcupClienteChart(canvasId, itens.map(function(i){ return { nome: i.label, ocup: i.ocup }; }));
+}
+// ── Mapa Histórico ─────────────────────────────────────────────────────────
+let _dashMap = null;
+let _dashMapLayers = [];
+function dashRenderMapa(rotasMap) {
+  if (typeof L === 'undefined') return;
+  const el = document.getElementById('dash-mapa');
+  if (!el) return;
+  // Inicializar mapa uma só vez
+  if (!_dashMap) {
+    // renderer: L.canvas() faz TODAS as linhas (polylines) do mapa serem
+    // desenhadas numa única camada <canvas> compartilhada, em vez de 1
+    // elemento SVG por linha no DOM. Com muito histórico (uma linha por
+    // trecho de cada viagem já roteirizada), isso evita centenas/milhares
+    // de elementos DOM e é bem mais rápido pra desenhar e pra rolar a
+    // página. Não muda a aparência nem os marcadores (que continuam
+    // divIcon, sempre DOM — só as linhas usam canvas).
+    _dashMap = L.map('dash-mapa', { zoomControl: true, attributionControl: false, renderer: L.canvas() });
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${window.CARTO_API_KEY ? '?key=' + window.CARTO_API_KEY : ''}`, {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(_dashMap);
+  }
+  // Limpar camadas anteriores
+  _dashMapLayers.forEach(l => _dashMap.removeLayer(l));
+  _dashMapLayers = [];
+  if (!rotasMap.length) return;
+  const bounds = [];
+  const terminaisVistos = new Set();
+  const clientesVistos = {};
+  rotasMap.forEach((rota, ri) => {
+    const cor = `hsl(${(ri * 47) % 360},70%,55%)`;
+    // Terminal
+    if (rota.termLat && rota.termLon) {
+      const tKey = `${rota.termLat.toFixed(4)},${rota.termLon.toFixed(4)}`;
+      if (!terminaisVistos.has(tKey)) {
+        terminaisVistos.add(tKey);
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="width:14px;height:14px;background:#00A499;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px #00A499;"></div>`,
+          iconSize: [14,14], iconAnchor: [7,7]
+        });
+        const m = L.marker([rota.termLat, rota.termLon], { icon })
+          .bindPopup(`<b>Terminal</b><br><small>${rota.placa}</small>`);
+        m.addTo(_dashMap);
+        _dashMapLayers.push(m);
+        bounds.push([rota.termLat, rota.termLon]);
+      }
+    }
+    // Paradas e linhas
+    let prev = rota.termLat ? [rota.termLat, rota.termLon] : null;
+    rota.paradas.forEach(par => {
+      if (!par.lat || !par.lon) return;
+      bounds.push([par.lat, par.lon]);
+      // Linha do terminal até o cliente
+      if (prev) {
+        const line = L.polyline([prev, [par.lat, par.lon]], {
+          color: cor, weight: 1.5, opacity: 0.45, dashArray: '4 4'
+        }).addTo(_dashMap);
+        _dashMapLayers.push(line);
+      }
+      prev = [par.lat, par.lon];
+      // Marcador cliente (agrupa múltiplas visitas)
+      const cKey = `${par.lat.toFixed(4)},${par.lon.toFixed(4)}`;
+      if (!clientesVistos[cKey]) {
+        clientesVistos[cKey] = { lat: par.lat, lon: par.lon, nome: par.nome, visitas: 0, vol: 0 };
+      }
+      clientesVistos[cKey].visitas++;
+      clientesVistos[cKey].vol += par.vol || 0;
+    });
+  });
+  // Renderizar marcadores de clientes
+  Object.values(clientesVistos).forEach(c => {
+    const r = Math.min(12, 6 + c.visitas * 1.5);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:${r*2}px;height:${r*2}px;background:#4F46E5;border:1.5px solid rgba(255,255,255,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:700;">${c.visitas>1?c.visitas:''}</div>`,
+      iconSize: [r*2, r*2], iconAnchor: [r, r]
+    });
+    const m = L.marker([c.lat, c.lon], { icon })
+      .bindPopup(`<b>${c.nome}</b><br>${c.visitas} visita(s)<br>${c.vol.toFixed(1)} m³`);
+    m.addTo(_dashMap);
+    _dashMapLayers.push(m);
+  });
+  // Ajustar zoom
+  if (bounds.length) {
+    try { _dashMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 }); } catch(e) {}
+  }
+  // Forçar resize após render
+  setTimeout(() => _dashMap && _dashMap.invalidateSize(), 200);
+}
+// ── Sincronizar: relê o histórico em disco e atualiza tudo ────────────────
+window.dashSincronizar = async function() {
+  const btn = document.getElementById('dash-sync-btn');
+  if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+  try {
+    // Se a pasta do histórico ainda não foi selecionada, pede ao usuário
+    if (!window.dirHandleHistorico) {
+      if (!window.showDirectoryPicker) {
+        showToast('Seu navegador não suporta acesso a pastas. Use Chrome ou Edge.', false);
+        return;
+      }
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'read' });
+        window.dirHandleHistorico = handle;
+        // Persiste no mesmo IndexedDB usado pela aba "Histórico" — assim a
+        // pasta escolhida aqui também é lembrada em sessões futuras (sujeito
+        // à reconfirmação de permissão do navegador).
+        if (typeof _histSalvarHandle === 'function') {
+          try { await _histSalvarHandle(handle); } catch(e) {}
+        }
+      } catch(e) {
+        if (e.name !== 'AbortError') showToast('Pasta não selecionada.', false);
+        return;
+      }
+    }
+    await dashPopularMeses();
+    if (_dashPeriodoPersonalizado) {
+      await window.dashCarregarPeriodoPersonalizado(_dashPeriodoPersonalizado.ini, _dashPeriodoPersonalizado.fim);
+    } else if (_dashMesesSelecionados) {
+      await window.dashCarregarMesesSelecionados([..._dashMesesSelecionados]);
+    } else {
+      await window.dashCarregarTodos();
+    }
+    dashAtualizarClientesInativos();
+    // Agenda de Fechamento lê o histórico completo à parte (não respeita o
+    // período selecionado, igual "Rotas - Roteirização") — não tem mais
+    // botão próprio de carregar, então sincroniza junto daqui. Não trava o
+    // "Dashboard sincronizado" principal por causa dela (roda em paralelo,
+    // com seu próprio tratamento de erro).
+    if (typeof dashCarregarAgendaFechamento === 'function') {
+      dashCarregarAgendaFechamento(true).catch(e => console.warn('[dashSincronizar] falha ao atualizar Agenda de Fechamento:', e));
+    }
+    showToast('Dashboard sincronizado com o histórico ✅');
+  } catch(e) {
+    showToast('Erro ao sincronizar: ' + e.message, false);
+  } finally {
+    if (btn) { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }
+  }
+};
+// ── Reseta todos os filtros do Dashboard (Clientes/Operação/Segmento) ──────
+// Usado pelos atalhos de período ("Todos períodos" e "Hoje") — trocar o
+// período deve ser um ponto de partida limpo, sem carregar filtros de
+// cliente/cidade/segmento que ficaram marcados de uma navegação anterior
+// (o que fazia "Todos períodos" parecer que não tinha "resetado" nada,
+// mesmo mudando os dados exibidos).
+function _dashResetarTodosFiltros() {
+  _dashClientesSelecionados = null;
+  _dashCidadesSelecionadas = null;
+  _dashSegmentosSelecionados = null;
+  _dashBandeirasSelecionadas = null;
+  _dashTransportadorasSelecionadas = null;
+  const badgeCli = document.getElementById('dash-cli-badge'); if (badgeCli) badgeCli.style.display = 'none';
+  const badgeCid = document.getElementById('dash-cid-badge'); if (badgeCid) badgeCid.style.display = 'none';
+  const badgeTransp = document.getElementById('dash-transp-badge'); if (badgeTransp) badgeTransp.style.display = 'none';
+  _dashAtualizarBadgeSegmento('dash-seg-badge', null);
+  _dashAtualizarBadgeSegmento('dash-band-badge', null);
+  const buscaCli = document.getElementById('dash-cli-search'); if (buscaCli) buscaCli.value = '';
+  const buscaCid = document.getElementById('dash-cid-search'); if (buscaCid) buscaCid.value = '';
+  const buscaTransp = document.getElementById('dash-transp-search'); if (buscaTransp) buscaTransp.value = '';
+}
+// ── Carregar por mês selecionado (uso legado — a UI agora chama
+// dashCarregarMesesSelecionados, que aceita 1 ou mais meses) ───────────────
+window.dashCarregarMes = async function(chave) {
+  if (!chave) return;
+  const store = await dashGetStoreMerged();
+  _dashPeriodoAtualDescricao = _dashRotulosMeses[chave] || dashChaveLabel(chave);
+  dashRender(store[chave] || []);
+};
+// ── Carregar todos os períodos ─────────────────────────────────────────────
+window.dashCarregarTodos = async function() {
+  _dashResetarTodosFiltros();
+  const store = await dashGetStoreMerged();
+  const todos = Object.values(store).flat();
+  _dashPeriodoAtualDescricao = 'Todos os períodos';
+  // sem isso, o painel de Período continuava mostrando os meses/intervalo
+  // selecionados anteriormente mesmo carregando TUDO — enganoso.
+  _dashMesesSelecionados = null;
+  _dashPeriodoPersonalizado = null;
+  const _ini = document.getElementById('dash-periodo-data-ini'); if (_ini) _ini.value = '';
+  const _fim = document.getElementById('dash-periodo-data-fim'); if (_fim) _fim.value = '';
+  _dashRenderListaMeses();
+  _dashAtualizarBadgePeriodo();
+  dashRender(todos);
+};
+// ── Resumo gerencial do dia — "Hoje" ────────────────────────────────────────
+// Mesmo Dashboard de sempre (todos os KPIs já existentes: viagens, entregas,
+// volume, ocupação, km, ranking, jornada, estouro, pedágio...), só que
+// filtrado pras roteirizações SALVAS hoje — pra um gestor bater o olho no
+// fim do dia e ver como a operação de hoje foi, sem precisar navegar por
+// mês/período. Não cria nenhum KPI novo — reaproveita 100% do que já existe,
+// só troca o conjunto de snapshots que entra no dashRender().
+window.dashCarregarHoje = async function() {
+  _dashResetarTodosFiltros();
+  const store = await dashGetStoreMerged();
+  const todos = Object.values(store).flat();
+  // Data local (não UTC) — evita virar o dia errado perto da meia-noite.
+  // Formato DD/MM/AAAA — é assim que datasEntrega guarda as datas (vem de
+  // pedido.dataEntregaLogistica), diferente de savedAt (que é AAAA-MM-DD).
+  const agora = new Date();
+  const hojeBr = `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()}`;
+  // Filtra pela data de ENTREGA real das viagens (datasEntrega), não pela
+  // data em que a roteirização foi salva (savedAt) — uma roteirização feita
+  // hoje pode ser toda pra entregas de amanhã ou depois, e uma salva ontem
+  // pode ter entregas de hoje. "Hoje" precisa refletir a operação de hoje,
+  // não quando alguém mexeu no sistema.
+  const doDia = todos.filter(s => Array.isArray(s.datasEntrega) && s.datasEntrega.includes(hojeBr));
+  _dashPeriodoAtualDescricao = `Hoje (${hojeBr})`;
+  // "Hoje" não é nenhum mês/intervalo do painel de Período — desmarca visualmente
+  _dashMesesSelecionados = null;
+  _dashPeriodoPersonalizado = null;
+  const _ini2 = document.getElementById('dash-periodo-data-ini'); if (_ini2) _ini2.value = '';
+  const _fim2 = document.getElementById('dash-periodo-data-fim'); if (_fim2) _fim2.value = '';
+  _dashRenderListaMeses();
+  _dashAtualizarBadgePeriodo();
+  dashRender(doDia);
+};
+// ── Ferramentas de Km Real são só pra admin (recalcular/desfazer mexe direto
+// nos arquivos do histórico compartilhado — não é algo pra qualquer usuário
+// operacional/transportador acionar sem querer). Checa via window.S/
+// window.USERS_DB, os mesmos que o resto do app usa pra saber o papel de
+// quem está logado (ver nexta-frota-main.js).
+function dashAtualizarVisibilidadeFerramentasKm() {
+  const el = document.getElementById('dash-km-admin-tools');
+  if (!el) return;
+  const role = window.USERS_DB && window.S && window.USERS_DB[window.S.user]?.role;
+  el.style.display = (role === 'admin') ? 'inline-flex' : 'none';
+}
+// ── Menu "Ferramentas" (admin) — Km Real / Diagnóstico / Diag. Pedágio ─────
+// Antes eram 3 botões coloridos soltos direto na barra, mesmo sendo ações
+// avançadas de uso raro. Agora ficam atrás de um menu, mesmo padrão visual
+// dos painéis de filtro (Clientes/Operação) já existentes nesta tela.
+function dashToggleFerramentas() {
+  const menu = document.getElementById('dash-tools-menu');
+  if (!menu) return;
+  menu.style.display = menu.style.display !== 'none' ? 'none' : 'block';
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('dash-tools-menu');
+  const btn  = document.getElementById('dash-tools-btn');
+  if (menu && menu.style.display !== 'none' && !menu.contains(e.target) && !btn?.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+window.dashToggleFerramentas = dashToggleFerramentas;
+// ═══════════════════════════════════════════════════════════════════════════
+// CLIENTES SEM COMPRAR (alerta de inatividade)
+// ═══════════════════════════════════════════════════════════════════════════
+// Diferente do resto do Dashboard (que respeita o filtro de mês/período do
+// topo), este painel sempre olha o HISTÓRICO COMPLETO — o objetivo é avisar
+// "esse cliente sumiu", e um cliente que não compra há 40 dias já teria
+// desaparecido da tela se o painel só olhasse o mês selecionado (ele
+// simplesmente não apareceria em lugar nenhum, o que é o oposto de um alerta).
+// Usa dashChaveCliente()/dashNomeCanônico() — as MESMAS funções que o resto
+// do Dashboard já usa pra agrupar cliente por código SAP (com fallback pro
+// nome normalizado), evitando contar "Auto Posto Moraes LTDA" e "Auto Posto
+// Moraes" como dois clientes diferentes.
+let _dashInativosLimiarDias = 15; // padrão: alerta a partir de 15 dias sem comprar
+let _dashUltimaListaInativos = [];
+function _dashParseDataBr(s) {
+  const m = String(s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+}
+async function dashCalcularClientesInativos() {
+  const store = await dashGetStoreMerged();
+  const todos = Object.values(store).flat();
+  // key (dashChaveCliente) -> { nome, ultimaData }
+  const porCliente = {};
+  todos.forEach(snap => {
+    (snap.pedidos || []).forEach(p => {
+      if (!p || !p.cliente) return;
+      const d = _dashParseDataBr(p.dataEntregaLogistica);
+      if (!d) return;
+      const key = dashChaveCliente(p);
+      if (!porCliente[key]) porCliente[key] = { nome: p.cliente, ultimaData: d, codigoSAP: p.codigoSAP ? String(p.codigoSAP).trim() : '' };
+      else {
+        porCliente[key].nome = dashNomeCanônico(porCliente[key].nome, p.cliente);
+        if (!porCliente[key].codigoSAP && p.codigoSAP) porCliente[key].codigoSAP = String(p.codigoSAP).trim();
+        if (d > porCliente[key].ultimaData) porCliente[key].ultimaData = d;
+      }
+    });
+  });
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const resultado = Object.values(porCliente).map(c => ({
+    nome: c.nome,
+    codigoSAP: c.codigoSAP,
+    ultimaData: c.ultimaData,
+    dias: Math.round((hoje - c.ultimaData) / 86400000),
+  })).sort((a, b) => b.dias - a.dias);
+  _dashAtualizarMapaNomeSAP(resultado); // alimenta a busca de Segmento por SAP (ver dashClienteSegmento)
+  return resultado;
+}
+function dashRenderClientesInativosUI(lista) {
+  _dashUltimaListaInativos = lista;
+  const box = document.getElementById('dash-clientes-inativos');
+  if (!box) return;
+  // Dois filtros se cruzam aqui: o GLOBAL (picker de Clientes + Segmento do
+  // topo — "filtra tudo") e o LOCAL (Segmento dentro deste card, só afeta
+  // este card). Um cliente só aparece se passar nos dois ao mesmo tempo.
+  const _efetivosGlobais = dashClientesEfetivos(lista.map(c => c.nome));
+  let listaFiltrada = _efetivosGlobais ? lista.filter(c => _efetivosGlobais.has(c.nome)) : lista;
+  if (_dashSegmentosInativosSelecionados) {
+    listaFiltrada = listaFiltrada.filter(c => {
+      const seg = dashClienteSegmento(c.nome) || '—';
+      return _dashSegmentosInativosSelecionados.has(seg);
+    });
+  }
+  if (!listaFiltrada.length) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">${lista.length ? 'Nenhum cliente com o filtro atual (Clientes/Segmento).' : 'Nenhum pedido com data de entrega encontrado no histórico.'}</div>`;
+    return;
+  }
+  const limiar = _dashInativosLimiarDias;
+  const alertas = listaFiltrada.filter(c => c.dias >= limiar);
+  if (!alertas.length) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">✅ Nenhum cliente passou de ${limiar} dias sem comprar (${listaFiltrada.length} cliente${listaFiltrada.length > 1 ? 's' : ''} no filtro atual).</div>`;
+    return;
+  }
+  // Crítico = já dobrou o limite escolhido (ex.: limite 15 dias → crítico com 30+)
+  box.innerHTML = alertas.map(c => {
+    const critico = c.dias >= limiar * 2;
+    const cor = critico
+      ? { bg: 'rgba(220,38,38,.08)', border: '#DC2626', badge: '#DC2626' }
+      : { bg: 'rgba(245,158,11,.08)', border: '#F59E0B', badge: '#F59E0B' };
+    const dataFmt = c.ultimaData.toLocaleDateString('pt-BR');
+    // Tag de diagnóstico — mostra o que o sistema ENCONTROU pra esse
+    // cliente: o segmento (se achou) ou o motivo de não ter achado (sem
+    // SAP no pedido + nome não bateu com nenhum cadastro). Fica visível
+    // direto na tela, sem precisar abrir o console, pra confirmar se a
+    // busca está funcionando ou não pra cada cliente específico.
+    const segDetectado = dashClienteSegmento(c.nome);
+    const sapUsado = _dashMapaNomeParaSAP[c.nome] || '';
+    const tagSeg = segDetectado
+      ? `<span style="font-size:9px;font-weight:700;color:#3730A3;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:4px;padding:1px 6px;white-space:nowrap;" title="${sapUsado ? 'Encontrado via SAP ' + sapUsado : 'Encontrado por nome'}">${segDetectado}</span>`
+      : `<span style="font-size:9px;font-weight:600;color:#9CA3AF;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:4px;padding:1px 6px;white-space:nowrap;" title="${sapUsado ? 'Tem SAP ' + sapUsado + ' mas nenhum cadastro com esse SAP tem Segmento preenchido' : 'Sem Código SAP neste pedido — tentou por nome (\"' + c.nome + '\") e não achou cadastro com esse nome e Segmento preenchido'}">sem segmento — ⓘ</span>`;
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:5px;background:${cor.bg};border-left:3px solid ${cor.border};border-radius:0 6px 6px 0;">
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:var(--text);" title="${c.nome}">${critico ? '🔴' : '🟡'} ${c.nome}</div>
+        ${tagSeg}
+        <div style="font-size:11px;color:var(--text-3);white-space:nowrap;">última entrega: ${dataFmt}</div>
+        <div style="font-size:11px;font-weight:800;color:#fff;background:${cor.badge};border-radius:99px;padding:3px 10px;white-space:nowrap;">${c.dias} dias sem comprar</div>
+      </div>`;
+  }).join('');
+}
+async function dashAtualizarClientesInativos() {
+  const box = document.getElementById('dash-clientes-inativos');
+  if (!box) return; // aba ainda não montada nessa carga da página
+  if (!window.dirHandleHistorico) {
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Selecione a pasta do histórico primeiro.</div>`;
+    return;
+  }
+  try {
+    const lista = await dashCalcularClientesInativos();
+    dashRenderClientesInativosUI(lista);
+  } catch (e) {
+    console.warn('[dashAtualizarClientesInativos] falha ao calcular:', e);
+    box.innerHTML = `<div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Erro ao calcular — veja o console.</div>`;
+  }
+}
+function dashSetLimiarInativos(dias) {
+  _dashInativosLimiarDias = dias;
+  document.querySelectorAll('.dash-inativo-limiar-tab').forEach(el => {
+    const ativo = parseInt(el.dataset.dias, 10) === dias;
+    el.classList.toggle('active-rank', ativo);
+    el.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    el.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderClientesInativosUI(_dashUltimaListaInativos);
+}
+window.dashAtualizarClientesInativos = dashAtualizarClientesInativos;
+window.dashSetLimiarInativos = dashSetLimiarInativos;
+// ── Hook: popular meses quando abre a aba ─────────────────────────────────
+const _origShowTab = window.showTab;
+window.showTab = function(tab) {
+  if (_origShowTab) _origShowTab(tab);
+  if (tab === 'dashboard_rot') {
+    dashPopularMeses();
+    dashAtualizarVisibilidadeFerramentasKm();
+    dashAutoRodarKmRealSeNecessario(); // idempotente (só roda 1x/dia) — reforça caso a checagem do carregamento inicial não tenha rodado ainda
+    dashAtualizarClientesInativos(); // independe do filtro de mês/período — olha o histórico completo
+    // Invalidar mapa se já existir
+    setTimeout(() => { if (_dashMap) _dashMap.invalidateSize(); }, 300);
+  }
+};
+// ── Refresh do dashboard ao excluir entrada do histórico ──────────────────
+// Intercepta excluirEntradaHistorico para re-popular meses e re-renderizar
+const _origExcluir = window.excluirEntradaHistorico;
+window.excluirEntradaHistorico = async function(filename, btn) {
+  if (_origExcluir) await _origExcluir(filename, btn);
+  // Atualiza a lista de meses com os dados restantes
+  await dashPopularMeses();
+  // Se há um período carregado no dashboard, recarrega automaticamente
+  if (_dashPeriodoPersonalizado) {
+    await window.dashCarregarPeriodoPersonalizado(_dashPeriodoPersonalizado.ini, _dashPeriodoPersonalizado.fim);
+  } else if (_dashMesesSelecionados) {
+    await window.dashCarregarMesesSelecionados([..._dashMesesSelecionados]);
+  }
+};
+// Popular na inicialização — aguarda primeiro a restauração do handle salvo
+// no IndexedDB (window.recuperarHandleHistoricoPromise, definida no script do
+// Roteirizador) para não tentar ler o disco antes do handle estar disponível.
+(async () => {
+  try {
+    if (window.recuperarHandleHistoricoPromise) {
+      await window.recuperarHandleHistoricoPromise;
+    }
+  } catch (e) { /* segue mesmo se a restauração falhar */ }
+  dashPopularMeses();
+  dashAtualizarVisibilidadeFerramentasKm();
+  dashAutoRodarKmRealSeNecessario(); // dispara sozinho em segundo plano, no máx 1x/dia — ver comentário na função
+  dashAtualizarClientesInativos(); // idempotente — silencioso se a pasta do histórico ainda não estiver selecionada
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTAÇÃO EXCEL — Dashboard
+// Gera um .xlsx fiel ao dashboard: KPIs, tabela por cliente, detalhamento
+// por viagem/parada e ocupação por veículo — usando SheetJS (já carregado).
+// ═══════════════════════════════════════════════════════════════════════════
+window.dashExportarExcel = async function dashExportarExcel() {
+  const snapshots = _dashSnapshotsAtivos;
+  if (!snapshots || !snapshots.length) {
+    alert('Nenhum dado carregado. Selecione um mês ou clique em "Todos os períodos" primeiro.');
+    return;
+  }
+  // Respeita filtro de clientes E segmento ativos (mesmo conjunto efetivo
+  // usado em toda a tela — ver dashClientesEfetivos())
+  const filtroAtivo = dashClientesEfetivos(_dashTodosClientes);
+
+  // Verifica SheetJS
+  if (typeof XLSX === 'undefined') {
+    alert('Biblioteca SheetJS não encontrada. Verifique a importação no index.html.');
+    return;
+  }
+
+  const btn = document.getElementById('dash-export-btn');
+  const orig = btn?.textContent;
+  if (btn) { btn.textContent = '⏳ Gerando...'; btn.disabled = true; }
+
+  try {
+    const d = dashAgregar(snapshots, null, null, _dashMapaDevolucoesPorEntrega());
+    const wb = XLSX.utils.book_new();
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    const pct = v => (typeof v === 'number' ? v + '%' : v);
+    const num = (v, dec=1) => typeof v === 'number' ? parseFloat(v.toFixed(dec)) : v;
+
+    // Estilo de cabeçalho compartilhado (SheetJS Community não suporta estilos,
+    // mas estruturamos para que apps Pro / xlsx-style possam aplicar facilmente)
+    function addSheet(name, rows) {
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      // Largura automática por coluna
+      const colWidths = rows.reduce((acc, row) => {
+        row.forEach((cell, i) => {
+          const len = cell !== null && cell !== undefined ? String(cell).length : 0;
+          acc[i] = Math.max(acc[i] || 8, Math.min(len + 2, 60));
+        });
+        return acc;
+      }, []);
+      ws['!cols'] = colWidths.map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+    }
+
+    // ── Aba 1: Resumo KPIs ──────────────────────────────────────────────────
+    // Aplica filtro de clientes aos dados agregados
+    const cliExport = filtroAtivo
+      ? d.clientes.filter(c => filtroAtivo.has(c.nome))
+      : d.clientes;
+    const ocupExport = filtroAtivo
+      ? d.clientes_ocup.filter(c => filtroAtivo.has(c.nome))
+      : d.clientes_ocup;
+    // Recalcula KPIs filtrados para o Excel
+    const _exVol      = cliExport.reduce((s,c) => s+c.volume, 0);
+    const _exKm       = cliExport.reduce((s,c) => s+(c.kmTotal||c.km*c.entregas||0), 0);
+    const _exEntregas = cliExport.reduce((s,c) => s+c.entregas, 0);
+    // Ocupação do export = volume pedidos filtrados / cap frota que atendeu esses clientes
+    let _exOcup = d.totalOcup;
+    if (filtroAtivo) {
+      let _exFiltVol = 0, _exFiltCap = 0;
+      snapshots.forEach(snap => {
+        const res = snap.resultado || {}, vecs = snap.veiculos || [];
+        vecs.forEach(v => {
+          const capV = v.capacidade || v.capacidadeTotal || 0;
+          const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas||[]).length);
+          viagens.forEach(vi => {
+            const atende = vi.paradas.some(par => {
+              const n = (par.pedido||{}).cliente||(par.pedido||{}).nomeCliente||par.nome||'';
+              return filtroAtivo.has(n);
+            });
+            if (!atende) return;
+            if (capV > 0) _exFiltCap += capV;
+            vi.paradas.forEach(par => {
+              const n = (par.pedido||{}).cliente||(par.pedido||{}).nomeCliente||par.nome||'';
+              if (filtroAtivo.has(n)) _exFiltVol += par.volumeTotal || 0;
+            });
+          });
+        });
+      });
+      _exOcup = _exFiltCap > 0 ? Math.round((_exFiltVol / _exFiltCap) * 100) : d.totalOcup;
+    }
+    let _exViagens = d.totalViagens;
+    if (filtroAtivo) {
+      _exViagens = 0;
+      snapshots.forEach(snap => {
+        const res = snap.resultado||{}; const vecs = snap.veiculos||[];
+        vecs.forEach(v => {
+          (res[v.id]||[]).filter(vi=>!vi._vazio&&(vi.paradas||[]).length).forEach(vi => {
+            if (vi.paradas.some(par => {
+              const n=(par.pedido||{}).cliente||(par.pedido||{}).nomeCliente||par.nome||'';
+              return filtroAtivo.has(n);
+            })) _exViagens++;
+          });
+        });
+      });
+    }
+    const filtroLabel = filtroAtivo
+      ? `Clientes filtrados: ${[...filtroAtivo].join(', ')}`
+      : 'Todos os clientes';
+
+    addSheet('Resumo', [
+      ['DASHBOARD NEXTA — RESUMO DO PERÍODO'],
+      ['Gerado em', new Date().toLocaleString('pt-BR')],
+      ['Período(s)', snapshots.map(s => s.chave || '').filter(Boolean).join(', ') || 'Todos'],
+      ['Filtro de Clientes', filtroLabel],
+      [],
+      ['INDICADOR', 'VALOR'],
+      ['Total de Viagens',     _exViagens],
+      ['Total de Entregas',    _exEntregas],
+      ['Volume Total (m³)',    num(_exVol)],
+      ['Ocupação Média (%)',   _exOcup],
+      ['Km Total',             Math.round(_exKm)],
+      ['Clientes Atendidos',   cliExport.length],
+    ]);
+
+    // ── Aba 2: Por Cliente ──────────────────────────────────────────────────
+    const cliRows = [
+      ['CLIENTE', 'CIDADE', 'ENTREGAS', 'VOLUME (m³)', 'KM MÉDIO', 'VOL/KM (m³/km)', 'OCUP. MÉDIA (%)'],
+    ];
+    // Mescla dados de clientes com ocupação — respeita filtro
+    const ocupMap = {};
+    ocupExport.forEach(c => { ocupMap[c.nome] = c.ocup; });
+    cliExport.forEach(c => {
+      const kmVol = c.km > 0 ? num(c.volume / c.km, 2) : '';
+      cliRows.push([
+        c.nome,
+        c.cidade,
+        c.entregas,
+        num(c.volume),
+        c.km > 0 ? num(c.km, 0) : '',
+        kmVol,
+        ocupMap[c.nome] ?? '',
+      ]);
+    });
+    // Linha de totais
+    cliRows.push([]);
+    cliRows.push([
+      'TOTAL', '',
+      _exEntregas,
+      num(_exVol),
+      num(_exKm > 0 && _exEntregas > 0 ? _exKm / _exEntregas : 0, 0),
+      '',
+      _exOcup,
+    ]);
+    addSheet('Por Cliente', cliRows);
+
+    // ── Aba 3: Por Viagem (detalhamento completo) ───────────────────────────
+    const viaRows = [
+      ['DATA CARGA', 'PLACA', 'TRANSPORTADORA', 'TERMINAL', 'TIPO', 'CAP. (m³)',
+       'MOTORISTA', 'Nº VIAGEM', 'PARADA', 'CLIENTE', 'CIDADE', 'ORDER SAP',
+       'VOLUME PARADA (m³)', 'CPT', 'PRODUTO', 'KM PARADA', 'OCUP. VIAGEM (%)'],
+    ];
+    snapshots.forEach(snap => {
+      const res   = snap.resultado  || {};
+      const vecs  = snap.veiculos   || [];
+      const terms = snap.terminais  || [];
+      const datasEntrega = snap.datasEntrega || [];
+      const dataLabel = datasEntrega[0] || '';
+      vecs.forEach(v => {
+        const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas||[]).length);
+        const capV = v.capacidade || 0;
+        viagens.forEach((vi, iV) => {
+          let volViagem = 0;
+          vi.paradas.forEach(par => { volViagem += par.volumeTotal || 0; });
+          const ocupV = capV > 0 ? Math.round((volViagem / capV) * 100) : '';
+          const termNomeViagem = vi.terminalOrigem || vi.paradas?.find(p => p.pedido?.terminal)?.pedido?.terminal || v.terminal;
+          const term = terms.find(t => t.nome === termNomeViagem);
+
+          vi.paradas.forEach((par, iP) => {
+            const ped   = par.pedido || {};
+            // Pula parada se filtro de cliente ativo e este cliente não está no filtro
+            const _nomeParada = ped.cliente || ped.nomeCliente || par.nome || '';
+            if (filtroAtivo && !filtroAtivo.has(_nomeParada)) return;
+            const prods = (par.produtosSelecionados || par.produtos || []);
+            const prodLabel = prods.map(p =>
+              [p.codigoProduto || p.codigo || '', p.descricao || p.produto || ''].filter(Boolean).join(' - ')
+            ).join(' | ') || '';
+            const cptLabel = prods.map(p => p.cpt || p.compartimento || '').filter(Boolean).join(',') || '';
+
+            viaRows.push([
+              dataLabel,
+              v.placa || '',
+              v.transportadora || '',
+              v.terminal || '',
+              v.tipo || '',
+              capV || '',
+              v.motoristaDiurno || v.motorista || '',
+              iV + 1,
+              iP + 1,
+              ped.cliente || ped.nomeCliente || par.nome || '',
+              ped.cidade || '',
+              ped.codigoSAP || ped.codSAP || '',
+              num(par.volumeTotal || 0),
+              cptLabel,
+              prodLabel,
+              par.distanciaKm > 0 ? num(par.distanciaKm, 0) : '',
+              ocupV,
+            ]);
+          });
+        });
+      });
+    });
+    addSheet('Por Viagem', viaRows);
+
+    // ── Aba 4: Ocupação por Veículo ─────────────────────────────────────────
+    const ocupRows = [
+      ['PLACA', 'Nº VIAGEM', 'OCUPAÇÃO (%)'],
+    ];
+    // Usa ocupação filtrada quando há filtro de clientes ativo
+    // (viagens_ocup não tem info de cliente — usa d.viagens_ocup completo quando sem filtro)
+    const _ocupExportFinal = ocupExport.length ? ocupExport : d.clientes_ocup;
+    // Para ocupação por veículo mantemos d.viagens_ocup (por viagem, não por cliente)
+    d.viagens_ocup.forEach(vo => {
+      const parts = vo.label.split(' V');
+      ocupRows.push([parts[0] || vo.label, parts[1] ? parseInt(parts[1]) : '', vo.ocup]);
+    });
+    addSheet('Ocupação Veículos', ocupRows);
+
+    // ── Gera arquivo ────────────────────────────────────────────────────────
+    const agora = new Date();
+    const p2 = n => String(n).padStart(2, '0');
+    const fname = `Dashboard_Nexta_${agora.getFullYear()}${p2(agora.getMonth()+1)}${p2(agora.getDate())}_${p2(agora.getHours())}${p2(agora.getMinutes())}.xlsx`;
+    XLSX.writeFile(wb, fname);
+
+    if (btn) { btn.textContent = '✅ Exportado!'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000); }
+  } catch(e) {
+    console.error('dashExportarExcel:', e);
+    alert('Erro ao gerar Excel: ' + e.message);
+    if (btn) { btn.textContent = orig; btn.disabled = false; }
+  }
+};
+
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RELATÓRIO: RESUMO DA OPERAÇÃO
+// ══════════════════════════════════════════════════════════════════════════════
+// Botão "📊 Relatórios" (mesmo padrão do "⚙️ Ferramentas") → "Resumo Operação"
+// → PDF / PNG / Word. Traz todos os KPIs do topo do Dashboard, o Ranking de
+// Transportadoras e o Volume por Produto, respeitando os MESMOS filtros
+// ativos (período, Clientes, Operação/Cidade, Segmento) — reaproveita
+// _dashUltimosKPIs/_dashUltimoRanking/_dashUltimosProdutos, já calculados
+// pelo render normal do Dashboard, em vez de reprocessar os snapshots do
+// zero. Inclui também uma análise automática (heurística, baseada em faixas
+// típicas do setor) comentando os números — deixado claro no relatório que é
+// uma leitura automática, não uma auditoria.
+
+// Descreve os filtros atualmente ativos, pro cabeçalho do relatório —
+// usa _dashPeriodoAtualDescricao (sempre em sincronia com o que está
+// carregado de verdade, diferente do rótulo do dropdown sozinho).
+function _dashDescricaoFiltroAtual() {
+  const partes = [];
+  partes.push(_dashPeriodoAtualDescricao || 'Período não identificado');
+  if (_dashClientesSelecionados) partes.push(`${_dashClientesSelecionados.size} cliente${_dashClientesSelecionados.size === 1 ? '' : 's'} selecionado${_dashClientesSelecionados.size === 1 ? '' : 's'}`);
+  if (_dashCidadesSelecionadas) partes.push(`${_dashCidadesSelecionadas.size} operação(ões) selecionada(s)`);
+  if (_dashTransportadorasSelecionadas) partes.push(`${_dashTransportadorasSelecionadas.size} transportadora${_dashTransportadorasSelecionadas.size === 1 ? '' : 's'} selecionada${_dashTransportadorasSelecionadas.size === 1 ? '' : 's'}`);
+  if (_dashSegmentosSelecionados) partes.push(`Segmento: ${[..._dashSegmentosSelecionados].join(', ')}`);
+  if (_dashBandeirasSelecionadas) partes.push(`Bandeira: ${[..._dashBandeirasSelecionadas].map(b => b === '—' ? 'Não informada' : b).join(', ')}`);
+  return partes.join(' · ');
+}
+
+// Gera a análise automática — cada item tem {tipo: 'positivo'|'atencao'|'neutro', texto}.
+// Faixas usadas são heurísticas típicas de operação de distribuição de
+// combustível/frota dedicada — servem como ponto de partida pra discussão,
+// não como diagnóstico definitivo (deixado explícito no relatório).
+function _dashGerarOpiniaoOperacao(k) {
+  const itens = [];
+  // Ocupação Média
+  if (k.ocupMedia != null) {
+    if (k.ocupMedia < 60) {
+      itens.push({ tipo: 'atencao', texto: `Ocupação média de ${k.ocupMedia}% está abaixo da faixa saudável (60–90%) — a frota está rodando com bastante espaço livre nos veículos. Vale avaliar consolidar viagens ou repensar o dimensionamento da frota alocada.` });
+    } else if (k.ocupMedia > 90) {
+      itens.push({ tipo: 'atencao', texto: `Ocupação média de ${k.ocupMedia}% está muito próxima do limite — pouca margem pra absorver pedidos de última hora ou imprevistos (avaria, atraso). Risco de gargalo se a demanda crescer um pouco mais.` });
+    } else {
+      itens.push({ tipo: 'positivo', texto: `Ocupação média de ${k.ocupMedia}% está numa faixa saudável, equilibrando bom aproveitamento de carga com folga pra imprevistos.` });
+    }
+  }
+  // Ociosidade da Frota
+  if (k.ociosidadePct != null) {
+    if (k.ociosidadePct > 50) {
+      itens.push({ tipo: 'atencao', texto: `Ociosidade da frota em ${k.ociosidadePct}% é alta — mais da metade da capacidade disponibilizada pelas transportadoras não foi usada no período. Oportunidade de renegociar disponibilização ou aumentar o volume roteirizado.` });
+    } else if (k.ociosidadePct > 25) {
+      itens.push({ tipo: 'neutro', texto: `Ociosidade da frota em ${k.ociosidadePct}% é moderada — alguma folga na frota, o que é esperado pra absorver picos de demanda, mas vale acompanhar se a tendência é de alta.` });
+    } else {
+      itens.push({ tipo: 'positivo', texto: `Ociosidade da frota baixa (${k.ociosidadePct}%) — a capacidade disponibilizada está sendo bem aproveitada.` });
+    }
+  }
+  // Consumo de Jornada
+  if (k.jornadaPct != null) {
+    if (k.jornadaPct > 90) {
+      itens.push({ tipo: 'atencao', texto: `Consumo de jornada em ${k.jornadaPct}% está no limite — risco real de estouro de jornada dos motoristas e possíveis atrasos em cascata. Vale revisar a distribuição de viagens por veículo/motorista.` });
+    } else if (k.jornadaPct < 50) {
+      itens.push({ tipo: 'neutro', texto: `Consumo de jornada relativamente baixo (${k.jornadaPct}%) — os motoristas têm bastante margem de horário disponível no período.` });
+    } else {
+      itens.push({ tipo: 'positivo', texto: `Consumo de jornada em ${k.jornadaPct}% está numa faixa confortável, sem sinal de pressão sobre o horário dos motoristas.` });
+    }
+  }
+  // % Rotas Pedagiadas + tempo de lançamento
+  if (k.percPedagiadas != null) {
+    const pct = Math.round(k.percPedagiadas);
+    if (pct > 70) {
+      itens.push({ tipo: 'neutro', texto: `${pct}% das viagens passam por pedágio (estimativa) — exposição alta a esse custo variável; vale conferir se todas as rotas realmente precisam desse trajeto.` });
+    }
+  }
+  // Drop médio (eficiência de viagem)
+  if (k.dropEntregas != null) {
+    if (k.dropEntregas < 1.5) {
+      itens.push({ tipo: 'neutro', texto: `Média de ${k.dropEntregas.toFixed(1)} entregas por viagem é baixa — muitas viagens estão sendo feitas pra pouca entrega. Pode valer revisar a lógica de agrupamento de pedidos na roteirização.` });
+    } else if (k.dropEntregas >= 2.5) {
+      itens.push({ tipo: 'positivo', texto: `Média de ${k.dropEntregas.toFixed(1)} entregas por viagem indica boa consolidação de pedidos — poucas viagens "desperdiçadas" com carga pequena.` });
+    }
+  }
+  if (!itens.length) {
+    itens.push({ tipo: 'neutro', texto: 'Não há dados suficientes no período/filtro selecionado pra gerar uma análise automática.' });
+  }
+  return itens;
+}
+
+const _DASH_OPINIAO_COR = { positivo: '#15803D', atencao: '#B45309', neutro: '#4B5563' };
+const _DASH_OPINIAO_ICONE = { positivo: '✅', atencao: '⚠️', neutro: 'ℹ️' };
+
+// Monta as linhas do card de KPI, reaproveitando os mesmos valores já
+// calculados por dashRender (_dashUltimosKPIs) — sem refazer nenhuma conta.
+function _dashKpisParaRelatorio() {
+  const k = window._dashUltimosKPIs;
+  const fmtNum = (n, casas = 0) => (n == null ? '-' : n.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas }));
+  return [
+    { label: 'Viagens', valor: fmtNum(k.viagens) },
+    { label: 'Entregas', valor: fmtNum(k.entregas) },
+    { label: 'Volume', valor: k.volume != null ? `${fmtNum(k.volume, 1)} m³` : '-' },
+    { label: 'Ocupação Média', valor: k.ocupMedia != null ? `${k.ocupMedia}%` : '-' },
+    { label: 'Km Total', valor: k.km != null ? `${fmtNum(Math.round(k.km))} km` : '-' },
+    { label: 'Clientes Atendidos', valor: fmtNum(k.clientes) },
+    { label: 'Consumo de Jornada', valor: k.jornadaPct != null ? `${k.jornadaPct}% (${_dashFmtHoras(k.jornadaUsadaMin || 0)} / ${_dashFmtHoras(k.jornadaDispMin || 0)})` : '-' },
+    { label: 'Ociosidade da Frota', valor: k.ociosidadePct != null ? `${k.ociosidadePct}% (${fmtNum(k.ociosidadeUsados)} usados / ${fmtNum(k.ociosidadeDisponibilizados)} disponibilizados)` : '-' },
+    { label: 'Drop Médio (Entregas/Viagem)', valor: k.dropEntregas != null ? fmtNum(k.dropEntregas, 1) : '-' },
+    { label: 'Drop Médio Operacional (Volume/Entrega)', valor: k.dropVolume != null ? `${fmtNum(k.dropVolume, 1)} m³` : '-' },
+    { label: 'Drop Médio por Cliente (Drop Size da carteira)', valor: k.dropPorCliente != null ? `${fmtNum(k.dropPorCliente, 1)} m³` : '-' },
+    { label: '% Rotas Pedagiadas (est.)', valor: k.percPedagiadas != null ? `${Math.round(k.percPedagiadas)}%` : '-' },
+    { label: 'Tempo c/ Lançamento Pedágio', valor: k.tempoPedagioMin != null && k.tempoPedagioMin > 0 ? _dashFmtHoras(k.tempoPedagioMin) : '0h' },
+  ];
+}
+
+// ── HTML pro PDF/PNG (tema escuro, reaproveita .op-bloco/.op-table) ────────
+function _dashMontarHtmlResumoOperacao() {
+  const kpis = _dashKpisParaRelatorio();
+  const opiniao = _dashGerarOpiniaoOperacao(window._dashUltimosKPIs);
+  const filtroStr = _dashDescricaoFiltroAtual();
+  const geradoEm = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const kpisHtml = kpis.map(kp => `
+    <div style="background:var(--bg);border:1px solid var(--border-dk);border-radius:10px;padding:12px 14px;">
+      <div style="font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">${kp.label}</div>
+      <div style="font-size:17px;font-weight:800;color:var(--text);">${kp.valor}</div>
+    </div>`).join('');
+  const rankingHtml = (_dashUltimoRanking || []).slice(0, 5).map((t, i) => `
+    <tr>
+      <td style="padding:6px 8px;font-weight:700;">#${i + 1}</td>
+      <td style="padding:6px 8px;">${t.transportadora}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700;">${t.volume.toFixed(1)} m³</td>
+      <td style="padding:6px 8px;text-align:right;">${Math.round(t.km || 0).toLocaleString('pt-BR')} km</td>
+      <td style="padding:6px 8px;text-align:right;">${t.viagens} viag.</td>
+    </tr>`).join('') || `<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-3);">Sem dados no filtro atual.</td></tr>`;
+  const produtosHtml = (_dashUltimosProdutos || []).slice(0, 5).map((p, i) => `
+    <tr>
+      <td style="padding:6px 8px;font-weight:700;">#${i + 1}</td>
+      <td style="padding:6px 8px;">${p.nome}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700;">${p.volume.toFixed(1)} m³</td>
+    </tr>`).join('') || `<tr><td colspan="3" style="padding:12px;text-align:center;color:var(--text-3);">Sem dados no filtro atual.</td></tr>`;
+  const opiniaoHtml = opiniao.map(o => `
+    <div style="display:flex;gap:8px;padding:9px 0;border-bottom:1px solid var(--border-dk);">
+      <div style="font-size:14px;">${_DASH_OPINIAO_ICONE[o.tipo]}</div>
+      <div style="font-size:12.5px;color:${_DASH_OPINIAO_COR[o.tipo]};line-height:1.5;">${o.texto}</div>
+    </div>`).join('');
+  return `
+    <div class="op-bloco" data-bloco-id="resumo-operacao" style="max-width:100%;">
+      <div class="op-head">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:baseline;gap:10px;">
+            <span style="font-family:var(--font-cond);font-weight:800;font-size:20px;color:var(--pet-green);letter-spacing:.02em;">NEXTA</span>
+            <span style="font-size:10px;color:var(--text-3);letter-spacing:.08em;text-transform:uppercase;">Resumo da Operação</span>
+          </div>
+          <div style="text-align:right;font-size:11px;color:var(--text-3);">
+            <div>Gerado em ${geradoEm}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px;"><b style="color:var(--text);">Filtro:</b> ${filtroStr}</div>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 20px;">${kpisHtml}</div>
+
+        <div style="font-family:var(--font-cond);font-weight:700;font-size:14px;color:var(--text);margin-bottom:8px;">🏆 Ranking de Transportadoras (top 5 por volume)</div>
+        <table class="op-table" style="margin-bottom:20px;">
+          <colgroup><col style="width:40px"/><col style="width:*"/><col style="width:110px"/><col style="width:100px"/><col style="width:90px"/></colgroup>
+          <thead><tr><th>#</th><th>Transportadora</th><th style="text-align:right;">Volume</th><th style="text-align:right;">Km</th><th style="text-align:right;">Viagens</th></tr></thead>
+          <tbody>${rankingHtml}</tbody>
+        </table>
+
+        <div style="font-family:var(--font-cond);font-weight:700;font-size:14px;color:var(--text);margin-bottom:8px;">📦 Volume por Produto (top 5)</div>
+        <table class="op-table" style="margin-bottom:20px;">
+          <colgroup><col style="width:40px"/><col style="width:*"/><col style="width:120px"/></colgroup>
+          <thead><tr><th>#</th><th>Produto</th><th style="text-align:right;">Volume</th></tr></thead>
+          <tbody>${produtosHtml}</tbody>
+        </table>
+
+        <div style="font-family:var(--font-cond);font-weight:700;font-size:14px;color:var(--text);margin-bottom:2px;">🔍 Análise Automática da Operação</div>
+        <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;">Leitura automática baseada em faixas típicas do setor — serve como ponto de partida, não substitui a análise de quem conhece a operação de perto.</div>
+        ${opiniaoHtml}
+      </div>
+    </div>`;
+}
+
+// ── HTML pro Word (visual neutro/profissional, igual ao e-mail da Passagem de Turno) ──
+function _dashMontarHtmlResumoOperacaoWord() {
+  const kpis = _dashKpisParaRelatorio();
+  const opiniao = _dashGerarOpiniaoOperacao(window._dashUltimosKPIs);
+  const filtroStr = _dashDescricaoFiltroAtual();
+  const geradoEm = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const F = "font-family:Arial,Helvetica,sans-serif;";
+  const th = `${F}background:#F3F4F6;border:1px solid #D1D5DB;padding:6px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#4B5563;`;
+  const td = `${F}border:1px solid #D1D5DB;padding:6px 8px;font-size:12.5px;color:#111827;`;
+  const kpisHtml = kpis.map(kp => `
+    <tr>
+      <td style="${td}font-weight:bold;width:60%;">${kp.label}</td>
+      <td style="${td}text-align:right;">${kp.valor}</td>
+    </tr>`).join('');
+  const rankingHtml = (_dashUltimoRanking || []).slice(0, 5).map((t, i) => `
+    <tr><td style="${td}">#${i + 1}</td><td style="${td}">${t.transportadora}</td><td style="${td}text-align:right;">${t.volume.toFixed(1)} m³</td><td style="${td}text-align:right;">${Math.round(t.km || 0).toLocaleString('pt-BR')} km</td><td style="${td}text-align:right;">${t.viagens}</td></tr>`).join('')
+    || `<tr><td colspan="5" style="${td}text-align:center;color:#6B7280;">Sem dados no filtro atual.</td></tr>`;
+  const produtosHtml = (_dashUltimosProdutos || []).slice(0, 5).map((p, i) => `
+    <tr><td style="${td}">#${i + 1}</td><td style="${td}">${p.nome}</td><td style="${td}text-align:right;">${p.volume.toFixed(1)} m³</td></tr>`).join('')
+    || `<tr><td colspan="3" style="${td}text-align:center;color:#6B7280;">Sem dados no filtro atual.</td></tr>`;
+  const opiniaoCorWord = { positivo: '#15803D', atencao: '#B45309', neutro: '#4B5563' };
+  const opiniaoHtml = opiniao.map(o => `<li style="${F}color:${opiniaoCorWord[o.tipo]};margin-bottom:8px;line-height:1.5;">${_DASH_OPINIAO_ICONE[o.tipo]} ${o.texto}</li>`).join('');
+  return `
+    <div style="${F}color:#111827;max-width:1000px;">
+      <h1 style="${F}font-size:22px;margin:0 0 2px;">NEXTA — Resumo da Operação</h1>
+      <div style="${F}font-size:12.5px;color:#374151;margin-bottom:2px;"><b>Filtro:</b> ${filtroStr}</div>
+      <div style="${F}font-size:11px;color:#6B7280;margin-bottom:16px;">Gerado em ${geradoEm}</div>
+
+      <h2 style="${F}font-size:16px;margin:18px 0 8px;">Indicadores</h2>
+      <table style="${F}border-collapse:collapse;width:100%;margin-bottom:18px;"><tbody>${kpisHtml}</tbody></table>
+
+      <h2 style="${F}font-size:16px;margin:18px 0 8px;">Ranking de Transportadoras (top 5 por volume)</h2>
+      <table style="${F}border-collapse:collapse;width:100%;margin-bottom:18px;">
+        <tr><th style="${th}">#</th><th style="${th}">Transportadora</th><th style="${th}">Volume</th><th style="${th}">Km</th><th style="${th}">Viagens</th></tr>
+        ${rankingHtml}
+      </table>
+
+      <h2 style="${F}font-size:16px;margin:18px 0 8px;">Volume por Produto (top 5)</h2>
+      <table style="${F}border-collapse:collapse;width:100%;margin-bottom:18px;">
+        <tr><th style="${th}">#</th><th style="${th}">Produto</th><th style="${th}">Volume</th></tr>
+        ${produtosHtml}
+      </table>
+
+      <h2 style="${F}font-size:16px;margin:18px 0 8px;">Análise Automática da Operação</h2>
+      <p style="${F}font-size:10.5px;color:#6B7280;margin:0 0 8px;">Leitura automática baseada em faixas típicas do setor — serve como ponto de partida, não substitui a análise de quem conhece a operação de perto.</p>
+      <ul style="${F}padding-left:18px;margin:0;">${opiniaoHtml}</ul>
+    </div>`;
+}
+
+// Gera o arquivo .doc (HTML com namespace do Word — abre nativamente no
+// Word, sem precisar de biblioteca externa nenhuma pra montar um .docx de
+// verdade).
+function _dashBaixarComoWord(htmlConteudo, nomeArquivo) {
+  const htmlCompleto = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${nomeArquivo}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+</head>
+<body>${htmlConteudo}</body></html>`;
+  const blob = new Blob(['\ufeff', htmlCompleto], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${nomeArquivo}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function dashGerarResumoOperacao(formato) {
+  try {
+    if (!window._dashUltimosKPIs || window._dashUltimosKPIs.viagens == null) {
+      showToast('Carregue um período no Dashboard primeiro.', false);
+      return;
+    }
+    const agora = new Date();
+    const p2 = n => String(n).padStart(2, '0');
+    const nomeArq = `Resumo_Operacao_${agora.getFullYear()}${p2(agora.getMonth()+1)}${p2(agora.getDate())}_${p2(agora.getHours())}${p2(agora.getMinutes())}`;
+
+    if (formato === 'word') {
+      _dashBaixarComoWord(_dashMontarHtmlResumoOperacaoWord(), nomeArq);
+      return;
+    }
+
+    // pdf / png: usa as mesmas funções genéricas de exportação já existentes
+    // (definidas em nexta-frota-roteirizador.js, mas globais na página).
+    if (typeof window.exportarBlocoPDF !== 'function' || typeof window.exportarBlocoPNG !== 'function') {
+      showToast('Exportação indisponível — recarregue a página.', false);
+      return;
+    }
+    const html = _dashMontarHtmlResumoOperacao();
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    try {
+      if (formato === 'pdf') await window.exportarBlocoPDF('resumo-operacao', nomeArq, null, 1300);
+      else await window.exportarBlocoPNG('resumo-operacao', nomeArq, null, 1300);
+    } finally {
+      document.body.removeChild(wrap);
+    }
+  } catch (e) {
+    // Antes, qualquer erro aqui dentro (função async, sem .catch() de quem
+    // chama) falhava em silêncio total — o clique não fazia nada visível.
+    // Agora aparece um toast com o motivo real, e o erro completo vai pro
+    // Console (F12) pra eu conseguir diagnosticar.
+    console.error('[dashGerarResumoOperacao] falha ao gerar relatório:', e);
+    showToast('Erro ao gerar relatório: ' + (e.message || 'falha desconhecida'), false);
+  }
+}
+window.dashGerarResumoOperacao = dashGerarResumoOperacao;
+
+function dashToggleMenuRelatorios() {
+  const menu = document.getElementById('dash-relatorios-menu');
+  if (!menu) return;
+  menu.style.display = menu.style.display !== 'none' ? 'none' : 'block';
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('dash-relatorios-menu');
+  const btn  = document.getElementById('dash-relatorios-btn');
+  if (menu && menu.style.display !== 'none' && !menu.contains(e.target) && !btn?.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+window.dashToggleMenuRelatorios = dashToggleMenuRelatorios;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RELATÓRIO: ROTAS
+// ══════════════════════════════════════════════════════════════════════════════
+// "Relatórios" → "Rotas" → PDF / XLSX. Uma linha por VIAGEM de TODO o
+// histórico (não respeita o filtro de período do Dashboard de propósito —
+// é um catálogo de rotas já percorridas, não um recorte operacional de um
+// mês específico), com a base de origem e, pra cada parada da viagem, a
+// cidade, o estado (UF) e o km daquele trecho (da parada anterior até ali —
+// mesmo dado já usado no resto do sistema, p.distanciaKm). Colunas
+// "Cidade Entrega N / Estado N / KM N" se repetem dinamicamente até o
+// número de paradas da viagem com MAIS paradas encontrada no histórico —
+// uma viagem com só 1 entrega usa só o primeiro grupo de colunas, uma com
+// 3 usa os três, sem linha extra pra cada parada.
+// Tenta achar um UF de 2 letras "grudado" no fim de uma string de cidade,
+// em qualquer um dos formatos que o cadastro (campo de texto livre, sem
+// formato fixo) pode ter usado: "Belo Horizonte - MG", "Belo Horizonte/MG",
+// "Belo Horizonte, MG", ou só "Belo Horizonte MG". Devolve a cidade já sem
+// o UF (pra não duplicar) e o UF encontrado (ou '' se não achou nada).
+function _dashExtrairUF(cidadeStr) {
+  const s = (cidadeStr || '').toString().trim();
+  const m = /^(.*?)[\s\-\/,]+([A-Z]{2})$/i.exec(s);
+  if (m && m[1].trim()) return { cidade: m[1].trim().toUpperCase(), uf: m[2].toUpperCase() };
+  return { cidade: s.toUpperCase(), uf: '' };
+}
+
+// Acha o UF de um pedido: 1) campo .uf do próprio pedido, 2) embutido no
+// texto da cidade do próprio pedido, 3) campo .uf/cidade do cliente no
+// CADASTRO AO VIVO (pode estar mais completo/atualizado que a cópia
+// congelada no histórico), casando por Código SAP (mais confiável) ou nome.
+// Última linha de defesa quando NENHUM dado (pedido, cadastro ao vivo) tem
+// UF registrado em lugar nenhum — capitais + municípios grandes/conhecidos,
+// priorizando os que já aparecem na operação real (região SP/MG/RJ/GO/DF).
+// É um "melhor esforço": cobre os casos mais comuns, não pretende ser uma
+// lista completa dos +5.000 municípios do Brasil (arriscado demais manter
+// uma lista dessas na mão sem gerar erro).
+const _DASH_UF_POR_CIDADE = {
+  'OSASCO':'SP','SAO PAULO':'SP','SÃO PAULO':'SP','SAO BERNARDO DO CAMPO':'SP','SANTOS':'SP','CUBATAO':'SP','CUBATÃO':'SP',
+  'PINDAMONHANGABA':'SP','MOGI DAS CRUZES':'SP','ARACARIGUAMA':'SP','ARAÇARIGUAMA':'SP','SAO CAETANO DO SUL':'SP','SÃO CAETANO DO SUL':'SP',
+  'SAO CAETANO':'SP','SÃO CAETANO':'SP','PAULINIA':'SP','PAULÍNIA':'SP','RIBEIRAO PRETO':'SP','RIBEIRÃO PRETO':'SP','CAMPINAS':'SP',
+  'JUNDIAI':'SP','JUNDIAÍ':'SP','ITU':'SP','SOROCABA':'SP','PIRACICABA':'SP','RIO CLARO':'SP','SAO MANUEL':'SP','SÃO MANUEL':'SP',
+  'DESCALVADO':'SP','AMERICANA':'SP','DIADEMA':'SP','GOIANIA':'SP','ANGRA DOS REIS':'RJ','CABREUVA':'SP','CABREÚVA':'SP',
+  'BELO HORIZONTE':'MG','CONTAGEM':'MG','BETIM':'MG','VESPASIANO':'MG','RIBEIRAO DAS NEVES':'MG','RIBEIRÃO DAS NEVES':'MG',
+  'JABOTICATUBAS':'MG','MATOZINHOS':'MG','ITABIRITO':'MG','LAGOA DA PRATA':'MG','GUARACIABA':'MG','UBERLANDIA':'MG','UBERLÂNDIA':'MG',
+  'PATOS DE MINAS':'MG','PRATA':'MG','CONCEICAO DO PARA':'MG','CONCEIÇÃO DO PARÁ':'MG','JUIZ DE FORA':'MG',
+  'DUQUE DE CAXIAS':'RJ','RIO DE JANEIRO':'RJ','NITEROI':'RJ','NITERÓI':'RJ',
+  'BRASILIA':'DF','BRASÍLIA':'DF',
+  'CURITIBA':'PR','FLORIANOPOLIS':'SC','FLORIANÓPOLIS':'SC','PORTO ALEGRE':'RS','SALVADOR':'BA','RECIFE':'PE','FORTALEZA':'CE',
+  'MANAUS':'AM','BELEM':'PA','BELÉM':'PA','VITORIA':'ES','VITÓRIA':'ES','CUIABA':'MT','CUIABÁ':'MT','CAMPO GRANDE':'MS',
+  'NATAL':'RN','JOAO PESSOA':'PB','JOÃO PESSOA':'PB','MACEIO':'AL','MACEIÓ':'AL','ARACAJU':'SE','TERESINA':'PI','SAO LUIS':'MA','SÃO LUÍS':'MA',
+  'PALMAS':'TO','BOA VISTA':'RR','MACAPA':'AP','MACAPÁ':'AP','PORTO VELHO':'RO','RIO BRANCO':'AC','GOIÂNIA':'GO','GOIANIA ':'GO',
+  'FLORESTAL':'MG','SANTOS ':'SP',
+};
+function _dashUfPorNomeCidade(cidade) {
+  return _DASH_UF_POR_CIDADE[(cidade || '').toString().trim().toUpperCase()] || '';
+}
+
+// Restaura acento correto — chave é o nome SEM acento (pra bater com
+// qualquer grafia que apareça no histórico), valor é a grafia certa. Ao
+// contrário da preferência "usa acento se algum registro já tiver" (que só
+// ajudava quando PELO MENOS uma ocorrência já vinha acentuada), essa
+// tabela corrige mesmo quando NENHUMA ocorrência no histórico tem o acento
+// — cobre os casos mais comuns da região onde a operação atua; mesmo
+// critério de "melhor esforço" da tabela de UF acima.
+const _DASH_ACENTO_POR_CIDADE = {
+  'SAO PAULO':'SÃO PAULO','SAO BERNARDO DO CAMPO':'SÃO BERNARDO DO CAMPO','SAO CAETANO':'SÃO CAETANO',
+  'SAO CAETANO DO SUL':'SÃO CAETANO DO SUL','SAO MANUEL':'SÃO MANUEL','SAO LUIS':'SÃO LUÍS','SAO JOSE':'SÃO JOSÉ',
+  'ARACARIGUAMA':'ARAÇARIGUAMA','CUBATAO':'CUBATÃO','PAULINIA':'PAULÍNIA','RIBEIRAO PRETO':'RIBEIRÃO PRETO',
+  'RIBEIRAO DAS NEVES':'RIBEIRÃO DAS NEVES','JUNDIAI':'JUNDIAÍ','CABREUVA':'CABREÚVA','UBERLANDIA':'UBERLÂNDIA',
+  'CONCEICAO DO PARA':'CONCEIÇÃO DO PARÁ','NITEROI':'NITERÓI','BRASILIA':'BRASÍLIA','FLORIANOPOLIS':'FLORIANÓPOLIS',
+  'BELEM':'BELÉM','VITORIA':'VITÓRIA','CUIABA':'CUIABÁ','JOAO PESSOA':'JOÃO PESSOA','MACEIO':'MACEIÓ',
+  'MACAPA':'MACAPÁ','GOIANIA':'GOIÂNIA','ARAXA':'ARAXÁ','PARACATU':'PARACATU','ITAJUBA':'ITAJUBÁ','POCOS DE CALDAS':'POÇOS DE CALDAS',
+  'PORTO SEGURO':'PORTO SEGURO','SAO JOAO DEL REI':'SÃO JOÃO DEL-REI','ARAGUARI':'ARAGUARI','PATROCINIO':'PATROCÍNIO',
+};
+function _dashRestaurarAcento(cidade) {
+  return _DASH_ACENTO_POR_CIDADE[_dashSemAcento(cidade)] || cidade;
+}
+
+function _dashResolverCidadeUF(pedido) {
+  const cidadeBruta = (pedido?.cidade || '').toString();
+  let { cidade, uf: ufEmbutido } = _dashExtrairUF(cidadeBruta);
+  cidade = _dashRestaurarAcento(cidade);
+  if (pedido?.uf) return { cidade, uf: pedido.uf.toString().toUpperCase() };
+  if (ufEmbutido) return { cidade, uf: ufEmbutido };
+  // Cai pro cadastro ao vivo de clientes (roteirizador.js, window.clientes)
+  if (typeof window.clientes !== 'undefined' && Array.isArray(window.clientes)) {
+    const cliCad = window.clientes.find(c =>
+      (pedido?.codigoSAP && c.codigoSAP && c.codigoSAP === pedido.codigoSAP) ||
+      (pedido?.cliente && c.nome && c.nome.toUpperCase() === pedido.cliente.toString().toUpperCase())
+    );
+    if (cliCad?.cidade) {
+      const extra = _dashExtrairUF(cliCad.cidade);
+      if (extra.uf) return { cidade: cidade || _dashRestaurarAcento(extra.cidade), uf: extra.uf };
+    }
+  }
+  // Última tentativa: tabela de cidades conhecidas.
+  const ufTabela = _dashUfPorNomeCidade(cidade);
+  if (ufTabela) return { cidade, uf: ufTabela };
+  return { cidade, uf: '' };
+}
+
+// Coordenadas de um pedido: primeiro a cópia congelada no próprio
+// histórico, senão cai pro cadastro ao vivo (mais provável de ter sido
+// corrigido/completado depois que essa entrega foi salva).
+function _dashResolverCoordPedido(pedido, parada) {
+  let lat = parseFloat(pedido?.lat ?? parada?.lat);
+  let lon = parseFloat(pedido?.lon ?? parada?.lon);
+  if (typeof NextaKm !== 'undefined' && NextaKm.coordenadaValida(lat, lon)) return { lat, lon };
+  if (typeof window.clientes !== 'undefined' && Array.isArray(window.clientes)) {
+    const cliCad = window.clientes.find(c =>
+      (pedido?.codigoSAP && c.codigoSAP && c.codigoSAP === pedido.codigoSAP) ||
+      (pedido?.cliente && c.nome && c.nome.toUpperCase() === pedido.cliente.toString().toUpperCase())
+    );
+    if (cliCad) {
+      lat = parseFloat(cliCad.lat); lon = parseFloat(cliCad.lon);
+      if (typeof NextaKm !== 'undefined' && NextaKm.coordenadaValida(lat, lon)) return { lat, lon };
+    }
+  }
+  return { lat: NaN, lon: NaN };
+}
+
+// Remove acento pra comparar/agrupar ("CONCEIÇÃO" e "CONCEICAO" bateriam
+// como a mesma cidade) — usado só como CHAVE de comparação, nunca como
+// texto exibido (a exibição sempre mantém o acento original de quem tiver).
+function _dashSemAcento(s) {
+  return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+function _dashTemAcento(s) {
+  return /[áàâãéèêíìîóòôõúùûçÁÀÂÃÉÈÊÍÌÎÓÒÔÕÚÙÛÇ]/.test(s || '');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RELATÓRIO: ROTAS - FRETES (destino único, km direto via rota real)
+// ══════════════════════════════════════════════════════════════════════════════
+// Mesma fonte de dados que "Rotas - Roteirização", mas cada parada de uma
+// viagem multi-cidade vira sua PRÓPRIA linha independente: uma rota
+// "Betim → Belo Horizonte → Matozinhos → Vespasiano" gera 3 linhas —
+// Betim×Belo Horizonte, Betim×Matozinhos, Betim×Vespasiano — cada uma com
+// o km calculado como trajeto DIRETO da base até aquele destino específico
+// (não a soma sequencial da rota real percorrida, que é o que
+// "Roteirização" mostra). AO CONTRÁRIO de "Rotas - Roteirização" (que
+// varre todo o histórico de propósito), este relatório RESPEITA os
+// filtros ativos do Dashboard (período, Clientes, Operação, Segmento) —
+// usa a mesma fonte (_dashSnapshotsAtivos) e os mesmos filtros que os
+// outros gráficos do Dashboard já aplicam.
+async function _dashColetarDestinosUnicos() {
+  const cidadesFiltro = _dashCidadesSelecionadas;
+  const clientesEfetivos = dashClientesEfetivos(_dashTodosClientes);
+  const clientesEfetivosNorm = _dashNormalizarSetClientes(clientesEfetivos);
+  const pares = [];
+  (_dashSnapshotsAtivos || []).forEach(snap => {
+    const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+    vecs.forEach(v => {
+      const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach(vi => {
+        if (cidadesFiltro && !cidadesFiltro.has(dashCidadeOperacaoViagem(vi, v, terms))) return;
+        const nomeBase = vi.terminalOrigem || v.terminal || '';
+        const terminal = (terms || []).find(t => t.nome === nomeBase);
+        const baseOrigemBruta = (terminal?.cidade || nomeBase || '-').toString().toUpperCase();
+        const _baseExtraida = _dashExtrairUF(baseOrigemBruta);
+        const baseOrigem = _baseExtraida.uf
+          ? `${_dashRestaurarAcento(_baseExtraida.cidade)} - ${_baseExtraida.uf}`
+          : _dashRestaurarAcento(baseOrigemBruta);
+        const baseLat = parseFloat(terminal?.lat), baseLon = parseFloat(terminal?.lon);
+        (Array.isArray(vi.paradas) ? vi.paradas : []).forEach(p => {
+          const nomeCliente = (p.pedido || {}).cliente || (p.pedido || {}).nomeCliente || p.nome || '?';
+          if (clientesEfetivos && !_dashNomeBateFiltro(nomeCliente, clientesEfetivosNorm)) return;
+          const { cidade, uf } = _dashResolverCidadeUF(p.pedido);
+          const destino = uf ? `${cidade} - ${uf}` : (cidade || '-');
+          const { lat: destinoLat, lon: destinoLon } = _dashResolverCoordPedido(p.pedido, p);
+          pares.push({
+            baseOrigem, baseOrigemChave: _dashSemAcento(baseOrigem), baseLat, baseLon,
+            destino, destinoChave: _dashSemAcento(destino), destinoLat, destinoLon,
+          });
+        });
+      });
+    });
+  });
+  return pares;
+}
+
+// Deduplica por par ÚNICO (base + destino) — 40 entregas em Belo Horizonte
+// saindo de Betim viram UMA linha só.
+function _dashAgruparDestinosUnicos(pares) {
+  const grupos = new Map();
+  pares.forEach(p => {
+    const chave = p.baseOrigemChave + '>' + p.destinoChave;
+    if (!grupos.has(chave)) {
+      grupos.set(chave, {
+        baseOrigem: p.baseOrigem, baseLat: p.baseLat, baseLon: p.baseLon,
+        destino: p.destino, destinoLat: p.destinoLat, destinoLon: p.destinoLon,
+        kmTotal: null,
+      });
+    }
+    const g = grupos.get(chave);
+    if ((g.baseLat == null || isNaN(g.baseLat)) && !isNaN(p.baseLat)) { g.baseLat = p.baseLat; g.baseLon = p.baseLon; }
+    if ((g.destinoLat == null || isNaN(g.destinoLat)) && !isNaN(p.destinoLat)) { g.destinoLat = p.destinoLat; g.destinoLon = p.destinoLon; }
+  });
+  return [...grupos.values()].sort((a, b) => {
+    const ka = _dashSemAcento(a.baseOrigem), kb = _dashSemAcento(b.baseOrigem);
+    if (ka !== kb) return ka.localeCompare(kb, 'pt-BR');
+    return _dashSemAcento(a.destino).localeCompare(_dashSemAcento(b.destino), 'pt-BR');
+  });
+}
+
+// Km TOTAL aqui é sempre o trajeto DIRETO base→destino (1 chamada por par),
+// não uma soma de vários trechos — diferente de "Rotas - Roteirização".
+async function _dashCalcularKmRealDestinos(pares, onProgresso) {
+  let feitas = 0;
+  const total = pares.length;
+  const BATCH = 4;
+  for (let start = 0; start < pares.length; start += BATCH) {
+    const lote = pares.slice(start, start + BATCH);
+    await Promise.all(lote.map(async p => {
+      const a = { lat: p.baseLat, lon: p.baseLon };
+      const b = { lat: p.destinoLat, lon: p.destinoLon };
+      const validas = [a, b].every(pt => pt && !isNaN(pt.lat) && !isNaN(pt.lon) && (Math.abs(pt.lat) > 0.001 || Math.abs(pt.lon) > 0.001));
+      if (validas) {
+        try {
+          const seg = await osrmFetchSegmento(a, b);
+          p.kmTotal = Math.round(seg.distKm);
+        } catch (e) {
+          console.warn('[_dashCalcularKmRealDestinos] falha num par, deixando sem km:', e);
+        }
+      }
+      feitas++;
+      if (onProgresso) onProgresso(feitas, total);
+    }));
+  }
+}
+
+function _dashDestinosParaLinhas(pares) {
+  const cabecalho = ['BASE ORIGEM', 'DESTINO', 'KM TOTAL (IDA E VOLTA)'];
+  // Km dobrado — operação é sempre ida e volta (carrega no terminal, entrega, volta pra base).
+  const linhas = pares.map(p => [p.baseOrigem, p.destino, p.kmTotal == null ? '-' : p.kmTotal * 2]);
+  return { cabecalho, linhas };
+}
+
+async function dashGerarRelatorioRotasFretes(formato) {
+  try {
+    showToast('Coletando destinos únicos (respeitando os filtros ativos)…', true);
+    const paresBrutos = await _dashColetarDestinosUnicos();
+    if (!paresBrutos.length) { showToast('Nenhum destino encontrado no período/filtro selecionado.', false); return; }
+    const pares = _dashAgruparDestinosUnicos(paresBrutos);
+
+    showToast(`Calculando km real (rota direta) de ${pares.length} destino(s)… isso pode levar alguns minutos.`, true);
+    await _dashCalcularKmRealDestinos(pares, (feitas, total) => {
+      if (feitas % 10 === 0 || feitas === total) showToast(`Calculando rota real… ${feitas}/${total}`, true);
+    });
+
+    const { cabecalho, linhas } = _dashDestinosParaLinhas(pares);
+    const agora = new Date();
+    const p2 = n => String(n).padStart(2, '0');
+    const filtroStr = _dashDescricaoFiltroAtual();
+    const nomeArq = `Rotas_Fretes_Nexta_${agora.getFullYear()}${p2(agora.getMonth()+1)}${p2(agora.getDate())}_${p2(agora.getHours())}${p2(agora.getMinutes())}`;
+
+    if (formato === 'xlsx') {
+      if (typeof XLSX === 'undefined') { showToast('SheetJS não carregado.', false); return; }
+      const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+      ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 20 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Rotas - Fretes');
+      XLSX.writeFile(wb, `${nomeArq}.xlsx`);
+      showToast(`✅ ${linhas.length} destino(s) exportado(s).`, true);
+      return;
+    }
+
+    if (formato === 'pdf') {
+      const { jsPDF } = window.jspdf || {};
+      if (!jsPDF || !window.jspdf) { showToast('jsPDF não carregado.', false); return; }
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NEXTA — RELATÓRIO DE ROTAS - FRETES', 10, 12);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${linhas.length} destino(s) · filtro: ${filtroStr} · gerado em ${agora.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`, 10, 18);
+      if (typeof doc.autoTable !== 'function') { showToast('jspdf-autotable não carregado.', false); return; }
+      doc.autoTable({
+        head: [cabecalho],
+        body: linhas,
+        startY: 23,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [40, 60, 30], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 247, 240] },
+        margin: { left: 8, right: 8 },
+        theme: 'grid',
+      });
+      doc.save(`${nomeArq}.pdf`);
+      showToast(`✅ ${linhas.length} destino(s) exportado(s).`, true);
+      return;
+    }
+  } catch (e) {
+    console.error('[dashGerarRelatorioRotasFretes] falha:', e);
+    showToast('Erro ao gerar relatório de rotas - fretes: ' + (e.message || 'falha desconhecida'), false);
+  }
+}
+window.dashGerarRelatorioRotasFretes = dashGerarRelatorioRotasFretes;
+
+async function _dashColetarRotas() {
+  const store = await dashGetStoreMerged();
+  const snaps = Object.values(store).flat();
+  const rotas = [];
+  snaps.forEach(snap => {
+    const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+    vecs.forEach(v => {
+      const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach(vi => {
+        const nomeBase = vi.terminalOrigem || v.terminal || '';
+        const terminal = (terms || []).find(t => t.nome === nomeBase);
+        const baseOrigemBruta = (terminal?.cidade || nomeBase || '-').toString().toUpperCase();
+        const _baseExtraida = _dashExtrairUF(baseOrigemBruta);
+        const baseOrigem = _baseExtraida.uf
+          ? `${_dashRestaurarAcento(_baseExtraida.cidade)} - ${_baseExtraida.uf}`
+          : _dashRestaurarAcento(baseOrigemBruta);
+        const paradas = (Array.isArray(vi.paradas) ? vi.paradas : []).map(p => {
+          const { cidade, uf } = _dashResolverCidadeUF(p.pedido);
+          const cidadeExibicao = uf ? `${cidade} - ${uf}` : (cidade || '-');
+          const cidadeChave = _dashSemAcento(cidadeExibicao);
+          // Usa SÓ o km real da rota já calculado (o mesmo valor usado em
+          // Envio Transportadora/Herrlog/Frete) — nunca estima. Uma
+          // estimativa em linha reta (Haversine) é sempre mais curta que a
+          // distância real de rodovia, às vezes MUITO mais curta em
+          // trajetos com serra/curva (Paulínia→Angra dos Reis cruza a
+          // Serra do Mar, por exemplo) — pra um relatório que vai pra
+          // gestão, um número errado por "só" 30-40% é pior que admitir
+          // que não temos o dado: km fica null (mostrado como "-"), nunca
+          // um palpite disfarçado de valor exato.
+          const km = p.distanciaKm ? Math.round(p.distanciaKm) : null;
+          const { lat, lon } = _dashResolverCoordPedido(p.pedido, p);
+          return { cidadeExibicao, cidadeChave, km, lat, lon };
+        });
+        if (paradas.length) {
+          // Colapsa cidades repetidas CONSECUTIVAS (mesma cidade duas+
+          // vezes seguidas na sequência) ANTES de devolver a rota — não só
+          // na exibição. Antes, uma viagem "AMERICANA → AMERICANA →
+          // PIRACICABA" virava uma rota de 3 posições (com a 2ª apagada só
+          // visualmente), o que a deixava com uma CHAVE diferente da rota
+          // "limpa" AMERICANA → PIRACICABA — as duas nunca se juntavam no
+          // agrupamento, e apareciam como duas linhas com KM TOTAL
+          // diferente (uma incluindo o trecho redundante, outra não).
+          // Colapsando aqui, as duas caem na MESMA chave — e a escolha por
+          // "km mais frequente" (ver _dashAgruparRotasUnicas) decide
+          // sozinha qual km é o de verdade.
+          const cidadesColapsadas = [];
+          paradas.forEach(p => {
+            const anterior = cidadesColapsadas[cidadesColapsadas.length - 1];
+            if (!anterior || anterior.cidadeChave !== p.cidadeChave) cidadesColapsadas.push(p);
+          });
+          const todosNulos = paradas.every(p => p.km === null);
+          const kmTotal = todosNulos ? null : paradas.reduce((s, p) => s + (p.km || 0), 0);
+          rotas.push({
+            baseOrigem, baseOrigemChave: _dashSemAcento(baseOrigem),
+            baseLat: parseFloat(terminal?.lat), baseLon: parseFloat(terminal?.lon),
+            paradas: cidadesColapsadas, kmTotal,
+          });
+        }
+      });
+    });
+  });
+  return rotas;
+}
+
+// Agrupa por rota ÚNICA (base + sequência exata de cidades de entrega, na
+// mesma ordem) — 20 viagens idênticas de São Caetano → Osasco viram UMA
+// linha só. Dentro de cada grupo, usa o valor de KM TOTAL que aparece com
+// mais frequência entre as ocorrências (a "moda"), não a média nem a
+// primeira que aparecer — é o km que mais se repetiu de verdade pra aquela
+// rota. Estado sai como coluna única (todos os estados distintos das
+// cidades da rota, sem numerar por parada) e KM sai só como total no fim
+// (soma dos trechos), sem separar km por cidade de entrega.
+function _dashAgruparRotasUnicas(rotas) {
+  const grupos = new Map();
+  rotas.forEach(r => {
+    const paradasSeguras = Array.isArray(r.paradas) ? r.paradas : [];
+    const cidadesChave = paradasSeguras.map(p => p.cidadeChave);
+    const chave = r.baseOrigemChave + '>' + cidadesChave.join('>');
+    const kmTotal = r.kmTotal; // já calculado em _dashColetarRotas, sobre TODOS os trechos reais (antes de colapsar cidade repetida)
+    if (!grupos.has(chave)) {
+      // Nome de exibição já sai corretamente acentuado desde a coleta (ver
+      // _dashRestaurarAcento em _dashColetarRotas/_dashResolverCidadeUF) —
+      // não precisa mais escolher entre ocorrências "com" ou "sem" acento
+      // aqui, só guarda a primeira (todas as ocorrências do mesmo grupo já
+      // deveriam estar consistentes).
+      grupos.set(chave, {
+        baseOrigemExibicao: r.baseOrigem,
+        baseLat: r.baseLat, baseLon: r.baseLon,
+        cidadesExibicao: paradasSeguras.map(p => p.cidadeExibicao),
+        cidadesCoord: paradasSeguras.map(p => ({ lat: p.lat, lon: p.lon })),
+        kmContagem: new Map(),
+      });
+    }
+    const g = grupos.get(chave);
+    // Preenche coordenada só se ainda estiver faltando — primeira ocorrência
+    // válida do grupo "ganha" (a rota é a mesma, o ponto geográfico
+    // representativo dela pode vir de qualquer ocorrência).
+    if ((g.baseLat == null || isNaN(g.baseLat)) && !isNaN(r.baseLat)) { g.baseLat = r.baseLat; g.baseLon = r.baseLon; }
+    paradasSeguras.forEach((p, i) => {
+      if (g.cidadesCoord[i] && (g.cidadesCoord[i].lat == null || isNaN(g.cidadesCoord[i].lat)) && !isNaN(p.lat)) {
+        g.cidadesCoord[i] = { lat: p.lat, lon: p.lon };
+      }
+    });
+    g.kmContagem.set(kmTotal, (g.kmContagem.get(kmTotal) || 0) + 1);
+  });
+  return [...grupos.values()].map(g => {
+    // Km mais frequente (moda) — empate resolvido pelo primeiro valor visto na ordem de inserção do Map.
+    let kmModa = null, maiorContagem = 0;
+    g.kmContagem.forEach((contagem, km) => { if (contagem > maiorContagem) { maiorContagem = contagem; kmModa = km; } });
+    return {
+      baseOrigem: g.baseOrigemExibicao,
+      baseLat: g.baseLat, baseLon: g.baseLon,
+      cidades: g.cidadesExibicao,
+      cidadesCoord: g.cidadesCoord,
+      kmTotal: kmModa,
+      kmHistorico: kmModa, // guarda o valor original (baseado no histórico), caso o cálculo real via ORS não role
+      // Chaves normalizadas SÓ pra ordenar — garantem que "BETIM - MG"
+      // fique sempre contíguo mesmo que, por algum motivo (acento/espaço
+      // duplo divergente entre snapshots antigos), o texto de EXIBIÇÃO de
+      // dois grupos que são a mesma base/cidade não seja byte-a-byte
+      // idêntico. Ordenar pelo texto de exibição direto foi exatamente o
+      // que fez "BETIM - MG" aparecer em dois blocos separados antes.
+      _baseOrdKey: _dashSemAcento(g.baseOrigemExibicao),
+      _cidadesOrdKey: g.cidadesExibicao.map(_dashSemAcento),
+    };
+  }).sort((a, b) => {
+    // 1) Base Origem, alfabética
+    if (a._baseOrdKey !== b._baseOrdKey) return a._baseOrdKey.localeCompare(b._baseOrdKey, 'pt-BR');
+    // 2) Cidade Entrega 1 em diante — mas a partir da 2ª, rota "em branco"
+    // (ou seja, rota de cidade única, que já acabou ali) vem ANTES de uma
+    // rota que continua com mais uma cidade — assim as rotas de destino
+    // único ficam agrupadas logo no topo de cada base, antes das rotas
+    // multi-cidade que começam com a mesma 1ª cidade.
+    const maxLen = Math.max(a._cidadesOrdKey.length, b._cidadesOrdKey.length);
+    for (let i = 0; i < maxLen; i++) {
+      const ca = a._cidadesOrdKey[i] || '';
+      const cb = b._cidadesOrdKey[i] || '';
+      if (ca === cb) continue;
+      if (i > 0 && (ca === '' || cb === '')) return ca === '' ? -1 : 1;
+      return ca.localeCompare(cb, 'pt-BR');
+    }
+    return 0;
+  }).map(({ _baseOrdKey, _cidadesOrdKey, ...r }) => r); // remove as chaves auxiliares antes de devolver
+}
+
+function _dashRotasAgrupadasParaLinhas(rotas) {
+  const maxCidades = rotas.reduce((m, r) => Math.max(m, r.cidades.length), 1);
+  const cabecalho = ['BASE ORIGEM'];
+  for (let i = 1; i <= maxCidades; i++) cabecalho.push(`CIDADE ENTREGA ${i}`);
+  cabecalho.push('KM TOTAL (IDA E VOLTA)');
+  const linhas = rotas.map(r => {
+    const linha = [r.baseOrigem];
+    // Cidades repetidas consecutivas já vêm colapsadas desde a coleta (ver
+    // _dashColetarRotas) — aqui é só listar na ordem, sem buraco no meio.
+    for (let i = 0; i < maxCidades; i++) linha.push(r.cidades[i] || '');
+    // Km TOTAL dobrado — a operação é sempre ida e volta (o veículo carrega
+    // no terminal, entrega, e volta pra base), então o km relevante pra
+    // gestão é o ciclo completo, não só o trecho de ida.
+    linha.push(r.kmTotal == null ? '-' : r.kmTotal * 2);
+    return linha;
+  });
+  return { cabecalho, linhas, maxParadas: maxCidades };
+}
+function _dashRotasParaLinhas(rotasBrutas) {
+  return _dashRotasAgrupadasParaLinhas(_dashAgruparRotasUnicas(rotasBrutas));
+}
+
+// Calcula o KM TOTAL de verdade (rota real via OpenRouteService — mesmo
+// serviço já usado no "Mapa da Viagem" e no "Km Real" em lote, INCLUSIVE o
+// mesmo perfil de caminhão/hazmat) pra cada rota única, em vez de confiar no
+// km salvo no histórico (que podia estar zerado, desatualizado, ou —
+// depois de uma correção anterior — vir de uma estimativa em linha reta que
+// não reflete rodovia de verdade). Sobrescreve r.kmTotal quando a consulta
+// dá certo; mantém r.kmHistorico como estava se a consulta falhar ou faltar
+// coordenada (nunca finge que tem um km real que não tem).
+async function _dashCalcularKmRealRotas(rotasAgrupadas, onProgresso) {
+  let feitas = 0;
+  const total = rotasAgrupadas.length;
+  // BATCH pequeno — cada chamada individual já espera sua vez no limitador
+  // de 30/min compartilhado com todo o resto do sistema (osrmFetchSegmento);
+  // isso só controla quantas promessas ficam "em voo" ao mesmo tempo.
+  const BATCH = 4;
+  for (let start = 0; start < rotasAgrupadas.length; start += BATCH) {
+    const lote = rotasAgrupadas.slice(start, start + BATCH);
+    await Promise.all(lote.map(async r => {
+      const pontos = [{ lat: r.baseLat, lon: r.baseLon }, ...r.cidadesCoord];
+      // Só calcula se TODOS os pontos da rota têm coordenada válida — uma
+      // rota com um trecho sem coordenada não dá pra rotear de verdade;
+      // mantém o km do histórico (ou "-") pra essa em vez de inventar.
+      const todasValidas = pontos.every(p => p && !isNaN(p.lat) && !isNaN(p.lon) && (Math.abs(p.lat) > 0.001 || Math.abs(p.lon) > 0.001));
+      if (!todasValidas) { feitas++; return; }
+      try {
+        let somaKm = 0;
+        for (let i = 0; i < pontos.length - 1; i++) {
+          const seg = await osrmFetchSegmento(pontos[i], pontos[i + 1]);
+          somaKm += seg.distKm;
+        }
+        r.kmTotal = Math.round(somaKm);
+      } catch (e) {
+        console.warn('[_dashCalcularKmRealRotas] falha numa rota, mantendo km do histórico:', e);
+      }
+      feitas++;
+      if (onProgresso) onProgresso(feitas, total);
+    }));
+  }
+}
+
+async function dashGerarRelatorioRotas(formato) {
+  try {
+    showToast('Coletando rotas do histórico…', true);
+    const rotasBrutas = await _dashColetarRotas();
+    if (!rotasBrutas.length) { showToast('Nenhuma rota encontrada no histórico.', false); return; }
+    const rotasAgrupadas = _dashAgruparRotasUnicas(rotasBrutas);
+
+    const usarKmReal = confirm(
+      `Calcular o KM TOTAL consultando rota real (OpenRouteService, mesmo serviço usado no resto do sistema) em vez de usar só o km salvo no histórico?\n\n` +
+      `${rotasAgrupadas.length} rota(s) única(s) — pode levar alguns minutos (respeita o limite de requisições por minuto, compartilhado com o resto do sistema; trechos repetidos entre rotas usam cache e não recalculam).\n\n` +
+      `OK = calcular km real agora (mais exato, mais demorado)\n` +
+      `Cancelar = usar o km do histórico (mais rápido, pode estar incompleto)`
+    );
+    if (usarKmReal) {
+      showToast(`Calculando rota real de ${rotasAgrupadas.length} rota(s)… isso pode levar alguns minutos.`, true);
+      await _dashCalcularKmRealRotas(rotasAgrupadas, (feitas, total) => {
+        if (feitas % 10 === 0 || feitas === total) showToast(`Calculando rota real… ${feitas}/${total}`, true);
+      });
+    }
+
+    const { cabecalho, linhas } = _dashRotasAgrupadasParaLinhas(rotasAgrupadas);
+    const agora = new Date();
+    const p2 = n => String(n).padStart(2, '0');
+    const nomeArq = `Rotas_Roteirizacao_Nexta_${agora.getFullYear()}${p2(agora.getMonth()+1)}${p2(agora.getDate())}_${p2(agora.getHours())}${p2(agora.getMinutes())}`;
+
+    if (formato === 'xlsx') {
+      if (typeof XLSX === 'undefined') { showToast('SheetJS não carregado.', false); return; }
+      const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+      ws['!cols'] = cabecalho.map((h, i) => ({ wch: i === 0 ? 22 : (h.startsWith('Cidade') ? 24 : h.startsWith('KM') ? 20 : 8) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Rotas');
+      XLSX.writeFile(wb, `${nomeArq}.xlsx`);
+      showToast(`✅ ${linhas.length} rota(s) exportada(s).`, true);
+      return;
+    }
+
+    if (formato === 'pdf') {
+      const { jsPDF } = window.jspdf || {};
+      if (!jsPDF || !window.jspdf) { showToast('jsPDF não carregado.', false); return; }
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NEXTA — RELATÓRIO DE ROTAS - ROTEIRIZAÇÃO', 10, 12);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${linhas.length} rota(s) · gerado em ${agora.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`, 10, 18);
+      if (typeof doc.autoTable !== 'function') { showToast('jspdf-autotable não carregado.', false); return; }
+      doc.autoTable({
+        head: [cabecalho],
+        body: linhas,
+        startY: 23,
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [40, 60, 30], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 247, 240] },
+        margin: { left: 8, right: 8 },
+        theme: 'grid',
+      });
+      doc.save(`${nomeArq}.pdf`);
+      showToast(`✅ ${linhas.length} rota(s) exportada(s).`, true);
+      return;
+    }
+  } catch (e) {
+    console.error('[dashGerarRelatorioRotas] falha:', e);
+    showToast('Erro ao gerar relatório de rotas: ' + (e.message || 'falha desconhecida'), false);
+  }
+}
+window.dashGerarRelatorioRotas = dashGerarRelatorioRotas;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AGENDA DE FECHAMENTO — em qual dia da semana (seg–sáb) cada cliente costuma
+// comprar mais, olhando TODO o histórico (igual a "Rotas - Roteirização":
+// de propósito não respeita o filtro de período do topo do Dashboard — é um
+// padrão de comportamento do cliente ao longo do tempo, não um recorte de
+// um mês específico).
+// ══════════════════════════════════════════════════════════════════════════════
+const _DASH_AGENDA_DIAS = [
+  { idx: 1, label: 'Segunda', abrev: 'Seg' },
+  { idx: 2, label: 'Terça',   abrev: 'Ter' },
+  { idx: 3, label: 'Quarta',  abrev: 'Qua' },
+  { idx: 4, label: 'Quinta',  abrev: 'Qui' },
+  { idx: 5, label: 'Sexta',   abrev: 'Sex' },
+  { idx: 6, label: 'Sábado',  abrev: 'Sáb' },
+];
+let _dashAgendaSnapshotsCache = null;               // Object.values(dashGetStoreMerged()).flat(), carregado 1x e reaproveitado — "🔄 Carregar/Atualizar" força reler
+let _dashAgendaTodos    = { operacao: [], produto: [], transp: [] }; // universo de opções pra cada filtro, calculado a partir do histórico carregado
+let _dashAgendaFiltros  = { operacao: null, produto: null, transp: null }; // null = todos; Set = filtro ativo
+let _dashAgendaExpandidos = new Set();              // chaves de cliente com o card "outros dias" aberto
+let _dashAgendaFreqMinima = 2;                      // nº mínimo de pedidos NESSE dia da semana pra o cliente entrar na agenda — a ideia é cliente habitual, não quem comprou grande uma vez só
+function dashAgendaSetFreqMinima(n) {
+  _dashAgendaFreqMinima = n;
+  document.querySelectorAll('.dash-agenda-freq-tab').forEach(el => {
+    const ativo = parseInt(el.dataset.freq, 10) === n;
+    el.classList.toggle('active-rank', ativo);
+    el.style.background = ativo ? 'var(--pet-green,#b5e51d)' : 'transparent';
+    el.style.color = ativo ? '#000' : 'var(--text-2)';
+  });
+  dashRenderAgendaFechamento();
+}
+window.dashAgendaSetFreqMinima = dashAgendaSetFreqMinima;
+
+async function dashCarregarAgendaFechamento(forcarRecarga = false) {
+  const grid = document.getElementById('dash-agenda-fechamento-grid');
+  if (!grid) return;
+  if (!_dashAgendaSnapshotsCache || forcarRecarga) {
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-3);text-align:center;padding:32px;font-size:12px;font-weight:700;">Lendo todo o histórico… pode levar alguns segundos.</div>';
+    try {
+      const store = await dashGetStoreMerged();
+      _dashAgendaSnapshotsCache = Object.values(store || {}).flat();
+    } catch (e) {
+      console.error('[dashCarregarAgendaFechamento] falha ao ler histórico:', e);
+      grid.innerHTML = '<div style="grid-column:1/-1;color:#B91C1C;text-align:center;padding:32px;font-size:12px;font-weight:700;">Erro ao ler o histórico. Confira se a pasta do Histórico está vinculada (aba Histórico) e tente de novo.</div>';
+      return;
+    }
+    if (!_dashAgendaSnapshotsCache.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-3);text-align:center;padding:32px;font-size:12px;font-weight:700;">Nenhum histórico encontrado — verifique se a pasta do Histórico está vinculada.</div>';
+      return;
+    }
+    _dashAgendaPopularOpcoesFiltro();
+  }
+  dashRenderAgendaFechamento();
+}
+window.dashCarregarAgendaFechamento = dashCarregarAgendaFechamento;
+
+// Varre o histórico carregado só pra descobrir o universo de valores
+// possíveis de cada filtro (não aplica nenhum filtro aqui) — usado pra
+// popular as listas de checkbox.
+function _dashAgendaPopularOpcoesFiltro() {
+  const snaps = _dashAgendaSnapshotsCache || [];
+  const ops = new Set(), transp = new Set(), prods = new Set();
+  snaps.forEach(snap => {
+    const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+    vecs.forEach(v => {
+      if (v.transportadora) transp.add(v.transportadora);
+      const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach(vi => {
+        ops.add(dashCidadeOperacaoViagem(vi, v, terms));
+        (vi.paradas || []).forEach(p => {
+          (p.itens || []).forEach(it => {
+            const nomeProdBruto = (it.produto || '').toString().replace(/^\d+\s*-\s*/, '').trim();
+            prods.add(nomeProdBruto ? nomeProdBruto.toUpperCase().replace(/\s+/g, ' ') : 'PRODUTO NÃO IDENTIFICADO');
+          });
+        });
+      });
+    });
+  });
+  _dashAgendaTodos.operacao = [...ops].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  _dashAgendaTodos.transp   = [...transp].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  _dashAgendaTodos.produto  = [...prods].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  // Se um filtro já estava ativo e algum valor selecionado sumiu do universo
+  // atual (ex.: recarregou com histórico diferente), remove só o que sumiu —
+  // mesmo cuidado já usado no filtro de Cidades/Operação do topo do Dashboard.
+  ['operacao', 'transp', 'produto'].forEach(tipo => {
+    if (!_dashAgendaFiltros[tipo]) return;
+    const validos = new Set(_dashAgendaTodos[tipo]);
+    const atualizado = new Set([..._dashAgendaFiltros[tipo]].filter(v => validos.has(v)));
+    _dashAgendaFiltros[tipo] = atualizado.size === _dashAgendaTodos[tipo].length ? null : atualizado;
+  });
+}
+
+// ── Fusão de clientes "quase iguais" (mesmo nome, mas com pequena diferença
+// de caracteres) ────────────────────────────────────────────────────────────
+// dashNormalizarNomeCliente já resolve maiúscula/minúscula, acento, "&" vs
+// "E" e pontuação — mas não pega um typo real no cadastro/planilha (uma
+// letra trocada, faltando, ou a mais), que faz o MESMO cliente virar duas
+// chaves normalizadas diferentes e aparecer duplicado na Agenda (às vezes
+// até em dois dias da semana diferentes, cada cópia com metade do volume).
+// Distância de Levenshtein clássica (só substituição/inserção/remoção de 1
+// caractere por vez) entre as chaves já normalizadas.
+function _dashLevenshtein(a, b) {
+  if (a === b) return 0;
+  const al = a.length, bl = b.length;
+  if (al === 0) return bl;
+  if (bl === 0) return al;
+  let prev = new Array(bl + 1);
+  let curr = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + custo);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[bl];
+}
+// Só considera "a mesma empresa com um typo" quando os nomes já são bem
+// parecidos (poucos caracteres de diferença) — nomes curtos não entram
+// (risco de juntar clientes realmente diferentes por coincidência) e nomes
+// bem diferentes em tamanho já são descartados antes de calcular a
+// distância de verdade (mais rápido).
+function _dashAgendaChaveSimilar(k1, k2) {
+  if (k1 === k2) return true;
+  const minLen = Math.min(k1.length, k2.length);
+  if (minLen < 8) return false;
+  // Se os dois têm números e eles NÃO são exatamente os mesmos, nunca
+  // mescla — "POSTO SILVA 2" vs "POSTO SILVA 3" é filial/unidade diferente
+  // (cliente de verdade diferente), não um typo, mesmo com o resto do nome
+  // idêntico e a distância de edição baixa.
+  const dig1 = k1.replace(/[^0-9]/g, ''), dig2 = k2.replace(/[^0-9]/g, '');
+  if (dig1 !== dig2) return false;
+  const maxDist = minLen >= 20 ? 3 : 2;
+  if (Math.abs(k1.length - k2.length) > maxDist) return false;
+  return _dashLevenshtein(k1, k2) <= maxDist;
+}
+// Código SAP normalizado só pra COMPARAR (zeros à esquerda não deveriam
+// importar: "0001234" e "1234" são o mesmo código) — nunca usado como texto
+// de exibição, só nesta comparação.
+function _dashAgendaSapNorm(sap) {
+  return (sap || '').toString().trim().replace(/^0+(?=\d)/, '');
+}
+// Nome "oficial" desse cliente no Cadastro de Clientes (roteirizador.js,
+// window.clientes) — casa por SAP normalizado (preferência) ou por nome
+// exato, mesmo critério já usado em _dashResolverCidadeUF/_dashResolverCoordPedido.
+// Quando existe, ele é a fonte de verdade da exibição — nunca uma
+// aproximação do texto que veio no pedido (que pode variar de digitação
+// entre importações).
+function _dashAgendaNomeCadastro(sapPedido, nomeBruto) {
+  if (typeof window.clientes === 'undefined' || !Array.isArray(window.clientes)) return null;
+  const sapNorm = _dashAgendaSapNorm(sapPedido);
+  const cli = window.clientes.find(c =>
+    (sapNorm && c.codigoSAP && _dashAgendaSapNorm(c.codigoSAP) === sapNorm) ||
+    (nomeBruto && c.nome && c.nome.toString().toUpperCase() === nomeBruto.toString().toUpperCase())
+  );
+  return cli?.nome || null;
+}
+// Segunda passada sobre o agregado por cliente: junta buckets que são o
+// MESMO cliente na prática. Prioridade:
+//   1) Código SAP igual (normalizado) → SEMPRE une, mesmo que o nome
+//      digitado seja bem diferente — SAP é a fonte de verdade quando existe
+//      nos dois lados.
+//   2) Se um dos dois (ou os dois) não tem SAP registrado nessa entrada,
+//      compara pelo nome normalizado com folga pra pequena diferença de
+//      caracteres (typo) — ver _dashAgendaChaveSimilar.
+//   3) SAP preenchido nos dois lados mas DIFERENTE → nunca une por
+//      aproximação de nome (são cadastros/unidades diferentes de verdade).
+// Nome de exibição: se QUALQUER um dos lados já veio com nome resolvido do
+// Cadastro de Clientes (nomeDoCadastro), esse é o nome definitivo do grupo
+// pra sempre — nunca mais troca por causa da grafia de um pedido antigo.
+// Só cai pra heurística "nome mais completo" (dashNomeCanônico) quando
+// NENHUM dos dois lados tem match no cadastro (cliente que só existe no
+// histórico, sem cadastro vivo hoje).
+function _dashAgendaMesclarSimilares(clientesMap) {
+  const chaves = Object.keys(clientesMap).sort((a, b) => clientesMap[b].nomeExibido.length - clientesMap[a].nomeExibido.length);
+  const resultado = {};
+  const ordem = []; // mantém a ordem de inserção dos buckets em `resultado` (Object.keys não garante isso pra chaves numéricas)
+  chaves.forEach(chave => {
+    const origem = clientesMap[chave];
+    const sapOrigem = _dashAgendaSapNorm(origem.sap);
+    const nomeNormOrigem = dashNormalizarNomeCliente(origem.nomeExibido);
+    let canonica = null;
+    for (const c of ordem) {
+      const alvo = resultado[c];
+      const sapAlvo = _dashAgendaSapNorm(alvo.sap);
+      if (sapOrigem && sapAlvo) {
+        if (sapOrigem === sapAlvo) { canonica = c; break; }
+        continue; // os dois têm SAP e são diferentes — nunca une, mesmo com nome parecido
+      }
+      if (_dashAgendaChaveSimilar(nomeNormOrigem, dashNormalizarNomeCliente(alvo.nomeExibido))) { canonica = c; break; }
+    }
+    if (!canonica) {
+      resultado[chave] = { nomeExibido: origem.nomeExibido, nomeDoCadastro: !!origem.nomeDoCadastro, sap: origem.sap || '', porDia: origem.porDia.map(d => ({ volume: d.volume, datas: new Set(d.datas) })) };
+      ordem.push(chave);
+    } else {
+      const bucket = resultado[canonica];
+      if (origem.nomeDoCadastro && !bucket.nomeDoCadastro) {
+        bucket.nomeExibido = origem.nomeExibido;
+        bucket.nomeDoCadastro = true;
+      } else if (!bucket.nomeDoCadastro) {
+        bucket.nomeExibido = dashNomeCanônico(bucket.nomeExibido, origem.nomeExibido);
+      } // se o bucket já tem nome do cadastro, mantém — não deixa nome de pedido sobrescrever
+      if (!bucket.sap && origem.sap) bucket.sap = origem.sap;
+      for (let d = 0; d < 7; d++) {
+        bucket.porDia[d].volume += origem.porDia[d].volume;
+        origem.porDia[d].datas.forEach(data => bucket.porDia[d].datas.add(data));
+      }
+    }
+  });
+  return resultado;
+}
+
+// Agrega volume por CLIENTE × DIA DA SEMANA (0=Dom..6=Sáb), aplicando os
+// filtros ativos de Operação/Produto/Transportadora na fonte — mesmo
+// princípio de dashAgregarProdutos (filtro entra ANTES de somar, não depois).
+// A chave primária de agrupamento já prioriza o CÓDIGO SAP do pedido
+// (normalizado, sem zero à esquerda) sobre o nome — mesmo critério de
+// dashChaveCliente usado no resto do Dashboard — e só cai pro nome
+// normalizado quando o pedido não tem SAP preenchido. A fusão fuzzy acima
+// (_dashAgendaMesclarSimilares) cobre o resto: registros do MESMO cliente
+// em que o SAP variou de grafia ou não foi preenchido em algum deles.
+function _dashAgendaColetarClientes() {
+  const snaps = _dashAgendaSnapshotsCache || [];
+  const { operacao: opFiltro, transp: transpFiltro, produto: prodFiltro } = _dashAgendaFiltros;
+  const clientesMap = {};
+  snaps.forEach(snap => {
+    const res = snap.resultado || {}, vecs = snap.veiculos || [], terms = snap.terminais || [];
+    vecs.forEach(v => {
+      if (transpFiltro && !transpFiltro.has(v.transportadora || '')) return;
+      const viagens = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach(vi => {
+        if (opFiltro && !opFiltro.has(dashCidadeOperacaoViagem(vi, v, terms))) return;
+        (vi.paradas || []).forEach(p => {
+          const nomeCliente = (p.pedido || {}).cliente || (p.pedido || {}).nomeCliente || p.nome || '?';
+          const sapPedido = (p.pedido?.codigoSAP || p.pedido?.codSAP || p.pedido?.sap || '').toString().trim();
+          const dataEntrega = p.pedido?.dataEntregaLogistica || '';
+          const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dataEntrega);
+          if (!m) return; // sem data válida, não dá pra saber o dia da semana
+          const dt = new Date(+m[3], +m[2] - 1, +m[1]);
+          if (isNaN(dt.getTime())) return;
+          const diaSemana = dt.getDay(); // 0=Dom..6=Sáb
+          const chaveCliente = sapPedido ? 'SAP:' + _dashAgendaSapNorm(sapPedido) : 'NM:' + dashNormalizarNomeCliente(nomeCliente);
+          // Nome do Cadastro de Clientes (window.clientes) é a fonte de
+          // verdade quando existe — resolve 1x por parada, usa em todos os
+          // itens dela.
+          const nomeCadastro = _dashAgendaNomeCadastro(sapPedido, nomeCliente);
+          (p.itens || []).forEach(it => {
+            const nomeProdBruto = (it.produto || '').toString().replace(/^\d+\s*-\s*/, '').trim();
+            const nomeProd = nomeProdBruto ? nomeProdBruto.toUpperCase().replace(/\s+/g, ' ') : 'PRODUTO NÃO IDENTIFICADO';
+            if (prodFiltro && !prodFiltro.has(nomeProd)) return;
+            const vol = it.volume || 0;
+            if (vol <= 0) return;
+            if (!clientesMap[chaveCliente]) clientesMap[chaveCliente] = { nomeExibido: nomeCadastro || nomeCliente, nomeDoCadastro: !!nomeCadastro, sap: sapPedido, porDia: Array.from({ length: 7 }, () => ({ volume: 0, datas: new Set() })) };
+            const bucket = clientesMap[chaveCliente];
+            if (nomeCadastro && !bucket.nomeDoCadastro) { bucket.nomeExibido = nomeCadastro; bucket.nomeDoCadastro = true; }
+            else if (!bucket.nomeDoCadastro) bucket.nomeExibido = dashNomeCanônico(bucket.nomeExibido, nomeCliente);
+            if (!bucket.sap && sapPedido) bucket.sap = sapPedido;
+            bucket.porDia[diaSemana].volume += vol;
+            if (dataEntrega) bucket.porDia[diaSemana].datas.add(dataEntrega);
+          });
+        });
+      });
+    });
+  });
+  // Junta chaves normalizadas "quase iguais" (typo/pequena diferença de
+  // caracteres) numa só entrada — ver _dashAgendaMesclarSimilares acima.
+  return _dashAgendaMesclarSimilares(clientesMap);
+}
+
+function dashRenderAgendaFechamento() {
+  const grid = document.getElementById('dash-agenda-fechamento-grid');
+  if (!grid) return;
+  if (!_dashAgendaSnapshotsCache) return; // ainda não carregou nada — mantém a mensagem inicial
+  const clientesMap = _dashAgendaColetarClientes();
+  const porColuna = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  Object.entries(clientesMap).forEach(([chave, info]) => {
+    // "Dia que compra mais" = maior volume entre segunda(1) e sábado(6) —
+    // domingo fica de fora da coluna (a operação roda seg–sáb), mas ainda
+    // aparece no detalhe expandido do card, se houver algum volume nele.
+    let melhorDia = null, melhorVol = 0;
+    for (let d = 1; d <= 6; d++) { if (info.porDia[d].volume > melhorVol) { melhorVol = info.porDia[d].volume; melhorDia = d; } }
+    if (!melhorDia) return; // nenhum volume de seg a sáb pra esse cliente (com os filtros atuais) — não entra na agenda
+    const frequencia = info.porDia[melhorDia].datas.size;
+    // A Agenda é pra cliente HABITUAL nesse dia, não pra quem comprou um
+    // volume grande uma vez só — fora do limiar mínimo de pedidos, nem
+    // entra na coluna (ver seletor "Mín. de pedidos" acima da grade).
+    if (frequencia < _dashAgendaFreqMinima) return;
+    porColuna[melhorDia].push({ chave, nome: info.nomeExibido, volumePico: melhorVol, frequencia, porDia: info.porDia });
+  });
+  // Ordena considerando volume E frequência juntos (não só o maior volume) —
+  // um cliente que compra bastante E com regularidade nesse dia fica acima
+  // de quem só teve um pedido grande isolado.
+  Object.keys(porColuna).forEach(d => porColuna[d].sort((a, b) => {
+    const scoreA = a.frequencia * a.volumePico, scoreB = b.frequencia * b.volumePico;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return b.volumePico - a.volumePico;
+  }));
+  grid.innerHTML = _DASH_AGENDA_DIAS.map(dia => {
+    const clientesDia = porColuna[dia.idx];
+    const totalDia = clientesDia.reduce((s, c) => s + c.volumePico, 0);
+    const cardsHtml = clientesDia.length
+      ? clientesDia.map(c => _dashAgendaCardClienteHtml(c, dia.idx)).join('')
+      : '<div style="font-size:11px;color:var(--text-3);text-align:center;padding:14px 6px;">Nenhum cliente frequente</div>';
+    return `<div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;min-width:0;">
+      <div style="background:rgba(0,0,0,.03);padding:9px 10px;border-bottom:1px solid var(--border-dk);">
+        <div style="font-size:12px;font-weight:700;color:var(--text);">${dia.label}</div>
+        <div style="font-size:10.5px;color:var(--text-3);">${clientesDia.length} cliente${clientesDia.length === 1 ? '' : 's'} · ${totalDia.toFixed(1)} m³</div>
+      </div>
+      <div style="padding:8px;display:flex;flex-direction:column;gap:6px;max-height:560px;overflow-y:auto;">${cardsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function _dashAgendaCardClienteHtml(c, diaIdxPico) {
+  const expandido = _dashAgendaExpandidos.has(c.chave);
+  const chaveSafe = c.chave.replace(/'/g, "\\'");
+  const outrosDiasHtml = _DASH_AGENDA_DIAS.concat([{ idx: 0, label: 'Domingo', abrev: 'Dom' }])
+    .filter(d => d.idx !== diaIdxPico)
+    .sort((a, b) => (a.idx === 0 ? 7 : a.idx) - (b.idx === 0 ? 7 : b.idx)) // domingo por último na lista expandida
+    .map(d => {
+      const info = c.porDia[d.idx];
+      const v = info ? info.volume : 0;
+      const n = info ? info.datas.size : 0;
+      return `<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-3);padding:2px 0;">
+        <span>${d.abrev}</span><span style="font-weight:600;color:${v > 0 ? 'var(--text-2)' : 'var(--text-3)'};">${v > 0 ? `${v.toFixed(1)} m³ (${n}x)` : '—'}</span>
+      </div>`;
+    }).join('');
+  return `<div style="border:1px solid var(--border-dk);border-radius:8px;padding:8px 9px;background:var(--bg,#fff);">
+    <div onclick="dashToggleAgendaCliente('${chaveSafe}')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px;">
+      <span style="font-size:11.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${c.nome}">${c.nome}</span>
+      <span style="font-size:9px;color:var(--text-3);flex-shrink:0;">${expandido ? '▲' : '▼'}</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px;">
+      <span style="font-size:11px;font-weight:700;color:#4F46E5;">${c.volumePico.toFixed(1)} m³</span>
+      <span style="font-size:10px;font-weight:600;color:var(--text-3);">· ${c.frequencia}x nesse dia</span>
+    </div>
+    ${expandido ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-dk);">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin-bottom:3px;">Outros dias</div>
+        ${outrosDiasHtml}
+      </div>` : ''}
+  </div>`;
+}
+function dashToggleAgendaCliente(chave) {
+  if (_dashAgendaExpandidos.has(chave)) _dashAgendaExpandidos.delete(chave); else _dashAgendaExpandidos.add(chave);
+  dashRenderAgendaFechamento();
+}
+window.dashToggleAgendaCliente = dashToggleAgendaCliente;
+
+// ── Filtros de Operação/Produto/Transportadora (multi-select em caixa) ─────
+// Componente genérico parametrizado por "tipo" ('operacao'|'produto'|'transp')
+// — reaproveita o mesmo padrão visual/interativo do filtro de Cidades do
+// topo do Dashboard (busca + checkbox + Todos/Limpar/Aplicar).
+function dashAgendaTogglePainel(tipo) {
+  const panel = document.getElementById(`dash-agenda-${tipo}-panel`);
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    const searchEl = panel.querySelector('.dash-agenda-search');
+    if (searchEl) searchEl.value = '';
+    _dashAgendaPopularLista(tipo);
+  }
+}
+function _dashAgendaPopularLista(tipo) {
+  const list = document.getElementById(`dash-agenda-${tipo}-list`);
+  if (!list) return;
+  const todos = _dashAgendaTodos[tipo] || [];
+  const sel = _dashAgendaFiltros[tipo];
+  if (!todos.length) { list.innerHTML = '<div style="padding:14px;font-size:11.5px;color:var(--text-3);text-align:center;">Carregue a agenda primeiro.</div>'; return; }
+  list.innerHTML = todos.map(nome => {
+    const checked = !sel || sel.has(nome);
+    const nomeSafe = nome.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    return `<div data-val="${nomeSafe}" data-checked="${checked ? '1' : '0'}"
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-radius:6px;margin:0 4px;user-select:none;">
+      <span class="dash-cb-box" style="flex-shrink:0;width:18px;height:18px;border-radius:5px;border:2px solid ${checked ? 'var(--pet-green,#b5e51d)' : '#bbb'};background:${checked ? 'var(--pet-green,#b5e51d)' : 'transparent'};display:flex;align-items:center;justify-content:center;">${checked ? _dashCheckSVG() : ''}</span>
+      <span style="font-size:12px;color:var(--text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${nome}</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('div[data-val]').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = 'rgba(0,0,0,0.04)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const checked = row.dataset.checked !== '1';
+      row.dataset.checked = checked ? '1' : '0';
+      _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), checked);
+    });
+  });
+}
+function dashAgendaFiltrarLista(tipo, busca) {
+  const list = document.getElementById(`dash-agenda-${tipo}-list`);
+  if (!list) return;
+  const b = (busca || '').toLowerCase();
+  list.querySelectorAll('div[data-val]').forEach(row => {
+    row.style.display = row.dataset.val.toLowerCase().includes(b) ? '' : 'none';
+  });
+}
+function dashAgendaSelecionarTodos(tipo, sel) {
+  const list = document.getElementById(`dash-agenda-${tipo}-list`);
+  if (!list) return;
+  list.querySelectorAll('div[data-val]').forEach(row => {
+    if (row.style.display === 'none') return;
+    row.dataset.checked = sel ? '1' : '0';
+    _dashAtualizarBoxVisual(row.querySelector('.dash-cb-box'), sel);
+  });
+}
+function dashAgendaAplicarFiltro(tipo) {
+  const list = document.getElementById(`dash-agenda-${tipo}-list`);
+  if (!list) return;
+  const selecionados = new Set();
+  const _dec = s => s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  list.querySelectorAll('div[data-checked="1"]').forEach(row => selecionados.add(_dec(row.dataset.val)));
+  const todos = _dashAgendaTodos[tipo] || [];
+  _dashAgendaFiltros[tipo] = selecionados.size === todos.length ? null : selecionados;
+  const badge = document.getElementById(`dash-agenda-${tipo}-badge`);
+  if (badge) {
+    if (_dashAgendaFiltros[tipo]) { badge.textContent = selecionados.size; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+  document.getElementById(`dash-agenda-${tipo}-panel`).style.display = 'none';
+  dashRenderAgendaFechamento();
+}
+window.dashAgendaTogglePainel     = dashAgendaTogglePainel;
+window.dashAgendaFiltrarLista     = dashAgendaFiltrarLista;
+window.dashAgendaSelecionarTodos  = dashAgendaSelecionarTodos;
+window.dashAgendaAplicarFiltro    = dashAgendaAplicarFiltro;
+document.addEventListener('click', function(e) {
+  ['operacao', 'produto', 'transp'].forEach(tipo => {
+    const panel = document.getElementById(`dash-agenda-${tipo}-panel`);
+    const btn   = document.getElementById(`dash-agenda-${tipo}-btn`);
+    if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn?.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RELATÓRIO PERSONALIZADO — o usuário monta: agrupar por × colunas × filtros
+// ══════════════════════════════════════════════════════════════════════════════
+// Botão "📊 Relatórios › 🧩 Relatório personalizado". Trabalha em cima dos
+// MESMOS snapshots e filtros do topo do Dashboard (período, operação,
+// transportadora, clientes, segmento, bandeira) e das MESMAS regras de conta
+// (volume líquido de devolução, km real quando existe, custo pelo contrato
+// cadastrado no Frete) — não lê nada novo do Firebase, só os modelos salvos
+// (1 documento: config/relatorios_modelos, compartilhado entre admin e
+// operacional).
+//
+// Base: 1 linha por ENTREGA (parada). Viagens, capacidade, jornada e custo são
+// da viagem e contam UMA vez por grupo (conjunto de viagens distintas), igual
+// ao Dashboard faz pra ocupação por cliente.
+const RP_DIMS = [
+  { id: 'transportadora', nome: 'Transportadora' },
+  { id: 'placa', nome: 'Placa' },
+  { id: 'contrato', nome: 'Tipo de contrato' },
+  { id: 'base', nome: 'Base de carregamento' },
+  { id: 'operacao', nome: 'Operação (cidade da base)' },
+  { id: 'cliente', nome: 'Cliente' },
+  { id: 'cidade', nome: 'Cidade do cliente' },
+  { id: 'segmento', nome: 'Segmento' },
+  { id: 'bandeira', nome: 'Bandeira' },
+  { id: 'produto', nome: 'Produto' },
+  { id: 'dia', nome: 'Dia de entrega', tempo: true },
+  { id: 'semana', nome: 'Semana', tempo: true },
+  { id: 'mes', nome: 'Mês', tempo: true },
+  { id: 'diasemana', nome: 'Dia da semana', tempo: true },
+];
+const RP_METS = [
+  { id: 'viagens', nome: 'Viagens', grupo: 'Operação', dec: 0 },
+  { id: 'entregas', nome: 'Entregas', grupo: 'Operação', dec: 0 },
+  { id: 'volume', nome: 'Volume (m³)', grupo: 'Operação', dec: 1 },
+  { id: 'participacao', nome: 'Participação no volume (%)', grupo: 'Operação', dec: 1 },
+  { id: 'capacidade', nome: 'Capacidade das viagens (m³)', grupo: 'Operação', dec: 0 },
+  { id: 'placas', nome: 'Placas distintas', grupo: 'Operação', dec: 0 },
+  { id: 'clientes', nome: 'Clientes distintos', grupo: 'Operação', dec: 0 },
+  { id: 'dias', nome: 'Dias com entrega', grupo: 'Operação', dec: 0 },
+  { id: 'ocupacao', nome: 'Ocupação (%)', grupo: 'Eficiência', dec: 1 },
+  { id: 'drop', nome: 'Drop (m³/entrega)', grupo: 'Eficiência', dec: 1 },
+  { id: 'entregasViagem', nome: 'Entregas por viagem', grupo: 'Eficiência', dec: 2 },
+  { id: 'volumeViagem', nome: 'Volume por viagem (m³)', grupo: 'Eficiência', dec: 1 },
+  { id: 'viagensDia', nome: 'Viagens por dia', grupo: 'Eficiência', dec: 1 },
+  { id: 'km', nome: 'Km', grupo: 'Distância e jornada', dec: 0 },
+  { id: 'kmEntrega', nome: 'Km por entrega', grupo: 'Distância e jornada', dec: 1 },
+  { id: 'kmViagem', nome: 'Km por viagem', grupo: 'Distância e jornada', dec: 1 },
+  { id: 'jornadaH', nome: 'Jornada usada (h)', grupo: 'Distância e jornada', dec: 1 },
+  { id: 'jornadaViagemH', nome: 'Horas por viagem', grupo: 'Distância e jornada', dec: 1 },
+  { id: 'custo', nome: 'Custo de frete (R$)', grupo: 'Custo', dec: 2, moeda: true },
+  { id: 'custoM3', nome: 'Custo por m³ (R$)', grupo: 'Custo', dec: 2, moeda: true },
+  { id: 'custoViagem', nome: 'Custo por viagem (R$)', grupo: 'Custo', dec: 2, moeda: true },
+  { id: 'custoEntrega', nome: 'Custo por entrega (R$)', grupo: 'Custo', dec: 2, moeda: true },
+  { id: 'ocorrencias', nome: 'Ocorrências', grupo: 'Qualidade', dec: 0 },
+  { id: 'devolucoes', nome: 'Devoluções', grupo: 'Qualidade', dec: 0 },
+  { id: 'reentregas', nome: 'Reentregas', grupo: 'Qualidade', dec: 0 },
+  { id: 'volDevolvido', nome: 'Volume devolvido (m³)', grupo: 'Qualidade', dec: 1 },
+  { id: 'indiceOcorr', nome: 'Índice de ocorrências (%)', grupo: 'Qualidade', dec: 2 },
+];
+const RP_DIM = Object.fromEntries(RP_DIMS.map(d => [d.id, d]));
+const RP_MET = Object.fromEntries(RP_METS.map(m => [m.id, m]));
+// Modelos prontos (não dá pra excluir; "Salvar como" cria uma cópia editável).
+const RP_PADRAO = [
+  { id: 'p_fech', nome: 'Fechamento por transportadora', padrao: true, cfg: { dims: ['transportadora'], mets: ['viagens', 'entregas', 'volume', 'participacao', 'ocupacao', 'km', 'custo', 'custoM3'], ordem: { met: 'volume', dir: 'desc' }, grafico: { tipo: 'auto', met: 'volume' } } },
+  { id: 'p_cli', nome: 'Clientes por volume e drop', padrao: true, cfg: { dims: ['cliente'], mets: ['volume', 'participacao', 'entregas', 'drop', 'kmEntrega', 'ocorrencias'], ordem: { met: 'volume', dir: 'desc' }, limite: 50, grafico: { tipo: 'auto', met: 'volume' } } },
+  { id: 'p_base', nome: 'Ocupação por base', padrao: true, cfg: { dims: ['base'], mets: ['viagens', 'volume', 'capacidade', 'ocupacao', 'entregasViagem', 'drop'], ordem: { met: 'volume', dir: 'desc' }, grafico: { tipo: 'auto', met: 'ocupacao' } } },
+  { id: 'p_evol', nome: 'Evolução diária', padrao: true, cfg: { dims: ['dia'], mets: ['viagens', 'entregas', 'volume', 'ocupacao', 'drop'], ordem: { met: '_rotulo', dir: 'asc' }, grafico: { tipo: 'linha', met: 'volume' } } },
+  { id: 'p_transp_mes', nome: 'Transportadora por mês', padrao: true, cfg: { dims: ['mes', 'transportadora'], mets: ['viagens', 'volume', 'ocupacao', 'custo', 'custoM3'], ordem: { met: '_rotulo', dir: 'asc' }, grafico: { tipo: 'auto', met: 'volume' } } },
+  { id: 'p_ocorr', nome: 'Ocorrências por cliente', padrao: true, cfg: { dims: ['cliente'], mets: ['entregas', 'ocorrencias', 'devolucoes', 'reentregas', 'volDevolvido', 'indiceOcorr'], ordem: { met: 'ocorrencias', dir: 'desc' }, limite: 30, filtros: { minEntregas: 0 }, grafico: { tipo: 'auto', met: 'ocorrencias' } } },
+  { id: 'p_prod', nome: 'Volume por produto e base', padrao: true, cfg: { dims: ['produto', 'base'], mets: ['entregas', 'volume', 'participacao', 'drop'], ordem: { met: 'volume', dir: 'desc' }, grafico: { tipo: 'auto', met: 'volume' } } },
+];
+const RP_CFG_VAZIA = () => ({ dims: ['transportadora'], mets: ['viagens', 'entregas', 'volume', 'ocupacao', 'drop'], ordem: { met: 'volume', dir: 'desc' }, limite: 0, filtros: { de: '', ate: '', dim: '', texto: '', minEntregas: 0 }, grafico: { tipo: 'auto', met: 'volume' } });
+let _rp = { cfg: RP_CFG_VAZIA(), modeloId: '', modelos: null, linhas: null, resultado: null, timer: null };
+// Cores (paleta categórica validada, tema claro) — só no gráfico com 2 agrupamentos.
+const RP_SERIE = '#2a78d6';
+const RP_CATS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+
+// ── Base de dados: 1 linha por entrega ───────────────────────────────────────
+const _rpNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const _rpIsoBr = br => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(br || '')); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+function _rpSemana(iso) {
+  const d = new Date(iso + 'T12:00:00'); const dia = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dia + 3);
+  const ano = d.getFullYear(), j4 = new Date(ano, 0, 4); const sem = 1 + Math.round(((d - j4) / 864e5 - 3 + ((j4.getDay() + 6) % 7)) / 7);
+  return `${ano}-S${String(sem).padStart(2, '0')}`;
+}
+function _rpExtrair() {
+  const snaps = _dashSnapshotsAtivos || [];
+  const devol = new Map(); // petId__pedidoId -> {n, dev, reent, vol}
+  (typeof _devTodosRegistrosCache !== 'undefined' && _devTodosRegistrosCache || []).forEach(r => {
+    const k = (r.viagemId || '') + '__' + (r.pedidoId ?? '');
+    if (!devol.has(k)) devol.set(k, { n: 0, dev: 0, reent: 0, vol: 0 });
+    const o = devol.get(k); o.n++;
+    if (r.tipo === 'reentrega') o.reent++; else { o.dev++; o.vol += Number(r.volumeAfetadoM3) || 0; }
+  });
+  const contratos = typeof freteCarregarContratos === 'function' ? freteCarregarContratos() : [];
+  const spots = typeof freteCarregarSpot === 'function' ? freteCarregarSpot() : [];
+  const normPlaca = typeof _freteNormPlaca === 'function' ? _freteNormPlaca : (p => String(p || '').trim().toUpperCase());
+  const contratoPorPlaca = new Map(); contratos.forEach(c => { if (c.placa) contratoPorPlaca.set(normPlaca(c.placa), c); });
+  const viagens = [], linhas = [], nomes = new Map();
+  snaps.forEach((snap, si) => {
+    const res = snap.resultado || {}, terms = snap.terminais || [];
+    (snap.veiculos || []).forEach(v => {
+      if (_dashTransportadorasSelecionadas && !_dashTransportadorasSelecionadas.has(v.transportadora || '')) return;
+      const lista = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      lista.forEach((vi, iV) => {
+        const operacao = dashCidadeOperacaoViagem(vi, v, terms);
+        if (_dashCidadesSelecionadas && !_dashCidadesSelecionadas.has(operacao)) return;
+        const base = vi.terminalOrigem || vi.paradas.find(p => p.pedido?.terminal)?.pedido?.terminal || v.terminal || '(sem base)';
+        const term = terms.find(t => t.nome === base);
+        const kmInfo = NextaKm.obterKmViagem(vi);
+        const kmReal = kmInfo.real ? kmInfo.km : null;
+        const somaOrig = kmReal != null ? NextaKm.estimativaLinhaReta(vi) : null;
+        const data = _rpIsoBr(vi.paradas[0]?.pedido?.dataEntregaLogistica || vi.paradas[0]?.pedido?.dataEntrega) || String(snap.savedAt || '').slice(0, 10);
+        const capV = Number(v.capacidade || v.capacidadeTotal) || 0;
+        const jornadaMin = Number(vi.tempoConsumidoMin) || vi.paradas.reduce((s, p, i) => s + (i === 0 ? (p.tempoCarregamentoMin || 0) : 0)
+          + (p.waitAfterLoadingMin || 0) + (p.deslocCarregadoMin || 0) + (p.overnight ? 0 : (p.tempoEsperaRestricaoMin || 0)) + (p.tempoDescargaMin || 0) + (p.deslocVazioMin || 0), 0);
+        const vk = `${si}|${v.id}|${iV}`;
+        const viagem = { vk, placa: v.placa || '', data, mesKey: data.slice(0, 7), cap: capV, jornadaMin, termOrigem: base,
+          destinos: [...new Set(vi.paradas.map(p => p.pedido?.cidade || p.pedido?.cliente || ''))].join(', '), kmIda: 0, volume: 0, custo: 0, linhas: [] };
+        vi.paradas.forEach((par, ip) => {
+          const ped = par.pedido || {};
+          const nomeRaw = ped.cliente || ped.nomeCliente || par.nome || '?';
+          const ck = dashChaveCliente(ped);
+          nomes.set(ck, dashNomeCanônico(nomes.get(ck), nomeRaw));
+          const volBruto = par.volumeTotal || 0;
+          const oc = devol.get((vi.petId || '') + '__' + (ped.id ?? '')) || null;
+          const vol = Math.max(0, volBruto - (oc?.vol || 0));
+          const c = typeof latLonEfetivo === 'function' ? latLonEfetivo(ped) : { lat: par.lat, lon: par.lon };
+          const kmBase = par.distanciaKm > 0 ? par.distanciaKm : ((term?.lat && term?.lon && c?.lat && c?.lon && typeof haversine === 'function') ? haversine(term.lat, term.lon, c.lat, c.lon) : 0);
+          const km = kmReal != null ? (somaOrig > 0 ? kmReal * (kmBase / somaOrig) : kmReal / vi.paradas.length) : kmBase;
+          viagem.kmIda += km; viagem.volume += vol;
+          const L = { vk, ek: vk + '|' + ip, temContrato: false, data, transportadora: v.transportadora || '(sem transportadora)', placa: v.placa || '', contrato: v.contrato || '—', base, operacao,
+            ck, nomeRaw, cidade: ped.cidade || '—', vol, volBruto, km, custo: 0,
+            itens: (par.itens || []).filter(it => it && it.produto).map(it => ({ produto: it.produto, volume: Number(it.volume) || 0 })),
+            ocorr: oc?.n || 0, dev: oc?.dev || 0, reent: oc?.reent || 0, volDev: oc?.vol || 0 };
+          viagem.linhas.push(L); linhas.push(L);
+        });
+        viagens.push(viagem);
+      });
+    });
+  });
+  // Custo de frete por viagem: mesma regra do Ranking de Transportadoras
+  // (contrato da placa, fixo rateado pelas viagens do mês, diária uma vez por
+  // dia) — e rateado entre as entregas da viagem pelo volume.
+  const nMes = {}; viagens.forEach(vg => { const k = vg.placa + '__' + vg.mesKey; nMes[k] = (nMes[k] || 0) + 1; });
+  const diaJa = new Set();
+  viagens.sort((a, b) => a.data.localeCompare(b.data)).forEach(vg => {
+    const contrato = contratoPorPlaca.get(normPlaca(vg.placa));
+    if (!contrato) return;
+    const kDia = vg.placa + '__' + vg.data;
+    const entry = { ...vg, _diariaFlatHoje: !diaJa.has(kDia), transportadora: contrato.transportadora };
+    diaJa.add(kDia);
+    vg.custo = _dashCustoViagemRanking(entry, contrato, nMes[vg.placa + '__' + vg.mesKey], spots) || 0;
+    const tot = vg.linhas.reduce((s, l) => s + l.vol, 0);
+    vg.linhas.forEach(l => { l.custo = tot > 0 ? vg.custo * l.vol / tot : vg.custo / vg.linhas.length; l.temContrato = true; });
+  });
+  // Nome de exibição, segmento e bandeira por cliente (cadastro de hoje).
+  const lookBand = _dashBandeiraLookup(), segCache = new Map(), bandCache = new Map();
+  linhas.forEach(l => {
+    l.cliente = nomes.get(l.ck) || l.nomeRaw;
+    if (!segCache.has(l.cliente)) { segCache.set(l.cliente, dashClienteSegmento(l.cliente) || '—'); bandCache.set(l.cliente, dashClienteBandeira(l.cliente, lookBand) || '—'); }
+    l.segmento = segCache.get(l.cliente); l.bandeira = bandCache.get(l.cliente);
+  });
+  // Filtros globais de Clientes/Segmento/Bandeira do topo do Dashboard.
+  const efetivos = dashClientesEfetivos(_dashTodosClientes || []);
+  const efNorm = _dashNormalizarSetClientes(efetivos);
+  const linhasOk = efNorm ? linhas.filter(l => _dashNomeBateFiltro(l.cliente, efNorm) || _dashNomeBateFiltro(l.nomeRaw, efNorm)) : linhas;
+  const viagensPorChave = new Map(viagens.map(vg => [vg.vk, vg]));
+  return { linhas: linhasOk, viagens: viagensPorChave };
+}
+
+// ── Agregação ────────────────────────────────────────────────────────────────
+function _rpValorDim(l, id) {
+  switch (id) {
+    case 'dia': return l.data;
+    case 'semana': return _rpSemana(l.data);
+    case 'mes': return l.data.slice(0, 7);
+    case 'diasemana': return String((new Date(l.data + 'T12:00:00').getDay() + 6) % 7);
+    case 'produto': return l._produto || '—';
+    default: return l[id] == null || l[id] === '' ? '—' : String(l[id]);
+  }
+}
+const _RP_DIAS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const _RP_MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function _rpRotuloDim(id, v) {
+  if (v === '—') return '—';
+  if (id === 'dia') return `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`;
+  if (id === 'mes') return `${_RP_MESES[+v.slice(5, 7) - 1]}/${v.slice(0, 4)}`;
+  if (id === 'diasemana') return _RP_DIAS[+v];
+  if (id === 'semana') {
+    const [a, s] = v.split('-S'); const j4 = new Date(+a, 0, 4); const seg = new Date(j4); seg.setDate(j4.getDate() - ((j4.getDay() + 6) % 7) + (+s - 1) * 7);
+    const dom = new Date(seg); dom.setDate(seg.getDate() + 6); const f = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return `Sem ${+s} · ${f(seg)}–${f(dom)}`;
+  }
+  return v;
+}
+function _rpNovoAcc() { return { eks: new Set(), volume: 0, km: 0, custo: 0, ocorr: 0, dev: 0, reent: 0, volDev: 0, vks: new Set(), placas: new Set(), clientes: new Set(), dias: new Set(), volC: 0, eksC: new Set(), vksC: new Set(), ocVistos: new Set() }; }
+function _rpSomar(a, l) {
+  // Entrega conta UMA vez por grupo (com Produto a mesma entrega aparece em
+  // várias linhas — no total geral não pode contar 2x).
+  a.eks.add(l.ek); a.volume += l.vol; a.km += l.km; a.custo += l.custo; a.volDev += l.volDev;
+  if (!a.ocVistos.has(l.ek)) { a.ocVistos.add(l.ek); a.ocorr += l.ocorr; a.dev += l.dev; a.reent += l.reent; }
+  a.vks.add(l.vk); a.placas.add(l.placa); a.clientes.add(l.ck); a.dias.add(l.data);
+  if (l.temContrato) { a.volC += l.vol; a.eksC.add(l.ek); a.vksC.add(l.vk); }
+}
+function _rpFechar(a, viagens, volTotal) {
+  let cap = 0, jorn = 0;
+  a.vks.forEach(k => { const vg = viagens.get(k); if (vg) { cap += vg.cap; jorn += vg.jornadaMin; } });
+  const nv = a.vks.size, div = (x, y) => y ? x / y : null;
+  a.entregas = a.eks.size;
+  return {
+    viagens: nv, entregas: a.entregas, volume: a.volume, participacao: div(a.volume * 100, volTotal), capacidade: cap,
+    placas: a.placas.size, clientes: a.clientes.size, dias: a.dias.size,
+    ocupacao: div(a.volume * 100, cap), drop: div(a.volume, a.entregas), entregasViagem: div(a.entregas, nv), volumeViagem: div(a.volume, nv), viagensDia: div(nv, a.dias.size),
+    km: a.km, kmEntrega: div(a.km, a.entregas), kmViagem: div(a.km, nv), jornadaH: jorn / 60, jornadaViagemH: div(jorn / 60, nv),
+    // Custo unitário só sobre o que TEM contrato cadastrado no Frete — placa
+    // sem contrato não entra no denominador (senão diluiria o R$/m³).
+    custo: a.custo, custoM3: div(a.custo, a.volC), custoViagem: div(a.custo, a.vksC.size), custoEntrega: div(a.custo, a.eksC.size),
+    ocorrencias: a.ocorr, devolucoes: a.dev, reentregas: a.reent, volDevolvido: a.volDev, indiceOcorr: div(a.ocorr * 100, a.entregas),
+  };
+}
+function _rpCalcular(base, cfg) {
+  const f = cfg.filtros || {};
+  let linhas = base.linhas;
+  if (f.de) linhas = linhas.filter(l => l.data >= f.de);
+  if (f.ate) linhas = linhas.filter(l => l.data <= f.ate);
+  const usaProduto = cfg.dims.includes('produto') || f.dim === 'produto';
+  if (usaProduto) {
+    // Produto: cada entrega vira uma linha por produto, com a fatia de volume
+    // (e de custo/km) proporcional ao produto; a entrega conta 1 em cada produto.
+    linhas = linhas.flatMap(l => {
+      const tot = l.itens.reduce((s, i) => s + i.volume, 0);
+      if (!l.itens.length || !tot) return [{ ...l, _produto: '(sem produto)' }];
+      return l.itens.map(i => { const fr = i.volume / tot; return { ...l, _produto: i.produto, vol: l.vol * fr, km: l.km * fr, custo: l.custo * fr, volDev: l.volDev * fr }; });
+    });
+  }
+  if (f.dim && f.texto) {
+    const termos = f.texto.split(/[;,]/).map(_rpNorm).filter(Boolean);
+    linhas = linhas.filter(l => { const v = _rpNorm(_rpRotuloDim(f.dim, _rpValorDim(l, f.dim))); return termos.some(t => v.includes(t)); });
+  }
+  const accTot = _rpNovoAcc(); linhas.forEach(l => _rpSomar(accTot, l));
+  const total = _rpFechar(accTot, base.viagens, accTot.volume);
+  const grupos = new Map();
+  linhas.forEach(l => {
+    const vals = cfg.dims.map(d => _rpValorDim(l, d));
+    const k = vals.join('\u0001');
+    if (!grupos.has(k)) grupos.set(k, { vals, acc: _rpNovoAcc() });
+    _rpSomar(grupos.get(k).acc, l);
+  });
+  let linhasRes = [...grupos.values()].map(g => ({ vals: g.vals, rotulos: g.vals.map((v, i) => _rpRotuloDim(cfg.dims[i], v)), m: _rpFechar(g.acc, base.viagens, accTot.volume) }));
+  if (f.minEntregas > 0) linhasRes = linhasRes.filter(r => r.m.entregas >= f.minEntregas);
+  const o = cfg.ordem || { met: 'volume', dir: 'desc' }, sinal = o.dir === 'asc' ? 1 : -1;
+  linhasRes.sort((a, b) => {
+    if (o.met === '_rotulo') { for (let i = 0; i < a.vals.length; i++) { const c = a.vals[i].localeCompare(b.vals[i], 'pt-BR', { numeric: true }); if (c) return c * sinal; } return 0; }
+    return ((a.m[o.met] ?? -Infinity) - (b.m[o.met] ?? -Infinity)) * sinal;
+  });
+  const totalGrupos = linhasRes.length;
+  // 2 agrupamentos: a tabela vira BLOCOS pelo 1º agrupamento (ex.: um bloco por
+  // mês, com os clientes dentro e o subtotal do mês). Blocos de tempo ficam em
+  // ordem cronológica; os demais seguem a ordenação escolhida pelo subtotal.
+  // Participação de cada linha passa a ser DENTRO do bloco (% do mês).
+  let blocos = null;
+  if (cfg.dims.length === 2) {
+    const accB = new Map();
+    linhas.forEach(l => { const v = _rpValorDim(l, cfg.dims[0]); if (!accB.has(v)) accB.set(v, _rpNovoAcc()); _rpSomar(accB.get(v), l); });
+    const porBloco = new Map();
+    linhasRes.forEach(r => { if (!porBloco.has(r.vals[0])) porBloco.set(r.vals[0], []); porBloco.get(r.vals[0]).push(r); });
+    blocos = [...porBloco.entries()].map(([v, ls]) => {
+      const acc = accB.get(v), mB = _rpFechar(acc, base.viagens, accTot.volume);
+      ls.forEach(r => { r.m.participacao = mB.volume ? r.m.volume / mB.volume * 100 : null; });
+      return { val: v, rotulo: _rpRotuloDim(cfg.dims[0], v), m: mB, linhas: cfg.limite > 0 ? ls.slice(0, cfg.limite) : ls, totalLinhas: ls.length };
+    });
+    const tempo = RP_DIM[cfg.dims[0]]?.tempo;
+    blocos.sort((a, b) => (tempo || o.met === '_rotulo')
+      ? a.val.localeCompare(b.val, 'pt-BR', { numeric: true }) * (tempo ? 1 : sinal)
+      : ((a.m[o.met] ?? -Infinity) - (b.m[o.met] ?? -Infinity)) * sinal);
+    linhasRes = blocos.flatMap(b => b.linhas);
+  } else if (cfg.limite > 0) linhasRes = linhasRes.slice(0, cfg.limite);
+  return { linhas: linhasRes, blocos, total, totalGrupos, nEntregas: linhas.length };
+}
+
+// ── Formatação ───────────────────────────────────────────────────────────────
+function _rpFmt(id, v) {
+  if (v == null || !isFinite(v)) return '—';
+  const m = RP_MET[id];
+  const s = Number(v).toLocaleString('pt-BR', { minimumFractionDigits: m.dec, maximumFractionDigits: m.dec });
+  return m.moeda ? 'R$ ' + s : s;
+}
+const _rpEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ── Gráfico (SVG, série única ou até 6 séries) ──────────────────────────────
+function _rpGrafico(res, cfg) {
+  const g = cfg.grafico || {}; const met = RP_MET[g.met] ? g.met : cfg.mets[0];
+  if (g.tipo === 'nenhum' || !met || !res.linhas.length) return '';
+  const dims = cfg.dims, tempo0 = RP_DIM[dims[0]]?.tempo, tempo1 = RP_DIM[dims[1]]?.tempo;
+  const nomeMet = RP_MET[met].nome;
+  // 2 agrupamentos com 1 de tempo → uma série por item do outro agrupamento
+  // (até 8, pelos maiores em volume). Padrão: colunas agrupadas com o número
+  // em cima de cada coluna; "Linha" mostra a evolução com o número em cada ponto.
+  if (dims.length === 2 && (tempo0 || tempo1)) {
+    const iT = tempo0 ? 0 : 1, iC = 1 - iT;
+    const tempos = [...new Set(res.linhas.map(r => r.vals[iT]))].sort();
+    const porCat = new Map();
+    res.linhas.forEach(r => { const c = r.rotulos[iC]; if (!porCat.has(c)) porCat.set(c, { tot: 0, vol: 0, pts: new Map() }); const o = porCat.get(c); o.vol += r.m.volume || 0; o.pts.set(r.vals[iT], r.m[met]); });
+    const cats = [...porCat.entries()].sort((a, b) => b[1].vol - a[1].vol).slice(0, 8);
+    // Total da série no período (soma pra contagens/volume/custo; média ponderada não dá pra refazer aqui → mostra a média simples dos meses).
+    const soma = ['viagens', 'entregas', 'volume', 'capacidade', 'km', 'jornadaH', 'custo', 'ocorrencias', 'devolucoes', 'reentregas', 'volDevolvido'].includes(met);
+    const series = cats.map(([nome, o], i) => {
+      const pts = tempos.map(t => o.pts.get(t) ?? null), vs = pts.filter(v => v != null);
+      return { nome, cor: RP_CATS[i], pts, resumo: vs.length ? (soma ? vs.reduce((a, b) => a + b, 0) : vs.reduce((a, b) => a + b, 0) / vs.length) : null };
+    });
+    const nota = (porCat.size > 8 ? `${porCat.size - 8} ${RP_DIM[dims[iC]].nome.toLowerCase()}(s) com menor volume ficaram de fora do gráfico (estão na tabela). ` : '')
+      + `Na legenda: ${soma ? 'total do período' : 'média dos períodos'}.`;
+    const rotT = tempos.map(t => _rpRotuloDim(dims[iT], t));
+    if (tempos.length < 2 && g.tipo !== 'linha' && series.length > 1) {
+      const it = series.map(s => ({ rot: s.nome, v: s.pts[0] })).filter(x => x.v != null);
+      return _rpBarrasH(it, met, `${nomeMet} · ${rotT[0] || ''}`, nota);
+    }
+    return g.tipo === 'linha' ? _rpSvgLinhas(rotT, series, met, nomeMet, nota, true) : _rpSvgColunasAgrupadas(rotT, series, met, nomeMet, nota);
+  }
+  const itens = res.linhas.map(r => ({ rot: r.rotulos.join(' · '), v: r.m[met] })).filter(x => x.v != null && isFinite(x.v));
+  if (dims.length === 1 && tempo0 && g.tipo !== 'barras') {
+    const ordenado = res.linhas.slice().sort((a, b) => a.vals[0].localeCompare(b.vals[0], 'pt-BR', { numeric: true }));
+    const tipo = g.tipo === 'linha' || ordenado.length > 31 ? 'linha' : 'colunas';
+    const rot = ordenado.map(r => r.rotulos[0]), vals = ordenado.map(r => r.m[met]);
+    return tipo === 'linha' ? _rpSvgLinhas(rot, [{ nome: nomeMet, cor: RP_SERIE, pts: vals }], met, nomeMet, '') : _rpSvgColunas(rot, vals, met, nomeMet);
+  }
+  return _rpBarrasH(itens.slice(0, 25), met, nomeMet, itens.length > 25 ? `Mostrando os 25 primeiros de ${itens.length} (todos estão na tabela).` : '');
+}
+function _rpBarrasH(itens, met, nomeMet, nota) {
+  const max = Math.max(...itens.map(i => i.v), 0) || 1;
+  const linhas = itens.map(i => `<div class="rp-hb" data-tip="${_rpEsc(i.rot)}: ${_rpEsc(_rpFmt(met, i.v))}">
+      <div class="rp-hb-r" title="${_rpEsc(i.rot)}">${_rpEsc(i.rot)}</div>
+      <div class="rp-hb-t"><span style="width:${Math.max(0.5, i.v / max * 100)}%"></span></div>
+      <div class="rp-hb-v">${_rpFmt(met, i.v)}</div></div>`).join('');
+  return `<div class="rp-graf"><div class="rp-graf-t">${_rpEsc(nomeMet)}</div><div class="rp-hbars">${linhas}</div>${nota ? `<div class="rp-nota">${nota}</div>` : ''}</div>`;
+}
+function _rpEixoY(max) {
+  const bruto = max / 4, pot = Math.pow(10, Math.floor(Math.log10(bruto || 1))), passo = [1, 2, 2.5, 5, 10].map(x => x * pot).find(x => x >= bruto) || pot * 10;
+  return { topo: Math.ceil(max / passo) * passo || 1, passo };
+}
+function _rpSvgColunas(rot, vals, met, nomeMet) {
+  const W = 1000, H = 300, ml = 56, mr = 12, mt = 22, mb = 38, n = vals.length;
+  const max = Math.max(...vals.map(v => v || 0), 0); const { topo, passo } = _rpEixoY(max);
+  const y = v => mt + (H - mt - mb) * (1 - (v || 0) / topo), bw = (W - ml - mr) / n, gap = Math.min(6, bw * 0.2);
+  let grid = ''; for (let t = 0; t <= topo + 1e-9; t += passo) grid += `<line x1="${ml}" x2="${W - mr}" y1="${y(t)}" y2="${y(t)}" class="rp-grid"/><text x="${ml - 8}" y="${y(t) + 4}" class="rp-ax" text-anchor="end">${_rpFmt(met, t).replace('R$ ', '')}</text>`;
+  const passoRot = Math.ceil(n / 16);
+  const barras = vals.map((v, i) => {
+    const x = ml + i * bw + gap / 2, h = Math.max(0, H - mb - y(v)), w = Math.max(1, bw - gap);
+    return `<g class="rp-pt" data-tip="${_rpEsc(rot[i])}: ${_rpEsc(_rpFmt(met, v))}"><rect x="${ml + i * bw}" y="${mt}" width="${bw}" height="${H - mt - mb}" fill="transparent"/>
+      <path d="M${x},${H - mb} v${-Math.max(0, h - 4)} q0,-4 4,-4 h${Math.max(0, w - 8)} q4,0 4,4 v${Math.max(0, h - 4)} z" fill="${RP_SERIE}"/>
+      ${n <= 20 ? `<text x="${x + w / 2}" y="${y(v) - 5}" class="rp-val" text-anchor="middle">${_rpFmt(met, v).replace('R$ ', '')}</text>` : ''}
+      ${i % passoRot === 0 ? `<text x="${x + w / 2}" y="${H - mb + 16}" class="rp-ax" text-anchor="middle">${_rpEsc(String(rot[i]).replace(/\/\d{4}$/, ''))}</text>` : ''}</g>`;
+  }).join('');
+  return `<div class="rp-graf"><div class="rp-graf-t">${_rpEsc(nomeMet)}</div><svg class="rp-svg" viewBox="0 0 ${W} ${H}">${grid}<line x1="${ml}" x2="${W - mr}" y1="${H - mb}" y2="${H - mb}" class="rp-base"/>${barras}</svg></div>`;
+}
+function _rpLegenda(series, met) {
+  return series.length > 1 ? `<div class="rp-leg">${series.map(s => `<span><i style="background:${s.cor}"></i>${_rpEsc(s.nome)}${s.resumo != null ? ` <b>${_rpEsc(_rpFmt(met, s.resumo))}</b>` : ''}</span>`).join('')}</div>` : '';
+}
+function _rpSvgColunasAgrupadas(rot, series, met, nomeMet, nota) {
+  const n = rot.length, k = series.length;
+  const W = 1000, H = 330, ml = 56, mr = 12, mt = 26, mb = 38;
+  const { topo, passo } = _rpEixoY(Math.max(...series.flatMap(s => s.pts).filter(v => v != null), 0));
+  const y = v => mt + (H - mt - mb) * (1 - (v || 0) / topo);
+  const gw = (W - ml - mr) / n, pad = Math.min(18, gw * 0.12), bw = Math.max(2, (gw - pad * 2 - (k - 1) * 2) / k);
+  const fonte = bw >= 26 ? 11 : bw >= 18 ? 9.5 : 8;
+  let grid = ''; for (let t = 0; t <= topo + 1e-9; t += passo) grid += `<line x1="${ml}" x2="${W - mr}" y1="${y(t)}" y2="${y(t)}" class="rp-grid"/><text x="${ml - 8}" y="${y(t) + 4}" class="rp-ax" text-anchor="end">${_rpFmt(met, t).replace('R$ ', '')}</text>`;
+  const barras = rot.map((r, i) => {
+    const x0 = ml + i * gw + pad;
+    const cols = series.map((s, j) => {
+      const v = s.pts[i]; if (v == null) return '';
+      const x = x0 + j * (bw + 2), h = Math.max(0, H - mb - y(v)), rr = Math.min(4, bw / 2, h);
+      const txt = _rpFmt(met, v).replace('R$ ', '');
+      // Número em cima de cada coluna (girado quando a coluna é estreita).
+      const lab = bw >= 18
+        ? `<text x="${x + bw / 2}" y="${y(v) - 4}" class="rp-val" text-anchor="middle" style="font-size:${fonte}px">${txt}</text>`
+        : `<text transform="translate(${x + bw / 2 + 3},${y(v) - 4}) rotate(-90)" class="rp-val" style="font-size:${fonte}px">${txt}</text>`;
+      return `<g class="rp-pt" data-tip="${_rpEsc(r)} · ${_rpEsc(s.nome)}: ${_rpEsc(_rpFmt(met, v))}"><path d="M${x},${H - mb} v${-Math.max(0, h - rr)} q0,-${rr} ${rr},-${rr} h${Math.max(0, bw - 2 * rr)} q${rr},0 ${rr},${rr} v${Math.max(0, h - rr)} z" fill="${s.cor}"/>${lab}</g>`;
+    }).join('');
+    return cols + `<text x="${ml + i * gw + gw / 2}" y="${H - mb + 18}" class="rp-ax" text-anchor="middle">${_rpEsc(String(r).replace(/\/\d{4}$/, ''))}</text>`;
+  }).join('');
+  return `<div class="rp-graf"><div class="rp-graf-t">${_rpEsc(nomeMet)}</div>${_rpLegenda(series, met)}<svg class="rp-svg" viewBox="0 0 ${W} ${H}">${grid}<line x1="${ml}" x2="${W - mr}" y1="${H - mb}" y2="${H - mb}" class="rp-base"/>${barras}</svg>${nota ? `<div class="rp-nota">${nota}</div>` : ''}</div>`;
+}
+function _rpSvgLinhas(rot, series, met, nomeMet, nota, rotularPontos) {
+  const W = 1000, H = 300, ml = 56, mr = 16, mt = 16, mb = 38, n = rot.length;
+  const todos = series.flatMap(s => s.pts).filter(v => v != null); const { topo, passo } = _rpEixoY(Math.max(...todos, 0));
+  const x = i => ml + (n === 1 ? (W - ml - mr) / 2 : i * (W - ml - mr) / (n - 1)), y = v => mt + (H - mt - mb) * (1 - v / topo);
+  let grid = ''; for (let t = 0; t <= topo + 1e-9; t += passo) grid += `<line x1="${ml}" x2="${W - mr}" y1="${y(t)}" y2="${y(t)}" class="rp-grid"/><text x="${ml - 8}" y="${y(t) + 4}" class="rp-ax" text-anchor="end">${_rpFmt(met, t).replace('R$ ', '')}</text>`;
+  const passoRot = Math.ceil(n / 12);
+  const eixoX = rot.map((r, i) => i % passoRot === 0 ? `<text x="${x(i)}" y="${H - mb + 16}" class="rp-ax" text-anchor="middle">${_rpEsc(String(r).replace(/\/\d{4}$/, ''))}</text>` : '').join('');
+  const linhas = series.map(s => {
+    let d = '', on = false; s.pts.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? 'L' : 'M'}${x(i)},${y(v)} `; on = true; });
+    const pts = n <= 40 ? s.pts.map((v, i) => v == null ? '' : `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${s.cor}" stroke="#fff" stroke-width="2"/>`
+      + (rotularPontos ? `<text x="${x(i)}" y="${y(v) - 8}" class="rp-val rp-val-l" text-anchor="middle">${_rpFmt(met, v).replace('R$ ', '')}</text>` : '')).join('') : '';
+    return `<path d="${d}" fill="none" stroke="${s.cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${pts}`;
+  }).join('');
+  // Faixas de hover por posição do eixo X (tooltip com todas as séries daquele ponto).
+  const faixa = (W - ml - mr) / Math.max(1, n - 1);
+  const hover = rot.map((r, i) => `<rect class="rp-pt" x="${x(i) - faixa / 2}" y="${mt}" width="${faixa}" height="${H - mt - mb}" fill="transparent" data-tip="${_rpEsc(r)}${series.map(s => `\n${_rpEsc(s.nome)}: ${_rpEsc(_rpFmt(met, s.pts[i]))}`).join('')}"/>`).join('');
+  const legenda = _rpLegenda(series, met);
+  return `<div class="rp-graf"><div class="rp-graf-t">${_rpEsc(nomeMet)}</div>${legenda}<svg class="rp-svg" viewBox="0 0 ${W} ${H}">${grid}<line x1="${ml}" x2="${W - mr}" y1="${H - mb}" y2="${H - mb}" class="rp-base"/>${linhas}${eixoX}${hover}</svg>${nota ? `<div class="rp-nota">${nota}</div>` : ''}</div>`;
+}
+
+// ── Tela ────────────────────────────────────────────────────────────────────
+const RP_CSS = `
+#rp-modal{position:fixed;inset:0;z-index:9000;background:rgba(17,24,39,.45);display:flex;align-items:stretch;justify-content:center;padding:2vh 2vw;font-family:inherit}
+#rp-modal *{box-sizing:border-box}
+.rp-box{background:#F9FAFB;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;width:100%;max-width:1680px;overflow:hidden}
+.rp-head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:#fff;border-bottom:1px solid #E5E7EB}
+.rp-head h2{margin:0;font-size:17px;font-weight:700;color:#111827}
+.rp-head small{color:#6B7280;font-size:12px}
+.rp-head .rp-x{margin-left:auto}
+.rp-btn{border:1px solid #D1D5DB;background:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;font-family:inherit;white-space:nowrap}
+.rp-btn:hover{background:#F3F4F6}.rp-btn:disabled{opacity:.5;cursor:default}
+.rp-btn-p{background:var(--accent,#4F46E5);border-color:var(--accent,#4F46E5);color:#fff}.rp-btn-p:hover{filter:brightness(.95);background:var(--accent,#4F46E5)}
+.rp-corpo{flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr)}
+.rp-side{background:#fff;border-right:1px solid #E5E7EB;overflow-y:auto;padding:14px 16px 24px}
+.rp-sec{margin-bottom:16px}
+.rp-sec>label,.rp-st{display:block;font-size:10.5px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.rp-side select,.rp-side input[type=text],.rp-side input[type=date],.rp-side input[type=number]{width:100%;border:1px solid #D1D5DB;border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:inherit;background:#fff;color:#111827}
+.rp-row{display:flex;gap:6px;align-items:center}.rp-row>*{flex:1;min-width:0}
+.rp-mets{border:1px solid #E5E7EB;border-radius:8px;max-height:300px;overflow-y:auto;padding:4px 8px}
+.rp-mg{font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px}
+.rp-mets label{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#374151;padding:3px 0;cursor:pointer}
+.rp-mets input{accent-color:var(--accent,#4F46E5)}
+.rp-dica{font-size:11px;color:#6B7280;line-height:1.4;margin-top:5px}
+.rp-main{overflow-y:auto;padding:18px 22px 28px;min-width:0}
+.rp-resumo{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:#6B7280;margin-bottom:12px}
+.rp-resumo b{color:#111827}
+.rp-graf{background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.rp-graf-t{font-size:12px;font-weight:700;color:#374151;margin-bottom:8px}
+.rp-svg{width:100%;height:auto;max-height:340px;display:block;overflow:visible}
+.rp-grid{stroke:#EEF0F3;stroke-width:1}.rp-base{stroke:#D1D5DB;stroke-width:1}
+.rp-ax{font-size:11px;fill:#6B7280}.rp-val{font-size:11px;fill:#111827;font-weight:600}
+.rp-leg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:#374151;margin-bottom:6px}
+.rp-val-l{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3px}
+.rp-leg b{color:#111827;font-weight:700;margin-left:2px}
+.rp-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.rp-hbars{display:flex;flex-direction:column;gap:5px}
+.rp-hb{display:grid;grid-template-columns:minmax(120px,26%) 1fr 110px;gap:10px;align-items:center;font-size:12px}
+.rp-hb-r{color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-hb-t{height:12px}.rp-hb-t span{display:block;height:100%;background:${RP_SERIE};border-radius:0 4px 4px 0}
+.rp-hb-v{text-align:right;font-variant-numeric:tabular-nums;color:#111827;font-weight:600}
+.rp-hb:hover .rp-hb-t span{filter:brightness(.9)}
+.rp-nota{font-size:11px;color:#6B7280;margin-top:8px}
+.rp-tabw{background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:auto;max-height:62vh}
+.rp-tab{width:100%;border-collapse:collapse;font-size:12.5px}
+.rp-tab th{position:sticky;top:0;background:#F9FAFB;text-align:left;font-size:10.5px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;padding:9px 12px;border-bottom:1px solid #E5E7EB;cursor:pointer;white-space:nowrap;user-select:none}
+.rp-tab th.n,.rp-tab td.n{text-align:right}
+.rp-tab th:hover{color:#111827}
+.rp-tab td{padding:7px 12px;border-bottom:1px solid #F1F2F4;color:#111827;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rp-tab tbody tr:hover td{background:#F9FAFB}
+.rp-tab tfoot td{position:sticky;bottom:0;background:#F3F4F6;font-weight:700;border-top:1px solid #D1D5DB}
+.rp-tab td.rk{color:#9CA3AF;width:1%}
+.rp-tab tr.rp-bl-h td{background:#EEF2FF;color:#1F2937;font-weight:700;font-size:12.5px;padding-top:10px;border-top:2px solid #C7D2FE}
+.rp-tab tr.rp-bl-h td span{font-weight:500;color:#6B7280;font-size:11.5px}
+.rp-tab tr.rp-bl-t td{font-weight:800;color:#030712;background:#F3F4F6;border-bottom:2px solid #D1D5DB}
+.rp-vazio{padding:48px;text-align:center;color:#6B7280;font-size:13px}
+#rp-tip{position:fixed;z-index:9100;pointer-events:none;background:#111827;color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;white-space:pre;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none}
+@media (max-width:900px){.rp-corpo{grid-template-columns:1fr}.rp-side{border-right:0;border-bottom:1px solid #E5E7EB;max-height:45vh}}
+`;
+function _rpOpts(lista, sel, vazio) { return (vazio ? `<option value="">${vazio}</option>` : '') + lista.map(x => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${_rpEsc(x.nome)}</option>`).join(''); }
+function _rpRenderSide() {
+  const c = _rp.cfg, f = c.filtros || (c.filtros = {});
+  const mods = [...RP_PADRAO, ...(_rp.modelos || [])];
+  const grupos = [...new Set(RP_METS.map(m => m.grupo))];
+  const metsHtml = grupos.map(g => `<div class="rp-mg">${g}</div>` + RP_METS.filter(m => m.grupo === g).map(m =>
+    `<label><input type="checkbox" value="${m.id}" ${c.mets.includes(m.id) ? 'checked' : ''} onchange="rpToggleMet('${m.id}', this.checked)">${m.nome}</label>`).join('')).join('');
+  const metsSel = c.mets.map(id => RP_MET[id]).filter(Boolean);
+  document.getElementById('rp-side').innerHTML = `
+    <div class="rp-sec"><label>Modelo</label>
+      <select onchange="rpAbrirModelo(this.value)"><option value="">— Novo relatório —</option>
+        <optgroup label="Prontos">${mods.filter(m => m.padrao).map(m => `<option value="${m.id}"${m.id === _rp.modeloId ? ' selected' : ''}>${_rpEsc(m.nome)}</option>`).join('')}</optgroup>
+        ${(_rp.modelos || []).length ? `<optgroup label="Salvos pela equipe">${_rp.modelos.map(m => `<option value="${m.id}"${m.id === _rp.modeloId ? ' selected' : ''}>${_rpEsc(m.nome)}</option>`).join('')}</optgroup>` : ''}
+      </select>
+      <div class="rp-row" style="margin-top:6px">
+        <button class="rp-btn" onclick="rpSalvarModelo(false)" ${!_rp.modeloId || mods.find(m => m.id === _rp.modeloId)?.padrao ? 'disabled' : ''}>💾 Salvar</button>
+        <button class="rp-btn" onclick="rpSalvarModelo(true)">Salvar como…</button>
+        <button class="rp-btn" onclick="rpExcluirModelo()" title="Excluir modelo salvo" ${!_rp.modeloId || mods.find(m => m.id === _rp.modeloId)?.padrao ? 'disabled' : ''}>🗑</button>
+      </div>
+      ${_rp.modelos === null ? '<div class="rp-dica">Carregando modelos da equipe…</div>' : ''}
+    </div>
+    <div class="rp-sec"><label>Agrupar por</label>
+      <select onchange="rpSetDim(0, this.value)">${_rpOpts(RP_DIMS, c.dims[0], '')}</select>
+      <select style="margin-top:6px" onchange="rpSetDim(1, this.value)">${_rpOpts(RP_DIMS.filter(d => d.id !== c.dims[0]), c.dims[1] || '', '+ segundo agrupamento (opcional)')}</select>
+      <div class="rp-dica">Ex.: Transportadora + Mês mostra cada transportadora mês a mês.</div>
+    </div>
+    <div class="rp-sec"><label>Colunas (${c.mets.length})</label><div class="rp-mets">${metsHtml}</div></div>
+    <div class="rp-sec"><label>Filtros do relatório</label>
+      <div class="rp-row"><input type="date" value="${f.de || ''}" onchange="rpSetFiltro('de', this.value)" title="Entrega de"><input type="date" value="${f.ate || ''}" onchange="rpSetFiltro('ate', this.value)" title="Entrega até"></div>
+      <div class="rp-dica" style="margin:3px 0 8px">Data de entrega (opcional), dentro do período carregado no Dashboard.</div>
+      <select onchange="rpSetFiltro('dim', this.value)">${_rpOpts(RP_DIMS.filter(d => d.id !== 'diasemana'), f.dim || '', 'Filtrar por… (opcional)')}</select>
+      <input type="text" style="margin-top:6px" placeholder="contém… (separe vários por vírgula)" value="${_rpEsc(f.texto || '')}" oninput="rpSetFiltro('texto', this.value)" ${f.dim ? '' : 'disabled'}>
+      <div class="rp-row" style="margin-top:6px"><span style="font-size:12px;color:#374151;flex:2">Mínimo de entregas por linha</span><input type="number" min="0" value="${f.minEntregas || 0}" onchange="rpSetFiltro('minEntregas', +this.value || 0)"></div>
+      <div class="rp-dica">Os filtros do topo do Dashboard (período, operação, transportadora, clientes, segmento e bandeira) também valem aqui.</div>
+    </div>
+    <div class="rp-sec"><label>Ordenar e limitar</label>
+      <div class="rp-row"><select onchange="rpSetOrdem(this.value, null)"><option value="_rotulo"${c.ordem.met === '_rotulo' ? ' selected' : ''}>Nome / data</option>${_rpOpts(metsSel, c.ordem.met, '')}</select>
+        <select onchange="rpSetOrdem(null, this.value)" style="flex:.7"><option value="desc"${c.ordem.dir === 'desc' ? ' selected' : ''}>Maior → menor</option><option value="asc"${c.ordem.dir === 'asc' ? ' selected' : ''}>Menor → maior</option></select></div>
+      <select style="margin-top:6px" onchange="rpSet('limite', +this.value)">${[[0, 'Todas as linhas'], [10, 'Top 10'], [20, 'Top 20'], [50, 'Top 50'], [100, 'Top 100']].map(([v, l]) => `<option value="${v}"${(c.limite || 0) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    </div>
+    <div class="rp-sec"><label>Gráfico</label>
+      <div class="rp-row"><select onchange="rpSetGraf('tipo', this.value)">${[['auto', 'Automático'], ['barras', 'Barras'], ['linha', 'Linha (tempo)'], ['nenhum', 'Sem gráfico']].map(([v, l]) => `<option value="${v}"${(c.grafico?.tipo || 'auto') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <select onchange="rpSetGraf('met', this.value)">${_rpOpts(metsSel, c.grafico?.met, '')}</select></div>
+    </div>`;
+}
+function _rpRenderMain() {
+  const box = document.getElementById('rp-main'); if (!box) return;
+  const c = _rp.cfg;
+  if (!_rp.linhas) { box.innerHTML = '<div class="rp-vazio">Montando a base de dados…</div>'; return; }
+  if (!_rp.linhas.linhas.length) { box.innerHTML = '<div class="rp-vazio">Nenhuma entrega no período e filtros carregados no Dashboard.<br>Ajuste o período no topo do Dashboard e abra de novo.</div>'; return; }
+  if (!c.mets.length) { box.innerHTML = '<div class="rp-vazio">Marque pelo menos uma coluna à esquerda.</div>'; return; }
+  const res = _rp.resultado = _rpCalcular(_rp.linhas, c);
+  const mets = c.mets.map(id => RP_MET[id]).filter(Boolean);
+  const seta = id => c.ordem.met === id ? (c.ordem.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const cab = `<tr><th></th>${c.dims.map((d, i) => `<th onclick="rpOrdenarPor('_rotulo')">${_rpEsc(RP_DIM[d].nome)}${i === 0 ? seta('_rotulo') : ''}</th>`).join('')}${mets.map(m => `<th class="n" onclick="rpOrdenarPor('${m.id}')">${_rpEsc(m.nome)}${seta(m.id)}</th>`).join('')}</tr>`;
+  const linhaHtml = (r, i, soSegunda) => `<tr><td class="rk">${i + 1}</td>${soSegunda ? `<td></td><td>${_rpEsc(r.rotulos[1])}</td>` : r.rotulos.map(x => `<td>${_rpEsc(x)}</td>`).join('')}${mets.map(m => `<td class="n">${_rpFmt(m.id, r.m[m.id])}</td>`).join('')}</tr>`;
+  const corpo = res.blocos
+    ? res.blocos.map(b => `<tr class="rp-bl-h"><td></td><td colspan="${1 + c.dims.length - 1 + mets.length}">${_rpEsc(b.rotulo)} <span>· ${b.totalLinhas} ${_rpEsc(RP_DIM[c.dims[1]].nome.toLowerCase())}(s)${b.linhas.length < b.totalLinhas ? `, mostrando ${b.linhas.length}` : ''}</span></td></tr>`
+        + b.linhas.map((r, i) => linhaHtml(r, i, true)).join('')
+        + `<tr class="rp-bl-t"><td></td><td colspan="2">Total ${_rpEsc(b.rotulo)}</td>${mets.map(m => `<td class="n">${m.id === 'participacao' ? _rpFmt(m.id, b.m.participacao) : _rpFmt(m.id, b.m[m.id])}</td>`).join('')}</tr>`).join('')
+    : res.linhas.map((r, i) => linhaHtml(r, i, false)).join('');
+  const rod = `<tr><td></td><td colspan="${c.dims.length}">Total${res.totalGrupos > res.linhas.length ? ` (todas as ${res.totalGrupos} linhas)` : ''}</td>${mets.map(m => `<td class="n">${_rpFmt(m.id, res.total[m.id])}</td>`).join('')}</tr>`;
+  box.innerHTML = `
+    <div class="rp-resumo"><span><b>${res.linhas.length}</b>${res.totalGrupos > res.linhas.length ? ` de ${res.totalGrupos}` : ''} linha(s)</span><span><b>${res.total.viagens.toLocaleString('pt-BR')}</b> viagens</span><span><b>${res.nEntregas.toLocaleString('pt-BR')}</b> entregas na base</span><span>${_rpEsc(_dashDescricaoFiltroAtual())}</span></div>
+    ${_rpGrafico(res, c)}
+    <div class="rp-tabw"><table class="rp-tab"><thead>${cab}</thead><tbody>${corpo}</tbody><tfoot>${rod}</tfoot></table></div>
+    <div class="rp-nota">Volume líquido de devoluções · km real quando a viagem já tem trajeto calculado · custo pelo contrato da placa cadastrado no Frete (placas sem contrato somam R$ 0 e ficam fora do custo por m³/viagem/entrega) · com Produto, a entrega é dividida pelo volume de cada produto.</div>`;
+}
+function _rpRecalcular() { clearTimeout(_rp.timer); _rp.timer = setTimeout(() => { try { _rpRenderMain(); } catch (e) { console.error('[relatório]', e); document.getElementById('rp-main').innerHTML = `<div class="rp-vazio">Erro ao montar: ${_rpEsc(e.message)}</div>`; } }, 120); }
+function _rpTudo() { _rpRenderSide(); _rpRecalcular(); }
+function _rpTitulo() { const m = [...RP_PADRAO, ...(_rp.modelos || [])].find(x => x.id === _rp.modeloId); document.getElementById('rp-titulo').textContent = m ? m.nome : 'Relatório personalizado'; }
+
+// ── Ações ────────────────────────────────────────────────────────────────────
+function rpSet(k, v) { _rp.cfg[k] = v; _rpTudo(); }
+function rpSetDim(i, v) {
+  const d = _rp.cfg.dims.slice();
+  if (i === 0) { d[0] = v || 'transportadora'; if (d[1] === d[0]) d.splice(1, 1); } else { if (v) d[1] = v; else d.splice(1, 1); }
+  _rp.cfg.dims = d; _rpTudo();
+}
+function rpToggleMet(id, on) {
+  const s = _rp.cfg.mets.filter(x => x !== id); if (on) s.push(id);
+  _rp.cfg.mets = RP_METS.map(m => m.id).filter(x => s.includes(x)); // mantém a ordem do catálogo
+  if (!s.includes(_rp.cfg.grafico?.met)) _rp.cfg.grafico = { ..._rp.cfg.grafico, met: _rp.cfg.mets[0] };
+  if (_rp.cfg.ordem.met !== '_rotulo' && !s.includes(_rp.cfg.ordem.met)) _rp.cfg.ordem = { met: _rp.cfg.mets[0] || '_rotulo', dir: 'desc' };
+  _rpTudo();
+}
+function rpSetFiltro(k, v) { _rp.cfg.filtros = { ..._rp.cfg.filtros, [k]: v }; if (k === 'dim') _rpRenderSide(); _rpRecalcular(); }
+function rpSetOrdem(met, dir) { _rp.cfg.ordem = { met: met ?? _rp.cfg.ordem.met, dir: dir ?? _rp.cfg.ordem.dir }; _rpRecalcular(); }
+function rpOrdenarPor(met) {
+  const o = _rp.cfg.ordem; _rp.cfg.ordem = o.met === met ? { met, dir: o.dir === 'asc' ? 'desc' : 'asc' } : { met, dir: met === '_rotulo' ? 'asc' : 'desc' };
+  _rpTudo();
+}
+function rpSetGraf(k, v) { _rp.cfg.grafico = { ..._rp.cfg.grafico, [k]: v }; _rpRecalcular(); }
+function rpAbrirModelo(id) {
+  _rp.modeloId = id;
+  const m = [...RP_PADRAO, ...(_rp.modelos || [])].find(x => x.id === id);
+  _rp.cfg = m ? { ...RP_CFG_VAZIA(), ...JSON.parse(JSON.stringify(m.cfg)), filtros: { ...RP_CFG_VAZIA().filtros, ...(m.cfg.filtros || {}) } } : RP_CFG_VAZIA();
+  _rpTitulo(); _rpTudo();
+}
+// Modelos compartilhados: 1 documento em config/relatorios_modelos.
+const _rpRef = () => window.fbDoc(window.fbDb, 'config', 'relatorios_modelos');
+async function _rpCarregarModelos() {
+  try {
+    if (!window.fbGetDoc) throw new Error('Firestore indisponível');
+    const s = await window.fbGetDoc(_rpRef());
+    _rp.modelos = s.exists() ? (s.data().modelos || []) : [];
+  } catch (e) { console.warn('[relatório] modelos:', e); _rp.modelos = []; }
+  if (document.getElementById('rp-side')) _rpRenderSide();
+}
+async function _rpGravarModelos(mutar) {
+  const s = await window.fbGetDoc(_rpRef()); // lê fresco pra não apagar o que outra pessoa salvou
+  const lista = s.exists() ? (s.data().modelos || []) : [];
+  const nova = mutar(lista) || lista;
+  await window.fbSetDoc(_rpRef(), { modelos: nova, atualizadoEm: new Date().toISOString() });
+  _rp.modelos = nova;
+}
+async function rpSalvarModelo(comoNovo) {
+  let id = _rp.modeloId, nome;
+  const atual = (_rp.modelos || []).find(m => m.id === id);
+  if (comoNovo || !atual) {
+    nome = prompt('Nome do modelo (todo mundo da equipe vai ver):', atual ? atual.nome + ' (cópia)' : '');
+    if (!nome || !nome.trim()) return;
+    id = 'm_' + Date.now().toString(36);
+  } else nome = atual.nome;
+  const reg = { id, nome: nome.trim(), cfg: JSON.parse(JSON.stringify(_rp.cfg)), criadoPor: (window.S && window.S.user) || '', atualizadoEm: new Date().toISOString() };
+  try {
+    await _rpGravarModelos(l => { const i = l.findIndex(m => m.id === id); if (i >= 0) l[i] = { ...l[i], ...reg }; else l.push(reg); return l; });
+    _rp.modeloId = id; _rpTitulo(); _rpRenderSide();
+    showToast(`💾 Modelo "${reg.nome}" salvo para a equipe.`, true);
+  } catch (e) { alert('Não consegui salvar o modelo: ' + (e.message || e)); }
+}
+async function rpExcluirModelo() {
+  const m = (_rp.modelos || []).find(x => x.id === _rp.modeloId); if (!m) return;
+  if (!confirm(`Excluir o modelo "${m.nome}" para toda a equipe?`)) return;
+  try { await _rpGravarModelos(l => l.filter(x => x.id !== m.id)); _rp.modeloId = ''; _rpTitulo(); _rpRenderSide(); showToast('Modelo excluído.', true); }
+  catch (e) { alert('Não consegui excluir: ' + (e.message || e)); }
+}
+// ── Exportação ───────────────────────────────────────────────────────────────
+function _rpTabelaPlana() {
+  const c = _rp.cfg, r = _rp.resultado, mets = c.mets.map(id => RP_MET[id]);
+  const cab = [...c.dims.map(d => RP_DIM[d].nome), ...mets.map(m => m.nome)];
+  const arred = (m, v) => v == null || !isFinite(v) ? '' : Math.round(v * 10 ** m.dec) / 10 ** m.dec;
+  const linhas = [], subtot = new Set(), titulos = new Set();
+  if (r.blocos) r.blocos.forEach(b => {
+    titulos.add(linhas.length); linhas.push([b.rotulo, ...c.dims.slice(1).map(() => ''), ...mets.map(() => '')]);
+    b.linhas.forEach(l => linhas.push(['', ...l.rotulos.slice(1), ...mets.map(m => arred(m, l.m[m.id]))]));
+    subtot.add(linhas.length); linhas.push([`Total ${b.rotulo}`, ...c.dims.slice(1).map(() => ''), ...mets.map(m => arred(m, b.m[m.id]))]);
+  });
+  else r.linhas.forEach(l => linhas.push([...l.rotulos, ...mets.map(m => arred(m, l.m[m.id]))]));
+  const total = ['Total', ...c.dims.slice(1).map(() => ''), ...mets.map(m => arred(m, r.total[m.id]))];
+  return { cab, linhas, total, mets, subtot, titulos };
+}
+function _rpNomeArquivo() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${(document.getElementById('rp-titulo')?.textContent || 'Relatorio').replace(/[^\w\-]+/g, '_')}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`; }
+function rpExportarExcel() {
+  if (!_rp.resultado || typeof XLSX === 'undefined') { alert('Nada para exportar (ou biblioteca de Excel não carregada).'); return; }
+  const { cab, linhas, total } = _rpTabelaPlana();
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas, total]);
+  ws['!cols'] = cab.map((h, i) => ({ wch: Math.min(40, Math.max(h.length, ...linhas.slice(0, 200).map(l => String(l[i] ?? '').length)) + 2) }));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+  XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
+  const f = _rp.cfg.filtros || {};
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Relatório', document.getElementById('rp-titulo')?.textContent || ''], ['Gerado em', new Date().toLocaleString('pt-BR')], ['Gerado por', (window.S && window.S.user) || ''],
+    ['Filtros do Dashboard', _dashDescricaoFiltroAtual()], ['Entrega de/até', `${f.de || '—'} / ${f.ate || '—'}`],
+    ['Filtro do relatório', f.dim && f.texto ? `${RP_DIM[f.dim]?.nome} contém "${f.texto}"` : '—'], ['Mínimo de entregas', f.minEntregas || 0],
+    [], ['Regras', 'Volume líquido de devoluções; km real quando calculado; custo pelo contrato da placa (Frete).'],
+  ]), 'Filtros');
+  XLSX.writeFile(wb, _rpNomeArquivo() + '.xlsx');
+  showToast('📊 Excel gerado.', true);
+}
+async function _rpSvgParaPng(svg) {
+  const clone = svg.cloneNode(true);
+  const vb = svg.viewBox.baseVal; clone.setAttribute('width', vb.width * 2); clone.setAttribute('height', vb.height * 2);
+  clone.querySelectorAll('.rp-grid').forEach(e => { e.setAttribute('stroke', '#EEF0F3'); }); clone.querySelectorAll('.rp-base').forEach(e => e.setAttribute('stroke', '#D1D5DB'));
+  clone.querySelectorAll('.rp-ax').forEach(e => { e.setAttribute('fill', '#6B7280'); e.setAttribute('font-size', '11'); e.setAttribute('font-family', 'Arial'); });
+  clone.querySelectorAll('.rp-val').forEach(e => { e.setAttribute('fill', '#111827'); e.setAttribute('font-size', '11'); e.setAttribute('font-weight', '700'); e.setAttribute('font-family', 'Arial'); });
+  clone.querySelectorAll('.rp-pt rect[fill=transparent], rect.rp-pt').forEach(e => e.remove());
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(clone));
+  const img = new Image(); await new Promise((ok, ko) => { img.onload = ok; img.onerror = ko; img.src = url; });
+  const cv = document.createElement('canvas'); cv.width = vb.width * 2; cv.height = vb.height * 2;
+  const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0);
+  return { data: cv.toDataURL('image/png'), w: vb.width, h: vb.height };
+}
+async function rpExportarPDF() {
+  const { jsPDF } = window.jspdf || {};
+  if (!_rp.resultado || !jsPDF) { alert('Nada para exportar (ou biblioteca de PDF não carregada).'); return; }
+  const { cab: cab0, linhas, total, mets, subtot, titulos } = _rpTabelaPlana();
+  const semSobrescrito = x => String(x).replace(/³/g, '3').replace(/²/g, '2'); // fonte padrão do PDF não tem ³
+  const cab = cab0.map(semSobrescrito);
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const titulo = document.getElementById('rp-titulo')?.textContent || 'Relatório personalizado';
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text(semSobrescrito(`NEXTA — ${titulo.toUpperCase()}`), 10, 12);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  const f = _rp.cfg.filtros || {};
+  doc.text(doc.splitTextToSize(`${_dashDescricaoFiltroAtual()}${f.de || f.ate ? ` · entrega ${f.de || '…'} a ${f.ate || '…'}` : ''}${f.dim && f.texto ? ` · ${RP_DIM[f.dim]?.nome} contém "${f.texto}"` : ''} · gerado em ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`, 275), 10, 17);
+  let y = 23;
+  // Legenda do gráfico (cor + nome + total) — o gráfico vai como imagem e a legenda fica em HTML na tela.
+  const leg = [...document.querySelectorAll('#rp-main .rp-leg span')].map(sp => ({ cor: sp.querySelector('i')?.style.background || '#999', txt: semSobrescrito(sp.textContent.trim()) }));
+  if (leg.length) {
+    doc.setFontSize(8); let x = 10;
+    leg.forEach(l => {
+      const w = doc.getTextWidth(l.txt) + 9;
+      if (x + w > 287) { x = 10; y += 5; }
+      const m = /rgb\((\d+),\s*(\d+),\s*(\d+)/.exec(l.cor) || /#(..)(..)(..)/.exec(l.cor);
+      const rgb = m ? (m[0].startsWith('#') ? [1, 2, 3].map(i => parseInt(m[i], 16)) : [+m[1], +m[2], +m[3]]) : [150, 150, 150];
+      doc.setFillColor(...rgb); doc.rect(x, y - 2.6, 3, 3, 'F'); doc.setTextColor(17, 24, 39); doc.text(l.txt, x + 4.5, y);
+      x += w + 4;
+    });
+    y += 4;
+  }
+  const svg = document.querySelector('#rp-main .rp-svg');
+  const barrasH = document.querySelector('#rp-main .rp-hbars');
+  try {
+    if (svg) { const p = await _rpSvgParaPng(svg); const w = 277, h = w * p.h / p.w; doc.addImage(p.data, 'PNG', 10, y, w, h); y += h + 4; }
+    else if (barrasH && typeof html2canvas === 'function') { const cv = await html2canvas(barrasH.parentElement, { scale: 2, backgroundColor: '#ffffff' }); const w = 277, h = Math.min(120, w * cv.height / cv.width); doc.addImage(cv.toDataURL('image/png'), 'PNG', 10, y, w * (h / (w * cv.height / cv.width)), h); y += h + 4; }
+  } catch (e) { console.warn('[relatório] gráfico fora do PDF:', e); }
+  if (typeof doc.autoTable !== 'function') { alert('Biblioteca de tabela do PDF não carregada.'); return; }
+  const fmtCel = (m, v) => v === '' ? '—' : _rpFmt(m.id, v);
+  const nd = _rp.cfg.dims.length;
+  doc.autoTable({
+    head: [cab], body: linhas.map((l, li) => titulos.has(li) ? [semSobrescrito(l[0]), ...l.slice(1).map(() => '')] : [...l.slice(0, nd).map(semSobrescrito), ...mets.map((m, i) => fmtCel(m, l[nd + i]))]),
+    didParseCell: d => {
+      if (d.section !== 'body') return;
+      if (subtot.has(d.row.index)) { d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = [3, 7, 18]; d.cell.styles.fillColor = [229, 231, 235]; }
+      if (titulos.has(d.row.index)) { d.cell.styles.fontStyle = 'bold'; d.cell.styles.fillColor = [238, 242, 255]; }
+    },
+    foot: [[...total.slice(0, nd), ...mets.map((m, i) => fmtCel(m, total[nd + i]))]],
+    startY: y, styles: { fontSize: 7.5, cellPadding: 1.6 }, headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [229, 231, 235], textColor: [17, 24, 39], fontStyle: 'bold' }, alternateRowStyles: { fillColor: [248, 249, 250] },
+    columnStyles: Object.fromEntries(mets.map((m, i) => [nd + i, { halign: 'right' }])), margin: { left: 10, right: 10 }, theme: 'grid', showFoot: 'lastPage',
+  });
+  doc.save(_rpNomeArquivo() + '.pdf');
+  showToast('📄 PDF gerado.', true);
+}
+// ── Abrir / fechar ──────────────────────────────────────────────────────────
+function _rpTooltip(e) {
+  const tip = document.getElementById('rp-tip'); if (!tip) return;
+  const alvo = e.target.closest && e.target.closest('[data-tip]');
+  if (!alvo) { tip.style.display = 'none'; return; }
+  tip.textContent = alvo.getAttribute('data-tip'); tip.style.display = 'block';
+  const x = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 14), y = Math.max(8, e.clientY - tip.offsetHeight - 10);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function dashAbrirRelatorioPersonalizado() {
+  document.getElementById('dash-relatorios-menu')?.style && (document.getElementById('dash-relatorios-menu').style.display = 'none');
+  if (!(_dashSnapshotsAtivos || []).length) { alert('Carregue um período no Dashboard primeiro (filtro 🗓️ Período no topo).'); return; }
+  if (!document.getElementById('rp-style')) { const st = document.createElement('style'); st.id = 'rp-style'; st.textContent = RP_CSS; document.head.appendChild(st); }
+  document.getElementById('rp-modal')?.remove();
+  const el = document.createElement('div'); el.id = 'rp-modal';
+  el.innerHTML = `<div class="rp-box">
+      <div class="rp-head"><div><h2 id="rp-titulo">Relatório personalizado</h2><small>Monte do seu jeito: agrupe, escolha as colunas, filtre e exporte.</small></div>
+        <div style="display:flex;gap:8px;margin-left:auto"><button class="rp-btn" onclick="rpExportarExcel()">📊 Excel</button><button class="rp-btn" onclick="rpExportarPDF()">📄 PDF</button><button class="rp-btn rp-btn-p" onclick="dashFecharRelatorioPersonalizado()">Fechar</button></div></div>
+      <div class="rp-corpo"><aside class="rp-side" id="rp-side"></aside><main class="rp-main" id="rp-main"></main></div>
+    </div><div id="rp-tip"></div>`;
+  el.addEventListener('mousemove', _rpTooltip);
+  el.addEventListener('mousedown', e => { if (e.target === el) dashFecharRelatorioPersonalizado(); });
+  document.body.appendChild(el);
+  document.addEventListener('keydown', _rpEsc_);
+  _rp.linhas = null; _rpTitulo(); _rpRenderSide(); _rpRenderMain();
+  setTimeout(async () => {
+    // Ocorrências vêm do mesmo cache do Histórico/Dashboard — se ainda não
+    // carregou nesta sessão, espera carregar antes de montar a base.
+    if ((typeof _devTodosRegistrosCache === 'undefined' || !_devTodosRegistrosCache) && typeof _devCarregarCacheRegistros === 'function') {
+      try { await _devCarregarCacheRegistros(); } catch (e) { /* segue sem ocorrências */ }
+    }
+    try { _rp.linhas = _rpExtrair(); } catch (e) { console.error('[relatório] base:', e); _rp.linhas = { linhas: [], viagens: new Map() }; }
+    _rpRecalcular();
+  }, 30);
+  if (_rp.modelos === null) _rpCarregarModelos();
+}
+function _rpEsc_(e) { if (e.key === 'Escape') dashFecharRelatorioPersonalizado(); }
+function dashFecharRelatorioPersonalizado() { document.getElementById('rp-modal')?.remove(); document.removeEventListener('keydown', _rpEsc_); }
+Object.assign(window, { dashAbrirRelatorioPersonalizado, dashFecharRelatorioPersonalizado, rpSet, rpSetDim, rpToggleMet, rpSetFiltro, rpSetOrdem, rpOrdenarPor, rpSetGraf, rpAbrirModelo, rpSalvarModelo, rpExcluirModelo, rpExportarExcel, rpExportarPDF });
+
+})(); // fim IIFE dashboard
+// A chave da OpenRouteService NÃO fica mais aqui — antes ficava exposta
+// literalmente no código-fonte (qualquer um com DevTools conseguia copiar
+// e gastar a cota diária de 2.000 requisições da empresa). Agora a
+// requisição passa por /api/ors-proxy (Vercel Serverless Function — ver
+// api/ors-proxy.js), que segura a chave só no servidor, via variável de
+// ambiente ORS_API_KEY configurada no painel da Vercel.
+const ORS_PROXY_URL = '/api/ors-proxy';
+// ── Limitador de ritmo (rate limiter) pro proxy da ORS ──────────────────────
+// A ORS free tier tem DOIS limites separados: 2.000 requisições/DIA (já
+// controlado pelo teto em dashPreencherKmRealResultado) e um limite de
+// RAJADA por minuto (bem mais baixo, ~40/min) — esse segundo limite nunca
+// tinha sido tratado, e disparar vários lotes em sequência rápida (mesmo
+// com só 3 de concorrência por vez) estourava ele quase imediatamente,
+// gerando uma sequência de erros 429 (visível no painel de uso da ORS: só
+// ~30 de ~730 chamadas tiveram sucesso numa rodada). A cada chamada, esse
+// limitador espera até haver uma "vaga" dentro da janela de 60s.
+const ORS_MAX_REQ_POR_MINUTO = 30; // margem de segurança sobre o limite real da ORS (~40/min)
+const _orsHistoricoChamadas = [];
+async function _orsAguardarVaga() {
+  const agora = Date.now();
+  // Descarta do histórico qualquer chamada com mais de 60s (já saiu da janela)
+  while (_orsHistoricoChamadas.length && agora - _orsHistoricoChamadas[0] > 60000) {
+    _orsHistoricoChamadas.shift();
+  }
+  if (_orsHistoricoChamadas.length >= ORS_MAX_REQ_POR_MINUTO) {
+    const esperaMs = 60000 - (agora - _orsHistoricoChamadas[0]) + 200; // +200ms de folga
+    await new Promise(r => setTimeout(r, Math.max(esperaMs, 0)));
+    return _orsAguardarVaga(); // reavalia depois de esperar (pode ter mais de uma vaga liberada)
+  }
+  _orsHistoricoChamadas.push(Date.now());
+}
+async function osrmFetchSegmento(a, b) {
+  // ── Cache em memória por par de coordenadas ─────────────────────────────
+  // Trechos entre terminal↔cliente e cliente↔cliente se repetem MUITO (o
+  // mesmo terminal atende dezenas de rotas, o mesmo cliente aparece em
+  // vários dias) — sem cache, cada abertura de mapa refazia a chamada pra
+  // ORS do zero, mesmo pra um trecho já calculado minutos antes na mesma
+  // sessão. Isso somava tempo de espera (rate limiter de 30/min é
+  // compartilhado com TODO o resto do sistema, incluindo o "Km Real" em
+  // lote) sem necessidade nenhuma, já que o trajeto de um mesmo par de
+  // pontos não muda. Arredonda a 4 casas decimais (~11m de precisão) pra
+  // reaproveitar mesmo com pequena variação de ponto flutuante.
+  const _round = (n) => Math.round(n * 10000) / 10000;
+  const _cacheKey = `${_round(a.lat)},${_round(a.lon)}|${_round(b.lat)},${_round(b.lon)}`;
+  if (!window._osrmSegmentoCache) window._osrmSegmentoCache = new Map();
+  const _cached = window._osrmSegmentoCache.get(_cacheKey);
+  if (_cached) return _cached;
+  const _resultado = await _osrmFetchSegmentoSemCache(a, b);
+  // Só guarda em cache resultado de rota real (não o fallback de linha
+  // reta) — a linha reta é barata de recalcular e não vale a pena travar
+  // no cache caso a ORS volte a funcionar logo em seguida.
+  if (_resultado && _resultado.coords && _resultado.coords.length > 2) {
+    window._osrmSegmentoCache.set(_cacheKey, _resultado);
+  }
+  return _resultado;
+}
+async function _osrmFetchSegmentoSemCache(a, b) {
+  // ── OpenRouteService (via proxy), perfil driving-hgv (caminhão de verdade) ──
+  // Substituiu o OSRM público (router.project-osrm.org), que NUNCA teve
+  // perfil de caminhão de verdade — confirmado em issue oficial do projeto
+  // OSRM: esse servidor ignora silenciosamente qualquer nome de perfil na
+  // URL e sempre devolve rota de carro comum, disfarçada de "sucesso". Isso
+  // fazia o sistema calcular caminho de carro (ex.: atravessar a Serra) onde
+  // um caminhão de carga (principalmente combustível/inflamável) na prática
+  // é proibido e vai pelo litoral — daí pedágio "sumido" mesmo com a praça
+  // certa cadastrada, porque a rota calculada nunca passava perto dela.
+  // hazmat:true pede pra ORS evitar vias com restrição a carga perigosa
+  // quando essa informação existe no mapa (OpenStreetMap) da região — não é
+  // garantia 100% (depende de quão bem aquele trecho foi mapeado), mas é
+  // reconhecimento de verdade, ausente no OSRM público.
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      await _orsAguardarVaga();
+      const res = await fetch(ORS_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coordinates: [[a.lon, a.lat], [b.lon, b.lat]],
+          options: {
+            vehicle_type: 'hgv',
+            profile_params: { restrictions: { hazmat: true } },
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const feat = data.features?.[0];
+        if (feat?.geometry?.coordinates?.length) {
+          return {
+            coords: feat.geometry.coordinates.map(c => [c[1], c[0]]), // ORS devolve [lon,lat] — inverte pra [lat,lon]
+            distKm: (feat.properties?.summary?.distance || 0) / 1000,
+          };
+        }
+        break; // resposta ok mas sem rota utilizável — não adianta repetir, cai pro fallback
+      }
+      if (res.status === 429 && tentativa === 0) {
+        // Rajada estourada mesmo com o limitador (ex.: outra aba/usuário
+        // consumindo ao mesmo tempo) — espera um pouco mais e tenta 1 vez
+        // antes de desistir e cair pro fallback de carro/linha reta.
+        console.warn('[osrmFetchSegmento] 429 (rajada) mesmo com o limitador — aguardando 3s e tentando 1 vez mais.');
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      console.warn('[osrmFetchSegmento] proxy/ORS respondeu erro, caindo pro OSRM público (linha reta/carro):', res.status, await res.text().catch(()=>''));
+      break;
+    } catch (e) {
+      console.warn('[osrmFetchSegmento] Falha ao chamar o proxy/ORS, caindo pro OSRM público (linha reta/carro):', e);
+      break;
+    }
+  }
+  // ── Fallback 1: OSRM público (car — sem perfil de caminhão de verdade) ──
+  // Só usado se a ORS falhar (rede fora, chave inválida/estourada, etc.) —
+  // melhor ter uma rota aproximada de carro do que nenhuma.
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/` +
+      `${a.lon},${a.lat};${b.lon},${b.lat}` +
+      `?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.code === 'Ok' && data.routes?.[0]) {
+        return {
+          coords:   data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]),
+          distKm:   data.routes[0].distance / 1000,
+        };
+      }
+    }
+  } catch (e) { /* cai pro fallback final */ }
+  // ── Fallback 2: linha reta com distância haversine ───────────────────────
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLon = (b.lon - a.lon) * Math.PI / 180;
+  const ha = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+  const distKm = R * 2 * Math.atan2(Math.sqrt(ha), Math.sqrt(1-ha));
+  return { coords: [[a.lat, a.lon], [b.lat, b.lon]], distKm };
+}
+async function osrmRoute(pontos, layer, cor, peso, opacidade) {
+  peso      = peso      || 4;
+  opacidade = opacidade || 0.88;
+  if (!pontos || pontos.length < 2) return;
+  // Distância acumulada por ponto (índice 0 = origem = 0 km)
+  const distAcum = [0];
+  let totalKm = 0;
+  // Busca segmentos em paralelo (máx 4 simultâneos) para não travar
+  const BATCH = 4;
+  const segmentos = new Array(pontos.length - 1);
+  for (let start = 0; start < pontos.length - 1; start += BATCH) {
+    const end = Math.min(start + BATCH, pontos.length - 1);
+    const batch = [];
+    for (let i = start; i < end; i++) {
+      batch.push(osrmFetchSegmento(pontos[i], pontos[i + 1]).then(r => { segmentos[i] = r; }));
+    }
+    await Promise.all(batch);
+    // Desenha cada segmento conforme fica pronto
+    for (let i = start; i < end; i++) {
+      totalKm += segmentos[i].distKm;
+      distAcum.push(totalKm);
+      L.polyline(segmentos[i].coords, { color: cor, weight: peso, opacity: opacidade }).addTo(layer);
+    }
+  }
+  // Expõe as distâncias acumuladas indexadas pelo array de pontos
+  // Usa o índice do layer como chave
+  if (!layer._nexta_distAcum) layer._nexta_distAcum = [];
+  layer._nexta_distAcum = distAcum;
+  return distAcum;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KM REAL DA VIAGEM (trajeto de verdade, via OSRM/ORS) — não mais linha reta
+// ═══════════════════════════════════════════════════════════════════════════
+// Monta os pontos (terminal → paradas → retorno, se houver) e soma o km REAL
+// de cada trecho via osrmFetchSegmento — mesma fonte usada no "Mapa da
+// Viagem" e na detecção de pedágio com trajeto real. Resultado vai direto em
+// vi._kmAjustado, o MESMO campo que já existia pra ajuste manual no mapa —
+// então o Dashboard e o cálculo de frete já usam esse número automaticamente,
+// sem precisar mudar mais nada em quem LÊ o km.
+// NÃO usa latLonEfetivo (que depende de cadastro de cliente/cidade ao vivo) —
+// lê direto p.pedido.lat/lon, pra funcionar igual tanto numa roteirização
+// recém-otimizada (fluxo normal) quanto processando um arquivo antigo do
+// histórico (fluxo de recálculo em lote), sem depender de estado vivo.
+async function dashCalcularKmRealViagem(v, vi, terms) {
+  if (!v || !vi || !vi.paradas || !vi.paradas.length) return null;
+  // Monta os pontos (terminal → paradas → retorno) e valida coordenada via
+  // NextaKm (assets/km-utils.js) — fonte ÚNICA dessa lógica agora, usada
+  // também pelo relatório de Frete. Ver comentário no próprio módulo sobre
+  // o bug de coordenada (0,0) que essa validação evita.
+  const pontos = NextaKm.montarPontosViagem(v, vi, terms).map(p => ({ ...p, _tag: p.tag }));
+  const terminalNome = vi.terminalOrigem || v.terminal || vi.paradas[0]?.pedido?.terminal || '';
+  if (!(terms || []).find(t => t.nome === terminalNome)) {
+    console.warn(`[dashCalcularKmRealViagem] terminal "${terminalNome}" não encontrado na lista de terminais deste arquivo (placa ${v.placa}) — viagem calculada SEM o ponto de origem/retorno, só entre paradas.`);
+  }
+  vi.paradas.forEach((p, i) => {
+    const lat = parseFloat(p.pedido?.lat ?? p.lat);
+    const lon = parseFloat(p.pedido?.lon ?? p.lon);
+    if (!NextaKm.coordenadaValida(lat, lon)) {
+      console.warn(`[dashCalcularKmRealViagem] parada ${i+1} (${p.pedido?.cliente || '?'}) sem coordenada válida (lat=${p.pedido?.lat ?? p.lat}, lon=${p.pedido?.lon ?? p.lon}) — excluída do cálculo, placa ${v.placa}.`);
+    }
+  });
+  if (pontos.length < 2) return null;
+  // Trava de sanidade: compara cada trecho REAL contra a distância em linha
+  // reta (Haversine) do MESMO par de pontos. Estrada real pode ser mais longa
+  // que a reta (curvas, contorno de serra/rio), mas não numa proporção
+  // absurda — se algum trecho vier MUITO maior que a reta (coordenada errada,
+  // geocodificação ruim, ou a rota calculada foi parar em outro estado/país),
+  // rejeita a viagem inteira em vez de gravar um km calculado errado: melhor
+  // manter a estimativa por linha reta (que pelo menos é consistente) do que
+  // "corrigir" pra um número pior. +15 de folga absoluta cobre trechos curtos
+  // onde a razão de multiplicação sozinha seria injusta (ex.: 1km reto virando
+  // 3km real por causa de uma via sem saída direta).
+  const FATOR_MAX = 3;
+  const FOLGA_KM = 15;
+  let totalKm = 0;
+  let totalRetaKm = 0;
+  for (let i = 0; i < pontos.length - 1; i++) {
+    try {
+      const seg = await osrmFetchSegmento(pontos[i], pontos[i + 1]);
+      const segKm = seg?.distKm || 0;
+      const retaKm = NextaKm.haversineKm(pontos[i].lat, pontos[i].lon, pontos[i+1].lat, pontos[i+1].lon);
+      if (retaKm != null) totalRetaKm += retaKm;
+      if (retaKm != null && segKm > retaKm * FATOR_MAX + FOLGA_KM) {
+        console.warn(`[dashCalcularKmRealViagem] REJEITADO trecho implausível: ${pontos[i]._tag} → ${pontos[i+1]._tag} | real=${segKm.toFixed(1)}km vs reta=${retaKm.toFixed(1)}km | placa ${v.placa}, terminal "${terminalNome}". Mantendo estimativa por linha reta pra esta viagem inteira.`);
+        return null;
+      }
+      totalKm += segKm;
+    } catch (e) {
+      return null; // falha de rede num trecho — não salva km parcial/errado
+    }
+  }
+  // Log de auditoria: sempre grava o resultado (mesmo aceito), pra dar pra
+  // conferir depois no console se algum valor grande é legítimo (viagem
+  // interestadual de verdade) ou ainda suspeito mesmo tendo passado na trava.
+  console.log(`[dashCalcularKmRealViagem] placa ${v.placa} | terminal "${terminalNome}" | ${pontos.length} pontos | real=${totalKm.toFixed(1)}km | reta=${totalRetaKm.toFixed(1)}km | razão=${totalRetaKm > 0 ? (totalKm/totalRetaKm).toFixed(2) : '?'}x`);
+  return totalKm > 0 ? totalKm : null;
+}
+// Preenche vi._kmAjustado com o km real de TODAS as viagens de `resultado`
+// que ainda não têm (pula as que já foram ajustadas manualmente no mapa, ou
+// já processadas numa rodada anterior — torna a função segura de rodar de
+// novo em cima do mesmo resultado sem refazer trabalho). Roda com
+// concorrência limitada (não sobrecarrega o servidor de rota) e respeita um
+// teto de chamadas (a ORS tem cota gratuita de 2.000 requisições/dia — ver
+// comentário em api/ors-proxy.js) — se bater o teto, para e devolve
+// quantas viagens ainda ficaram pendentes, pra tentar de novo depois (no dia
+// seguinte a cota renova).
+async function dashPreencherKmRealResultado(veiculosArr, resultado, terms, opts = {}) {
+  const CONCORRENCIA = opts.concorrencia || 3;
+  const tetoRequisicoes = opts.tetoRequisicoes ?? 1800; // margem de segurança sobre os 2000/dia da ORS
+  const onProgresso = opts.onProgresso || (() => {});
+  let requisicoesFeitas = 0;
+  const pendentes = [];
+  (veiculosArr || []).forEach(v => {
+    const viagensDoVeic = resultado[v.id];
+    if (!Array.isArray(viagensDoVeic)) return; // arquivo de formato antigo/diferente — pula esse veículo, não quebra o resto
+    viagensDoVeic.forEach(vi => {
+      if (!vi || !vi.paradas || !vi.paradas.length) return;
+      if (NextaKm.obterKmViagem(vi).real) return; // já tem km real
+      pendentes.push({ v, vi });
+    });
+  });
+  let processadas = 0, falhas = 0;
+  let pararPorCota = false;
+  for (let start = 0; start < pendentes.length; start += CONCORRENCIA) {
+    if (pararPorCota) break;
+    const lote = pendentes.slice(start, start + CONCORRENCIA);
+    await Promise.all(lote.map(async ({ v, vi }) => {
+      if (pararPorCota) return;
+      const nSegmentos = 1 + vi.paradas.length; // estimativa de chamadas que este item vai consumir
+      if (requisicoesFeitas + nSegmentos > tetoRequisicoes) { pararPorCota = true; return; }
+      requisicoesFeitas += nSegmentos;
+      const km = await dashCalcularKmRealViagem(v, vi, terms);
+      if (km != null) { vi._kmAjustado = km; vi._kmAjustadoAuto = true; processadas++; } else { falhas++; }
+    }));
+    onProgresso({ processadas, falhas, total: pendentes.length, requisicoesFeitas });
+  }
+  return { processadas, falhas, pendentesRestantes: pendentes.length - processadas - falhas, pararPorCota, requisicoesFeitas };
+}
+// ─── Recalcular km real de TODO o histórico salvo (retroativo) ─────────────
+// Percorre os arquivos do histórico (mesma pasta usada pelo Dashboard/aba
+// Histórico), pula os já substituídos por revisão (não contam pro Dashboard
+// mesmo), preenche vi._kmAjustado das viagens que ainda não têm, e regrava
+// o arquivo. Seguro de interromper e rodar de novo depois (retoma de onde
+// parou, viagem que já tem _kmAjustado nunca é reprocessada) — necessário
+// porque a cota gratuita da ORS (2000 req/dia) normalmente não cobre o
+// histórico inteiro numa passada só se ele for grande.
+// `silencioso`: true = modo automático (chamado sozinho na abertura do app,
+// ver hook mais abaixo) — sem confirm()/alert(), sem forçar pedido de
+// permissão (só usa se a pasta já estiver com permissão de escrita concedida
+// de antes; navegador bloqueia pedido de permissão sem clique do usuário
+// mesmo assim), e avisa o progresso por toast em vez de travar a tela.
+// Botão manual "🛣️ Recalcular Km Real (Histórico)" continua disponível pra
+// forçar uma rodada na hora (silencioso=false), inclusive pra CONCEDER a
+// permissão de escrita da primeira vez (isso sim precisa de clique).
+// Segunda camada de proteção (além de esconder o botão): mesmo chamando a
+// função direto pelo console, sem ser admin ela recusa. Não é segurança de
+// verdade (é tudo client-side, dá pra burlar com dev tools), mas evita
+// acionar essas ferramentas por engano/curiosidade.
+function _dashEhAdmin() {
+  const role = window.USERS_DB && window.S && window.USERS_DB[window.S.user]?.role;
+  return role === 'admin';
+}
+window.dashRecalcularKmHistorico = async function(silencioso = false) {
+  if (!silencioso && !_dashEhAdmin()) { alert('Restrito ao administrador.'); return; }
+  if (!window.dirHandleHistorico) {
+    if (!silencioso) alert('Selecione a pasta do histórico primeiro (aba Histórico).');
+    return;
+  }
+  if (!silencioso && !confirm(
+    'Isso vai buscar o trajeto REAL (via rota, não linha reta) de cada viagem salva no histórico que ainda não tem, e regravar os arquivos.\n\n' +
+    'Pode levar vários minutos e usa a cota diária de requisições de rota (limitada) — se o histórico for grande, pode não terminar tudo hoje; ' +
+    'rodar de novo depois (nos dias seguintes) continua de onde parou, sem refazer o que já foi calculado.\n\n' +
+    'O modo automático está temporariamente DESLIGADO (voltando a validar após o ajuste da trava de sanidade) — por enquanto só roda quando você clica aqui.\n\n' +
+    'Deseja continuar?'
+  )) return;
+  let permOk = false;
+  try { permOk = (await window.dirHandleHistorico.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch(e) {}
+  if (!permOk && !silencioso) {
+    try { permOk = (await window.dirHandleHistorico.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch(e) {}
+  }
+  if (!permOk) {
+    // No modo automático isso é esperado até o usuário clicar o botão manual
+    // pelo menos 1x (navegador exige gesto do usuário pra conceder escrita) —
+    // não interrompe nada, só não roda essa rodada.
+    if (!silencioso) alert('Permissão de escrita negada.');
+    else console.log('[dashRecalcularKmHistorico] rodada automática pulada — sem permissão de escrita concedida ainda (clique o botão manual 1x pra conceder).');
+    return;
+  }
+
+  const arquivos = [];
+  for await (const [name, handle] of window.dirHandleHistorico.entries()) {
+    if (handle.kind === 'file' && name.endsWith('.json')) arquivos.push({ name, handle });
+  }
+
+  const btn = document.getElementById('btn-dash-recalcular-km');
+  const setStatus = (txt) => { if (btn && !silencioso) btn.textContent = txt; };
+  setStatus('⏳ Preparando...');
+
+  let totalProcessadas = 0, totalFalhas = 0, arquivosAtualizados = 0, pararPorCota = false;
+  let requisicoesUsadasRodada = 0; // teto é em REQUISIÇÕES (1 por trecho), não em viagens — cada viagem consome vários trechos
+  const TETO_REQUISICOES_RODADA = 1800; // margem de segurança sobre os 2000/dia da ORS
+  for (let i = 0; i < arquivos.length && !pararPorCota; i++) {
+    const { name, handle } = arquivos[i];
+    setStatus(`⏳ Km real: arquivo ${i + 1}/${arquivos.length}...`);
+    let data;
+    try {
+      const file = await handle.getFile();
+      data = JSON.parse(await file.text());
+    } catch (e) { continue; }
+    if (data.substituidoPor) continue; // não conta pro Dashboard — pula, economiza cota
+    if (!data.resultado || !data.veiculos) continue;
+
+    const r = await dashPreencherKmRealResultado(data.veiculos, data.resultado, data.terminais || [], {
+      tetoRequisicoes: TETO_REQUISICOES_RODADA - requisicoesUsadasRodada, // teto GLOBAL da rodada, não por arquivo
+      onProgresso: ({ processadas, total }) => setStatus(`⏳ Km real: arquivo ${i + 1}/${arquivos.length} (${processadas}/${total} viagens)...`),
+    });
+    totalProcessadas += r.processadas;
+    totalFalhas += r.falhas;
+    requisicoesUsadasRodada += r.requisicoesFeitas;
+    if (r.processadas > 0) {
+      try {
+        const ws = await handle.createWritable();
+        await ws.write(JSON.stringify(data, null, 2));
+        await ws.close();
+        arquivosAtualizados++;
+      } catch (e) { console.warn(`[dashRecalcularKmHistorico] falha ao regravar ${name}:`, e); }
+    }
+    if (r.pararPorCota) pararPorCota = true;
+  }
+
+  setStatus('🛣️ Recalcular Km Real (Histórico)');
+  if (totalProcessadas === 0 && totalFalhas === 0 && !pararPorCota) {
+    // De verdade não tinha NADA pendente (nem sucesso, nem falha) — histórico
+    // já 100% em dia. Único caso em que faz sentido dizer "nada a fazer".
+    if (!silencioso) showToast('Histórico já está com o km real em dia — nada pra recalcular.', true);
+    return;
+  }
+  if (totalProcessadas === 0 && totalFalhas > 0 && !pararPorCota) {
+    // Tinha viagem pendente, mas TODAS falharam — geralmente porque o(s)
+    // cliente(s) da viagem não têm coordenada cadastrada (ver aviso
+    // "excluída do cálculo" no console) ou o cadastro do terminal está
+    // incompleto. Isso é diferente de "nada a fazer": tem trabalho pendente
+    // que só vai ser resolvido corrigindo o cadastro, não rodando de novo.
+    const msgFalha = `Km real: ${totalFalhas} viagem(ns) pendente(s) tentada(s), mas nenhuma pôde ser calculada (coordenada de cliente/terminal ausente ou inválida — ver Console, F12, pra detalhes). Corrija o cadastro dessas paradas e rode de novo.`;
+    if (silencioso) { if (typeof showToast === 'function') showToast(msgFalha, false); }
+    else alert(msgFalha);
+    return;
+  }
+  const msg = pararPorCota
+    ? `Km real: cota diária atingida. ${totalProcessadas} viagem(ns) atualizada(s) em ${arquivosAtualizados} arquivo(s) até agora — continua sozinho amanhã.`
+    : `Km real: ${totalProcessadas} viagem(ns) atualizada(s) em ${arquivosAtualizados} arquivo(s)${totalFalhas ? ` (${totalFalhas} falha(s) — coordenada ausente ou rede)` : ''}.`;
+  if (silencioso) { if (typeof showToast === 'function') showToast(msg, !pararPorCota); }
+  else alert(msg);
+  if (typeof window.dashSincronizar === 'function') window.dashSincronizar();
+};
+// ── Roda automaticamente 1x por dia, sozinho, sem precisar clicar no botão ──
+// Hook fica junto da inicialização do Dashboard (dashPopularMeses, mais
+// abaixo) — dispara em segundo plano, sem travar nada, e só se a pasta do
+// histórico já tiver permissão de escrita concedida de uma vez manual
+// anterior (ver dashRecalcularKmHistorico, modo silencioso).
+// DESLIGADO TEMPORARIAMENTE (ver KM_REAL_AUTO_HABILITADO): depois do episódio
+// de km inflado, é mais seguro só rodar via clique manual (com o resultado
+// visível na hora) até confirmar que a trava de sanidade está funcionando de
+// verdade em produção — reative trocando pra `true` quando estiver validado.
+const KM_REAL_AUTO_HABILITADO = false;
+async function dashAutoRodarKmRealSeNecessario() {
+  if (!KM_REAL_AUTO_HABILITADO) return;
+  try {
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const chaveLS = 'dashKmRealAutoUltimoRun';
+    if (localStorage.getItem(chaveLS) === hojeStr) return; // já rodou hoje
+    localStorage.setItem(chaveLS, hojeStr); // marca ANTES de rodar — evita disparo duplo se a página recarregar no meio
+    if (!window.dirHandleHistorico) return;
+    await window.dashRecalcularKmHistorico(true);
+  } catch (e) {
+    console.warn('[dashAutoRodarKmRealSeNecessario] falhou:', e);
+  }
+}
+// ─── Desfazer km real calculado automaticamente (rollback) ─────────────────
+// Remove _kmAjustado de TODA viagem, com ou sem a marca _kmAjustadoAuto —
+// inclui de propósito o que foi gravado ANTES dessa marca existir (a
+// primeira rodada de recálculo, que gerou km inflado por causa de um bug já
+// corrigido, foi salva sem essa marca, então filtrar só por ela deixava esse
+// lote de fora e a ferramenta de desfazer não revertia nada).
+// TRADE-OFF: se alguém tiver feito algum ajuste manual de verdade no Mapa da
+// Viagem antes dessa funcionalidade existir, ele também seria desfeito aqui
+// (não tem como distinguir os dois casos com certeza nos arquivos antigos).
+// Isso é avisado no confirm() abaixo — se precisar, o ajuste manual é rápido
+// de refazer reabrindo a viagem no mapa.
+// ─── Diagnóstico: quais viagens estão puxando o Km Total pra cima ──────────
+// Não faz NENHUMA requisição de rede nova — só lê o que já está gravado
+// (_kmAjustado) e compara com a estimativa antiga (soma de par.distanciaKm,
+// a mesma conta que o Dashboard usava antes de existir "km real"), pra achar
+// as viagens com a MAIOR razão real/estimativa antiga. Mostra um resumo em
+// alert() (fácil de printar) em vez de depender de copiar log do console.
+// ── Diagnóstico: por que % Rotas Pedagiadas está em 0 (ou baixo) ────────────
+// Roda em cima do que já está carregado na tela (_dashSnapshotsAtivos —
+// respeita qualquer filtro ativo, incluindo "Hoje"), sem gastar nenhuma
+// requisição nova. Categoriza cada viagem em: sem pontos suficientes pra
+// detectar (coordenada de cliente/terminal ausente), com pontos mas sem
+// pedágio no trajeto (dado correto, rota realmente não passa perto de
+// nenhuma praça conhecida), ou com pedágio detectado — pra separar "é bug"
+// de "é dado incompleto" de "é realmente 0 mesmo".
+window.dashDiagnosticarPedagioHoje = async function() {
+  if (!_dashEhAdmin()) { alert('Restrito ao administrador.'); return; }
+  const snapshots = window._dashSnapshotsAtivos || [];
+  if (!snapshots.length) { alert('Nenhum dado carregado no filtro atual — selecione um período primeiro.'); return; }
+  // A busca de coordenada do cliente (latLonEfetivo → encontrarClienteDoPedido)
+  // usa a lista "clientes" carregada NA SESSÃO ATUAL da Otimização Rotas —
+  // não busca direto no Firestore. Se essa lista ainda não foi carregada
+  // (ex.: usuário foi direto pra aba Dashboard, sem passar por Clientes),
+  // clientes cadastrados de verdade apareciam como "sem coordenada" aqui só
+  // por causa disso — não porque o cadastro estivesse incompleto. Garante
+  // uma carga fresca antes de analisar, pra não dar diagnóstico falso.
+  if ((!clientes || !clientes.length) && typeof window.dbGetCadastro === 'function') {
+    try {
+      const fsCli = await window.dbGetCadastro('clientes');
+      if (fsCli && Object.keys(fsCli).length) {
+        let id = 100;
+        clientes = Object.values(fsCli).map(c => ({ ...c, id: c.id ?? id++ }));
+      }
+    } catch (e) { console.warn('[dashDiagnosticarPedagioHoje] falha ao carregar clientes do Firestore:', e); }
+  }
+  let semPontos = 0, comPontosSemPedagio = 0, comPedagio = 0, semTerminalCadastrado = 0;
+  const exemplosSemPontos = [];
+  const exemplosTerminal = [];
+  snapshots.forEach(snap => {
+    const res = snap.resultado || {};
+    const vecs = snap.veiculos || [];
+    const terms = snap.terminais || [];
+    vecs.forEach(v => {
+      const viagensDoVeic = (res[v.id] || []).filter(vi => !vi._vazio && (vi.paradas || []).length);
+      if (!viagensDoVeic.length) return; // veículo sem viagem no filtro atual — não entra na contagem
+      viagensDoVeic.forEach(vi => {
+        // Terminal DESTA viagem — vi.terminalOrigem (gravado na criação da
+        // viagem) tem prioridade, depois o terminal do primeiro pedido com
+        // essa info, só then o terminal do veículo (v.terminal) — que hoje
+        // fica vazio de propósito pra veículos sem base fixa (podem carregar
+        // em mais de uma base da mesma cidade).
+        const termNomeViagem = vi.terminalOrigem || vi.paradas?.find(p => p.pedido?.terminal)?.pedido?.terminal || v.terminal;
+        const term = terms.find(t => t.nome === termNomeViagem);
+        const tLat = term?.lat, tLon = term?.lon;
+        if (!term) {
+          semTerminalCadastrado++;
+          if (exemplosTerminal.length < 8) {
+            exemplosTerminal.push(`${v.placa} — terminal desta viagem: "${termNomeViagem || '(vazio)'}" | terminais disponíveis neste arquivo: ${terms.map(t => `"${t.nome}"`).join(', ') || '(nenhum)'}`);
+          }
+        } else if (!NextaKm.coordenadaValida(tLat, tLon)) {
+          semTerminalCadastrado++;
+          if (exemplosTerminal.length < 8) {
+            exemplosTerminal.push(`${v.placa} — terminal "${term.nome}" encontrado, mas lat/lon dele é "${tLat}"/"${tLon}" (inválido)`);
+          }
+        }
+        const pontosPedagio = [];
+        if (NextaKm.coordenadaValida(tLat, tLon)) pontosPedagio.push({ lat: parseFloat(tLat), lon: parseFloat(tLon) });
+        vi.paradas.forEach(par => {
+          const coords = latLonEfetivo ? latLonEfetivo(par.pedido) : { lat: par.lat, lon: par.lon };
+          const lat = coords?.lat ?? par.lat, lon = coords?.lon ?? par.lon;
+          if (NextaKm.coordenadaValida(lat, lon)) {
+            pontosPedagio.push({ lat: parseFloat(lat), lon: parseFloat(lon) });
+          } else if (exemplosSemPontos.length < 8) {
+            // Detalha o motivo exato — pra distinguir "sem match no cadastro"
+            // de "match achado mas coordenada do cliente também inválida" de
+            // "pedido já vinha com coordenada própria zerada".
+            const cliMatch = encontrarClienteDoPedido ? encontrarClienteDoPedido(par.pedido) : null;
+            const motivo = !cliMatch
+              ? `SEM MATCH no cadastro (nome/SAP não bateu — codigoSAP do pedido: "${par.pedido?.codigoSAP || '(vazio)'}", nome: "${par.pedido?.cliente || '?'}")`
+              : `Match achado ("${cliMatch.nome}"), mas lat/lon do cadastro é "${cliMatch.lat}"/"${cliMatch.lon}"`;
+            exemplosSemPontos.push(`${par.pedido?.cliente || '?'} — ${motivo}`);
+          }
+        });
+        if (pontosPedagio.length < 2) { semPontos++; return; }
+        const eixos = v.eixos || 2;
+        const pd = (typeof detectarPedagiosNaRota === 'function') ? detectarPedagiosNaRota(pontosPedagio, eixos, 3) : [];
+        if (pd.length > 0) comPedagio++; else comPontosSemPedagio++;
+      });
+    });
+  });
+  const total = semPontos + comPontosSemPedagio + comPedagio;
+  console.log('[dashDiagnosticarPedagioHoje] Exemplos de terminal não encontrado/inválido:');
+  console.table(exemplosTerminal.map(linha => ({ detalhe: linha })));
+  console.log('[dashDiagnosticarPedagioHoje] Exemplos sem coordenada suficiente (detalhe completo):');
+  console.table(exemplosSemPontos.map(linha => ({ detalhe: linha })));
+  alert(
+    `DIAGNÓSTICO — % ROTAS PEDAGIADAS (filtro atual)\n\n` +
+    `Clientes carregados na sessão pra fazer o match: ${clientes ? clientes.length : 0}\n\n` +
+    `Total de viagens analisadas: ${total}\n` +
+    `✓ Com pedágio detectado: ${comPedagio}\n` +
+    `– Com coordenadas OK, mas sem pedágio no trajeto (correto, não é bug): ${comPontosSemPedagio}\n` +
+    `⚠ SEM coordenada suficiente pra sequer tentar detectar (cliente/terminal sem lat-lon): ${semPontos}\n` +
+    `⚠ Veículos com terminal não encontrado no cadastro deste arquivo: ${semTerminalCadastrado}\n\n` +
+    (exemplosTerminal.length ? `Exemplos de terminal com problema (ver lista completa no Console, F12):\n${exemplosTerminal.slice(0,2).join('\n')}${exemplosTerminal.length > 2 ? `\n...+${exemplosTerminal.length - 2} no Console` : ''}\n\n` : '') +
+    (exemplosSemPontos.length ? `Exemplos sem coordenada (ver lista completa e detalhada no Console, F12):\n${exemplosSemPontos.slice(0,3).join('\n')}${exemplosSemPontos.length > 3 ? `\n...+${exemplosSemPontos.length - 3} no Console` : ''}` : '')
+  );
+};
+window.dashDiagnosticarKmReal = async function() {
+  if (!_dashEhAdmin()) { alert('Restrito ao administrador.'); return; }
+  if (!window.dirHandleHistorico) { alert('Selecione a pasta do histórico primeiro (aba Histórico).'); return; }
+  let permOk = false;
+  try { permOk = (await window.dirHandleHistorico.queryPermission({ mode: 'read' })) === 'granted'; } catch(e) {}
+  if (!permOk) { try { permOk = (await window.dirHandleHistorico.requestPermission({ mode: 'read' })) === 'granted'; } catch(e) {} }
+  if (!permOk) { alert('Permissão de leitura negada.'); return; }
+
+  const arquivos = [];
+  for await (const [name, handle] of window.dirHandleHistorico.entries()) {
+    if (handle.kind === 'file' && name.endsWith('.json')) arquivos.push({ name, handle });
+  }
+
+  const linhas = []; // { placa, terminal, arquivo, kmReal, kmEstAntiga, razao }
+  let totalKmReal = 0, totalKmEstAntiga = 0, viagensComKmReal = 0;
+  for (const { name, handle } of arquivos) {
+    let data;
+    try { data = JSON.parse(await (await handle.getFile()).text()); } catch(e) { continue; }
+    if (data.substituidoPor) continue;
+    if (!data.resultado || !data.veiculos) continue;
+    data.veiculos.forEach(v => {
+      const viagensDoVeic = data.resultado[v.id];
+      if (!Array.isArray(viagensDoVeic)) return;
+      viagensDoVeic.forEach(vi => {
+        if (!vi || !vi.paradas || !vi.paradas.length) return;
+        const kmEstAntiga = NextaKm.estimativaLinhaReta(vi);
+        totalKmEstAntiga += kmEstAntiga;
+        const kmInfo = NextaKm.obterKmViagem(vi);
+        if (kmInfo.real) {
+          totalKmReal += kmInfo.km;
+          viagensComKmReal++;
+          linhas.push({
+            placa: v.placa,
+            terminal: vi.terminalOrigem || v.terminal || '?',
+            arquivo: name,
+            kmReal: kmInfo.km,
+            kmEstAntiga,
+            razao: kmEstAntiga > 0 ? kmInfo.km / kmEstAntiga : Infinity,
+          });
+        }
+      });
+    });
+  }
+  linhas.sort((a, b) => b.kmReal - a.kmReal);
+  console.log('[dashDiagnosticarKmReal] TOP 15 viagens por km real (maior pra menor):');
+  console.table(linhas.slice(0, 15));
+  const top10Texto = linhas.slice(0, 10)
+    .map((l, i) => `${i+1}. ${l.placa} (${l.terminal}) — real=${l.kmReal.toFixed(0)}km, estimativa antiga=${l.kmEstAntiga.toFixed(0)}km, razão=${l.razao === Infinity ? '∞' : l.razao.toFixed(1)}x [${l.arquivo}]`)
+    .join('\n');
+  alert(
+    `DIAGNÓSTICO KM REAL\n\n` +
+    `Viagens com km real calculado: ${viagensComKmReal}\n` +
+    `Soma km real: ${totalKmReal.toFixed(0)} km\n` +
+    `Soma estimativa antiga (linha reta): ${totalKmEstAntiga.toFixed(0)} km\n` +
+    `Razão geral: ${totalKmEstAntiga > 0 ? (totalKmReal/totalKmEstAntiga).toFixed(1) : '?'}x\n\n` +
+    `TOP 10 maiores viagens (também no console, F12, com mais detalhe):\n${top10Texto}`
+  );
+};
+window.dashDesfazerKmRealAuto = async function() {
+  if (!_dashEhAdmin()) { alert('Restrito ao administrador.'); return; }
+  if (!window.dirHandleHistorico) { alert('Selecione a pasta do histórico primeiro (aba Histórico).'); return; }
+  if (!confirm(
+    'Isso vai REMOVER o km real calculado (pelo botão/rotina "Recalcular Km Real") de TODAS as viagens do histórico, ' +
+    'voltando o Km Total pra estimativa por linha reta de antes.\n\n' +
+    'ATENÇÃO: como o primeiro recálculo (com o bug já corrigido) foi salvo sem uma marca distintiva, esta limpeza remove _kmAjustado de ' +
+    'TODA viagem, inclusive eventuais ajustes manuais feitos no Mapa da Viagem antes de hoje (raro, mas se existir algum, precisa refazer ' +
+    'manualmente depois).\n\n' +
+    'Confirma?'
+  )) return;
+  console.log('[dashDesfazerKmRealAuto] iniciando...');
+  let permOk = false;
+  try { permOk = (await window.dirHandleHistorico.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch(e) { console.warn('[dashDesfazerKmRealAuto] queryPermission falhou:', e); }
+  if (!permOk) { try { permOk = (await window.dirHandleHistorico.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch(e) { console.warn('[dashDesfazerKmRealAuto] requestPermission falhou:', e); } }
+  if (!permOk) { alert('Permissão de escrita negada.'); return; }
+  console.log('[dashDesfazerKmRealAuto] permissão OK, listando arquivos...');
+
+  // Todo o processamento fica dentro de um try/catch amplo: um erro não
+  // capturado em QUALQUER ponto do loop (ex.: falha ao listar diretório,
+  // arquivo bloqueado por outro processo) interrompia a função inteira sem
+  // nunca chegar no alert() final — parecia "não fez nada" mesmo tendo
+  // revertido parte dos arquivos. Agora qualquer falha aparece explicitamente
+  // (console + alert), em vez de morrer em silêncio no meio do processamento.
+  let arquivosAlterados = 0, viagensRevertidas = 0, arquivosLidos = 0, arquivosComKm = 0;
+  try {
+    const arquivos = [];
+    for await (const [name, handle] of window.dirHandleHistorico.entries()) {
+      if (handle.kind === 'file' && name.endsWith('.json')) arquivos.push({ name, handle });
+    }
+    console.log(`[dashDesfazerKmRealAuto] ${arquivos.length} arquivo(s) .json encontrado(s) na pasta.`);
+
+    for (const { name, handle } of arquivos) {
+      arquivosLidos++;
+      let data;
+      try {
+        const file = await handle.getFile();
+        data = JSON.parse(await file.text());
+      } catch (e) { console.warn(`[dashDesfazerKmRealAuto] falha ao ler/parsear ${name}, pulando:`, e); continue; }
+      if (!data.resultado || typeof data.resultado !== 'object') continue;
+      let mudou = false;
+      Object.values(data.resultado).forEach(viagensDoVeic => {
+        if (!Array.isArray(viagensDoVeic)) return; // arquivo de formato antigo/diferente — pula esse veículo, não quebra o resto
+        viagensDoVeic.forEach(vi => {
+          if (vi && typeof vi._kmAjustado === 'number') {
+            delete vi._kmAjustado;
+            delete vi._kmAjustadoAuto;
+            mudou = true;
+            viagensRevertidas++;
+          }
+        });
+      });
+      if (mudou) {
+        arquivosComKm++;
+        try {
+          const ws = await handle.createWritable();
+          await ws.write(JSON.stringify(data, null, 2));
+          await ws.close();
+          arquivosAlterados++;
+        } catch (e) { console.warn(`[dashDesfazerKmRealAuto] falha ao REGRAVAR ${name} (viagens deste arquivo NÃO foram revertidas de verdade):`, e); }
+      }
+    }
+    console.log(`[dashDesfazerKmRealAuto] concluído: ${arquivosLidos} arquivo(s) lido(s), ${arquivosComKm} tinham km calculado, ${arquivosAlterados} regravado(s) com sucesso, ${viagensRevertidas} viagem(ns) revertida(s).`);
+  } catch (e) {
+    console.error('[dashDesfazerKmRealAuto] ERRO interrompeu o processamento no meio do caminho:', e);
+    alert(`Erro durante o desfazer (parou no meio): ${e.message}\n\nAté aqui: ${viagensRevertidas} viagem(ns) revertida(s) em ${arquivosAlterados} arquivo(s). Abra o Console (F12) e me mande o erro completo — dá pra rodar de novo depois de corrigir, sem perder o que já foi revertido.`);
+    if (typeof window.dashSincronizar === 'function') window.dashSincronizar();
+    return;
+  }
+  // Também zera a marca de "já rodou hoje" pra permitir recalcular de novo
+  // imediatamente (com a trava de sanidade agora em vigor), sem esperar o
+  // próximo dia.
+  // IMPORTANTE: marca hoje como "já rodou" (em vez de limpar a marca) — se
+  // limpasse, o gatilho automático (dashAutoRodarKmRealSeNecessario) podia
+  // disparar de novo sozinho no próximo reload/troca de aba e recolocar
+  // _kmAjustado nas viagens antes mesmo de você conferir o resultado do
+  // Desfazer — cada clique reduzia só uma fatia porque o automático tava
+  // remendando por trás. Pra recalcular de novo de propósito, use o botão
+  // "🛣️ Recalcular Km Real" manualmente (ele roda na hora, ignorando a marca).
+  try { localStorage.setItem('dashKmRealAutoUltimoRun', new Date().toISOString().slice(0, 10)); } catch(e) {}
+  alert(`Desfeito: ${viagensRevertidas} viagem(ns) revertida(s) em ${arquivosAlterados} arquivo(s). Km Total volta pra estimativa por linha reta.`);
+  if (typeof window.dashSincronizar === 'function') window.dashSincronizar();
+};

@@ -1,0 +1,6724 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// NEXTA — APP PRINCIPAL (Gestão de Frota)
+// ═══════════════════════════════════════════════════════════════════════════
+// Módulo ES6 (type="module"): escopo isolado do <script> não-module abaixo
+// (Roteirizador). Funções que precisam ser chamadas via onclick="" inline no
+// HTML, ou usadas pelo script do Roteirizador, são expostas manualmente em
+// `window.*` — ver bloco "EXPOSIÇÃO GLOBAL (contrato com onclick / Roteirizador)"
+// próximo ao final deste script.
+//
+// ÍNDICE
+//   FIREBASE ............................. config + inicialização do SDK
+//   CACHE EM MEMÓRIA ...................... cache de leituras (TTL 60s)
+//   DB HELPERS ............................ funções de leitura/escrita no Firestore
+//   DATA & CONFIG .......................... USERS_DB / CARRIERS (carregados do Firebase)
+//   STATE .................................. estado S{} da UI (aba ativa, usuário, etc)
+//   HELPERS ................................ utilitários gerais (datas, escape html, etc)
+//   STATUS BOARD ALERT ..................... painel de disponibilidade (variante operacional)
+//   RENDER ROOT ............................ roteamento de tela (login/carrier/admin)
+//   LOGIN ................................... tela de login (Firebase Auth)
+//   NOTIFICATIONS ........................... painel de notificações
+//   CARRIER VIEW ............................ visão do transportador
+//   ADMIN SHELL .............................. shell de abas do painel admin/operacional
+//   DASHBOARD ................................ aba "Daily Briefing"
+//   KPIS MENSAIS .............................. aba "KPIs Mensais"
+//   TODAY ..................................... aba "Painel de Disponibilidade"
+//   HISTORY .................................... aba "Histórico"
+//   EXPORT ...................................... aba "Exportar" (Excel)
+//   EXPORT PDF ................................... relatório executivo em PDF
+//   REGISTER ...................................... aba "Cadastros"
+//   MONTHLY ARCHIVES .............................. aba "Arquivos Mensais"
+//   ADMIN UNLOCK ................................... destravar dia/placa travados
+//   USERS MANAGEMENT ................................ aba "Usuários" (CRUD usuários/transportadores)
+//   REGISTER SUB-TAB CONTROLLER ..................... sub-abas dentro de Cadastros
+//   DRIVERS MANAGEMENT ............................... CRUD de motoristas
+//   OPERACOES MANAGEMENT (admin only) ................ CRUD de operações/linhas de negócio
+//   TOGGLE PLATE ACTIVE/INACTIVE ...................... ativar/inativar placa
+//   EDIT PLATE MODAL .................................. modal de edição de placa
+//   ALTERAR SENHA (usuário logado) .................... troca de senha própria
+//   RESET DE SENHA PELO ADMIN ......................... reset de senha de outro usuário
+//   IMPORTAR DADOS CADASTRAIS ......................... import em massa via Excel
+//   EXPOSIÇÃO GLOBAL (contrato com onclick / Roteirizador) — window.* assignments
+//   BOOT ............................................... onAuthStateChanged → render()
+// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// FIREBASE
+// ═══════════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, collection,
+  getDocs, query, where, orderBy, limit, writeBatch, deleteDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, updatePassword, createUserWithEmailAndPassword,
+  deleteUser as fbDeleteUser
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { firebaseConfig } from './firebase-outbound.config.js';
+const fbApp = initializeApp(firebaseConfig);
+const db    = getFirestore(fbApp);
+const auth  = getAuth(fbApp);
+// Auth secundário para criar usuários sem trocar a sessão do admin logado.
+const userCreateApp  = initializeApp(firebaseConfig, "nexta-frota-user-create");
+const userCreateAuth = getAuth(userCreateApp);
+// UID Firebase Auth → dados de perfil (carregado após login)
+// Convenção de email: uid@nexta-frota.app
+function uidToEmail(uid){ return `${uid}@nexta-frota.app`; }
+// ═══════════════════════════════════════════════════════════
+// CACHE EM MEMÓRIA (TTL 60s para leituras, invalida em escrita)
+// ═══════════════════════════════════════════════════════════
+const _cache = new Map(); // key → { value, expiresAt }
+const CACHE_TTL = 60_000; // 60 segundos
+// ── Disponibilidade de DIAS PASSADOS: cache longo e guardado no navegador ──
+// Era o grande consumidor da cota grátis do Firestore (50 mil leituras/dia):
+// Auditoria (45 dias × todas as placas ≈ 2.700 leituras por abertura), KPIs
+// Mensais (≈ 1.800), Daily Briefing (tendência de 14 dias ≈ 850) e Relatórios
+// reliam TUDO a cada abertura depois de 60s — e de novo a cada computador e a
+// cada recarga da página. Dia que já passou praticamente não muda, então fica
+// guardado por 6h (e sobrevive a recarregar a página). O botão 🔄 Atualizar
+// limpa tudo, pra quando alguém corrigir um dia antigo e precisar ver na hora.
+// Hoje e amanhã continuam com os 60s de sempre.
+const STATUS_PASSADO_LS = 'nexta_status_passado_v1';
+const STATUS_PASSADO_TTL = 6 * 3600_000;
+let _statusPassado = (() => { try { return JSON.parse(localStorage.getItem(STATUS_PASSADO_LS) || '{}') || {}; } catch (e) { return {}; } })(); // key → [valor, salvoEm]
+let _statusPassadoTimer = null;
+function _ehStatusDiaPassado(key) {
+  if (!key.startsWith('status||')) return false;
+  const ds = key.slice(key.lastIndexOf('||') + 2);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds < dateStr(0);
+}
+function _statusPassadoSalvarDepois() {
+  clearTimeout(_statusPassadoTimer);
+  _statusPassadoTimer = setTimeout(() => {
+    const limite = dateStr(-75), agora = Date.now();
+    for (const k in _statusPassado) {
+      const ds = k.slice(k.lastIndexOf('||') + 2);
+      if (ds < limite || agora - _statusPassado[k][1] > STATUS_PASSADO_TTL) delete _statusPassado[k];
+    }
+    try { localStorage.setItem(STATUS_PASSADO_LS, JSON.stringify(_statusPassado)); }
+    catch (e) { _statusPassado = {}; try { localStorage.removeItem(STATUS_PASSADO_LS); } catch (e2) {} }
+  }, 2000);
+}
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (entry) {
+    if (Date.now() <= entry.expiresAt) return entry.value;
+    _cache.delete(key);
+  }
+  const p = _statusPassado[key];
+  if (p && Date.now() - p[1] < STATUS_PASSADO_TTL && _ehStatusDiaPassado(key)) {
+    _cache.set(key, { value: p[0], expiresAt: p[1] + STATUS_PASSADO_TTL });
+    return p[0];
+  }
+  return undefined;
+}
+function cacheSet(key, value, ttl = CACHE_TTL) {
+  if (_ehStatusDiaPassado(key)) {
+    _cache.set(key, { value, expiresAt: Date.now() + STATUS_PASSADO_TTL });
+    _statusPassado[key] = [value, Date.now()];
+    _statusPassadoSalvarDepois();
+    return;
+  }
+  _cache.set(key, { value, expiresAt: Date.now() + ttl });
+}
+function cacheInvalidate(...keys) {
+  keys.forEach(k => { _cache.delete(k); if (_statusPassado[k]) { delete _statusPassado[k]; _statusPassadoSalvarDepois(); } });
+}
+function cacheInvalidatePrefix(prefix) {
+  for (const k of _cache.keys()) { if (k.startsWith(prefix)) _cache.delete(k); }
+  let mudou = false;
+  for (const k in _statusPassado) { if (k.startsWith(prefix)) { delete _statusPassado[k]; mudou = true; } }
+  if (mudou) _statusPassadoSalvarDepois();
+}
+function cacheLimparTudo() {
+  _cache.clear();
+  _statusPassado = {};
+  try { localStorage.removeItem(STATUS_PASSADO_LS); } catch (e) {}
+}
+// ═══════════════════════════════════════════════════════════
+// DB HELPERS
+// ═══════════════════════════════════════════════════════════
+async function dbGetPlates() {
+  const cached = cacheGet("plates");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "plates"));
+    const value = snap.exists() ? snap.data().data : {};
+    cacheSet("plates", value);
+    return value;
+  } catch(e) { console.error(e); return {}; }
+}
+async function dbSavePlates(plates) {
+  await setDoc(doc(db, "config", "plates"), { data: plates });
+  cacheSet("plates", plates); // atualiza cache imediatamente após salvar
+}
+// ── Gravação segura de placas (lê fresco + enfileira) ──────────────────────
+// dbSavePlates() acima sempre existiu como "sobrescreve tudo com o que eu
+// mandar" — funciona bem pra escrita isolada, mas TODO chamador seguia o
+// padrão "leio via dbGetPlates() (que pode vir do cache de 60s) → mutuo em
+// memória → dbSavePlates(tudo)". Duas edições próximas no tempo (2 pessoas,
+// 2 abas, ou só a rede atrasando) liam o MESMO estado desatualizado e a
+// segunda gravação apagava a primeira sem ninguém perceber — exatamente o
+// sintoma de "sumiram várias placas e depois voltou ao normal sozinho"
+// (a gravação seguinte, já com dado mais atual, "conserta" por acidente).
+// dbAtualizarPlates() resolve isso: lê o documento AGORA MESMO (nunca do
+// cache), aplica a mutação, grava, e enfileira — cada gravação só começa
+// depois que a anterior terminou de verdade. Mesmo remédio já usado pros
+// cadastros do Roteirizador via _dbCadastroFila/_dbCadastroEnfileirar.
+const _dbPlatesFila = { atual: Promise.resolve() };
+function dbAtualizarPlates(mutatorFn) {
+  const anterior = _dbPlatesFila.atual;
+  const atual = anterior.catch(() => {}).then(async () => {
+    const snap = await getDoc(doc(db, "config", "plates"));
+    const fresh = snap.exists() ? snap.data().data : {};
+    const resultado = mutatorFn(fresh) || fresh; // mutatorFn pode mutar "fresh" in-place OU devolver um objeto novo
+    await setDoc(doc(db, "config", "plates"), { data: resultado });
+    cacheSet("plates", resultado);
+    return resultado;
+  });
+  _dbPlatesFila.atual = atual.catch(() => {});
+  return atual;
+}
+// ═══════════════════════════════════════════════════════════
+// CADASTROS DO ROTEIRIZADOR (Terminais / Clientes / Veículos) — Firestore
+// ═══════════════════════════════════════════════════════════
+// Mesmo padrão de "config/plates" acima: cada tipo é UM documento em
+// "config", guardando um mapa { chave: registro }. A chave natural de cada
+// tipo evita duplicidade e permite checar "já existe?" sem varrer nada:
+//   Terminal → nome (normalizado)  |  Cliente → Código SAP  |  Veículo → placa
+// Compartilhado entre todos os usuários (mesma coleção "config" já usada
+// pra placas/motoristas), respeitando as mesmas regras de acesso do Firestore.
+//
+// chaveCadastro() é a chave de IDENTIDADE DE NEGÓCIO — usada pra perguntar
+// "esse cadastro já existe?" (ex.: na importação de planilha, pra não
+// duplicar um cliente que já foi cadastrado antes). Continua SAP-ou-nome
+// pra Cliente de propósito: é exatamente essa comparação que a importação
+// precisa pra reconhecer "essa linha da planilha é o mesmo cliente que já
+// existe".
+function chaveCadastro(tipo, item) {
+  if (tipo === 'terminais') return (item.nome      || '').trim().toLowerCase();
+  if (tipo === 'clientes')  return (item.codigoSAP || item.nome || '').trim().toUpperCase();
+  if (tipo === 'veiculos')  return (item.placa     || '').trim().toUpperCase();
+  return '';
+}
+// chavePersistenciaCadastro() é a chave de ARMAZENAMENTO no Firestore — a
+// "gaveta" onde o registro é gravado. Pra Terminal e Veículo isso pode ser a
+// mesma coisa que a identidade de negócio (nome e placa são, de fato, únicos
+// por registro nesses dois cadastros). Cliente é diferente: Código SAP é o
+// código do CLIENTE CORPORATIVO, não do cadastro (posto/ponto de entrega) —
+// é normal e comum várias entradas de cadastro distintas (nomes e
+// coordenadas diferentes) pertencerem ao MESMO Código SAP (vários postos da
+// mesma bandeira/rede). Usar SAP como chave de ARMAZENAMENTO fazia esses
+// cadastros "compartilharem uma gaveta": editar o Segmento (ou qualquer
+// outro campo) de UM deles e salvar sobrescrevia no Firestore o registro
+// inteiro daquela gaveta compartilhada, e todo outro cadastro com o mesmo
+// SAP passava a "herdar" os mesmos dados (inclusive o Segmento) na próxima
+// vez que a lista era recarregada — dando a impressão de que o valor
+// replicou pra todos os outros clientes. Por isso, pra Cliente, a chave de
+// armazenamento usa o `id` interno (sempre único por cadastro, gerado na
+// criação) em vez do SAP — cada cadastro fica na SUA PRÓPRIA gaveta, mesmo
+// que compartilhe o SAP corporativo com outro. Cai pra chaveCadastro() só no
+// caso raríssimo de um registro sem id.
+function chavePersistenciaCadastro(tipo, item) {
+  if (tipo === 'clientes' && item && item.id != null) return `ID:${item.id}`;
+  return chaveCadastro(tipo, item);
+}
+const CADASTRO_DOC_ID = { terminais: 'roteirizador_terminais', clientes: 'roteirizador_clientes', veiculos: 'roteirizador_veiculos' };
+async function dbGetCadastro(tipo) {
+  const cKey = `cadastro||${tipo}`;
+  const cached = cacheGet(cKey);
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", CADASTRO_DOC_ID[tipo]));
+    const value = snap.exists() ? (snap.data().data || {}) : {};
+    cacheSet(cKey, value);
+    return value;
+  } catch(e) { console.error(`[dbGetCadastro:${tipo}]`, e); return {}; }
+}
+// Grava só os itens passados — e NUNCA sobrescreve uma chave que já exista no
+// Firestore, mesmo que o chamador já tenha filtrado "os novos": relê o
+// documento atual e ignora de novo qualquer chave já presente, pra cobrir
+// o caso de duas pessoas importando ao mesmo tempo. Usada pela importação
+// de planilha (comportamento "só adiciona o que falta").
+async function dbAdicionarCadastroItens(tipo, itensPorChave) {
+  const chaves = Object.keys(itensPorChave || {});
+  if (!chaves.length) return { adicionados: 0 };
+  const atual = await dbGetCadastro(tipo);
+  const mesclado = { ...atual };
+  let adicionados = 0;
+  chaves.forEach(k => {
+    if (!(k in atual)) { mesclado[k] = itensPorChave[k]; adicionados++; }
+  });
+  if (adicionados > 0) {
+    await setDoc(doc(db, "config", CADASTRO_DOC_ID[tipo]), { data: mesclado });
+    cacheInvalidate(`cadastro||${tipo}`);
+  }
+  return { adicionados };
+}
+// Grava/atualiza UM registro específico — usada pelo cadastro manual
+// (Terminais/Clientes/Veículos na tela). Aqui SIM sobrescreve a chave, porque
+// é uma edição explícita e intencional de uma pessoa, diferente da
+// importação em lote (que nunca deve sobrescrever sem querer).
+//
+// FILA POR TIPO — CORREÇÃO DE CONDIÇÃO DE CORRIDA:
+// Antes, cada chamada fazia ler-modificar-escrever (lê o documento inteiro,
+// muda só a chave editada, regrava tudo) sem nenhuma fila. Editar e salvar
+// VÁRIOS registros em sequência rápida (ex.: passar por uma lista de
+// clientes preenchendo o Segmento de cada um) disparava várias chamadas
+// quase ao mesmo tempo — a 2ª podia ler o Firestore ANTES da 1ª terminar de
+// gravar, e ao regravar "por cima" apagava a mudança da 1ª sem ninguém
+// perceber. Resultado: só a(s) última(s) edição(ões) da sequência
+// "grudavam" de verdade — todo o resto voltava pro valor antigo assim que a
+// página recarregava (ou outra sessão relia do Firestore), como se tivesse
+// "resetado" sozinho. A fila abaixo garante que cada gravação só começa
+// depois que a ANTERIOR (do mesmo tipo) terminou de verdade — inclusive a
+// invalidação do cache — então cada uma sempre lê o estado mais recente.
+const _dbCadastroFila = {}; // tipo -> Promise da última operação em andamento
+function _dbCadastroEnfileirar(tipo, tarefa) {
+  const anterior = _dbCadastroFila[tipo] || Promise.resolve();
+  // .catch(()=>{}) na corrente pra uma falha não travar a fila pras
+  // próximas chamadas — cada tarefa ainda propaga seu próprio erro pra
+  // quem chamou (o await de fora continua rejeitando normalmente).
+  const atual = anterior.catch(() => {}).then(tarefa);
+  _dbCadastroFila[tipo] = atual.catch(() => {});
+  return atual;
+}
+async function dbSalvarCadastroItem(tipo, chave, item) {
+  if (!chave) return;
+  return _dbCadastroEnfileirar(tipo, async () => {
+    const atual = await dbGetCadastro(tipo);
+    atual[chave] = item;
+    await setDoc(doc(db, "config", CADASTRO_DOC_ID[tipo]), { data: atual });
+    cacheInvalidate(`cadastro||${tipo}`);
+  });
+}
+// Atualiza CAMPOS específicos de vários registros de uma vez (ex.: CNPJ em
+// lote) — UMA leitura e UMA gravação do documento, dentro da mesma fila do
+// dbSalvarCadastroItem (não atropela edição manual simultânea).
+// alteracoes: { [chavePersistencia]: { campos: {...}, item: {...} } }
+//   • chave já existe no Firestore → mescla só `campos` (o resto do registro
+//     gravado fica intacto, mesmo que a memória desta aba esteja velha);
+//   • chave não existe (registro que só estava na memória) → grava `item`.
+async function dbAtualizarCadastroLote(tipo, alteracoes) {
+  const chaves = Object.keys(alteracoes || {});
+  if (!chaves.length) return { atualizados: 0 };
+  return _dbCadastroEnfileirar(tipo, async () => {
+    cacheInvalidate(`cadastro||${tipo}`); // lê o estado mais recente, não o cache
+    const atual = await dbGetCadastro(tipo);
+    chaves.forEach(k => {
+      const { campos, item } = alteracoes[k];
+      atual[k] = (k in atual) ? { ...atual[k], ...campos } : item;
+    });
+    await setDoc(doc(db, "config", CADASTRO_DOC_ID[tipo]), { data: atual });
+    cacheInvalidate(`cadastro||${tipo}`);
+    return { atualizados: chaves.length };
+  });
+}
+async function dbRemoverCadastroItem(tipo, chave) {
+  if (!chave) return;
+  return _dbCadastroEnfileirar(tipo, async () => {
+    const atual = await dbGetCadastro(tipo);
+    delete atual[chave];
+    await setDoc(doc(db, "config", CADASTRO_DOC_ID[tipo]), { data: atual });
+    cacheInvalidate(`cadastro||${tipo}`);
+  });
+}
+window.chaveCadastro            = chaveCadastro;
+window.chavePersistenciaCadastro = chavePersistenciaCadastro;
+window.dbGetCadastro            = dbGetCadastro;
+window.dbAdicionarCadastroItens = dbAdicionarCadastroItens;
+window.dbSalvarCadastroItem     = dbSalvarCadastroItem;
+window.dbRemoverCadastroItem    = dbRemoverCadastroItem;
+window.dbAtualizarCadastroLote  = dbAtualizarCadastroLote;
+async function withTimeout(promise, ms, message){
+  return Promise.race([
+    promise,
+    new Promise((_, reject)=>setTimeout(()=>reject(new Error(message)), ms))
+  ]);
+}
+async function dbGetStatus(carrier, plate, dateStr) {
+  const cKey = `status||${carrier}||${plate}||${dateStr}`;
+  const cached = cacheGet(cKey);
+  if (cached !== undefined) return cached;
+  try {
+    const id = `${carrier}__${plate}__${dateStr}`;
+    const snap = await getDoc(doc(db, "availability", id));
+    const value = snap.exists()
+      ? { status: snap.data().status, time: snap.data().time||"", motoristaDiurno: snap.data().motoristaDiurno||"", motoristaNoturno: snap.data().motoristaNoturno||"", hodometro: snap.data().hodometro!==undefined?snap.data().hodometro:null, hodometroFotoUrl: snap.data().hodometroFotoUrl||null }
+      : null;
+    cacheSet(cKey, value);
+    return value;
+  } catch { return null; }
+}
+// Sobe a foto do hodômetro pro Storage e devolve a URL pública de download.
+// Caminho inclui carrier/placa/data — sobrescreve se já existir foto pra
+// essa mesma placa/dia (ex.: usuário reenviou uma foto melhor no mesmo dia).
+// Foto do hodômetro — sobe pro Cloudinary (plano gratuito, sem precisar de
+// cartão de crédito) em vez do Firebase Storage. O Firebase Storage exige o
+// plano pago (Blaze) desde 2024, mesmo pra uso mínimo — o Cloudinary tem
+// uma camada grátis bem folgada (25GB de armazenamento/tráfego por mês) que
+// cobre tranquilamente 1 foto por placa por semana.
+// "Unsigned upload": o preset configurado no painel do Cloudinary já define
+// as regras (pasta, tamanho, formato aceito) — não precisa de chave secreta
+// no código do navegador, só o nome da conta (cloud name) e do preset,
+// nenhum dos dois é sigiloso.
+const CLOUDINARY_CLOUD_NAME = 's6fazigd';
+const CLOUDINARY_UPLOAD_PRESET = 'vknwz7ua';
+// A CARTO passou a exigir chave de API pros mapas de fundo (o "voyager"
+// usado no roteirizador/dashboard) — sem isso, os tiles vêm com um carimbo
+// "API KEY REQUIRED" por cima. A chave é grátis (até 5 milhões de tiles/mês,
+// mais que suficiente aqui): peça em https://carto.com/basemaps/apikey/ e
+// cole o valor recebido aqui. Enquanto ficar vazia, o mapa continua
+// funcionando, só com o carimbo de aviso.
+const CARTO_API_KEY = 'cb1_2g7e_1_7138ae24b481899f8fe33df1';
+window.CARTO_API_KEY = CARTO_API_KEY;
+async function uploadHodometroFoto(carrier, plate, dateStr, file) {
+  const comTimeout = (promessa, ms, msgTimeout) => Promise.race([
+    promessa,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(msgTimeout)), ms)),
+  ]);
+  const form = new FormData();
+  form.append('file', file);
+  form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  // public_id organiza o nome do arquivo dentro da pasta já definida no
+  // preset (hodometro-fotos) — inclui transportadora/placa/data pra achar
+  // fácil depois, igual ao caminho que usávamos no Storage.
+  form.append('public_id', `${carrier}_${plate}_${dateStr}_${Date.now()}`.replace(/[^a-zA-Z0-9_.-]/g, '_'));
+  try {
+    const resp = await comTimeout(
+      fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: form }),
+      25000,
+      'Tempo esgotado enviando a foto (25s) — verifique sua conexão e tente de novo.'
+    );
+    const data = await resp.json();
+    if (!resp.ok || !data.secure_url) {
+      throw new Error(data?.error?.message || `Falha ao enviar a foto (status ${resp.status}).`);
+    }
+    return data.secure_url;
+  } catch (e) {
+    console.error('[uploadHodometroFoto] falha no upload:', e);
+    throw new Error(e.message || 'Falha ao enviar a foto do hodômetro.');
+  }
+}
+// Upload genérico de foto pro Cloudinary (mesma conta/preset gratuito do
+// hodômetro acima) — usado por outras telas que precisam anexar uma foto,
+// como a foto do posto no Cadastro de Clientes do Roteirizador. Exposta em
+// window porque nexta-frota-roteirizador.js roda como script comum (não
+// type="module") e não enxerga os `const` deste módulo diretamente.
+async function uploadFotoGenerica(file, publicIdBase) {
+  const comTimeout = (promessa, ms, msgTimeout) => Promise.race([
+    promessa,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(msgTimeout)), ms)),
+  ]);
+  const form = new FormData();
+  form.append('file', file);
+  form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  form.append('public_id', `${publicIdBase}_${Date.now()}`.replace(/[^a-zA-Z0-9_.-]/g, '_'));
+  try {
+    const resp = await comTimeout(
+      fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: form }),
+      25000,
+      'Tempo esgotado enviando a foto (25s) — verifique sua conexão e tente de novo.'
+    );
+    const data = await resp.json();
+    if (!resp.ok || !data.secure_url) {
+      throw new Error(data?.error?.message || `Falha ao enviar a foto (status ${resp.status}).`);
+    }
+    return data.secure_url;
+  } catch (e) {
+    console.error('[uploadFotoGenerica] falha no upload:', e);
+    throw new Error(e.message || 'Falha ao enviar a foto.');
+  }
+}
+window.uploadFotoGenerica = uploadFotoGenerica;
+async function dbSaveStatus(carrier, plate, dateStr, status, time, motoristaDiurno, motoristaNoturno, hodometro, hodometroFotoUrl) {
+  const id = `${carrier}__${plate}__${dateStr}`;
+  const data = {
+    carrier, plate, dateStr, status, time: time||"", filled: true,
+    motoristaDiurno: motoristaDiurno||"",
+    motoristaNoturno: motoristaNoturno||"",
+    hodometro: hodometro!==undefined?hodometro:null,
+    hodometroFotoUrl: hodometroFotoUrl!==undefined?hodometroFotoUrl:null,
+    updatedAt: new Date().toISOString()
+  };
+  await setDoc(doc(db, "availability", id), data);
+  // Atualiza cache imediatamente após salvar
+  const cKey = `status||${carrier}||${plate}||${dateStr}`;
+  cacheSet(cKey, { status, time: time||"", motoristaDiurno: motoristaDiurno||"", motoristaNoturno: motoristaNoturno||"", hodometro: hodometro!==undefined?hodometro:null, hodometroFotoUrl: hodometroFotoUrl!==undefined?hodometroFotoUrl:null });
+}
+async function dbGetPreviousHodometro(carrier, plate, currentDateStr) {
+  // Retorna o último hodômetro lançado ANTES de currentDateStr, ou null se
+  // de fato não existe nenhum. Se NÃO conseguir consultar (índice ausente,
+  // regra, rede), LANÇA erro em vez de devolver null — antes devolvia null,
+  // e null significa "placa sem histórico" pra validação, que aí liberava
+  // qualquer valor em silêncio (foi assim que 194042 entrou depois de
+  // 218988). Quem chama decide o que fazer com o erro.
+  const cKey = `prevHodometro||${carrier}||${plate}||${currentDateStr}`;
+  const cached = cacheGet(cKey);
+  if (cached !== undefined) return cached;
+  const valido = d => d && d.hodometro !== undefined && d.hodometro !== null && d.hodometro !== "" && Number.isFinite(Number(d.hodometro));
+  // 1) Caminho rápido: query com índice composto (carrier + plate + dateStr
+  //    desc). O filtro por carrier é exigido pelas regras do Firestore pro
+  //    perfil Transportador — e é ele que torna o índice composto obrigatório.
+  try {
+    const q = query(
+      collection(db, "availability"),
+      where("carrier",  "==", carrier),
+      where("plate", "==", plate),
+      where("dateStr", "<", currentDateStr),
+      orderBy("dateStr", "desc"),
+      limit(10)
+    );
+    const snap = await getDocs(q);
+    for (const docSnap of snap.docs) {
+      const d = docSnap.data();
+      if (valido(d)) { const val = Number(d.hodometro); cacheSet(cKey, val); return val; }
+    }
+    // Query funcionou e não achou nos 10 mais recentes com hodômetro? Se
+    // vieram menos de 10 docs, não existe mais nada — é placa sem histórico.
+    if (snap.size < 10) { cacheSet(cKey, null, 15_000); return null; }
+  } catch (e) {
+    console.warn("dbGetPreviousHodometro: consulta indexada falhou — usando leitura dia a dia. Crie o índice composto availability (carrier ↑, plate ↑, dateStr ↓) pelo link que o Firestore mostra neste erro:", e.message);
+  }
+  // 2) Fallback SEM índice composto: só igualdades (carrier + plate), sem
+  //    range nem orderBy — o Firestore resolve isso com os índices simples
+  //    automáticos. É a mesma consulta da ferramenta ✏️ de correção de
+  //    hodômetro (que já funciona com as regras atuais). Filtra a data e
+  //    ordena aqui no navegador. Lê todo o histórico da placa (algumas
+  //    centenas de docs no máximo) — só acontece enquanto o índice composto
+  //    não existir.
+  //    (Antes o fallback lia dia a dia por ID, mas getDoc de um dia SEM
+  //    lançamento — doc inexistente — volta "permission-denied" pela regra,
+  //    que confere resource.data.carrier; isso travava placas com folga
+  //    nos lançamentos.)
+  try {
+    const snap = await getDocs(query(
+      collection(db, "availability"),
+      where("carrier", "==", carrier),
+      where("plate", "==", plate)
+    ));
+    const anteriores = snap.docs
+      .map(d => d.data())
+      .filter(d => d.dateStr && d.dateStr < currentDateStr && valido(d))
+      .sort((x, y) => String(y.dateStr).localeCompare(String(x.dateStr)));
+    const val = anteriores.length ? Number(anteriores[0].hodometro) : null;
+    cacheSet(cKey, val, val === null ? 15_000 : undefined);
+    return val;
+  } catch (e) {
+    // Aqui sim é falha real (rede, regra) — não dá pra validar.
+    console.error("dbGetPreviousHodometro: não consegui ler o histórico da placa", plate, e);
+    throw new Error(`não foi possível consultar o hodômetro anterior da placa ${plate}`);
+  }
+}
+async function dbGetNotifs() {
+  const cached = cacheGet("notifs");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "notifications"));
+    const value = snap.exists() ? (snap.data().items || []) : [];
+    cacheSet("notifs", value, 15_000); // TTL curto: 15s (notifs mudam com frequência)
+    return value;
+  } catch { return []; }
+}
+async function dbAddNotif(msg) {
+  const items = await dbGetNotifs();
+  items.unshift({ msg, time: new Date().toLocaleString("pt-BR") });
+  if(items.length > 50) items.length = 50;
+  await setDoc(doc(db, "config", "notifications"), { items });
+  cacheSet("notifs", items, 15_000); // write-through
+}
+async function dbClearNotifs() {
+  await setDoc(doc(db, "config", "notifications"), { items: [] });
+  cacheSet("notifs", [], 15_000); // write-through
+}
+async function dbGetAudit(limitN=120) {
+  const cached = cacheGet("audit_log");
+  const items = cached !== undefined ? cached : await (async () => {
+    try {
+      const snap = await getDoc(doc(db, "config", "audit_log"));
+      const val = snap.exists() ? (snap.data().items || []) : [];
+      cacheSet("audit_log", val, 15_000);
+      return val;
+    } catch { return []; }
+  })();
+  return items.slice(0, limitN);
+}
+async function dbAddAudit(action, details={}) {
+  try {
+    const items = await dbGetAudit(300);
+    const actor = (S && S.user && USERS_DB[S.user]) ? USERS_DB[S.user].name : "Sistema";
+    items.unshift({ action, actor, details, atBR: new Date().toLocaleString("pt-BR") });
+    if(items.length > 300) items.length = 300;
+    await setDoc(doc(db, "config", "audit_log"), { items });
+    cacheSet("audit_log", items, 15_000); // write-through
+  } catch(e) { console.error("audit error", e); }
+}
+function fmtAuditAction(action, details={}) {
+  switch(action) {
+    case "status_submit":
+      return `✅ Disponibilidade enviada${details.carrier ? ` — ${details.carrier}` : ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    case "meta_disp_update":
+      return `🎯 Meta de disponibilidade atualizada${details.value !== undefined ? ` para ${details.value}%` : ""}`;
+    case "meta_sla_update":
+      return `🎯 Meta de SLA de preenchimento atualizada${details.value !== undefined ? ` para ${details.value}%` : ""}`;
+    case "alert_cutoff_update":
+      return `🔔 Horário de corte de alerta atualizado${details.hour !== undefined ? ` para ${String(details.hour).padStart(2,'0')}:00` : ""}`;
+    case "oferta_sob_demanda":
+      return `🚚 Placa sob demanda ofertada — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    case "oferta_sob_demanda_retirada":
+      return `🚚 Oferta retirada — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    case "plate_add":
+      return `🚛 Placa cadastrada${details.placa ? ` — ${details.placa}` : ""}${details.carrier ? ` (${details.carrier})` : ""}`;
+    case "plate_remove":
+      return `🗑 Placa removida${details.placa ? ` — ${details.placa}` : ""}${details.carrier ? ` (${details.carrier})` : ""}`;
+    case "admin_reset_pwd":
+      return `🔑 Senha redefinida pelo admin${details.target ? ` — usuário ${details.target}` : ""}`;
+    case "admin_unlock":
+      return `🔓 Lançamento desbloqueado — ${details.carrier || ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    case "hodometro_correcao_lote":
+      return `✏️ Hodômetro corrigido em lote — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""} (${details.qtd || 0} lançamento(s))`;
+    case "admin_unlock_plate":
+      return `🔓 Placa desbloqueada — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    default:
+      return action;
+  }
+}
+async function dbGetAlertCutoffHour() {
+  const cached = cacheGet("alert_cutoff");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "alert_cutoff"));
+    if(!snap.exists()) { cacheSet("alert_cutoff", null, 300_000); return null; }
+    const h = Number(snap.data().hour);
+    const value = Number.isFinite(h) ? h : null;
+    cacheSet("alert_cutoff", value, 300_000); // TTL 5min: muda raramente
+    return value;
+  } catch { return null; }
+}
+async function dbSaveAlertCutoffHour(hour) {
+  await setDoc(doc(db, "config", "alert_cutoff"), { hour: Number(hour) });
+  cacheSet("alert_cutoff", Number(hour), 300_000); // write-through
+}
+// Users config
+async function dbGetMetaDisp() {
+  const cached = cacheGet("cfg_meta_disp");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "meta_disp"));
+    if(!snap.exists()) { cacheSet("cfg_meta_disp", null, 300_000); return null; }
+    const v = Number(snap.data().value);
+    const value = Number.isFinite(v) && v > 0 && v <= 100 ? v : null;
+    cacheSet("cfg_meta_disp", value, 300_000);
+    return value;
+  } catch { return null; }
+}
+async function dbSaveMetaDisp(value) {
+  await setDoc(doc(db, "config", "meta_disp"), { value: Number(value) });
+  cacheSet("cfg_meta_disp", Number(value), 300_000);
+}
+// Meta de SLA de preenchimento — mesmo padrão do meta_disp acima, mas
+// separado (documento próprio no Firestore), porque são metas diferentes:
+// disponibilidade mede QUALIDADE do que foi preenchido (% disponível),
+// SLA de preenchimento mede se o preenchimento ACONTECEU (% enviado).
+async function dbGetMetaSla() {
+  const cached = cacheGet("cfg_meta_sla");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "meta_sla"));
+    if(!snap.exists()) { cacheSet("cfg_meta_sla", null, 300_000); return null; }
+    const v = Number(snap.data().value);
+    const value = Number.isFinite(v) && v > 0 && v <= 100 ? v : null;
+    cacheSet("cfg_meta_sla", value, 300_000);
+    return value;
+  } catch { return null; }
+}
+async function dbSaveMetaSla(value) {
+  await setDoc(doc(db, "config", "meta_sla"), { value: Number(value) });
+  cacheSet("cfg_meta_sla", Number(value), 300_000);
+}
+async function dbGetUsers() {
+  const cached = cacheGet("cfg_users");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "users"));
+    const value = snap.exists() ? snap.data().data : null;
+    cacheSet("cfg_users", value, 300_000);
+    return value;
+  } catch(e) { return null; }
+}
+async function dbSaveUsers(users) {
+  // Nunca persiste o campo "password" no Firestore — autenticação é gerenciada pelo Firebase Auth
+  const safe = {};
+  for(const [uid, u] of Object.entries(users)){
+    const { password: _pw, operações: legacyOps, ...rest } = u;
+    const ops = rest.operacoes || legacyOps || [];
+    safe[uid] = { ...rest };
+    if(ops.length) safe[uid].operacoes = ops;
+    else delete safe[uid].operacoes;
+  }
+  await setDoc(doc(db, "config", "users"), { data: safe });
+  cacheSet("cfg_users", safe, 300_000);
+}
+// Carriers config
+async function dbGetCarriers() {
+  const cached = cacheGet("cfg_carriers");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "carriers"));
+    const value = snap.exists() ? snap.data().list : null;
+    cacheSet("cfg_carriers", value, 300_000);
+    return value;
+  } catch(e) { console.warn('[dbGetCarriers] não consegui ler config/carriers:', e?.code || e); return null; }
+}
+async function dbSaveCarriers(list) {
+  await setDoc(doc(db, "config", "carriers"), { list });
+  cacheSet("cfg_carriers", list, 300_000);
+}
+async function dbGetOperacoes() {
+  const cached = cacheGet("cfg_operacoes");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "operacoes"));
+    const value = snap.exists() ? snap.data().list : null;
+    cacheSet("cfg_operacoes", value, 300_000);
+    return value;
+  } catch(e) { return null; }
+}
+async function dbSaveOperacoes(list) {
+  await setDoc(doc(db, "config", "operacoes"), { list });
+  cacheSet("cfg_operacoes", list, 300_000);
+}
+async function dbGetDrivers() {
+  const cached = cacheGet("cfg_drivers");
+  if (cached !== undefined) return cached;
+  try {
+    const snap = await getDoc(doc(db, "config", "drivers"));
+    const value = snap.exists() ? (snap.data().data || {}) : {};
+    cacheSet("cfg_drivers", value, 300_000);
+    return value;
+  } catch(e) { return {}; }
+}
+async function dbSaveDrivers(data) {
+  await setDoc(doc(db, "config", "drivers"), { data });
+  cacheSet("cfg_drivers", data, 300_000);
+}
+// Load users and carriers from Firebase, fall back to defaults
+async function loadConfig() {
+  const loaders = [
+    withTimeout(dbGetUsers(), 10000, "Timeout dbGetUsers").catch(e=>{console.error(e); return null}),
+    withTimeout(dbGetCarriers(), 10000, "Timeout dbGetCarriers").catch(e=>{console.error(e); return null}),
+    withTimeout(dbGetOperacoes(), 10000, "Timeout dbGetOperacoes").catch(e=>{console.error(e); return null}),
+    withTimeout(dbGetAlertCutoffHour(), 10000, "Timeout dbGetAlertCutoffHour").catch(e=>{console.error(e); return null}),
+    withTimeout(dbGetMetaDisp(), 10000, "Timeout dbGetMetaDisp").catch(e=>{console.error(e); return null}),
+    withTimeout(dbGetMetaSla(), 10000, "Timeout dbGetMetaSla").catch(e=>{console.error(e); return null}),
+  ];
+  const [fbUsers, fbCarriers, fbOps, fbCutoff, fbMeta, fbMetaSla] = await Promise.all(loaders);
+  if(fbUsers) _atualizarUsersDb(fbUsers);
+  // Atualiza NO LUGAR (mesmo array) — outros módulos guardam window.CARRIERS.
+  if(Array.isArray(fbCarriers) && fbCarriers.length){ CARRIERS.length = 0; CARRIERS.push(...fbCarriers); }
+  if(fbOps) OPERACOES = fbOps;
+  if(Number.isFinite(fbCutoff)) ALERT_CUTOFF_HOUR = fbCutoff;
+  if(Number.isFinite(fbMeta) && fbMeta > 0) META_DISP = fbMeta;
+  if(Number.isFinite(fbMetaSla) && fbMetaSla > 0) META_SLA = fbMetaSla;
+  // Expõe a lista de transportadoras globalmente para outros módulos (ex: Roteirizador)
+  // que não têm acesso direto a esta variável de módulo ES.
+  window.CARRIERS = CARRIERS;
+}
+// ── Monthly archive helpers ──
+// Arquivos mensais — CADA MÊS é seu PRÓPRIO documento na coleção "archives"
+// (id = a própria chave, ex.: "2026-06"), em vez de empacotar todos os meses
+// dentro de um "archives" (array) só, como era antes. O jeito antigo estourava
+// o limite de 1 MB por documento do Firestore quando vários meses de Excel em
+// base64 se acumulavam ali dentro — e o salvamento falhava CALADO (sem erro
+// visível na tela), exatamente o sintoma de "clico em Gerar arquivo e não
+// acontece nada". Com um documento por mês, cada um fica bem abaixo do limite
+// (só o Excel daquele mês), então o problema não volta a se repetir mesmo
+// com mais meses acumulados no futuro.
+async function dbGetArchives() {
+  const cached = cacheGet("cfg_archives");
+  if (cached !== undefined) return cached;
+  try {
+    const q = query(collection(db, "archives"), orderBy("key", "desc"), limit(6));
+    const snap = await getDocs(q);
+    const value = [];
+    snap.forEach(d => value.push(d.data()));
+    if (value.length) { cacheSet("cfg_archives", value, 300_000); return value; }
+    // Coleção nova ainda vazia — migração de uma vez só a partir do formato
+    // antigo (config/monthly_archives, um documento só com todos os meses),
+    // pra não "perder" os arquivos que já existiam (ex.: Maio, Abril) quando
+    // essa correção entrar no ar. Só roda quando a coleção nova está vazia.
+    const oldSnap = await getDoc(doc(db, "config", "monthly_archives"));
+    const oldArchives = oldSnap.exists() ? (oldSnap.data().archives || []) : [];
+    if (oldArchives.length) {
+      await Promise.all(oldArchives.map(a => setDoc(doc(db, "archives", a.key), a).catch(() => {})));
+    }
+    cacheSet("cfg_archives", oldArchives, 300_000);
+    return oldArchives;
+  } catch (e) {
+    console.error('[dbGetArchives] erro ao ler arquivos mensais:', e);
+    return [];
+  }
+}
+async function dbSaveArchive(archive) {
+  // archive = { key, label, generatedAt, data (base64 xlsx) }
+  try {
+    await setDoc(doc(db, "archives", archive.key), archive);
+    cacheInvalidate("cfg_archives"); // próxima leitura busca de novo, já incluindo esse mês
+    // Mantém só os 6 mais recentes — apaga o resto pra não acumular lixo.
+    const q = query(collection(db, "archives"), orderBy("key", "desc"));
+    const snap = await getDocs(q);
+    const chaves = [];
+    snap.forEach(d => chaves.push(d.id));
+    const excedentes = chaves.slice(6);
+    await Promise.all(excedentes.map(k => deleteDoc(doc(db, "archives", k)).catch(() => {})));
+  } catch (e) {
+    console.error('[dbSaveArchive] erro ao salvar arquivo mensal:', e);
+    showToast(`Erro ao salvar o arquivo de ${archive.label}: ${e.message || e}`, false);
+    throw e; // deixa o chamador (generateMonthlyArchive) saber que falhou
+  }
+}
+// Check if a carrier/date submission is locked (all plates filled)
+async function dbGetLock(carrier, dateStr) {
+  try {
+    const id = `lock__${carrier}__${dateStr}`;
+    const snap = await getDoc(doc(db, "locks", id));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+async function dbSetLock(carrier, dateStr, userName) {
+  const id = `lock__${carrier}__${dateStr}`;
+  const data = { carrier, dateStr, lockedBy: userName, lockedAt: new Date().toLocaleString("pt-BR") };
+  await setDoc(doc(db, "locks", id), data);
+}
+async function dbRemoveLock(carrier, dateStr) {
+  const id = `lock__${carrier}__${dateStr}`;
+  await deleteDoc(doc(db, "locks", id));
+  // Invalida cache do lock e de status relacionados para evitar estado preso em cache
+  cacheInvalidate(`lock||${carrier}||${dateStr}`);
+  cacheInvalidatePrefix(`lock||${carrier}||`);
+  cacheInvalidatePrefix(`status||${carrier}||`);
+}
+async function dbClearStatusForDate(carrier, dateStr) {
+  // Remove todos os registros de disponibilidade do carrier+data
+  const allP = _semSobDemanda(await dbGetPlates()); // não apaga oferta de placa sob demanda (é da operação)
+  const plates = (allP[carrier] || []).filter(p => p.ativo !== false);
+  await Promise.all(plates.map(async p => {
+    const id = `${carrier}__${p.placa}__${dateStr}`;
+    try { await deleteDoc(doc(db, "availability", id)); } catch(e) {}
+  }));
+  // Invalida o cache de status de todas as placas deste carrier+data
+  cacheInvalidatePrefix(`status||${carrier}||`);
+}
+// Bulk load status for many plates/dates at once (batched reads)
+async function dbLoadStatusBulk(pairs) {
+  // pairs = [{carrier, plate, dateStr}]
+  // Estratégia:
+  //   1. Serve do cache em memória sempre que possível (TTL 60s).
+  //   2. Para os pares não cacheados, agrupa por (carrier, dateStr) e faz
+  //      UMA query getDocs por grupo — em vez de um getDoc por placa.
+  //      Ex: 30 placas × 14 datas = 420 getDoc individuais → até 70 queries
+  //      agrupadas (se cada dia tiver as mesmas 5 transportadoras).
+  //   3. Preenche o cache com todos os documentos retornados.
+  const result = {};
+  const misses = []; // pares que não estavam em cache
+  // Passo 1 — cache hits
+  for (const { carrier, plate, dateStr } of pairs) {
+    const key    = `${carrier}||${plate}||${dateStr}`;
+    const cKey   = `status||${carrier}||${plate}||${dateStr}`;
+    const cached = cacheGet(cKey);
+    if (cached !== undefined) {
+      result[key] = cached;
+    } else {
+      result[key] = null; // placeholder
+      misses.push({ carrier, plate, dateStr, key, cKey });
+    }
+  }
+  if (misses.length === 0) return result;
+  // Passo 2 — agrupa misses por (carrier, dateStr) para minimizar queries
+  const groups = new Map(); // "carrier||dateStr" → Set de plates
+  for (const { carrier, dateStr } of misses) {
+    const gKey = `${carrier}||${dateStr}`;
+    if (!groups.has(gKey)) groups.set(gKey, { carrier, dateStr, plates: new Set() });
+    groups.get(gKey).plates.add(dateStr); // só para marcar o grupo
+  }
+  // Reconstrói agrupamento correto: carrier+dateStr → lista de plates
+  const groupMap = new Map();
+  for (const { carrier, plate, dateStr } of misses) {
+    const gKey = `${carrier}||${dateStr}`;
+    if (!groupMap.has(gKey)) groupMap.set(gKey, { carrier, dateStr, plates: [] });
+    groupMap.get(gKey).plates.push(plate);
+  }
+  // Passo 3 — uma query getDocs por grupo (carrier+dateStr)
+  await Promise.all([...groupMap.values()].map(async ({ carrier, dateStr, plates }) => {
+    try {
+      // Firestore "in" aceita até 30 valores por query; divide se necessário
+      const chunks = [];
+      for (let i = 0; i < plates.length; i += 30) chunks.push(plates.slice(i, i + 30));
+      for (const chunk of chunks) {
+        const q = query(
+          collection(db, "availability"),
+          where("carrier",  "==", carrier),
+          where("dateStr",  "==", dateStr),
+          where("plate",    "in", chunk)
+        );
+        const snap = await getDocs(q);
+        // Registra os documentos encontrados no cache e no resultado
+        const found = new Set();
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const value = {
+            status:          d.status,
+            time:            d.time            || "",
+            motoristaDiurno: d.motoristaDiurno || "",
+            motoristaNoturno:d.motoristaNoturno|| "",
+            hodometro:       d.hodometro !== undefined ? d.hodometro : null,
+            hodometroFotoUrl: d.hodometroFotoUrl || null,
+            oferta: !!d.oferta, baseOferta: d.baseOferta || '', obsOferta: d.obsOferta || '',
+            ofertadoPor: d.ofertadoPor || '', ofertadoEm: d.ofertadoEm || ''
+          };
+          const key  = `${carrier}||${d.plate}||${dateStr}`;
+          const cKey = `status||${carrier}||${d.plate}||${dateStr}`;
+          result[key] = value;
+          cacheSet(cKey, value);
+          found.add(d.plate);
+        });
+        // Placas não retornadas pela query = sem registro (null) — cacheia também
+        for (const plate of chunk) {
+          if (!found.has(plate)) {
+            const key  = `${carrier}||${plate}||${dateStr}`;
+            const cKey = `status||${carrier}||${plate}||${dateStr}`;
+            result[key] = null;
+            cacheSet(cKey, null);
+          }
+        }
+      }
+    } catch(e) {
+      console.error("dbLoadStatusBulk query error", carrier, dateStr, e);
+    }
+  }));
+  return result;
+}
+// ═══════════════════════════════════════════════════════════
+// Sincroniza v.disponibilidade para todos os veículos
+// consultando o Painel de Disponibilidade do Firestore
+// para uma data específica (dateStr no formato YYYY-MM-DD).
+//
+// Regras (em ordem de prioridade):
+//  1. Veículo não encontrado no cadastro Firestore → Indisponível (inativo/inexistente)
+//  2. Veículo com ativo===false no cadastro Firestore → Indisponível (inativo)
+//  3. Status "disponivel" no painel do dia → Disponível
+//  4. Qualquer outro status registrado no dia → Indisponível
+//  5. Sem registro no painel para a data → Indisponível
+//     (apenas quem marcou "disponível" no painel está apto para aquele dia)
+// ═══════════════════════════════════════════════════════════
+// Normalização para casar placas/transportadoras entre Roteirizador e Painel
+function _normPlaca(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function _normCarrier(s){ return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+function _casarPlacaPainel(allPlates, carrierV, placaV){
+  const np = _normPlaca(placaV), nc = _normCarrier(carrierV);
+  if (!np) return null;
+  let soPlaca = null, nSoPlaca = 0;
+  for (const c of Object.keys(allPlates || {})) {
+    for (const p of (allPlates[c] || [])) {
+      if (_normPlaca(p.placa) !== np) continue;
+      if (_normCarrier(c) === nc) return { carrier: c, p };
+      soPlaca = { carrier: c, p }; nSoPlaca++;
+    }
+  }
+  return nSoPlaca === 1 ? soPlaca : null; // transportadora escrita diferente, mas placa única
+}
+// listaAlvo (opcional): sincroniza outra lista (ex.: cópias para a troca de
+// veículo do Histórico, avaliadas no dia da viagem) sem mexer em `veiculos`.
+async function sincronizarDisponibilidadeVeiculos(dateStr, listaAlvo) {
+  const veiculos = listaAlvo || window.veiculos || (typeof globalThis.veiculos !== 'undefined' ? globalThis.veiculos : []);
+  if (!veiculos || !veiculos.length) return;
+  try {
+    const allPlates = await dbGetPlates();
+    // Pares a consultar: placas do Roteirizador (na grafia do Painel) + TODAS as
+    // placas sob demanda do Painel (para avisar oferta de placa que não está
+    // cadastrada em Veículos & Turnos).
+    const pares = new Map();
+    const addPar = (carrier, plate) => { if (carrier && plate) pares.set(`${carrier}||${plate}`, { carrier, plate, dateStr }); };
+    veiculos.forEach(v => {
+      const m = _casarPlacaPainel(allPlates, v.transportadora, v.placa);
+      addPar(m ? m.carrier : (v.transportadora || ''), m ? m.p.placa : (v.placa || ''));
+    });
+    const sobPainel = [];
+    for (const c of Object.keys(allPlates)) (allPlates[c] || []).forEach(p => {
+      if (p.ativo !== false && ehSobDemanda(p)) { sobPainel.push({ carrier: c, p }); addPar(c, p.placa); }
+    });
+    // Oferta sob demanda é feita por outra pessoa/computador a qualquer hora:
+    // nunca confia no cache para essas placas (são poucas — custo mínimo).
+    sobPainel.forEach(({ carrier, p }) => cacheInvalidate(`status||${carrier}||${p.placa}||${dateStr}`));
+    const [bulk, allDriversCad] = await Promise.all([
+      dbLoadStatusBulk([...pares.values()]),
+      dbGetDrivers().catch(() => ({}))
+    ]);
+    // Ofertadas no Painel mas sem cadastro em Veículos & Turnos → aviso no Roteirizador
+    const casadas = new Set();
+    veiculos.forEach(v => { const m = _casarPlacaPainel(allPlates, v.transportadora, v.placa); if (m) casadas.add(`${m.carrier}||${m.p.placa}`); });
+    if (!listaAlvo) window._sobOfertadasSemCadastro = sobPainel
+      .filter(({ carrier, p }) => !casadas.has(`${carrier}||${p.placa}`) && bulk[`${carrier}||${p.placa}||${dateStr}`]?.status === 'disponivel')
+      .map(({ carrier, p }) => ({ carrier, placa: p.placa, capacidade: p.capacidade, dateStr }));
+    // Retorna o nome do motorista apenas se ele estiver ativo no cadastro de
+    // motoristas do transportador (allDriversCad). Motoristas não cadastrados
+    // (legado) são mantidos por compatibilidade. Esta é a mesma regra já usada
+    // no Painel de Disponibilidade (driverAtivoNome / filtrarMotoristaSalvo) —
+    // sem ela, um motorista inativado continuava "vazando" para Veículos &
+    // Turnos, Otimização Rotas e Envio Transportadora, pois esses três módulos
+    // leem v.motoristaDiurno/v.motoristaNt, que eram preenchidos sem checar a
+    // flag "ativo" do cadastro de motoristas.
+    function motoristaAtivoOuVazio(carrier, operacao, nome) {
+      if (!nome) return '';
+      const cadastro = (allDriversCad[carrier] || []).find(d => d.nome === nome && d.operacao === operacao);
+      if (cadastro && cadastro.ativo === false) return ''; // inativo → some de todos os módulos
+      return nome;
+    }
+    veiculos.forEach(v => {
+      // Casa a placa do Roteirizador com o cadastro do Painel tolerando
+      // diferenças de escrita (hífen, espaço, minúscula, nome da transportadora
+      // com caixa diferente) — e passa a usar a grafia do PAINEL para buscar o
+      // registro do dia, que é a mesma usada ao gravar a oferta/disponibilidade.
+      const m = _casarPlacaPainel(allPlates, v.transportadora, v.placa);
+      const carrier = m ? m.carrier : (v.transportadora || '');
+      const plate   = m ? m.p.placa : (v.placa || '');
+      // Regras 1 e 2: verifica cadastro Firestore
+      const registroFirestore = m ? m.p : null;
+      if (!registroFirestore) {
+        // Não existe no cadastro → inativo/inexistente
+        v.disponibilidade    = 'Indisponível';
+        v._motivoIndisponivel = 'inativo';
+        return;
+      }
+      if (registroFirestore.ativo === false) {
+        // Cadastrado mas desativado
+        v.disponibilidade    = 'Indisponível';
+        v._motivoIndisponivel = 'inativo';
+        return;
+      }
+      const operacao = registroFirestore.operacao || v.terminal || '';
+      // Sob demanda: leva pro Roteirizador as bases onde pode carregar e os
+      // destinos (UF) que pode atender — o otimizador e o mapa respeitam isso.
+      v._sobDemanda = ehSobDemanda(registroFirestore);
+      v._basesOferta = null;
+      // Regras 3-5: status do painel do dia
+      const key = `${carrier}||${plate}||${dateStr}`;
+      const rec = bulk[key];
+      // Sempre reseta para os valores do cadastro antes de aplicar o painel —
+      // garante que uma troca de data não deixe motorista "fantasma" de outro dia.
+      // Filtra motorista inativo já aqui, na origem (cadastro da placa).
+      v.motoristaDiurno  = motoristaAtivoOuVazio(carrier, operacao, registroFirestore.motoristaDiurno  || '');
+      v.motoristaNt      = motoristaAtivoOuVazio(carrier, operacao, registroFirestore.motoristaNoturno || '');
+      v._motoristaPainel = false;
+      if (rec && rec.status) {
+        // Manutenção com previsão de retorno (rec.time válido, ex: "09:00"):
+        //   → tratada como Disponível a partir do horário de retorno.
+        //   O roteirizador respeita _horarioDisponivelAPartirDe e não escalará
+        //   o veículo antes desse horário.
+        // Manutenção sem previsão ("sem_previsao" ou vazio): Indisponível.
+        // Programado/Em viagem, Folga, Indisponível: sempre bloqueados.
+        const _isManutComRetorno = rec.status === 'manutencao'
+          && rec.time && rec.time !== 'sem_previsao';
+
+        v.disponibilidade     = (rec.status === 'disponivel' || _isManutComRetorno)
+          ? 'Disponível' : 'Indisponível';
+        if (v._sobDemanda) {
+          const bases = rec.baseOferta ? [rec.baseOferta] : (registroFirestore.basesCarregamento || []);
+          v._basesOferta = bases.length ? bases : null;
+        }
+        v._motivoIndisponivel = v.disponibilidade === 'Indisponível' ? rec.status : null;
+        v._emManutencao       = rec.status === 'manutencao'; // flag para exibição
+
+        // Propaga horário mínimo de início: disponível a partir de HH:MM
+        //   • disponivel com time  → respeita horário registrado pelo transportador
+        //   • manutencao com time  → veículo só sai depois que retornar da manutenção
+        if ((rec.status === 'disponivel' || _isManutComRetorno)
+            && rec.time && rec.time !== 'sem_previsao') {
+          v._horarioDisponivelAPartirDe = rec.time; // formato "HH:MM"
+        } else {
+          v._horarioDisponivelAPartirDe = null;
+        }
+        // Painel tem motorista? Sobrescreve o do cadastro — também filtrado por ativo.
+        const motDPainel = motoristaAtivoOuVazio(carrier, operacao, rec.motoristaDiurno  || '');
+        const motNPainel = motoristaAtivoOuVazio(carrier, operacao, rec.motoristaNoturno || '');
+        if (motDPainel) { v.motoristaDiurno = motDPainel; v._motoristaPainel = true; }
+        if (motNPainel) { v.motoristaNt      = motNPainel; v._motoristaPainel = true; }
+      } else {
+        // Sem registro no painel para este dia → não marcou disponível → bloqueia
+        // (placa sob demanda: não foi ofertada pela operação neste dia)
+        v.disponibilidade    = 'Indisponível';
+        v._motivoIndisponivel = v._sobDemanda ? 'nao_ofertado' : 'sem_registro';
+      }
+    });
+  } catch(e) {
+    console.warn('[sincronizarDisponibilidadeVeiculos]', e);
+  }
+}
+// Escuta ao vivo das ofertas sob demanda de uma data (usada pelo Roteirizador):
+// quando alguém oferta/retira uma placa em qualquer computador, o Roteirizador
+// é avisado na hora. Custo: as ofertas do dia uma vez + 1 leitura por mudança.
+let _ofertasEscuta = { chave: null, unsub: null };
+// Escuta a data do Roteirizador + hoje + amanhã (oferta feita para outro dia
+// também é avisada). Cada mudança chega com a data dela (m.dateStr).
+function escutarOfertasSobDemanda(ds, aoMudar){
+  if (!ds || !S.user) return;
+  const datas = [...new Set([ds, dateStr(0), dateStr(1)])].sort();
+  const chave = datas.join('|');
+  if (_ofertasEscuta.chave === chave && _ofertasEscuta.unsub) { _ofertasEscuta.cb = aoMudar; return; }
+  try { _ofertasEscuta.unsub && _ofertasEscuta.unsub(); } catch(e) {}
+  _ofertasEscuta = { chave, unsub: null, cb: aoMudar };
+  let primeira = true;
+  try {
+    _ofertasEscuta.unsub = onSnapshot(
+      query(collection(db, 'availability'), where('dateStr', 'in', datas), where('oferta', '==', true)),
+      snap => {
+        const mud = snap.docChanges().map(c => ({ tipo: c.type, ...c.doc.data() }));
+        mud.forEach(m => cacheInvalidate(`status||${m.carrier}||${m.plate}||${m.dateStr}`));
+        if (primeira) { primeira = false; return; }
+        if (mud.length && typeof _ofertasEscuta.cb === 'function') _ofertasEscuta.cb(mud);
+      },
+      e => console.warn('[escuta ofertas sob demanda]', e.code || e.message)
+    );
+  } catch(e) { console.warn('[escuta ofertas sob demanda]', e); }
+}
+window.escutarOfertasSobDemanda = escutarOfertasSobDemanda;
+// ═══════════════════════════════════════════════════════════
+function recordHasStatus(rec){
+  return !!(rec && rec.status);
+}
+// DATA & CONFIG
+// ═══════════════════════════════════════════════════════════
+// USERS_DB and CARRIERS are loaded dynamically from Firebase
+// USERS_DB contém apenas dados de perfil — senhas são gerenciadas exclusivamente
+// pelo Firebase Authentication e jamais ficam armazenadas aqui ou no Firestore.
+let USERS_DB = {
+  admin:     { name:"Administrador",           role:"admin",       initials:"AD" },
+  transac:   { name:"Transac Transportes",     role:"carrier",     initials:"TT", carrier:"Transac Transportes" },
+  cavalinho: { name:"Transportes Cavalinho",   role:"carrier",     initials:"TC", carrier:"Transportes Cavalinho" },
+  jdcocenzo: { name:"JD Cocenzo Transportes",  role:"carrier",     initials:"JD", carrier:"JD Cocenzo Transportes" },
+  simeira:   { name:"Simeira Transportes",     role:"carrier",     initials:"ST", carrier:"Simeira Transportes" },
+  garbuio:   { name:"Garbuio Transportes",     role:"carrier",     initials:"GT", carrier:"Garbuio Transportes" },
+};
+// Atualiza USERS_DB SEM trocar o objeto por outro — apaga as chaves antigas
+// e copia as novas por cima do mesmo objeto. Isso importa porque
+// "window.USERS_DB" (exposto lá embaixo para o Roteirizador) é atribuído
+// UMA VEZ só, no boot: se USERS_DB fosse reatribuído a um objeto novo
+// (USERS_DB = outraCoisa), window.USERS_DB continuaria apontando pro objeto
+// velho pra sempre, mesmo depois de recarregar dados do Firestore. Mutar o
+// mesmo objeto mantém os dois sempre em sincronia, sem precisar lembrar de
+// resincronizar manualmente em cada lugar que atualiza a lista.
+function _atualizarUsersDb(novo){
+  for(const k in USERS_DB) delete USERS_DB[k];
+  Object.assign(USERS_DB, novo);
+}
+let CARRIERS = ["Transac Transportes","Transportes Cavalinho","JD Cocenzo Transportes","Simeira Transportes","Garbuio Transportes"];
+window.CARRIERS = CARRIERS; // disponível desde já para outros módulos (ex: Roteirizador)
+let OPERACOES = ["Paulínia","São Caetano do Sul","Ribeirão Preto","Duque de Caxias","Brasília","Cubatão","Uberaba"];
+const TIPOS_VEIC = ["Truck","Bi-Truck","Cavalo Mecânico"];
+const IDENTS     = ["Petronas","Branco"];
+const CONTRATOS  = ["Dedicado","Spot"];
+// ── Escala da placa ─────────────────────────────────────────────────────────
+// "Diária": a transportadora preenche a disponibilidade todo dia (como sempre).
+// "Sob demanda": operação dedicada (ex.: carregar em São Caetano/Paulínia e
+// entregar no RJ) — a placa NÃO entra na disponibilidade diária (não conta no
+// %, não fica "sem resposta", não segura a trava de preenchimento, não aparece
+// no telão nem no painel do transportador). Quem diz se ela pode rodar no dia é
+// a OPERAÇÃO, ofertando a placa no Painel de Disponibilidade; a oferta vira o
+// registro de disponibilidade do dia e o Roteirizador só usa a placa ofertada,
+// só nas bases dela e só para os clientes marcados como "operação sob demanda".
+const ESCALAS = [["diaria","Diária (transportadora preenche)"],["sob_demanda","Sob demanda (operação oferta)"]];
+function ehSobDemanda(p){ return !!p && p.escala === 'sob_demanda'; }
+function _semSobDemanda(allP){ const o = {}; for (const k in (allP||{})) o[k] = (allP[k]||[]).filter(p => !ehSobDemanda(p)); return o; }
+function _ufsDeTexto(t){ return [...new Set(String(t||'').toUpperCase().split(/[^A-Z]+/).filter(x => x.length === 2))]; }
+const STATUS_OPTS = [
+  {val:"disponivel",  label:"Disponível",        cls:"st-disp",  badge:"b-green",  color:"#6ee04a"},
+  {val:"indisponivel",label:"Indisponível",       cls:"st-indisp",badge:"b-red",    color:"#f06060"},
+  {val:"manutencao",  label:"Manutenção",         cls:"st-manut", badge:"b-amber",  color:"#f0be40"},
+  {val:"folga",       label:"Folga",              cls:"st-folga", badge:"b-blue",   color:"#70a8f0"},
+  {val:"programado",  label:"Programado/Em viagem",cls:"st-prog", badge:"b-purple", color:"#b07ef0"},
+];
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let S = {
+  user: null, dateOffset: 0, adminTab: "dashboard",
+  telao: new URLSearchParams(location.search).has('telao'), // ?telao=1 abre direto no modo telão
+  notifOpen: false, histDays: 45,
+  histCarrier:"", histStatus:"", histOp:"", histPlaca:"", todayOp:"", todayPlaca:"",
+  // Filtros novos do Painel de Disponibilidade — Transportadora (dropdown
+  // dedicado, além da busca livre já existente em todayPlaca) e Volume do
+  // veículo (m³ de capacidade, com as opções geradas a partir dos valores
+  // reais já cadastrados nas placas — não é uma lista fixa inventada).
+  todayCarrier:"", todayVolume:"",
+  histOpenDays: {},
+  registerSubTab: "plates",
+  kpiYear: new Date().getFullYear(), kpiMonth: new Date().getMonth(),
+  // "" = todos os contratos, "Dedicado" ou "Spot" — filtro compartilhado
+  // pelo Daily Briefing, Painel de Disponibilidade e KPIs Mensais (ver
+  // renderContratoFilterUI). Falta de disponibilidade do Spot vinha
+  // derrubando o número do Dedicado (que é o que mais importa acompanhar),
+  // sem forma de separar os dois — esse filtro resolve isso nas 3 telas.
+  contratoFilter: "",
+  // "exportar" ou "arquivos" — sub-aba dentro de "Relatórios" (fusão de
+  // Exportar + Arquivos Mensais, que eram duas abas separadas falando da
+  // mesma coisa: baixar dados da frota em arquivo).
+  reportsSubTab: "exportar",
+  // Filtro dinâmico dos relatórios exportados (Exportar → xlsx/csv/pdf) —
+  // "" em qualquer campo = sem filtro (todo mundo). Ver renderExport/buildRows.
+  expFiltro: { carrier:"", operacao:"", tipo:"", identificacao:"", contrato:"", status:"" },
+  // "disponibilidade" ou "atividade" — sub-aba dentro de "Auditoria" (antigo
+  // "Histórico"). "atividade" é só admin — atividade completa dos usuários,
+  // que antes ficava resumida (só 8 itens) solta no Daily Briefing.
+  auditSubTab: "disponibilidade",
+  auditActorFiltro: "",
+};
+const SESSION_KEY = "nexta_frota_user";
+// Toggle "Todos / Dedicado / Spot" reutilizado nas 3 telas que precisam
+// separar os números por tipo de contrato (S.contratoFilter). Cada tela
+// chama isso passando o próprio re-render como callback.
+function renderContratoFilterUI(){
+  const opcoes = [["", "Todos"], ["Dedicado", "Dedicado"], ["Spot", "Spot"]];
+  return `<div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Separar números de contrato Dedicado e Spot">
+    ${opcoes.map(([val, label]) => {
+      const ativo = S.contratoFilter === val;
+      return `<button onclick="S.contratoFilter='${val}';renderTabBody()"
+        style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;cursor:pointer;letter-spacing:.02em;
+        background:${ativo?'var(--pet-green,#b5e51d)':'transparent'};color:${ativo?'#000':'var(--text-2)'};">${label}</button>`;
+    }).join('')}
+  </div>`;
+}
+// Aplica o filtro de contrato a uma lista de placas (usado nas 3 telas).
+function filtrarPorContrato(plates){
+  if(!S.contratoFilter) return plates;
+  return (plates||[]).filter(p => p.contrato === S.contratoFilter);
+}
+let ALERT_CUTOFF_HOUR = 16;
+let META_DISP = 95; // % meta de disponibilidade — sobrescrito pelo Firestore no loadConfig
+let META_SLA = 95; // % meta de SLA de preenchimento — sobrescrito pelo Firestore no loadConfig
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+function esc(v){
+  return String(v ?? "").replace(/[&<>"']/g, ch => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[ch]));
+}
+function attr(v){ return esc(v).replace(/`/g, "&#96;"); }
+function jsArg(v){
+  return String(v ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/[\r\n]/g, " ");
+}
+function optHtml(v, selected=false){
+  return `<option value="${attr(v)}"${selected?' selected':''}>${esc(v)}</option>`;
+}
+function getSt(v){ return STATUS_OPTS.find(s=>s.val===v)||STATUS_OPTS[0]; }
+function statusSemHorario(v){ return v==='indisponivel'||v==='programado'||v==='folga'; }
+function userOperacoes(u){
+  const ops = u?.operacoes || u?.operações || [];
+  return ops.length ? ops : null;
+}
+function fmtTimeValue(v){ return v==='sem_previsao'?'Sem previsão':(v||'—'); }
+function renderDriverCell(diurno='', noturno=''){
+  const motD=diurno||'—';
+  const motN=noturno||'—';
+  const motDHtml=esc(motD);
+  const motNHtml=esc(motN);
+  return `<div class="driver-cell">
+    <div class="driver-line"><span class="driver-icon">☀</span><span class="driver-name" title="${attr(motD)}">${motDHtml}</span></div>
+    <div class="driver-line"><span class="driver-icon">🌙</span><span class="driver-name" title="${attr(motN)}">${motNHtml}</span></div>
+  </div>`;
+}
+function buildTimeOpts(selected="", allowNoForecast=false){
+  let opts=`<option value="" ${!selected?'selected':''} disabled>— Horário —</option>`;
+  if(allowNoForecast) opts+=`<option value="sem_previsao"${selected==='sem_previsao'?' selected':''}>Sem previsão</option>`;
+  for(let h=0;h<24;h++){
+    for(let m=0;m<60;m+=15){
+      const hh=String(h).padStart(2,'0');
+      const mm=String(m).padStart(2,'0');
+      const val=`${hh}:${mm}`;
+      opts+=`<option value="${val}"${val===selected?' selected':''}>${val}</option>`;
+    }
+  }
+  // also add :59 for 23
+  opts+=`<option value="23:59"${'23:59'===selected?' selected':''}>23:59</option>`;
+  return opts;
+}
+// ── Date helpers using LOCAL time (avoids UTC offset issues for BR timezone) ──
+function localDateStr(d){
+  // Returns YYYY-MM-DD using local timezone, not UTC
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+// Segunda-feira = dia obrigatório de foto do hodômetro (ver salvarDisponibilidade).
+// Recebe "YYYY-MM-DD" e monta a data como LOCAL (não UTC) — "new Date('2026-07-27')"
+// sozinho interpretaria como meia-noite UTC, que em fusos negativos (Brasil)
+// pode cair no dia ANTERIOR e detectar segunda-feira errado.
+function isMonday(dsStr){
+  if(!dsStr) return false;
+  const [y,m,d] = dsStr.split('-').map(Number);
+  return new Date(y, m-1, d).getDay() === 1;
+}
+// Célula "Foto Hodômetro" da tabela de disponibilidade — obrigatória só às
+// segundas-feiras (ver validação em salvarDisponibilidade). Nos demais dias
+// mostra só um traço, sem pedir nada (não é opcional-mas-visível: em dias
+// que não são segunda, a foto simplesmente não é parte do fluxo, pra não
+// confundir com um upload "seria bom mas não precisa").
+function renderHodFotoCell(p, rec, ds, isCarrierUser){
+  const jaTemFoto = rec && rec.hodometroFotoUrl;
+  if(!isMonday(ds)){
+    return jaTemFoto
+      ? `<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--dim);">📷 ver foto</a>`
+      : `<span style="font-size:10px;color:var(--muted)">—</span>`;
+  }
+  if(!isCarrierUser){
+    return jaTemFoto
+      ? `<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--dim);">📷 ver foto</a>`
+      : `<span style="font-size:10px;color:var(--red)">Sem foto</span>`;
+  }
+  // Usuário da transportadora, segunda-feira: pede a foto (obrigatória).
+  // max-width:100% + white-space:normal (em vez de "width:fit-content",
+  // que ignora a largura da célula) evita o botão "vazar" visualmente pra
+  // cima da coluna vizinha (Disponível às) quando o texto é mais longo,
+  // tipo "Anexar foto (obrigatório)" — agora quebra linha dentro da célula.
+  return `<div style="display:flex;flex-direction:column;gap:3px;max-width:100%;overflow:hidden;">
+    <label class="hod-foto-label" style="display:flex;align-items:center;gap:4px;font-size:9.5px;padding:4px 6px;border-radius:6px;cursor:pointer;background:${jaTemFoto?'rgba(110,224,74,.12)':'rgba(240,96,96,.12)'};color:${jaTemFoto?'var(--green)':'var(--red)'};border:1px solid ${jaTemFoto?'rgba(110,224,74,.3)':'rgba(240,96,96,.3)'};max-width:100%;box-sizing:border-box;white-space:normal;line-height:1.25;">
+      📷 <span class="hod-foto-label-text">${jaTemFoto?'Foto OK (trocar)':'Anexar foto (obrigatório)'}</span>
+      <input type="file" accept="image/*" capture="environment" class="hod-foto-input" style="display:none;" onchange="onHodFotoSelecionada(this)">
+    </label>
+    ${jaTemFoto?`<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:9.5px;color:var(--dim);">ver foto atual</a>`:''}
+  </div>`;
+}
+// Feedback visual imediato ao escolher o arquivo — antes de salvar de
+// verdade (o upload só acontece no clique em "Salvar", junto com o resto).
+window.onHodFotoSelecionada = function(input){
+  const label = input.closest('.hod-foto-label');
+  if(!label || !input.files || !input.files[0]) return;
+  label.style.background = 'rgba(240,190,64,.14)';
+  label.style.color = 'var(--amber)';
+  label.style.borderColor = 'rgba(240,190,64,.35)';
+  const textEl = label.querySelector('.hod-foto-label-text');
+  if(textEl) textEl.textContent = `${input.files[0].name.slice(0,18)} (selecionada)`;
+};
+function dateStr(off=0){
+  const d=new Date();
+  d.setDate(d.getDate()+off);
+  return localDateStr(d);
+}
+function fmtDate(off=0){
+  const d=new Date(); d.setDate(d.getDate()+off);
+  const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const mons=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  const tag=off===0?" — Hoje":off===1?" — Amanhã":off===-1?" — Ontem":"";
+  return `${days[d.getDay()]}, ${d.getDate()} ${mons[d.getMonth()]}${tag}`;
+}
+function fmtDateStr(ds){
+  // Parse YYYY-MM-DD as local date (not UTC)
+  const [y,m,day]=ds.split('-').map(Number);
+  const d=new Date(y,m-1,day);
+  const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const mons=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  return `${days[d.getDay()]}, ${d.getDate()} ${mons[d.getMonth()]}`;
+}
+function fmtDateExport(ds){
+  // Retorna DD/MM/YYYY para uso nos relatórios exportados
+  const [y,m,day]=ds.split('-').map(Number);
+  return `${String(day).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+}
+function showToast(msg,ok=true){
+  const t=document.getElementById("toast");
+  document.getElementById("toast-msg").textContent=msg;
+  t.style.background=ok?"var(--lime)":"#f06060";
+  t.style.color=ok?"var(--dark)":"#fff";
+  t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),3000);
+}
+function debounce(fn, delay=350){
+  let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+}
+// Debounced search handlers — evitam re-render a cada tecla
+const _debouncedTodaySearch  = debounce(()=>renderTabBody(), 350);
+const _debouncedHistSearch   = debounce(()=>renderTabBody(), 350);
+const _debouncedViewportQualityRefresh = debounce(async ()=>{
+  if(!S.user) return;
+  const u=USERS_DB[S.user];
+  if(!u || (u.role!=="admin" && u.role!=="operacional")) return;
+  if(S.adminTab==="dashboard" || S.adminTab==="kpis") await renderTabBody();
+}, 220);
+function setLoading(msg="Carregando..."){
+  const mc=document.getElementById("main-content")||document.getElementById("tab-body");
+  if(mc) mc.innerHTML=`<div class="loading"><span class="spin"></span>${esc(msg)}</div>`;
+}
+function getDates(days,fromOff=0){
+  const arr=[];
+  for(let i=days-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i+fromOff); arr.push(localDateStr(d)); }
+  return arr;
+}
+function getMonthDates(year,month){
+  const arr=[]; const d=new Date(year,month,1);
+  while(d.getMonth()===month){ arr.push(localDateStr(d)); d.setDate(d.getDate()+1); }
+  return arr;
+}
+function renderPendingAlert(groups, {title, subtitle, okSubtitle, cutoffHour, cutoffReached}){
+  const total=groups.reduce((sum,g)=>sum+g.pending.length,0);
+  const tomorrowPending=(groups.find(g=>g.label==="Amanhã")?.pending)||[];
+  const metricCards=groups.map(g=>`
+    <div class="pa-metric ${g.pending.length?'warn':'ok'}">
+      <span class="pa-metric-num">${g.pending.length}</span>
+      <span class="pa-metric-label">${esc(g.label)}</span>
+    </div>`).join("");
+  const groupsHtml=groups.map(g=>`
+    <div class="pa-group ${g.pending.length?'':'ok'}">
+      <div class="pa-day"><span>${esc(g.label)}</span><small>${fmtDateStr(g.ds)}</small></div>
+      <div class="pa-list">
+        ${g.pending.length?g.pending.map(c=>`<span class="pa-chip">${esc(c)}</span>`).join(""):`<span class="pa-chip ok">Sem pendências</span>`}
+      </div>
+    </div>`).join("");
+  const cutoffCard=(cutoffReached&&tomorrowPending.length)
+    ? `<div class="pa-cutoff-alert"><strong>Corte ${String(cutoffHour).padStart(2,'0')}:00 atingido</strong><span>${tomorrowPending.length} pendência(s) para amanhã</span></div>`
+    : `<div class="pa-cutoff-note">Corte configurado: <strong>${String(cutoffHour).padStart(2,'0')}:00</strong></div>`;
+  if(total===0){
+    return `<div class="pending-alert ok">
+      <div class="pa-content">
+        <div class="pa-head">
+          <div>
+            <div class="pa-title"><span class="pa-title-badge pa-title-badge--ok">✓</span>Disponibilidade em dia</div>
+            <div class="pa-sub">${okSubtitle}</div>
+          </div>
+          <div class="pa-metrics">${metricCards}</div>
+        </div>
+        ${cutoffCard}
+      </div>
+    </div>`;
+  }
+  return `<div class="pending-alert warn">
+    <div class="pa-content">
+      <div class="pa-head">
+        <div>
+          <div class="pa-title"><span class="pa-title-badge pa-title-badge--warn">!</span>${title}</div>
+          <div class="pa-sub">${subtitle}</div>
+        </div>
+        <div class="pa-metrics">${metricCards}</div>
+      </div>
+      ${cutoffCard}
+      <div class="pa-groups">${groupsHtml}</div>
+    </div>
+  </div>`;
+}
+async function buildPendingAlerts(allP, filterOps){
+  if(S.dateOffset !== 0) return "";
+  const targets=[{label:"Hoje", ds:dateStr(0)},{label:"Amanhã", ds:dateStr(1)}];
+  const CUTOFF_HOUR = ALERT_CUTOFF_HOUR;
+  const cutoffReached = (new Date()).getHours() >= CUTOFF_HOUR;
+  if(filterOps&&filterOps.length){
+    const groups=await Promise.all(targets.map(async t=>{
+      const pendingItems=[];
+      for(const carrier of CARRIERS){
+        const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&filterOps.includes(p.operacao));
+        if(!plates.length) continue;
+        const pairs=plates.map(p=>({carrier,plate:p.placa,dateStr:t.ds}));
+        const sm=await dbLoadStatusBulk(pairs);
+        const allFilled=plates.every(p=>sm[`${carrier}||${p.placa}||${t.ds}`]?.status);
+        if(!allFilled){
+          for(const op of filterOps){
+            const opPlates=plates.filter(p=>p.operacao===op);
+            if(!opPlates.length) continue;
+            const opFilled=opPlates.every(p=>sm[`${carrier}||${p.placa}||${t.ds}`]);
+            if(!opFilled) pendingItems.push(`${carrier} em ${op}`);
+          }
+        }
+      }
+      return {...t, pending: pendingItems};
+    }));
+    return renderPendingAlert(groups, {
+      title:"Pendências de preenchimento",
+      subtitle:"Operações com pelo menos uma placa sem envio concluído para o período monitorado.",
+      okSubtitle:"Todas as operações preencheram todas as placas hoje e amanhã.",
+      cutoffHour:CUTOFF_HOUR,
+      cutoffReached
+    });
+  }
+  const activeCarriers=CARRIERS.filter(c=>(allP[c]||[]).some(p=>p.ativo!==false));
+  if(!activeCarriers.length) return "";
+  const groups=await Promise.all(targets.map(async t=>{
+    const checks=await Promise.all(activeCarriers.map(async carrier=>{
+      const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false);
+      const sm=await dbLoadStatusBulk(plates.map(p=>({carrier,plate:p.placa,dateStr:t.ds})));
+      return { carrier, done: plates.length>0 && plates.every(p=>sm[`${carrier}||${p.placa}||${t.ds}`]?.status) };
+    }));
+    return {...t, pending: checks.filter(x=>!x.done).map(x=>x.carrier)};
+  }));
+  return renderPendingAlert(groups, {
+    title:"Pendências de preenchimento",
+    subtitle:"Transportadores com pelo menos uma placa pendente para hoje e amanhã.",
+    okSubtitle:"Todos os transportadores preencheram todas as placas hoje e amanhã.",
+    cutoffHour:CUTOFF_HOUR,
+    cutoffReached
+  });
+}
+// saveSession / clearSession / restoreSession são mantidos apenas como
+// fallback local — a fonte de verdade da sessão é o Firebase Auth (onAuthStateChanged).
+function saveSession(uid){
+  try { localStorage.setItem(SESSION_KEY, uid); } catch(e) {}
+}
+function clearSession(){
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+}
+// ═══════════════════════════════════════════════════════════
+// STATUS BOARD ALERT (Painel de Disponibilidade — variante operacional)
+// ═══════════════════════════════════════════════════════════
+async function buildStatusBoardAlert(allP, userOps=null, offset=0){
+  const ds = dateStr(offset);
+  const now = new Date();
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() + offset);
+  targetDate.setHours(0,0,0,0);
+  const cutoffDate = new Date(targetDate);
+  cutoffDate.setDate(cutoffDate.getDate() - 1);
+  cutoffDate.setHours(ALERT_CUTOFF_HOUR, 0, 0, 0);
+  const isPastCutoff = now >= cutoffDate;
+  const activeCarriers = CARRIERS.filter(c=>(allP[c]||[]).some(p=>p.ativo!==false&&(!userOps||userOps.some(op=>(allP[c]||[]).find(pl=>pl.placa===p.placa&&pl.operacao===op)))));
+  if(!activeCarriers.length) return "";
+  // Per-carrier status
+  const carrierData = await Promise.all(activeCarriers.map(async carrier=>{
+    const plates = filtrarPorContrato((allP[carrier]||[]).filter(p=>p.ativo!==false&&(!userOps||userOps.includes(p.operacao))));
+    if(!plates.length) return null;
+    const lock   = await dbGetLock(carrier, ds);
+    const pairs  = plates.map(p=>({carrier,plate:p.placa,dateStr:ds}));
+    const sm     = await dbLoadStatusBulk(pairs);
+    const statusesDoDia = plates.map(p=>sm[`${carrier}||${p.placa}||${ds}`]?.status||null);
+    const filled = statusesDoDia.filter(Boolean).length;
+    const total  = plates.length;
+    const avail  = statusesDoDia.filter(s=>s==="disponivel").length;
+    // % disponível não pode ser distorcido por "Folga" ou "Programado/Em
+    // viagem" — quem está de folga ou já programado/em viagem não é uma
+    // "falha de disponibilidade" (a transportadora preencheu certinho, só
+    // não é um veículo ocioso disponível pra escalar) — então não entra no
+    // denominador dessa conta específica. Continua contando normalmente em
+    // "filled" (preenchimento) e nos badges de contagem bruta.
+    const folgaOuProgramado = statusesDoDia.filter(s=>s==="folga"||s==="programado").length;
+    const dispDenom = filled - folgaOuProgramado;
+    const pct    = dispDenom > 0 ? Math.round((avail/dispDenom)*100) : 0;
+    const done = !!lock || (total>0 && filled === total);
+    return { carrier, lock, done, filled, total, avail, pct, folgaOuProgramado,
+      pending: total - filled,
+      allFilled: filled === total };
+  }));
+  const carrierDataFiltered = carrierData.filter(Boolean);
+  if(!carrierDataFiltered.length) return "";
+  const totalVehicles   = carrierDataFiltered.reduce((s,c)=>s+c.total,0);
+  const totalFilled     = carrierDataFiltered.reduce((s,c)=>s+c.filled,0);
+  const totalAvail      = carrierDataFiltered.reduce((s,c)=>s+c.avail,0);
+  const totalFolgaOuProgramado = carrierDataFiltered.reduce((s,c)=>s+c.folgaOuProgramado,0);
+  const totalPending    = carrierDataFiltered.filter(c=>!c.done).length;
+  // Mesma correção do pct por transportadora: folga/programado não entram
+  // no denominador do % disponível global.
+  const globalDispDenom = totalFilled - totalFolgaOuProgramado;
+  const globalPct       = globalDispDenom > 0 ? Math.round((totalAvail/globalDispDenom)*100) : 0;
+  const allDone         = totalPending === 0;
+  const fillPct         = totalVehicles ? Math.round((totalFilled/totalVehicles)*100) : 0;
+  const statusColor = globalPct >= META_DISP ? 'var(--green)' : globalPct >= 70 ? 'var(--amber)' : 'var(--red)';
+  const fillColor   = fillPct  >= META_SLA ? 'var(--green)' : fillPct >= 60 ? 'var(--amber)' : 'var(--red)';
+  const urgencyBg   = allDone
+    ? 'linear-gradient(135deg,rgba(110,224,74,.08),rgba(110,224,74,.04))'
+    : isPastCutoff
+      ? 'linear-gradient(135deg,rgba(240,96,96,.1),rgba(240,96,96,.05))'
+      : 'linear-gradient(135deg,rgba(240,190,64,.09),rgba(240,190,64,.04))';
+  const urgencyBorder = allDone
+    ? 'rgba(110,224,74,.3)'
+    : isPastCutoff ? 'rgba(240,96,96,.4)' : 'rgba(240,190,64,.35)';
+  const urgencyIcon = allDone ? '✓' : isPastCutoff ? '🔴' : '⏳';
+  const urgencyLabel = allDone ? 'Tudo preenchido' : isPastCutoff ? 'Corte atingido' : 'Corte dentro do prazo';
+  const urgencyColor = allDone ? 'var(--green)' : isPastCutoff ? 'var(--red)' : 'var(--amber)';
+  // Carrier tiles
+  const tiles = carrierDataFiltered.map(c=>{
+    const tileColor = c.done
+      ? 'rgba(110,224,74,.08)' : isPastCutoff
+      ? 'rgba(240,96,96,.08)' : 'rgba(240,190,64,.06)';
+    const tileBorder = c.done
+      ? 'rgba(110,224,74,.25)' : isPastCutoff
+      ? 'rgba(240,96,96,.3)' : 'rgba(240,190,64,.25)';
+    const dispPct = c.pct; // já vem calculado certo (sem folga/programado no denominador) do carrierData acima
+    const barColor = dispPct >= META_DISP ? 'var(--green)' : dispPct >= 70 ? 'var(--amber)' : 'var(--red)';
+    const shortName = c.carrier.replace('Transportes','').replace('Transportadora','').trim();
+    const statusLabel = c.done
+      ? `<span style="font-size:10px;color:var(--green);font-weight:600">🔒 Enviado</span>`
+      : `<span style="font-size:10px;color:${isPastCutoff?'var(--red)':'var(--amber)'};font-weight:600">${c.pending} placa(s) pendente</span>`;
+    return `
+      <div style="background:${tileColor};border:1px solid ${tileBorder};border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3">${esc(shortName)}</span>
+          ${statusLabel}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:4px;background:rgba(228,242,200,.1);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${dispPct}%;background:${barColor};border-radius:99px;transition:width .4s"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${barColor};min-width:28px;text-align:right">${dispPct}%</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted)">${c.filled}/${c.total} preenchidos · ${c.avail} disponíveis</div>
+      </div>`;
+  }).join('');
+  // Radial progress arc (SVG)
+  const r=28, cx=34, cy=34, circ=2*Math.PI*r;
+  const dash = circ*(globalPct/100), gap = circ - dash;
+  const svgArc = `<svg width="68" height="68" viewBox="0 0 68 68" style="flex-shrink:0">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(228,242,200,.08)" stroke-width="5"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${statusColor}" stroke-width="5"
+      stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}"
+      stroke-dashoffset="${(circ*0.25).toFixed(1)}" stroke-linecap="round"
+      style="transition:stroke-dasharray .6s ease"/>
+    <text x="${cx}" y="${cy+1}" text-anchor="middle" dominant-baseline="middle"
+      fill="${statusColor}" font-size="13" font-weight="800" font-family="DM Mono,monospace">${globalPct}%</text>
+  </svg>`;
+  return `
+  <div class="sb-alert" style="background:${urgencyBg};border:1px solid ${urgencyBorder};">
+    <!-- Header row -->
+    <div class="sb-header">
+      <div class="sb-header-left">
+        <span class="sb-urgency-dot" style="background:${urgencyColor}"></span>
+        <div>
+          <div class="sb-title">Painel de disponibilidade — <span style="color:var(--lime)">${fmtDate(offset).split('—')[1]?.trim()||fmtDate(offset)}</span></div>
+          <div class="sb-sub">${urgencyIcon} ${urgencyLabel} · Corte: <b style="color:var(--lime)">${String(ALERT_CUTOFF_HOUR).padStart(2,'0')}:00</b></div>
+        </div>
+      </div>
+      <div class="sb-kpis">
+        <div class="sb-kpi">
+          ${svgArc}
+          <div>
+            <div class="sb-kpi-label">Disponibilidade</div>
+            <div class="sb-kpi-sub">${totalAvail} de ${totalFilled} preenchidos</div>
+          </div>
+        </div>
+        <div class="sb-kpi-divider"></div>
+        <div class="sb-kpi">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:68px;height:68px;flex-shrink:0">
+            <span style="font-size:26px;font-weight:800;color:${fillColor};line-height:1">${fillPct}%</span>
+            <span style="font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.05em">Preenchido</span>
+          </div>
+          <div>
+            <div class="sb-kpi-label">Envios</div>
+            <div class="sb-kpi-sub">${carrierDataFiltered.length - totalPending}/${carrierDataFiltered.length} transportadores</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Carrier tiles grid -->
+    <div class="sb-tiles">${tiles}</div>
+  </div>`;
+}
+// ═══════════════════════════════════════════════════════════
+// TELÃO — Centro de Operações (tela cheia, roda sozinho)
+// ═══════════════════════════════════════════════════════════
+// Abre pelo botão "📺 Telão" (admin/operacional) ou direto pelo endereço
+// com ?telao=1. Gira entre 7 painéis a cada 20s. Teclas: ← → troca ·
+// espaço pausa · R recarrega · Esc sai.
+//   • Frota (disponibilidade hoje / preenchimento amanhã): availability + locks.
+//   • Programação, Mês, Clientes: telao_programacao/{AAAA-MM-DD}, publicado
+//     pelo Roteirizador a cada programação salva.
+//   • Ocorrências: devolucoesReentregas (mesmo registro do Histórico/Dashboard).
+//   Tudo AO VIVO por escuta (onSnapshot) — ver "Dados" abaixo.
+// Comparações "vs mês anterior" são sempre no MESMO PERÍODO (do dia 1 até o
+// mesmo dia do mês anterior), pra não comparar mês parcial com mês fechado.
+const TELAO_TROCA_MS = 20000;
+const _telao = { ativo: false, idx: 0, pausado: false, dados: null, carregadoEm: 0, erro: null, timers: [], subs: [], trocaEm: 0, dia: '', diaAmanha: '' };
+// Cores validadas (dataviz validator, superfície escura): ordem dos segmentos
+// da barra empilhada é a ordem que passa no teste de daltonismo.
+const _TL_ST = [
+  ['disponivel', 'Disponível', '#0ca30c'], ['folga', 'Folga', '#3987e5'], ['programado', 'Programado/Em viagem', '#d55181'],
+  ['manutencao', 'Manutenção', '#c98500'], ['indisponivel', 'Indisponível', '#d03b3b'], ['pendente', 'Sem resposta', '#3a463c'],
+];
+const _TL_TIPO = { reentrega: ['Reentrega', '#3987e5'], devolucao_parcial: ['Devolução parcial', '#d95926'], devolucao_total: ['Devolução total', '#199e70'] };
+const _TL_BOM = '#2fbf2f', _TL_ATENCAO = '#e3a21a', _TL_CRITICO = '#e05252', _TL_SERIE = '#3987e5';
+const _TL_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const _tlNum = (n, d = 0) => Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const _tlHora = ms => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const _tlDataBr = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
+const _tlDiaSemana = iso => ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][new Date(iso + 'T12:00:00').getDay()];
+const _tlMesAnterior = mes => { const [a, m] = mes.split('-').map(Number); return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`; };
+const _tlMesCurto = mes => _TL_MESES[+mes.slice(5, 7) - 1].slice(0, 3);
+const _tlIsoDeBr = br => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(br || ''); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+const _tlPct = (a, b) => b ? a / b * 100 : null;
+
+// ── Dados (ao vivo, por "escuta" — onSnapshot) ──────────────────────────
+// Antes o telão RELIA tudo a cada 5/15 min (~140 leituras por rodada só de
+// disponibilidade) — com a TV ligada o dia todo, isso sozinho consumia
+// 20–40 mil das 50 mil leituras grátis por dia do Firestore. Agora ele
+// "escuta": o Firestore cobra a leitura de cada documento UMA vez ao abrir
+// e, depois, só 1 leitura por documento que MUDAR. Bônus: fica ao vivo de
+// verdade (uma transportadora preenche e o telão já mostra).
+// Fora do horário de operação o telão desliga as escutas (zero leitura) e
+// mostra só o relógio. Padrão 05h–22h; muda pelo endereço: ?horario=6-20
+// (ou ?horario=0-24 pra nunca desligar).
+const TELAO_HORARIO = (() => {
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(new URLSearchParams(location.search).get('horario') || '');
+  return m ? [Math.min(24, +m[1]), Math.min(24, +m[2])] : [5, 22];
+})();
+function _telaoDentroDoHorario() { const h = new Date().getHours(); return TELAO_HORARIO[0] <= h && h < TELAO_HORARIO[1]; }
+const _telaoFonte = { plates: null, avail: new Map(), locks: new Set(), progs: new Map(), ocorr: new Map(), erros: {}, recebidoEm: 0 };
+function _telaoDisponibilidade(ds, allPTodas) {
+  const allP = _semSobDemanda(allPTodas);
+  const ativos = CARRIERS.filter(c => (allP[c] || []).some(p => p.ativo !== false));
+  const novo = nome => ({ nome, total: 0, disponivel: 0, indisponivel: 0, manutencao: 0, folga: 0, programado: 0, pendente: 0 });
+  const tot = novo('Total'), porOp = new Map();
+  const fechar = r => { r.preenchidas = r.total - r.pendente; const den = r.preenchidas - r.folga - r.programado; r.pct = den > 0 ? Math.round(r.disponivel / den * 100) : null; return r; };
+  const porTransp = ativos.map(c => {
+    const r = novo(c);
+    (allP[c] || []).filter(p => p.ativo !== false).forEach(p => {
+      const s = _telaoFonte.avail.get(`${c}||${p.placa}||${ds}`);
+      const k = s && r[s] !== undefined ? s : 'pendente';
+      const op = p.operacao || 'Sem operação';
+      if (!porOp.has(op)) porOp.set(op, novo(op));
+      [r, tot, porOp.get(op)].forEach(o => { o[k]++; o.total++; });
+    });
+    fechar(r);
+    r.concluido = _telaoFonte.locks.has(`${c}||${ds}`) || (r.total > 0 && r.pendente === 0);
+    return r;
+  });
+  fechar(tot);
+  return { ds, porTransp, tot, porOp: [...porOp.values()].map(fechar).sort((a, b) => b.total - a.total) };
+}
+function _telaoMontarDados() {
+  const F = _telaoFonte;
+  if (!F.plates) return null; // ainda chegando
+  const hoje = _telao.dia, amanha = _telao.diaAmanha;
+  const progs = [...F.progs.values()];
+  const porData = new Map(progs.map(d => [d.data, d]));
+  const semPerm = e => !!e && /permission/i.test(String(e.code || e.message));
+  return { hoje, amanha, mes: hoje.slice(0, 7),
+    dispHoje: _telaoDisponibilidade(hoje, F.plates), dispAmanha: _telaoDisponibilidade(amanha, F.plates),
+    progHoje: porData.get(hoje) || null, progAmanha: porData.get(amanha) || null,
+    progs, ocorr: [...F.ocorr.values()],
+    semPermProg: semPerm(F.erros.progs), erroOcorr: F.erros.ocorr ? String(F.erros.ocorr.code || F.erros.ocorr.message) : null };
+}
+let _telaoMontarTimer = null;
+function _telaoMarcarMudanca() {
+  _telaoFonte.recebidoEm = Date.now();
+  clearTimeout(_telaoMontarTimer);
+  _telaoMontarTimer = setTimeout(() => {
+    try { const D = _telaoMontarDados(); if (D) { _telao.dados = D; _telao.carregadoEm = Date.now(); } }
+    catch (e) { console.error('[telão]', e); _telao.erro = e.message || String(e); }
+    _telaoPintar();
+  }, 400); // junta várias mudanças seguidas numa repintura só
+}
+function _telaoDesassinar() {
+  (_telao.subs || []).forEach(u => { try { u(); } catch (e) {} });
+  _telao.subs = [];
+}
+function _telaoAssinar() {
+  _telaoDesassinar();
+  const F = _telaoFonte;
+  const hoje = dateStr(0), amanha = dateStr(1), mes = hoje.slice(0, 7), mesAnt = _tlMesAnterior(mes);
+  const ini = new Date(+mesAnt.slice(0, 4), +mesAnt.slice(5, 7) - 1, 1).toISOString();
+  _telao.dia = hoje; _telao.diaAmanha = amanha; _telao.erro = null;
+  F.avail.clear(); F.locks.clear(); F.progs.clear(); F.ocorr.clear(); F.erros = {};
+  const erro = chave => e => {
+    console.error(`[telão] escuta "${chave}" falhou:`, e);
+    F.erros[chave] = e;
+    if (chave === 'plates' || chave === 'avail') _telao.erro = String(e.code || e.message || e);
+    _telaoMarcarMudanca();
+  };
+  _telao.subs = [
+    onSnapshot(doc(db, 'config', 'plates'), s => { F.plates = s.exists() ? (s.data().data || {}) : {}; _telao.erro = null; _telaoMarcarMudanca(); }, erro('plates')),
+    onSnapshot(query(collection(db, 'availability'), where('dateStr', 'in', [hoje, amanha])), s => {
+      F.avail.clear();
+      s.forEach(d => { const x = d.data(); if (x.status) F.avail.set(`${x.carrier}||${x.plate}||${x.dateStr}`, x.status); });
+      _telaoMarcarMudanca();
+    }, erro('avail')),
+    onSnapshot(query(collection(db, 'locks'), where('dateStr', 'in', [hoje, amanha])), s => {
+      F.locks.clear();
+      s.forEach(d => { const x = d.data(); if (x.carrier) F.locks.add(`${x.carrier}||${x.dateStr}`); });
+      _telaoMarcarMudanca();
+    }, erro('locks')),
+    onSnapshot(query(collection(db, 'telao_programacao'), where('mes', 'in', [mes, mesAnt])), s => {
+      F.progs.clear(); s.forEach(d => F.progs.set(d.id, d.data())); delete F.erros.progs; _telaoMarcarMudanca();
+    }, erro('progs')),
+    onSnapshot(query(collection(db, 'devolucoesReentregas'), where('criadoEm', '>=', ini)), s => {
+      F.ocorr.clear(); s.forEach(d => F.ocorr.set(d.id, { id: d.id, ...d.data() })); delete F.erros.ocorr; _telaoMarcarMudanca();
+    }, erro('ocorr')),
+  ];
+}
+// Liga/desliga as escutas conforme o horário e troca de dia (meia-noite).
+function _telaoVerificarEscutas() {
+  const dentro = _telaoDentroDoHorario();
+  if (!dentro && _telao.subs?.length) { _telaoDesassinar(); _telao.dados = null; _telaoPintar(); }
+  else if (dentro && (!_telao.subs?.length || _telao.dia !== dateStr(0))) { _telaoAssinar(); _telaoPintar(); }
+}
+// Agrega dias publicados (do dia 1 até `ateDia`) — base dos painéis do mês.
+function _telaoAgregar(docs, mes, ateDia) {
+  const ds = docs.filter(d => d.mes === mes && d.data && +d.data.slice(8, 10) <= ateDia).sort((a, b) => a.data.localeCompare(b.data));
+  const T = { dias: ds.length, viagens: 0, volume: 0, capacidade: 0, entregas: 0, pedidos: 0, atendidos: 0 };
+  const tr = new Map(), cl = new Map();
+  ds.forEach(d => {
+    const t = d.totais || {};
+    T.viagens += t.viagens || 0; T.volume += t.volume || 0; T.capacidade += t.capacidade || 0; T.entregas += t.entregas || 0;
+    T.pedidos += t.pedidos || 0; T.atendidos += t.pedidosAtendidos || 0;
+    (d.porTransp || []).forEach(x => {
+      if (!tr.has(x.nome)) tr.set(x.nome, { nome: x.nome, viagens: 0, volume: 0, capacidade: 0, entregas: 0 });
+      const o = tr.get(x.nome); o.viagens += x.viagens || 0; o.volume += x.volume || 0; o.capacidade += x.capacidade || 0; o.entregas += x.entregas || 0;
+    });
+    (d.porCliente || []).forEach(c => {
+      if (!cl.has(c.k)) cl.set(c.k, { k: c.k, nome: c.nome, cidade: c.cidade, volume: 0, entregas: 0, dias: 0 });
+      const o = cl.get(c.k); o.volume += c.volume || 0; o.entregas += c.entregas || 0; o.dias++; if (c.nome) o.nome = c.nome;
+    });
+  });
+  const clientes = [...cl.values()].map(c => ({ ...c, drop: c.entregas ? c.volume / c.entregas : 0 })).sort((a, b) => b.volume - a.volume);
+  const temClientes = ds.some(d => Array.isArray(d.porCliente));
+  return { dias: ds, T, transp: [...tr.values()].sort((a, b) => b.volume - a.volume), clientes, temClientes };
+}
+function _telaoOcorrMes(ocorr, mes, ateDia) {
+  return ocorr.filter(r => {
+    const iso = _tlIsoDeBr(r.dataEntregaOriginal) || String(r.criadoEm || '').slice(0, 10);
+    return iso.slice(0, 7) === mes && +iso.slice(8, 10) <= ateDia;
+  });
+}
+
+// ── Peças visuais ────────────────────────────────────────────────────────
+// Variação vs mesmo período do mês anterior. maiorMelhor=false → subir é ruim.
+function _tlDelta(atual, ant, { maiorMelhor = true, pp = false, mesAnt = '' } = {}) {
+  if (atual == null || ant == null || (!pp && !ant)) return `<div class="tl-delta tl-neutro">sem base de comparação</div>`;
+  const v = pp ? atual - ant : (atual - ant) / ant * 100;
+  if (Math.abs(v) < 0.05) return `<div class="tl-delta tl-neutro">= estável vs ${mesAnt}</div>`;
+  const bom = (v > 0) === maiorMelhor;
+  return `<div class="tl-delta" style="color:${bom ? _TL_BOM : _TL_CRITICO}">${v > 0 ? '▲' : '▼'} ${_tlNum(Math.abs(v), 1)}${pp ? ' p.p.' : '%'} <span>vs ${mesAnt} (mesmo período)</span></div>`;
+}
+function _tlKpi(rotulo, valor, { cor = '', sub = '', delta = '' } = {}) {
+  return `<div class="tl-kpi"><div class="tl-kpi-l">${rotulo}</div><div class="tl-kpi-v"${cor ? ` style="color:${cor}"` : ''}>${valor}</div>${delta}${sub ? `<div class="tl-kpi-s">${sub}</div>` : ''}</div>`;
+}
+function _tlPainel(titulo, sub, corpo, extra = '') {
+  return `<section class="tl-panel ${extra}"><header class="tl-panel-h"><h3>${titulo}</h3>${sub ? `<span>${sub}</span>` : ''}</header><div class="tl-panel-b">${corpo}</div></section>`;
+}
+function _tlCorPct(p, meta = META_DISP) { return p == null ? 'var(--tl-t3)' : p >= meta ? _TL_BOM : p >= meta - 15 ? _TL_ATENCAO : _TL_CRITICO; }
+function _tlCorOcup(p) { return p == null ? 'var(--tl-t3)' : p >= 90 ? _TL_BOM : p >= 75 ? _TL_ATENCAO : _TL_CRITICO; }
+// Barra horizontal fina (série única), valor em tinta de texto ao lado.
+function _tlBarra(valor, max, cor = _TL_SERIE) {
+  return `<div class="tl-hbar"><span style="width:${max ? Math.max(0.6, valor / max * 100) : 0}%;background:${cor}"></span></div>`;
+}
+function _tlVazio(titulo, sub, icone = '—') {
+  return `<div class="tl-msg"><div class="tl-msg-i">${icone}</div><div class="tl-msg-t">${titulo}</div>${sub ? `<div class="tl-msg-s">${sub}</div>` : ''}</div>`;
+}
+
+// ── Painéis ──────────────────────────────────────────────────────────────
+function _telaoTelaDisponibilidade(D) {
+  const { tot, porTransp, porOp } = D.dispHoje;
+  const legenda = _TL_ST.map(([, l, c]) => `<span class="tl-leg"><i style="background:${c}"></i>${l}</span>`).join('');
+  const linhas = [...porTransp].sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999) || b.total - a.total).map(r => `
+    <div class="tl-trow">
+      <div class="tl-ell tl-b">${esc(r.nome)}</div>
+      <div class="tl-stack">${_TL_ST.map(([k, , c]) => r[k] ? `<span style="flex:${r[k]};background:${c}" title="${r[k]}"></span>` : '').join('')}</div>
+      <div class="tl-num tl-r tl-big" style="color:${_tlCorPct(r.pct)}">${r.pct == null ? '—' : r.pct + '%'}</div>
+      <div class="tl-num tl-r tl-t3">${r.disponivel} de ${r.total}</div>
+    </div>`).join('');
+  const ops = porOp.slice(0, 8).map(o => `<div class="tl-oprow"><span class="tl-ell">${esc(o.nome)}</span><b class="tl-num" style="color:${_tlCorPct(o.pct)}">${o.pct == null ? '—' : o.pct + '%'}</b><small class="tl-num">${o.disponivel}/${o.total}</small></div>`).join('');
+  const den = tot.preenchidas - tot.folga - tot.programado;
+  return `<div class="tl-grid" style="grid-template-columns:minmax(0,0.9fr) minmax(0,2fr)">
+    <div class="tl-col">
+      <section class="tl-panel tl-hero">
+        <div class="tl-kpi-l">Disponibilidade da frota</div>
+        <div class="tl-hero-v tl-num" style="color:${_tlCorPct(tot.pct)}">${tot.pct == null ? '—' : tot.pct + '%'}</div>
+        <div class="tl-hero-s">Meta <b>${META_DISP}%</b> · ${tot.disponivel} disponíveis de ${den > 0 ? den : 0} escaláveis</div>
+        <div class="tl-hero-n"><span><b class="tl-num">${tot.total}</b> placas ativas</span><span><b class="tl-num">${tot.folga + tot.programado}</b> folga/em viagem</span><span><b class="tl-num" style="color:${tot.pendente ? _TL_ATENCAO : 'inherit'}">${tot.pendente}</b> sem resposta</span></div>
+      </section>
+      ${_tlPainel('Por operação', 'disponíveis / placas', ops, 'tl-grow')}
+    </div>
+    ${_tlPainel('Por transportadora', 'pior resultado primeiro · % sobre placas escaláveis (sem folga e em viagem)', `<div class="tl-legenda">${legenda}</div>${linhas || '<div class="tl-t3">Sem placas cadastradas</div>'}`)}
+  </div>`;
+}
+function _telaoTelaPreenchimento(D) {
+  const { porTransp, tot } = D.dispAmanha;
+  const corte = new Date(); corte.setHours(ALERT_CUTOFF_HOUR, 0, 0, 0);
+  const falta = corte.getTime() - Date.now(), passou = falta <= 0;
+  const h = Math.floor(Math.abs(falta) / 3600000), m = Math.floor(Math.abs(falta) % 3600000 / 60000);
+  const concl = porTransp.filter(r => r.concluido).length;
+  const pctPlacas = tot.total ? Math.round(tot.preenchidas / tot.total * 100) : 0;
+  const cards = [...porTransp].sort((a, b) => Number(a.concluido) - Number(b.concluido) || (a.preenchidas / (a.total || 1)) - (b.preenchidas / (b.total || 1))).map(r => {
+    const pct = r.total ? Math.round(r.preenchidas / r.total * 100) : 0;
+    const est = r.concluido ? ['Concluído', _TL_BOM, '✓']
+      : r.preenchidas === 0 ? [passou ? 'Não preencheu' : 'Não iniciado', passou ? _TL_CRITICO : h < 2 ? _TL_ATENCAO : 'var(--tl-t3)', passou ? '✕' : '○']
+      : [`Em andamento · ${r.preenchidas}/${r.total}`, passou ? _TL_CRITICO : _TL_ATENCAO, '▸'];
+    return `<div class="tl-card${r.concluido ? ' tl-card-ok' : ''}">
+      <div class="tl-card-h"><span class="tl-ell tl-b">${esc(r.nome)}</span><span class="tl-num tl-t3">${r.total} placas</span></div>
+      <div class="tl-card-st" style="color:${est[1]}">${est[2]} ${est[0]}</div>
+      <div class="tl-hbar tl-hbar-full"><span style="width:${pct}%;background:${est[1]}"></span></div>
+    </div>`;
+  }).join('');
+  return `<div class="tl-col">
+    <div class="tl-kpis">
+      ${_tlKpi('Transportadoras concluídas', `${concl}<small> de ${porTransp.length}</small>`, { cor: concl === porTransp.length ? _TL_BOM : '' })}
+      ${_tlKpi('Placas com status informado', `${pctPlacas}<small>%</small>`, { sub: `${tot.preenchidas} de ${tot.total} placas` })}
+      ${_tlKpi('Horário de corte', `${String(ALERT_CUTOFF_HOUR).padStart(2, '0')}:00`, { sub: 'hoje, para a frota de amanhã' })}
+      ${_tlKpi(passou ? 'Corte encerrado há' : 'Tempo até o corte', `${h}<small>h</small> ${String(m).padStart(2, '0')}<small>min</small>`, { cor: passou ? (concl < porTransp.length ? _TL_CRITICO : _TL_BOM) : (h < 2 ? _TL_ATENCAO : '') })}
+    </div>
+    <div class="tl-cards">${cards || '<div class="tl-t3">Sem transportadoras ativas</div>'}</div>
+  </div>`;
+}
+function _telaoStatusViagem(v, agora) {
+  if (agora < v.ini) return ['Aguardando', 'var(--tl-t3)', 1];
+  if (agora < v.fim) return ['Em viagem', _TL_SERIE, 0];
+  return ['Concluída', _TL_BOM, 2];
+}
+function _telaoKpisProg(P) {
+  const t = P.totais || {};
+  const ocup = _tlPct(t.volume, t.capacidade), atend = _tlPct(t.pedidosAtendidos, t.pedidos), cob = _tlPct(t.volume, t.demanda);
+  return `<div class="tl-kpis">
+    ${_tlKpi('Viagens', _tlNum(t.viagens), { sub: `${_tlNum(t.placas)} placas · ${P.programacoes || 1} programação(ões)` })}
+    ${_tlKpi('Volume programado', `${_tlNum(t.volume)}<small> m³</small>`, { sub: t.demanda ? `${_tlNum(cob, 0)}% da demanda de ${_tlNum(t.demanda)} m³` : '' })}
+    ${_tlKpi('Pedidos atendidos', `${_tlNum(t.pedidosAtendidos)}<small> de ${_tlNum(t.pedidos)}</small>`, { cor: atend == null ? '' : atend >= 100 ? _TL_BOM : atend >= 95 ? _TL_ATENCAO : _TL_CRITICO, sub: atend == null ? '' : `${_tlNum(atend, 1)}% de atendimento` })}
+    ${_tlKpi('Entregas', _tlNum(t.entregas), { sub: t.viagens ? `${_tlNum(t.entregas / t.viagens, 1)} por viagem · ${_tlNum(t.volume / (t.entregas || 1), 1)} m³ por entrega` : '' })}
+    ${_tlKpi('Ocupação média', ocup == null ? '—' : `${_tlNum(ocup, 0)}<small>%</small>`, { cor: _tlCorOcup(ocup), sub: `${_tlNum(t.volume)} de ${_tlNum(t.capacidade)} m³ de capacidade` })}
+  </div>`;
+}
+function _telaoSemProg(D, quando, iso) {
+  return _tlVazio(`Programação de ${quando} (${_tlDataBr(iso)}) ainda não publicada`,
+    D.semPermProg ? 'O Firestore recusou a leitura — falta o trecho de regras do telão no firestore.rules.' : 'Aparece aqui sozinha quando a programação for salva (ou ao clicar em “📺 Atualizar telão” no Resumo Operação).', '◷');
+}
+function _telaoTelaHoje(D) {
+  const P = D.progHoje;
+  if (!P) return _telaoSemProg(D, 'hoje', D.hoje);
+  const agora = Date.now();
+  const vs = (P.viagens || []).map(v => ({ ...v, st: _telaoStatusViagem(v, agora) }));
+  const cont = [0, 0, 0]; vs.forEach(v => cont[v.st[2]]++);
+  const lista = vs.filter(v => v.st[2] !== 2).sort((a, b) => a.st[2] - b.st[2] || a.ini - b.ini);
+  const MAX = 11;
+  const linhas = lista.slice(0, MAX).map(v => `<tr>
+      <td class="tl-num">${_tlHora(v.ini)}</td><td class="tl-num tl-b">${esc(v.placa)}</td><td class="tl-ell" style="max-width:13em">${esc(v.transp)}</td>
+      <td class="tl-ell" style="max-width:12em">${esc(v.base)}</td><td class="tl-ell tl-t2" style="max-width:20em">${esc((v.cidades || []).join(' · '))}</td>
+      <td class="tl-r tl-num">${v.entregas}</td><td class="tl-r tl-num">${_tlNum(v.volume)} m³</td><td class="tl-r tl-num tl-t2">${v.cap ? _tlNum(v.volume / v.cap * 100) + '%' : '—'}</td>
+      <td class="tl-num">${_tlHora(v.fim)}</td><td><span class="tl-tag" style="color:${v.st[1]}"><i style="background:${v.st[1]}"></i>${v.st[0]}</span></td>
+    </tr>`).join('');
+  const prog = vs.length ? cont[2] / vs.length * 100 : 0;
+  return `<div class="tl-col">
+    ${_telaoKpisProg(P)}
+    ${_tlPainel('Quadro de viagens', `<b class="tl-num" style="color:${_TL_SERIE}">${cont[0]}</b> em viagem · <b class="tl-num">${cont[1]}</b> aguardando · <b class="tl-num" style="color:${_TL_BOM}">${cont[2]}</b> concluídas · status pelo horário previsto da programação`,
+      `<div class="tl-hbar tl-hbar-full" style="margin-bottom:.8vw"><span style="width:${prog}%;background:${_TL_BOM}"></span></div>
+      ${lista.length ? `<table class="tl-tab"><thead><tr><th>Carga</th><th>Placa</th><th>Transportadora</th><th>Base</th><th>Destinos</th><th class="tl-r">Entr.</th><th class="tl-r">Volume</th><th class="tl-r">Ocup.</th><th>Fim prev.</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table>
+      ${lista.length > MAX ? `<div class="tl-rodape-p">+ ${lista.length - MAX} viagem(ns) aguardando na sequência</div>` : ''}`
+      : `<div class="tl-t2" style="color:${_TL_BOM}">✓ Todas as viagens de hoje já passaram do horário previsto de término.</div>`}`, 'tl-grow')}
+  </div>`;
+}
+function _telaoTelaAmanha(D) {
+  const P = D.progAmanha;
+  if (!P) return _telaoSemProg(D, 'amanhã', D.amanha);
+  const bases = (P.porBase || []);
+  const maxV = Math.max(...bases.map(b => b.volume), 1);
+  const bHtml = bases.map(b => {
+    const oc = _tlPct(b.volume, b.capacidade);
+    return `<tr><td class="tl-b tl-ell" style="max-width:14em">${esc(b.nome)}</td><td style="width:30%">${_tlBarra(b.volume, maxV)}</td><td class="tl-r tl-num">${_tlNum(b.volume)} m³</td><td class="tl-r tl-num">${b.viagens}</td><td class="tl-r tl-num">${b.placas}</td><td class="tl-r tl-num">${b.entregas}</td><td class="tl-r tl-num" style="color:${_tlCorOcup(oc)}">${oc == null ? '—' : _tlNum(oc) + '%'}</td></tr>`;
+  }).join('');
+  const na = P.naoAtendidos || [];
+  const volNa = na.reduce((s, p) => s + (p.volume || 0), 0);
+  const naHtml = na.length
+    ? na.slice(0, 8).map(p => `<div class="tl-li"><div><div class="tl-ell tl-b">${esc(p.cliente)}</div><small>${esc(p.cidade)}${p.base ? ' · ' + esc(p.base) : ''}</small></div><b class="tl-num" style="color:${_TL_ATENCAO}">${_tlNum(p.volume)} m³</b></div>`).join('') + (na.length > 8 ? `<div class="tl-rodape-p">+ ${na.length - 8} pedido(s)</div>` : '')
+    : `<div style="color:${_TL_BOM}">✓ Todos os pedidos de amanhã estão programados.</div>`;
+  return `<div class="tl-col">
+    ${_telaoKpisProg(P)}
+    <div class="tl-grid tl-grow" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+      ${_tlPainel('Carregamento por base', 'volume programado, viagens, placas, entregas e ocupação',
+        `<table class="tl-tab"><thead><tr><th>Base</th><th></th><th class="tl-r">Volume</th><th class="tl-r">Viagens</th><th class="tl-r">Placas</th><th class="tl-r">Entregas</th><th class="tl-r">Ocup.</th></tr></thead><tbody>${bHtml}</tbody></table>`)}
+      ${_tlPainel('Pedidos sem programação', na.length ? `<b style="color:${_TL_CRITICO}">${na.length}</b> pedido(s) · ${_tlNum(volNa)} m³` : '', naHtml)}
+    </div>
+  </div>`;
+}
+function _telaoTelaMes(D) {
+  const dia = +D.hoje.slice(8, 10), mesAnt = _tlMesAnterior(D.mes), mA = _tlMesCurto(mesAnt);
+  const A = _telaoAgregar(D.progs, D.mes, dia), B = _telaoAgregar(D.progs, mesAnt, dia);
+  if (!A.dias.length) return _tlVazio('Ainda não há dias deste mês publicados no telão', 'Clique em “📺 Atualizar telão” no Resumo Operação para publicar o mês.', '◷');
+  const ocA = _tlPct(A.T.volume, A.T.capacidade), ocB = _tlPct(B.T.volume, B.T.capacidade);
+  const atA = _tlPct(A.T.atendidos, A.T.pedidos), atB = _tlPct(B.T.atendidos, B.T.pedidos);
+  const temB = B.dias.length > 0;
+  const dl = (a, b, o = {}) => temB ? _tlDelta(a, b, { ...o, mesAnt: mA }) : '';
+  const vols = A.dias.map(d => d.totais?.volume || 0);
+  const maxVol = Math.max(...vols, 1), media = vols.reduce((s, v) => s + v, 0) / vols.length;
+  // Valor em cima de cada barra (pedido da operação). Com muitos dias no mês
+  // a fonte diminui um pouco pra não encostar um rótulo no outro.
+  const rotFonte = A.dias.length > 22 ? '.62em' : A.dias.length > 16 ? '.7em' : '.78em';
+  const barras = A.dias.map((d, i) => {
+    const v = d.totais?.volume || 0;
+    const rot = `<div class="tl-vb-v tl-num" style="font-size:${rotFonte}">${_tlNum(v)}</div>`;
+    return `<div class="tl-vb"><div class="tl-vb-b" style="height:${Math.max(1, v / maxVol * 100)}%">${rot}</div><div class="tl-vb-d">${d.data.slice(8, 10)}<small>${_tlDiaSemana(d.data).slice(0, 3)}</small></div></div>`;
+  }).join('');
+  const maxT = Math.max(...A.transp.map(t => t.volume), 1);
+  const rank = A.transp.slice(0, 10).map((t, i) => {
+    const oc = _tlPct(t.volume, t.capacidade), part = _tlPct(t.volume, A.T.volume);
+    return `<tr><td class="tl-num tl-t3">${i + 1}</td><td class="tl-b tl-ell" style="max-width:13em">${esc(t.nome)}</td><td style="width:22%">${_tlBarra(t.volume, maxT)}</td><td class="tl-r tl-num">${_tlNum(t.volume)}</td><td class="tl-r tl-num tl-t2">${_tlNum(part, 1)}%</td><td class="tl-r tl-num">${_tlNum(t.viagens)}</td><td class="tl-r tl-num">${t.entregas ? _tlNum(t.volume / t.entregas, 1) : '—'}</td><td class="tl-r tl-num" style="color:${_tlCorOcup(oc)}">${oc == null ? '—' : _tlNum(oc) + '%'}</td></tr>`;
+  }).join('');
+  return `<div class="tl-col">
+    <div class="tl-kpis">
+      ${_tlKpi('Viagens', _tlNum(A.T.viagens), { delta: dl(A.T.viagens, B.T.viagens), sub: `${A.T.dias} dia(s) de entrega` })}
+      ${_tlKpi('Volume programado', `${_tlNum(A.T.volume)}<small> m³</small>`, { delta: dl(A.T.volume, B.T.volume), sub: `média de ${_tlNum(A.T.volume / A.T.dias)} m³/dia` })}
+      ${_tlKpi('Entregas', _tlNum(A.T.entregas), { delta: dl(A.T.entregas, B.T.entregas), sub: `${_tlNum(A.T.entregas / (A.T.viagens || 1), 2)} entregas por viagem` })}
+      ${_tlKpi('Ocupação média', ocA == null ? '—' : `${_tlNum(ocA, 1)}<small>%</small>`, { cor: _tlCorOcup(ocA), delta: dl(ocA, ocB, { pp: true }) })}
+      ${_tlKpi('Atendimento de pedidos', atA == null ? '—' : `${_tlNum(atA, 1)}<small>%</small>`, { cor: atA == null ? '' : atA >= 98 ? _TL_BOM : atA >= 95 ? _TL_ATENCAO : _TL_CRITICO, delta: dl(atA, atB, { pp: true }), sub: `${_tlNum(A.T.atendidos)} de ${_tlNum(A.T.pedidos)} pedidos` })}
+    </div>
+    <div class="tl-grid tl-grow" style="grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)">
+      ${_tlPainel('Volume programado por dia de entrega', `m³ · linha = média de ${_tlNum(media)} m³/dia`,
+        `<div class="tl-vbars"><div class="tl-vb-area"><div class="tl-vb-media" style="bottom:${media / maxVol * 100}%"></div>${barras}</div></div>`)}
+      ${_tlPainel('Transportadoras', 'volume (m³), participação, viagens, m³ por entrega e ocupação',
+        `<table class="tl-tab"><thead><tr><th>#</th><th>Transportadora</th><th></th><th class="tl-r">Volume</th><th class="tl-r">Part.</th><th class="tl-r">Viagens</th><th class="tl-r">m³/entr.</th><th class="tl-r">Ocup.</th></tr></thead><tbody>${rank}</tbody></table>`)}
+    </div>
+  </div>`;
+}
+const _TL_FAIXAS_DROP = [[0, 5, 'até 5'], [5, 10, '5–10'], [10, 15, '10–15'], [15, 20, '15–20'], [20, 30, '20–30'], [30, Infinity, '30+']];
+function _telaoTelaClientes(D) {
+  const dia = +D.hoje.slice(8, 10), mesAnt = _tlMesAnterior(D.mes), mA = _tlMesCurto(mesAnt);
+  const A = _telaoAgregar(D.progs, D.mes, dia), B = _telaoAgregar(D.progs, mesAnt, dia);
+  if (!A.dias.length) return _tlVazio('Ainda não há dias deste mês publicados no telão', 'Clique em “📺 Atualizar telão” no Resumo Operação para publicar o mês.', '◷');
+  if (!A.temClientes) return _tlVazio('Os dias publicados ainda não têm o detalhe por cliente', 'Clique uma vez em “📺 Atualizar telão” no Resumo Operação para republicar o mês com os dados de cliente.', '◷');
+  const cA = A.clientes, cB = B.clientes, temB = B.temClientes && cB.length > 0;
+  const dropCarteira = l => l.length ? l.reduce((s, c) => s + c.drop, 0) / l.length : null; // média simples por cliente
+  const top10 = l => { const t = l.slice(0, 10).reduce((s, c) => s + c.volume, 0); const tot = l.reduce((s, c) => s + c.volume, 0); return tot ? t / tot * 100 : null; };
+  const dropOp = (A.T.volume / (A.T.entregas || 1)), dropOpB = B.T.entregas ? B.T.volume / B.T.entregas : null;
+  const dl = (a, b, o = {}) => temB ? _tlDelta(a, b, { ...o, mesAnt: mA }) : '';
+  const maxV = Math.max(...cA.slice(0, 11).map(c => c.volume), 1);
+  const linhas = cA.slice(0, 11).map((c, i) => `<tr>
+      <td class="tl-num tl-t3">${i + 1}</td>
+      <td><div class="tl-ell tl-b" style="max-width:19em">${esc(c.nome)}</div><small class="tl-t3">${esc(c.cidade)}</small></td>
+      <td style="width:26%">${_tlBarra(c.volume, maxV)}</td>
+      <td class="tl-r tl-num tl-b">${_tlNum(c.volume)}</td><td class="tl-r tl-num tl-t2">${_tlNum(c.volume / (A.T.volume || 1) * 100, 1)}%</td>
+      <td class="tl-r tl-num">${c.entregas}</td><td class="tl-r tl-num">${_tlNum(c.drop, 1)}</td></tr>`).join('');
+  const comBase = cA.filter(c => c.entregas >= 3);
+  const faixas = _TL_FAIXAS_DROP.map(([a, b, l]) => ({ l, n: cA.filter(c => c.drop >= a && c.drop < b).length }));
+  const maxF = Math.max(...faixas.map(f => f.n), 1);
+  const hist = faixas.map(f => `<div class="tl-vb"><div class="tl-vb-b" style="height:${Math.max(1, f.n / maxF * 100)}%"><div class="tl-vb-v tl-num">${f.n}</div></div><div class="tl-vb-d">${f.l} m³</div></div>`).join('');
+  const menores = [...comBase].sort((a, b) => a.drop - b.drop).slice(0, 5).map(c => `<div class="tl-li"><div><div class="tl-ell tl-b">${esc(c.nome)}</div><small>${esc(c.cidade)} · ${c.entregas} entregas · ${_tlNum(c.volume)} m³</small></div><b class="tl-num" style="color:${_TL_ATENCAO}">${_tlNum(c.drop, 1)} m³</b></div>`).join('');
+  return `<div class="tl-col">
+    <div class="tl-kpis">
+      ${_tlKpi('Clientes atendidos', _tlNum(cA.length), { delta: dl(cA.length, cB.length) })}
+      ${_tlKpi('Drop médio por cliente', `${_tlNum(dropCarteira(cA), 1)}<small> m³</small>`, { delta: dl(dropCarteira(cA), dropCarteira(cB)), sub: 'média do m³/entrega de cada cliente' })}
+      ${_tlKpi('Drop operacional', `${_tlNum(dropOp, 1)}<small> m³</small>`, { delta: dl(dropOp, dropOpB), sub: 'volume total ÷ entregas' })}
+      ${_tlKpi('Concentração top 10', `${_tlNum(top10(cA), 1)}<small>%</small>`, { sub: 'do volume do mês nos 10 maiores clientes' })}
+      ${_tlKpi('Entregas por cliente', _tlNum(A.T.entregas / (cA.length || 1), 1), { sub: `${_tlNum(A.T.entregas)} entregas no mês` })}
+    </div>
+    <div class="tl-grid tl-grow" style="grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)">
+      ${_tlPainel('Maiores clientes por volume', 'm³ no mês, participação, entregas e drop (m³ por entrega)',
+        `<table class="tl-tab tl-tab-c"><thead><tr><th>#</th><th>Cliente</th><th></th><th class="tl-r">m³</th><th class="tl-r">Part.</th><th class="tl-r">Entr.</th><th class="tl-r">Drop</th></tr></thead><tbody>${linhas}</tbody></table>`)}
+      <div class="tl-col">
+        ${_tlPainel('Distribuição do drop por cliente', 'nº de clientes por faixa de m³/entrega', `<div class="tl-vbars tl-vbars-s"><div class="tl-vb-area">${hist}</div></div>`, 'tl-grow')}
+        ${_tlPainel('Menor drop do mês', 'clientes com 3+ entregas · oportunidade de consolidar pedidos', menores || '<div class="tl-t3">Nenhum cliente com 3 ou mais entregas ainda.</div>')}
+      </div>
+    </div>
+  </div>`;
+}
+function _telaoTelaOcorrencias(D) {
+  const dia = +D.hoje.slice(8, 10), mesAnt = _tlMesAnterior(D.mes), mA = _tlMesCurto(mesAnt);
+  if (D.erroOcorr) return _tlVazio('Não consegui ler as ocorrências', esc(D.erroOcorr), '!');
+  const oA = _telaoOcorrMes(D.ocorr, D.mes, dia), oB = _telaoOcorrMes(D.ocorr, mesAnt, dia);
+  const A = _telaoAgregar(D.progs, D.mes, dia), B = _telaoAgregar(D.progs, mesAnt, dia);
+  const temB = B.dias.length > 0 || oB.length > 0;
+  const dl = (a, b, o = {}) => temB ? _tlDelta(a, b, { maiorMelhor: false, ...o, mesAnt: mA }) : '';
+  const idx = (o, T) => T.entregas ? o.length / T.entregas * 100 : null;
+  const iA = idx(oA, A.T), iB = idx(oB, B.T);
+  const conta = (l, f) => l.filter(f).length;
+  const dev = r => r.tipo === 'devolucao_total' || r.tipo === 'devolucao_parcial';
+  const volA = oA.reduce((s, r) => s + (Number(r.volumeAfetadoM3) || 0), 0), volB = oB.reduce((s, r) => s + (Number(r.volumeAfetadoM3) || 0), 0);
+  if (!oA.length) {
+    return `<div class="tl-col">
+      <div class="tl-kpis">${_tlKpi('Ocorrências no mês', '0', { cor: _TL_BOM, delta: dl(0, oB.length) })}${_tlKpi('Índice de ocorrências', `0<small>%</small>`, { cor: _TL_BOM, sub: `sobre ${_tlNum(A.T.entregas)} entregas` })}</div>
+      ${_tlVazio('Nenhuma devolução ou reentrega registrada neste mês', 'Ocorrências registradas no Histórico (↩️ Devolução / 🔁 Reentrega) aparecem aqui.', '✓')}</div>`;
+  }
+  // Por motivo (top 7 + Outros)
+  const mot = new Map(); oA.forEach(r => { const k = (r.motivo || 'Não informado').trim(); mot.set(k, (mot.get(k) || 0) + 1); });
+  let motL = [...mot.entries()].sort((a, b) => b[1] - a[1]);
+  if (motL.length > 7) motL = [...motL.slice(0, 6), ['Outros', motL.slice(6).reduce((s, x) => s + x[1], 0)]];
+  const maxM = Math.max(...motL.map(x => x[1]), 1);
+  const motHtml = motL.map(([k, n]) => `<div class="tl-brow"><div class="tl-ell">${esc(k)}</div>${_tlBarra(n, maxM)}<b class="tl-num tl-r">${n}</b><small class="tl-num tl-r tl-t3">${_tlNum(n / oA.length * 100)}%</small></div>`).join('');
+  // Por transportadora: ocorrências, índice sobre as entregas dela no mês, volume afetado
+  const trE = new Map(A.transp.map(t => [t.nome, t.entregas]));
+  const trO = new Map(); oA.forEach(r => { const k = r.transportadora || '—'; if (!trO.has(k)) trO.set(k, { n: 0, vol: 0 }); const o = trO.get(k); o.n++; o.vol += Number(r.volumeAfetadoM3) || 0; });
+  const trHtml = [...trO.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 8).map(([k, o]) => {
+    const e = trE.get(k), ix = e ? o.n / e * 100 : null;
+    return `<tr><td class="tl-b tl-ell" style="max-width:13em">${esc(k)}</td><td class="tl-r tl-num">${o.n}</td><td class="tl-r tl-num" style="color:${ix == null ? 'var(--tl-t3)' : ix <= 1 ? _TL_BOM : ix <= 3 ? _TL_ATENCAO : _TL_CRITICO}">${ix == null ? '—' : _tlNum(ix, 1) + '%'}</td><td class="tl-r tl-num tl-t2">${_tlNum(o.vol, 1)} m³</td></tr>`;
+  }).join('');
+  const tipos = Object.entries(_TL_TIPO).map(([k, [l, c]]) => ({ l, c, n: conta(oA, r => r.tipo === k) })).filter(t => t.n);
+  const tipoBar = `<div class="tl-stack tl-stack-l">${tipos.map(t => `<span style="flex:${t.n};background:${t.c}"></span>`).join('')}</div><div class="tl-legenda" style="margin:.6vw 0 0">${tipos.map(t => `<span class="tl-leg"><i style="background:${t.c}"></i>${t.l} <b class="tl-num">${t.n}</b></span>`).join('')}</div>`;
+  const recentes = [...oA].sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm))).slice(0, 8).map(r => {
+    const [l, c] = _TL_TIPO[r.tipo] || ['Ocorrência', 'var(--tl-t3)'];
+    return `<div class="tl-li"><div><div class="tl-ell tl-b">${esc(r.cliente || '—')}</div><small><span style="color:${c}">●</span> ${l} · ${esc(r.motivo || '—')} · ${esc(r.transportadora || '')}</small></div><span class="tl-num tl-t2">${esc((r.dataEntregaOriginal || '').slice(0, 5))}</span></div>`;
+  }).join('');
+  return `<div class="tl-col">
+    <div class="tl-kpis">
+      ${_tlKpi('Ocorrências no mês', _tlNum(oA.length), { delta: dl(oA.length, oB.length) })}
+      ${_tlKpi('Índice de ocorrências', iA == null ? '—' : `${_tlNum(iA, 2)}<small>%</small>`, { cor: iA == null ? '' : iA <= 1 ? _TL_BOM : iA <= 3 ? _TL_ATENCAO : _TL_CRITICO, delta: iB == null ? '' : dl(iA, iB, { pp: true }), sub: `sobre ${_tlNum(A.T.entregas)} entregas programadas` })}
+      ${_tlKpi('Devoluções', _tlNum(conta(oA, dev)), { sub: `${conta(oA, r => r.tipo === 'devolucao_total')} totais · ${conta(oA, r => r.tipo === 'devolucao_parcial')} parciais`, delta: dl(conta(oA, dev), conta(oB, dev)) })}
+      ${_tlKpi('Reentregas', _tlNum(conta(oA, r => r.tipo === 'reentrega')), { delta: dl(conta(oA, r => r.tipo === 'reentrega'), conta(oB, r => r.tipo === 'reentrega')) })}
+      ${_tlKpi('Volume afetado', `${_tlNum(volA, 1)}<small> m³</small>`, { delta: dl(volA, volB), sub: A.T.volume ? `${_tlNum(volA / A.T.volume * 100, 2)}% do volume do mês` : '' })}
+    </div>
+    <div class="tl-grid tl-grow" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)">
+      <div class="tl-col">
+        ${_tlPainel('Por tipo', `${oA.length} ocorrência(s)`, tipoBar)}
+        ${_tlPainel('Por motivo', 'quantidade e % do total', motHtml, 'tl-grow')}
+      </div>
+      ${_tlPainel('Por transportadora', 'índice = ocorrências ÷ entregas da transportadora no mês',
+        `<table class="tl-tab"><thead><tr><th>Transportadora</th><th class="tl-r">Ocorr.</th><th class="tl-r">Índice</th><th class="tl-r">Volume</th></tr></thead><tbody>${trHtml}</tbody></table>`)}
+      ${_tlPainel('Registros mais recentes', 'data de entrega original', recentes)}
+    </div>
+  </div>`;
+}
+const _TELAO_TELAS = [
+  { nome: 'Frota hoje', kicker: 'Frota', titulo: D => `Disponibilidade · hoje, ${_tlDataBr(D.hoje)}`, render: _telaoTelaDisponibilidade },
+  { nome: 'Preenchimento', kicker: 'Frota', titulo: D => `Preenchimento de amanhã · ${_tlDiaSemana(D.amanha)}, ${_tlDataBr(D.amanha)}`, render: _telaoTelaPreenchimento },
+  { nome: 'Entregas hoje', kicker: 'Programação', titulo: D => `Entregas de hoje · ${_tlDataBr(D.hoje)}`, render: _telaoTelaHoje },
+  { nome: 'Entregas amanhã', kicker: 'Programação', titulo: D => `Entregas de amanhã · ${_tlDiaSemana(D.amanha)}, ${_tlDataBr(D.amanha)}`, render: _telaoTelaAmanha },
+  { nome: 'Mês', kicker: 'Desempenho do mês', titulo: D => `${_TL_MESES[+D.mes.slice(5, 7) - 1][0].toUpperCase() + _TL_MESES[+D.mes.slice(5, 7) - 1].slice(1)} de ${D.mes.slice(0, 4)} · até ${_tlDataBr(D.hoje)}`, render: _telaoTelaMes },
+  { nome: 'Clientes', kicker: 'Clientes', titulo: D => `Volume e drop por cliente · ${_TL_MESES[+D.mes.slice(5, 7) - 1]}`, render: _telaoTelaClientes },
+  { nome: 'Ocorrências', kicker: 'Qualidade', titulo: D => `Devoluções e reentregas · ${_TL_MESES[+D.mes.slice(5, 7) - 1]}`, render: _telaoTelaOcorrencias },
+];
+
+const TELAO_CSS = `
+#telao-root{--tl-bg:#0c1210;--tl-s1:#131b17;--tl-s2:#18221d;--tl-bd:#223029;--tl-grid:#1c2721;--tl-t1:#eef2ee;--tl-t2:#b4c0b8;--tl-t3:#7d8a82;--tl-acc:#b8e04a;
+  position:fixed;inset:0;z-index:99999;background:var(--tl-bg);color:var(--tl-t1);font-family:'Segoe UI',Inter,system-ui,sans-serif;display:flex;flex-direction:column;
+  padding:1.4vw 1.8vw 1vw;gap:1vw;overflow:hidden;font-size:clamp(11px,0.94vw,24px);line-height:1.3;cursor:none;-webkit-font-smoothing:antialiased}
+#telao-root.tl-mouse{cursor:default}
+#telao-root *{box-sizing:border-box}
+#telao-root small{font-size:.82em}
+.tl-num{font-variant-numeric:tabular-nums}
+.tl-b{font-weight:600}.tl-r{text-align:right}.tl-t2{color:var(--tl-t2)}.tl-t3{color:var(--tl-t3)}
+.tl-ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-top{display:flex;align-items:flex-end;gap:2vw;padding-bottom:1vw;border-bottom:1px solid var(--tl-bd)}
+.tl-marca{display:flex;flex-direction:column;gap:.15em;padding-right:2vw;border-right:1px solid var(--tl-bd)}
+.tl-marca b{font-weight:800;letter-spacing:.2em;color:var(--tl-acc);font-size:1.2em}
+.tl-marca span{color:var(--tl-t3);font-size:.78em;letter-spacing:.14em;text-transform:uppercase}
+.tl-tit{flex:1;min-width:0}
+.tl-kicker{color:var(--tl-acc);font-size:.8em;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.tl-titulo{font-size:1.9em;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.1em}
+.tl-relogio{text-align:right;line-height:1}
+.tl-relogio b{display:block;font-size:2.5em;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tl-relogio span{color:var(--tl-t3);font-size:.85em}
+.tl-corpo{flex:1;min-height:0;display:flex;flex-direction:column}
+.tl-col{display:flex;flex-direction:column;gap:1vw;flex:1;min-height:0;min-width:0}
+.tl-grow{flex:1;min-height:0}
+.tl-grid{display:grid;gap:1vw;flex:1;min-height:0}
+.tl-panel{background:var(--tl-s1);border:1px solid var(--tl-bd);border-radius:.6vw;padding:1vw 1.2vw;overflow:hidden;display:flex;flex-direction:column;min-height:0;min-width:0}
+.tl-panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:1vw;margin-bottom:.8vw}
+.tl-panel-h h3{margin:0;font-size:.86em;font-weight:700;color:var(--tl-t2);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+.tl-panel-h span{color:var(--tl-t3);font-size:.82em;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-panel-b{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.tl-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:1vw}
+.tl-kpi{background:var(--tl-s1);border:1px solid var(--tl-bd);border-radius:.6vw;padding:.9vw 1.2vw 1vw;min-width:0}
+.tl-kpi-l{color:var(--tl-t2);font-size:.8em;font-weight:700;text-transform:uppercase;letter-spacing:.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-kpi-v{font-size:3em;font-weight:600;letter-spacing:-.03em;line-height:1.08;margin-top:.15em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tl-kpi-v small{font-size:.42em;font-weight:500;color:var(--tl-t3);letter-spacing:0;margin-left:.15em}
+.tl-kpi-s{color:var(--tl-t3);font-size:.84em;margin-top:.25em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-delta{font-size:.86em;font-weight:700;margin-top:.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-delta span{font-weight:400;color:var(--tl-t3)}
+.tl-delta.tl-neutro{color:var(--tl-t3);font-weight:400}
+.tl-hero{justify-content:center;padding:1.6vw 1.8vw}
+.tl-hero-v{font-size:7.4em;font-weight:600;line-height:.95;letter-spacing:-.045em;margin:.15em 0 .1em}
+.tl-hero-s{color:var(--tl-t2);font-size:1.05em}
+.tl-hero-n{display:flex;flex-wrap:wrap;gap:.4vw 1.6vw;margin-top:1.2vw;padding-top:1vw;border-top:1px solid var(--tl-grid);color:var(--tl-t3)}
+.tl-hero-n b{color:var(--tl-t1);font-size:1.25em;font-weight:600;margin-right:.25em}
+.tl-oprow{display:grid;grid-template-columns:1fr 3.4em 3.6em;gap:.8vw;align-items:baseline;padding:.42vw 0;border-bottom:1px solid var(--tl-grid)}
+.tl-oprow:last-child{border-bottom:0}
+.tl-oprow b{text-align:right;font-weight:700}.tl-oprow small{text-align:right;color:var(--tl-t3)}
+.tl-legenda{display:flex;flex-wrap:wrap;gap:.4vw 1.4vw;margin-bottom:.9vw}
+.tl-leg{display:inline-flex;align-items:center;gap:.45em;color:var(--tl-t2);font-size:.86em}
+.tl-leg i{width:.75em;height:.75em;border-radius:2px;display:inline-block}
+.tl-leg b{color:var(--tl-t1);margin-left:.2em}
+.tl-trow{display:grid;grid-template-columns:13em 1fr 3.8em 5.2em;align-items:center;gap:1vw;padding:.52vw 0;border-bottom:1px solid var(--tl-grid)}
+.tl-trow:last-child{border-bottom:0}
+.tl-big{font-size:1.3em;font-weight:700}
+.tl-stack{display:flex;height:.9em;gap:2px;border-radius:4px;overflow:hidden}
+.tl-stack span{display:block;height:100%}
+.tl-stack-l{height:1.4em}
+.tl-hbar{height:.62em;border-radius:0 4px 4px 0;overflow:hidden}
+.tl-hbar span{display:block;height:100%;border-radius:0 4px 4px 0}
+.tl-hbar-full{background:var(--tl-grid);border-radius:4px}.tl-hbar-full span{border-radius:4px}
+.tl-brow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 2.4em 3em;gap:.8vw;align-items:center;padding:.38vw 0}
+.tl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(20em,1fr));gap:.9vw;align-content:start;flex:1;min-height:0;overflow:hidden}
+.tl-card{background:var(--tl-s1);border:1px solid var(--tl-bd);border-radius:.6vw;padding:.95vw 1.2vw}
+.tl-card-ok{opacity:.78}
+.tl-card-h{display:flex;justify-content:space-between;gap:1vw;font-size:1.05em}
+.tl-card-st{font-weight:700;font-size:1.25em;margin:.5vw 0 .7vw}
+.tl-tab{width:100%;border-collapse:collapse}
+.tl-tab th{text-align:left;color:var(--tl-t3);font-weight:600;font-size:.76em;text-transform:uppercase;letter-spacing:.08em;padding:0 .55vw .5vw;border-bottom:1px solid var(--tl-bd);white-space:nowrap}
+.tl-tab th.tl-r{text-align:right}
+.tl-tab td{padding:.46vw .55vw;border-bottom:1px solid var(--tl-grid);white-space:nowrap}
+.tl-tab tr:last-child td{border-bottom:0}
+.tl-tab-c td{padding:.32vw .55vw}
+.tl-tab-c small{display:block;line-height:1.1}
+.tl-tag{display:inline-flex;align-items:center;gap:.45em;font-weight:700;font-size:.9em}
+.tl-tag i{width:.55em;height:.55em;border-radius:50%}
+.tl-li{display:flex;justify-content:space-between;align-items:center;gap:1vw;padding:.5vw 0;border-bottom:1px solid var(--tl-grid);min-width:0}
+.tl-li:last-child{border-bottom:0}
+.tl-li>div{min-width:0}
+.tl-li small{color:var(--tl-t3);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-rodape-p{color:var(--tl-t3);margin-top:.6vw;font-size:.88em}
+.tl-vbars{flex:1;min-height:0;display:flex;padding-top:1.5em;margin-bottom:2.5em}
+.tl-vbars-s{margin-bottom:1.6em}
+.tl-vb-area{position:relative;flex:1;display:flex;align-items:flex-end;gap:.3vw;border-bottom:1px solid var(--tl-bd)}
+.tl-vbars-s .tl-vb-area{gap:1.2vw}
+.tl-vb{flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;min-width:0;position:relative}
+.tl-vb-b{position:relative;width:100%;max-width:4.5em;background:${_TL_SERIE};border-radius:4px 4px 0 0}
+.tl-vb-v{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:.3em;font-size:.78em;color:var(--tl-t1);font-weight:600;white-space:nowrap;z-index:3;background:var(--tl-s1);padding:0 .25em;border-radius:3px;line-height:1.25}
+.tl-vb-d{position:absolute;top:100%;left:50%;transform:translateX(-50%);font-size:.75em;color:var(--tl-t3);margin-top:.4em;text-align:center;line-height:1.1;white-space:nowrap}
+.tl-vb-d small{display:block;font-size:.85em}
+.tl-vb-media{position:absolute;left:0;right:0;border-top:1px solid var(--tl-t2);z-index:2;pointer-events:none}
+.tl-vb-media span{position:absolute;left:0;bottom:.2em;font-size:.74em;color:var(--tl-t1);background:var(--tl-s1);padding:0 .4em;border-radius:3px}
+.tl-msg{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:.8vw}
+.tl-msg-i{font-size:4em;color:var(--tl-t3);font-weight:300}
+.tl-msg-t{font-size:1.9em;font-weight:600}
+.tl-msg-s{color:var(--tl-t3);font-size:1.1em;max-width:52em}
+.tl-rod{display:flex;align-items:center;gap:1.2vw;color:var(--tl-t3);font-size:.82em;padding-top:.2vw}
+.tl-dots{display:flex;gap:.3vw}
+.tl-dots span{padding:.25em .8em;border-radius:4px;color:var(--tl-t3)}
+.tl-dots span b{font-weight:600;margin-right:.4em;color:var(--tl-t3)}
+.tl-dots span.on{color:var(--tl-bg);background:var(--tl-acc);font-weight:700}
+.tl-dots span.on b{color:var(--tl-bg)}
+.tl-prog{flex:1;height:2px;background:var(--tl-grid);border-radius:2px;overflow:hidden}
+.tl-prog span{display:block;height:100%;background:var(--tl-acc);width:0}
+.tl-upd.velho{color:${_TL_CRITICO};font-weight:700}
+.tl-sair{position:absolute;top:.6vw;left:50%;transform:translateX(-50%);display:none;gap:.5vw;z-index:5}
+#telao-root.tl-mouse .tl-sair{display:flex}
+.tl-sair button{background:var(--tl-s2);color:var(--tl-t1);border:1px solid var(--tl-bd);border-radius:.4vw;padding:.4em 1em;font:inherit;font-size:.9em;cursor:pointer}
+`;
+
+function _telaoPintar() {
+  const root = document.getElementById('telao-root');
+  if (!root) return;
+  const D = _telao.dados;
+  const i = _telao.idx % _TELAO_TELAS.length, tela = _TELAO_TELAS[i];
+  const corpo = root.querySelector('.tl-corpo');
+  if (!_telaoDentroDoHorario()) {
+    root.querySelector('.tl-kicker').textContent = 'Centro de operações';
+    root.querySelector('.tl-titulo').textContent = 'Fora do horário de operação';
+    corpo.innerHTML = _tlVazio(`O painel volta sozinho às ${String(TELAO_HORARIO[0]).padStart(2, '0')}:00`, 'Fora do horário o telão não consulta o banco de dados (economia da cota gratuita do Firestore).', '☾');
+    root.querySelector('.tl-dots').innerHTML = '';
+    _telaoRodape();
+    return;
+  }
+  root.querySelector('.tl-kicker').textContent = D ? tela.kicker : 'Centro de operações';
+  root.querySelector('.tl-titulo').textContent = D ? tela.titulo(D) : 'Carregando…';
+  if (!D) corpo.innerHTML = _tlVazio(_telao.erro ? 'Não consegui carregar os dados' : 'Carregando dados…', _telao.erro ? `${esc(_telao.erro)} — nova tentativa em instantes.` : '', '◷');
+  else {
+    try { corpo.innerHTML = tela.render(D); }
+    catch (e) { console.error('[telão]', e); corpo.innerHTML = _tlVazio('Erro ao montar este painel', esc(e.message || e), '!'); }
+  }
+  root.querySelector('.tl-dots').innerHTML = _TELAO_TELAS.map((t, j) => `<span class="${j === i ? 'on' : ''}"><b>${j + 1}</b>${t.nome}</span>`).join('');
+  _telaoRodape();
+}
+function _telaoRodape() {
+  const root = document.getElementById('telao-root');
+  if (!root) return;
+  const agora = new Date();
+  root.querySelector('.tl-relogio b').textContent = _tlHora(agora.getTime());
+  root.querySelector('.tl-relogio span').textContent = agora.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  const upd = root.querySelector('.tl-upd');
+  const foraHorario = !_telaoDentroDoHorario();
+  const velho = !foraHorario && (!navigator.onLine || !!_telao.erro);
+  upd.textContent = foraHorario ? 'Escuta desligada (fora do horário)' : !_telao.carregadoEm ? 'conectando…'
+    : velho ? `⚠ sem conexão — última atualização ${_tlHora(_telaoFonte.recebidoEm || _telao.carregadoEm)}` : `● Ao vivo · última alteração ${_tlHora(_telaoFonte.recebidoEm || _telao.carregadoEm)}`;
+  upd.classList.toggle('velho', !!velho);
+  root.querySelector('.tl-prog span').style.width = _telao.pausado ? '100%' : Math.min(100, (Date.now() - _telao.trocaEm) / TELAO_TROCA_MS * 100) + '%';
+  root.querySelector('.tl-pausa').textContent = _telao.pausado ? '⏸ Pausado (espaço continua)' : '';
+}
+function _telaoTrocar(passo = 1) {
+  _telao.idx = (_telao.idx + passo + _TELAO_TELAS.length) % _TELAO_TELAS.length;
+  _telao.trocaEm = Date.now();
+  _telaoPintar();
+}
+function _telaoTecla(e) {
+  if (!_telao.ativo) return;
+  if (e.key === 'ArrowRight') _telaoTrocar(1);
+  else if (e.key === 'ArrowLeft') _telaoTrocar(-1);
+  else if (e.key === ' ') { e.preventDefault(); _telao.pausado = !_telao.pausado; _telao.trocaEm = Date.now(); _telaoRodape(); }
+  else if (e.key === 'r' || e.key === 'R') { if (_telaoDentroDoHorario()) _telaoAssinar(); }
+  else if (e.key === 'Escape' && !document.fullscreenElement) sairTelao();
+}
+let _telaoMouseTimer = null;
+function _telaoMouse() {
+  const root = document.getElementById('telao-root');
+  if (!root) return;
+  root.classList.add('tl-mouse');
+  clearTimeout(_telaoMouseTimer);
+  _telaoMouseTimer = setTimeout(() => root.classList.remove('tl-mouse'), 3000);
+}
+async function _telaoWakeLock() {
+  try { if (navigator.wakeLock && document.visibilityState === 'visible') _telao.wake = await navigator.wakeLock.request('screen'); } catch (e) { /* sem suporte: ok */ }
+}
+function _telaoVisivel() { if (_telao.ativo && document.visibilityState === 'visible') _telaoWakeLock(); }
+async function renderTelao() {
+  const app = document.getElementById('app');
+  if (_telao.ativo && document.getElementById('telao-root')) return; // já está rodando
+  app.innerHTML = `<style>${TELAO_CSS}</style>
+    <div id="telao-root">
+      <div class="tl-sair"><button onclick="telaoTelaCheia()">⛶ Tela cheia</button><button onclick="sairTelao()">✕ Sair do telão</button></div>
+      <header class="tl-top">
+        <div class="tl-marca"><b>NEXTA</b><span>Centro de operações</span></div>
+        <div class="tl-tit"><div class="tl-kicker"></div><div class="tl-titulo"></div></div>
+        <div class="tl-relogio"><b></b><span></span></div>
+      </header>
+      <main class="tl-corpo"></main>
+      <footer class="tl-rod"><div class="tl-dots"></div><div class="tl-prog"><span></span></div><span class="tl-pausa"></span><span class="tl-upd"></span></footer>
+    </div>`;
+  _telao.ativo = true;
+  _telao.trocaEm = Date.now();
+  _telao.timers.forEach(clearInterval);
+  _telao.timers = [
+    setInterval(() => { if (_telaoDentroDoHorario() && !_telao.pausado && Date.now() - _telao.trocaEm >= TELAO_TROCA_MS) _telaoTrocar(1); else _telaoRodape(); }, 1000),
+    setInterval(_telaoVerificarEscutas, 30000), // horário de operação e virada do dia
+    setInterval(() => { if (_telao.dados) _telaoPintar(); }, 60000), // status das viagens/contagem do corte andam com o relógio
+  ];
+  document.addEventListener('keydown', _telaoTecla);
+  document.addEventListener('mousemove', _telaoMouse);
+  document.addEventListener('visibilitychange', _telaoVisivel);
+  _telaoWakeLock();
+  _telaoPintar();
+  _telaoVerificarEscutas();
+}
+// Para timers e escutas (sair do telão, logout, ou outra tela assumir o app).
+function _telaoParar() {
+  if (!_telao.ativo && !_telao.subs?.length && !_telao.timers.length) return;
+  _telao.ativo = false;
+  _telao.timers.forEach(clearInterval); _telao.timers = [];
+  _telaoDesassinar();
+  _telao.dados = null; _telao.carregadoEm = 0;
+}
+function telaoTelaCheia() { document.documentElement.requestFullscreen?.().catch(() => {}); }
+function abrirTelao() {
+  S.telao = true;
+  telaoTelaCheia(); // precisa ser no clique (o navegador só deixa assim)
+  render();
+}
+function sairTelao() {
+  S.telao = false;
+  _telao.ativo = false;
+  _telao.timers.forEach(clearInterval); _telao.timers = [];
+  _telaoDesassinar();
+  _telao.dados = null; _telao.carregadoEm = 0;
+  document.removeEventListener('keydown', _telaoTecla);
+  document.removeEventListener('mousemove', _telaoMouse);
+  document.removeEventListener('visibilitychange', _telaoVisivel);
+  try { _telao.wake?.release(); } catch (e) {}
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  if (new URLSearchParams(location.search).has('telao')) history.replaceState(null, '', location.pathname);
+  render();
+}
+window.abrirTelao = abrirTelao; window.sairTelao = sairTelao; window.telaoTelaCheia = telaoTelaCheia;
+// ═══════════════════════════════════════════════════════════
+// RENDER ROOT
+// ═══════════════════════════════════════════════════════════
+async function render(){
+  const app=document.getElementById("app");
+  // Sempre salva o shell antes de qualquer innerHTML para não perdê-lo
+  parkRoteirizadorShell();
+  if(!S.user){ _telaoParar(); app.innerHTML=renderLogin(); return; }
+  const u=USERS_DB[S.user];
+  // Telão (sala de operação): tela cheia, sem menu — só admin/operacional.
+  if(S.telao && (u.role==="admin"||u.role==="operacional")){ await renderTelao(); return; }
+  _telaoParar();
+  const notifs=await dbGetNotifs();
+  const hasNotif=notifs.length>0;
+  const helpRole = u.role==="operacional" ? "operacional" : u.role==="carrier" ? "transportador" : "";
+  const helpLabel = u.role==="operacional" ? "Ajuda operacional" : u.role==="carrier" ? "Ajuda transportador" : "";
+  const helpTitle = u.role==="operacional" ? "Abrir manual operacional" : u.role==="carrier" ? "Abrir manual transportador" : "";
+  app.innerHTML=`
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="wordmark">NEXTA</span>
+        <div class="topbar-div"></div>
+        <span class="topbar-sub">Gestão de Frota</span>
+      </div>
+      <div class="topbar-right">
+        ${(u.role==="admin"||u.role==="operacional")?`<button class="notif-btn" onclick="toggleNotif()" title="Notificações">🔔${hasNotif?'<span class="notif-dot"></span>':''}</button>`:""}
+        ${(u.role==="admin"||u.role==="operacional")?`<button class="help-btn" onclick="abrirTelao()" title="Painel em tela cheia para o telão da sala de operação (gira sozinho entre as telas)">📺 Telão</button>`:""}
+        <button class="help-btn" onclick="refreshSystem()" title="Atualizar dados">🔄 Atualizar</button>
+        ${helpRole?`<button class="help-btn" onclick="openHelpModal('${helpRole}')" title="${helpTitle}">❓ ${helpLabel}</button>`:""}
+        <div class="avatar ${u.role==="admin"||u.role==="operacional"?"admin":""}">${esc(u.initials)}</div>
+        <span class="user-name">${u.role==="admin"?"Administrador":u.role==="operacional"?esc(u.name):esc(u.carrier)}</span>
+        <button class="btn-logout" onclick="openChangePwd()" title="Alterar minha senha">🔑 Senha</button>
+        <button class="btn-logout" onclick="logout()">↩ Sair</button>
+      </div>
+    </div>
+    ${S.notifOpen&&(u.role==="admin"||u.role==="operacional")?await renderNotifPanel(notifs):""}
+    <div class="main" id="main-content"></div>`;
+  if(u.role==="admin") await renderAdmin();
+  else if(u.role==="operacional") await renderOperacional();
+  else await renderCarrier(u.carrier);
+}
+async function refreshSystem(){
+  showToast('Atualizando dados...');
+  cacheLimparTudo(); // inclui a disponibilidade de dias passados guardada no navegador
+  await loadConfig();
+  await render();
+  showToast('Sistema atualizado.', true);
+}
+// ── Conteúdo dos manuais embutidos ──────────────────────────
+const MANUAL_TRANSPORTADOR_HTML = `
+<div class="hm-body">
+  <div class="hm-section-title">1. Acesso ao sistema</div>
+  <p>O NEXTA é acessado pelo navegador, no endereço fornecido pelo administrador. Não é necessário instalar nenhum aplicativo.</p>
+  <div class="hm-sub">Como fazer login:</div>
+  <ul>
+    <li>No campo <b>USUÁRIO</b>, digite seu login (fornecido pelo administrador).</li>
+    <li>No campo <b>SENHA</b>, digite sua senha e clique em <b>Entrar</b>.</li>
+    <li>Sua sessão é salva automaticamente pelo sistema — se fechar e reabrir o navegador, você continuará logado sem precisar digitar a senha novamente.</li>
+    <li>As senhas são protegidas pelo Firebase Authentication e <b>nunca ficam visíveis</b> para o administrador.</li>
+  </ul>
+  <div class="hm-callout">🔒 Se errar a senha muitas vezes seguidas, o sistema bloqueia temporariamente o acesso por segurança. Aguarde alguns minutos antes de tentar novamente.</div>
+  <div class="hm-section-title">2. Tela de disponibilidade</div>
+  <p>Após o login, você verá a lista de placas da sua frota para o dia selecionado. É nessa tela que você informa o status de cada veículo.</p>
+  <table class="hm-table">
+    <thead><tr><th>Elemento</th><th>Função</th></tr></thead>
+    <tbody>
+      <tr><td>Setas ‹ ›</td><td>Navegar entre os dias</td></tr>
+      <tr><td>Tabela de frota</td><td>Lista de placas com campos para preenchimento</td></tr>
+      <tr><td>Botão Salvar</td><td>Confirma e envia o preenchimento</td></tr>
+      <tr><td>Banner verde 🔒</td><td>Confirma que os dados foram enviados e bloqueados</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">3. Preenchendo cada veículo</div>
+  <p>Para cada placa, preencha os três campos obrigatórios antes de salvar:</p>
+  <div class="hm-steps">
+    <div class="hm-step"><span class="hm-step-n">1</span><div><b>Status</b> — selecione a situação do veículo no dia.</div></div>
+    <div class="hm-step"><span class="hm-step-n">2</span><div><b>Hodômetro</b> — informe a leitura atual do odômetro (só números, sem ponto ou vírgula). O valor não pode ser menor que o do dia anterior.</div></div>
+    <div class="hm-step"><span class="hm-step-n">3</span><div><b>Disponível às</b> — selecione o horário de disponibilidade. Obrigatório apenas para status <b>Disponível</b> e <b>Manutenção</b>.</div></div>
+  </div>
+  <div class="hm-callout">⚠️ Se algum campo estiver faltando, a linha ficará destacada em vermelho ao tentar salvar.</div>
+  <div class="hm-section-title">4. Status e seus significados</div>
+  <table class="hm-table">
+    <thead><tr><th>Status</th><th>Significado</th><th>Horário?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="hm-badge green">Disponível</span></td><td>Veículo pronto para operar</td><td>✅ Obrigatório</td></tr>
+      <tr><td><span class="hm-badge red">Indisponível</span></td><td>Veículo fora de operação</td><td>❌ N/A</td></tr>
+      <tr><td><span class="hm-badge amber">Manutenção</span></td><td>Em manutenção preventiva ou corretiva</td><td>Opcional</td></tr>
+      <tr><td><span class="hm-badge blue">Folga</span></td><td>Motorista em folga / veículo parado</td><td>❌ N/A</td></tr>
+      <tr><td><span class="hm-badge purple">Prog./Viagem</span></td><td>Programado ou em viagem</td><td>❌ N/A</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">5. Salvando e enviando</div>
+  <p>Após preencher todas as placas, clique em <b>💾 Salvar disponibilidade</b>. Após o envio:</p>
+  <ul>
+    <li>Um banner verde 🔒 confirma o envio com data e hora do registro.</li>
+    <li>A tabela passa para modo somente leitura — não é mais possível editar.</li>
+    <li>O administrador é notificado automaticamente.</li>
+    <li>Para corrigir algo após o envio, solicite o desbloqueio ao administrador.</li>
+  </ul>
+  <div class="hm-section-title">6. Navegação por datas</div>
+  <p>Use as setas <b>‹</b> e <b>›</b> para navegar entre os dias. É possível preencher a disponibilidade de amanhã com antecedência — recomendamos preencher sempre o dia atual e o seguinte.</p>
+  <div class="hm-section-title">7. Alterando sua senha</div>
+  <p>Você pode alterar sua própria senha a qualquer momento diretamente pelo sistema:</p>
+  <div class="hm-steps">
+    <div class="hm-step"><span class="hm-step-n">1</span><div>Clique no botão <b>🔑 Senha</b> na barra superior, ao lado do botão "Sair".</div></div>
+    <div class="hm-step"><span class="hm-step-n">2</span><div>Digite a <b>nova senha</b> (mínimo 6 caracteres) e confirme.</div></div>
+    <div class="hm-step"><span class="hm-step-n">3</span><div>Clique em <b>💾 Salvar senha</b>. A mudança entra em vigor imediatamente.</div></div>
+  </div>
+  <div class="hm-callout">🔒 Sua senha é protegida pelo Firebase Authentication. O administrador <b>não consegue ver</b> sua senha — apenas redefini-la caso necessário.</div>
+  <div class="hm-section-title">8. Esqueci minha senha</div>
+  <p>Se você esquecer a senha, <b>entre em contato com o administrador</b>. Ele pode definir uma senha temporária para você acessar o sistema. Após entrar, vá em <b>🔑 Senha</b> na barra superior e defina uma nova senha de sua preferência.</p>
+  <div class="hm-section-title">9. Perguntas frequentes</div>
+  <table class="hm-table">
+    <thead><tr><th>Dúvida</th><th>Resposta</th></tr></thead>
+    <tbody>
+      <tr><td>Enviei errado. Como corrigir?</td><td>Solicite o desbloqueio ao administrador e preencha novamente.</td></tr>
+      <tr><td>Posso usar pelo celular?</td><td>Sim, funciona em qualquer navegador.</td></tr>
+      <tr><td>O sistema salva automaticamente?</td><td>Não. Você precisa clicar em "Salvar disponibilidade".</td></tr>
+      <tr><td>Esqueci minha senha.</td><td>Contate o administrador para receber uma senha temporária.</td></tr>
+      <tr><td>O hodômetro pode ser menor que ontem?</td><td>Não. O sistema bloqueia valores menores que o último registrado.</td></tr>
+      <tr><td>O sistema ficou lento, o que fazer?</td><td>Recarregue a página. O sistema usa cache local para melhorar a velocidade — a primeira carga pode ser um pouco mais demorada.</td></tr>
+    </tbody>
+  </table>
+</div>`;
+const MANUAL_OPERACIONAL_HTML = `
+<div class="hm-body">
+  <div class="hm-section-title">1. Visão geral do painel</div>
+  <p>O perfil operacional tem acesso de acompanhamento e leitura. Após o login, você verá as seguintes abas:</p>
+  <table class="hm-table">
+    <thead><tr><th>Aba</th><th>O que encontrar</th></tr></thead>
+    <tbody>
+      <tr><td><b>Daily Briefing</b></td><td>Resumo executivo com indicadores do dia e gráficos de tendência</td></tr>
+      <tr><td><b>Painel de Disponibilidade</b></td><td>Tabela completa com status de todos os veículos por transportador</td></tr>
+      <tr><td><b>Auditoria</b></td><td>Registros dos últimos 7 a 45 dias com filtros avançados (e, para administradores, atividade completa dos usuários)</td></tr>
+      <tr><td><b>Relatórios</b></td><td>Exportação personalizada (Excel/CSV/PDF, com filtros) e arquivos mensais gerados automaticamente</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">2. Acesso e sessão</div>
+  <ul>
+    <li>O login é feito com usuário e senha fornecidos pelo administrador.</li>
+    <li>A sessão é mantida automaticamente pelo Firebase Authentication — não é necessário logar novamente ao reabrir o navegador.</li>
+    <li>Para alterar sua senha, clique em <b>🔑 Senha</b> na barra superior a qualquer momento.</li>
+    <li>Se esquecer a senha, solicite ao administrador que redefina uma senha temporária para você.</li>
+  </ul>
+  <div class="hm-section-title">3. Daily Briefing</div>
+  <p>Exibe indicadores consolidados para o dia selecionado. Use as setas <b>‹ ›</b> para navegar entre datas.</p>
+  <ul>
+    <li><b>Cards de resumo:</b> Disponíveis, Indisponíveis, Manutenção, Folga, Prog./Viagem e Total.</li>
+    <li><b>Alerta de pendências:</b> mostra quais transportadores ainda não enviaram para hoje e amanhã.</li>
+    <li><b>Gráfico de pizza:</b> distribuição percentual dos status no dia.</li>
+    <li><b>Linha de tendência:</b> evolução da disponibilidade nos últimos 14 dias.</li>
+    <li><b>Barras por transportador:</b> comparativo entre as empresas.</li>
+    <li><b>Tabela por operacao:</b> resumo por unidade operacional com barra de disponibilidade.</li>
+  </ul>
+  <div class="hm-section-title">4. Painel de disponibilidade</div>
+  <p>Tabela detalhada de todos os veículos agrupados por transportador. Para cada veículo são exibidos:</p>
+  <table class="hm-table">
+    <thead><tr><th>Coluna</th><th>Informação</th></tr></thead>
+    <tbody>
+      <tr><td>PLACA</td><td>Identificação do veículo</td></tr>
+      <tr><td>OPERAÇÃO</td><td>Unidade operacional</td></tr>
+      <tr><td>TIPO</td><td>Truck, Bi-Truck ou Cavalo Mecânico</td></tr>
+      <tr><td>IDENTIFICAÇÃO</td><td>Petronas ou Branco</td></tr>
+      <tr><td>CONTRATO</td><td>Dedicado ou Spot</td></tr>
+      <tr><td>STATUS</td><td>Status informado pelo transportador</td></tr>
+      <tr><td>HODÔMETRO</td><td>Quilometragem registrada no dia</td></tr>
+      <tr><td>HORÁRIO</td><td>Horário de disponibilidade</td></tr>
+      <tr><td>MOTORISTAS</td><td>Diurno ☀ e noturno 🌙</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-callout">💡 O badge <b>🔒 Enviado</b> indica que o transportador concluiu o preenchimento. <b>Pendente</b> indica que ainda não enviou.</div>
+  <div class="hm-section-title">5. Filtros e busca</div>
+  <table class="hm-table">
+    <thead><tr><th>Filtro</th><th>Função</th></tr></thead>
+    <tbody>
+      <tr><td>Operação</td><td>Filtra veículos de uma unidade específica</td></tr>
+      <tr><td>Busca livre</td><td>Filtra por placa ou nome do transportador</td></tr>
+      <tr><td>Transportador</td><td>Filtra por empresa (na Auditoria)</td></tr>
+      <tr><td>Status</td><td>Filtra por um status específico (na Auditoria)</td></tr>
+      <tr><td>Período</td><td>7, 15, 30 ou 45 dias (na Auditoria)</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">6. Exportação de relatórios</div>
+  <p>Na aba <b>Relatórios</b> (sub-aba <b>Exportar</b>), gere relatórios em Excel (.xlsx), CSV ou PDF, com filtros por transportadora, operação, tipo de veículo, identificação, contrato e status. Os relatórios incluem km percorrido calculado automaticamente.</p>
+  <table class="hm-table">
+    <thead><tr><th>Tipo</th><th>Período</th></tr></thead>
+    <tbody>
+      <tr><td>Diário</td><td>Dia atual ou navegado</td></tr>
+      <tr><td>Semanal</td><td>Últimos 7 dias</td></tr>
+      <tr><td>Mensal</td><td>Mês atual completo</td></tr>
+      <tr><td>Personalizado</td><td>Qualquer intervalo nos últimos 45 dias</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">7. Arquivos mensais</div>
+  <ul>
+    <li>Gerados automaticamente nos 3 primeiros dias de cada mês.</li>
+    <li>Podem ser gerados ou regenerados manualmente a qualquer momento.</li>
+    <li>São mantidos os 6 arquivos mais recentes.</li>
+    <li>Disponíveis para download em Excel ou CSV.</li>
+  </ul>
+  <div class="hm-section-title">8. Notificações</div>
+  <p>O ícone 🔔 na barra superior exibe notificações do sistema. Um ponto vermelho indica novas notificações.</p>
+  <ul>
+    <li>Cada envio de disponibilidade por um transportador gera uma notificação.</li>
+    <li>Clique em <b>Limpar</b> para arquivar todas as notificações.</li>
+  </ul>
+  <div class="hm-section-title">9. Log de auditoria</div>
+  <p>Na aba <b>Auditoria</b> (sub-aba <b>Atividade dos Usuários</b>, só para administradores) fica o log completo das ações recentes no sistema, em linguagem clara. Exemplos do que é registrado:</p>
+  <table class="hm-table">
+    <thead><tr><th>Ação</th><th>Descrição exibida</th></tr></thead>
+    <tbody>
+      <tr><td>Envio de disponibilidade</td><td>✅ Disponibilidade enviada — Transportador X</td></tr>
+      <tr><td>Desbloqueio de lançamento</td><td>🔓 Lançamento desbloqueado — Transportador X</td></tr>
+      <tr><td>Nova placa cadastrada</td><td>🚛 Placa cadastrada — ABC-1234</td></tr>
+      <tr><td>Placa removida</td><td>🗑 Placa removida — ABC-1234</td></tr>
+      <tr><td>Reset de senha pelo admin</td><td>🔑 Senha redefinida pelo admin — usuário X</td></tr>
+      <tr><td>Horário de corte atualizado</td><td>🔔 Horário de corte de alerta atualizado para HH:00</td></tr>
+    </tbody>
+  </table>
+  <div class="hm-section-title">10. O que o operacional NÃO pode fazer</div>
+  <table class="hm-table">
+    <thead><tr><th>Funcionalidade</th><th>Situação</th></tr></thead>
+    <tbody>
+      <tr><td>Cadastro de placas, motoristas e operações</td><td>❌ Exclusivo do admin</td></tr>
+      <tr><td>Gestão de usuários e transportadores</td><td>❌ Exclusivo do admin</td></tr>
+      <tr><td>Desbloquear lançamentos</td><td>❌ Exclusivo do admin</td></tr>
+      <tr><td>Resetar senha de outros usuários</td><td>❌ Exclusivo do admin</td></tr>
+      <tr><td>Dashboard, painel, histórico, exportação</td><td>✅ Disponível</td></tr>
+      <tr><td>Alterar a própria senha (botão 🔑 Senha)</td><td>✅ Disponível</td></tr>
+    </tbody>
+  </table>
+</div>`;
+function openHelpModal(role){
+  if(!role){ return; }
+  const existing=document.getElementById('help-modal');
+  if(existing) existing.remove();
+  const isOper = role==='operacional';
+  const title = isOper ? 'Manual do Operacional' : 'Manual do Transportador';
+  const content = isOper ? MANUAL_OPERACIONAL_HTML : MANUAL_TRANSPORTADOR_HTML;
+  const modal=document.createElement('div');
+  modal.id='help-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1.5rem;';
+  modal.innerHTML=`
+    <div class="help-modal-shell">
+      <div class="help-modal-header">
+        <div>
+          <div class="help-modal-title">❓ ${title}</div>
+          <div class="help-modal-sub">Use a rolagem para navegar pelas seções.</div>
+        </div>
+        <div class="help-modal-actions">
+          <button class="btn btn-lime btn-sm" onclick="document.getElementById('help-modal').remove()">✕ Fechar</button>
+        </div>
+      </div>
+      <div class="help-modal-content">${content}</div>
+    </div>`;
+  modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+// ═══════════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════════
+function renderLogin(){
+  const msgInicial = S.loginErrMsg || '';
+  S.loginErrMsg = null; // mostra uma vez só — não fica preso em renders futuros
+  return `
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-logo"><span class="wordmark">NEXTA</span></div>
+        <p class="login-title">Gestão de Frota</p>
+        <p class="login-sub">Acesse com seu usuário e senha</p>
+        <div class="field"><label>USUÁRIO</label><input type="text" id="user-input" placeholder="Digite seu usuário" onkeydown="if(event.key==='Enter')document.getElementById('pwd').focus()"></div>
+        <div class="field"><label>SENHA</label><input type="password" id="pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <div class="login-err" id="login-err">${msgInicial ? esc(msgInicial) : ''}</div>
+        <button class="btn btn-lime btn-full" onclick="doLogin()">Entrar</button>
+      </div>
+    </div>`;
+}
+async function doLogin(){
+  const uid=document.getElementById("user-input").value.trim().toLowerCase();
+  const pwd=document.getElementById("pwd").value;
+  const err=document.getElementById("login-err");
+  const btn=document.querySelector(".btn-lime.btn-full");
+  if(!uid){err.textContent="Informe o usuário.";return;}
+  if(!pwd){err.textContent="Informe a senha.";return;}
+  err.textContent="";
+  if(btn){btn.disabled=true;btn.textContent="Entrando...";}
+  // IMPORTANTE: não pré-checa mais "USERS_DB[uid] existe?" contra o
+  // Firestore antes de autenticar. Pra alguém que nunca logou naquele
+  // navegador, a regra de segurança do Firestore normalmente recusa ler
+  // "config/users" sem estar autenticado — então esse pré-check nunca
+  // conseguia confirmar usuários de verdade e sempre caía na lista padrão
+  // "de fábrica" (só 6 nomes fixos no código), acusando "não encontrado"
+  // pra qualquer usuário real que não fosse um desses 6, mesmo com
+  // cadastro e senha 100% corretos. A autenticação do Firebase já é,
+  // sozinha, a fonte de verdade sobre se o login/senha existem — não
+  // precisa (e não pode, de forma confiável) confirmar isso antes via
+  // Firestore. Ver onAuthStateChanged para a busca do perfil pós-login.
+  try {
+    await signInWithEmailAndPassword(auth, uidToEmail(uid), pwd);
+    // onAuthStateChanged cuida do resto (inclusive de buscar o perfil)
+  } catch(e) {
+    const code = e.code||"";
+    if(code==="auth/wrong-password"||code==="auth/invalid-credential"){
+      err.textContent="Senha incorreta.";
+    } else if(code==="auth/too-many-requests"){
+      err.textContent="Muitas tentativas. Aguarde alguns minutos.";
+    } else if(code==="auth/user-not-found"){
+      err.textContent="Usuário não encontrado.";
+    } else {
+      err.textContent="Erro ao entrar: "+code;
+    }
+    if(btn){btn.disabled=false;btn.textContent="Entrar";}
+  }
+}
+async function logout(){
+  S.user=null; S.notifOpen=false; clearSession();
+  try { await signOut(auth); } catch(e) {}
+  render();
+}
+// ═══════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════
+async function toggleNotif(){ parkRoteirizadorShell(); S.notifOpen=!S.notifOpen; await render(); }
+async function renderNotifPanel(notifs){
+  const items=notifs.length===0
+    ?`<div class="notif-empty">Nenhuma notificação</div>`
+    :notifs.map(n=>`<div class="notif-item"><div>${esc(n.msg)}</div><div class="ni-time">${esc(n.time)}</div></div>`).join("");
+  return `<div class="notif-panel">
+    <div class="notif-header">
+      <span>Notificações</span>
+      <button class="btn btn-sm btn-outline" onclick="clearNotifsAndRender()">Limpar</button>
+    </div>${items}</div>`;
+}
+async function clearNotifsAndRender(){ parkRoteirizadorShell(); await dbClearNotifs(); S.notifOpen=false; await render(); }
+// ═══════════════════════════════════════════════════════════
+// CARRIER VIEW
+// ═══════════════════════════════════════════════════════════
+async function renderCarrier(carrier){
+  const ds=dateStr(S.dateOffset);
+  const mc=document.getElementById("main-content");
+  mc.innerHTML=`<p class="sec-title">Disponibilidade da frota</p><p class="sec-sub">${esc(carrier)}</p><div class="loading"><span class="spin"></span>Carregando placas...</div>`;
+  let allP={};
+  let statusMap={};
+  let lock=null;
+  const plates=[];
+  let allDrivers = {};
+  try {
+    [allP, allDrivers] = await Promise.all([
+      withTimeout(dbGetPlates(), 15000, "Falha ao carregar placas"),
+      withTimeout(dbGetDrivers(), 15000, "Falha ao carregar motoristas").catch(()=>({}))
+    ]);
+    const userOps=userOperacoes(USERS_DB[S.user]);
+    const loadedPlates = (allP[carrier]||[]).filter(p=>p.ativo!==false&&!ehSobDemanda(p)&&(!userOps||userOps.includes(p.operacao)));
+    if(loadedPlates.length===0){
+      const opLabel=userOps?` para a operação ${userOps.join(' / ')}`:'';
+      mc.innerHTML=`<p class="sec-title">Disponibilidade da frota</p><p class="sec-sub">${esc(carrier)}</p>
+        <div class="empty"><span class="ei">🚫</span>Nenhuma placa cadastrada${opLabel}.<br>Aguarde o administrador.</div>`;
+      return;
+    }
+    plates.push(...loadedPlates);
+    const [pairsTemp, lockTemp] = [plates.map(p=>({carrier,plate:p.placa,dateStr:ds})), await withTimeout(dbGetLock(carrier,ds),15000,"Falha ao carregar status")];
+    lock = lockTemp;
+    statusMap = await withTimeout(dbLoadStatusBulk(pairsTemp),15000,"Falha ao carregar status");
+    const allFilledByStatus = plates.length>0 && plates.every(p=>recordHasStatus(statusMap[`${carrier}||${p.placa}||${ds}`]));
+    if(!lock && allFilledByStatus){
+      lock = { carrier, dateStr: ds, lockedBy: "Sistema", lockedAt: "preenchimento concluído" };
+    }
+    if(lock && !allFilledByStatus){
+      console.warn("Ignorando bloqueio inconsistente", carrier, ds);
+      lock = null;
+      await dbRemoveLock(carrier, ds).catch(()=>{});
+      _cache.clear();
+    }
+  } catch(e){
+    console.error(e);
+    mc.innerHTML=`<p class="sec-title">Disponibilidade da frota</p><p class="sec-sub">${esc(carrier)}</p>
+      <div class="empty"><span class="ei">⚠</span>Erro ao carregar a disponibilidade.<br>Atualize a página ou tente novamente.</div>`;
+    return;
+  }
+  const isCarrierUser = USERS_DB[S.user] && USERS_DB[S.user].role==='carrier';
+  const rows=plates.map(p=>{
+    const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
+    const cur=rec?rec.status:null;
+    const curTime=rec?rec.time:"";
+    const st=cur?getSt(cur):null;
+    const isIndisp=statusSemHorario(cur);
+    if(lock){
+      const stBadge=cur?`<span class="badge ${st.badge}">${esc(st.label)}</span>`:`<span class="badge b-blank">—</span>`;
+      const timeBadge=isIndisp?`<span style="font-size:11px;color:var(--muted)">N/A</span>`:curTime?`<span style="font-size:12px;color:var(--lime);font-family:'DM Mono',monospace">${fmtTimeValue(curTime)}</span>`:`<span style="color:var(--muted)">—</span>`;
+      const motD=(rec&&rec.motoristaDiurno)||p.motoristaDiurno||'—';
+      const motN=(rec&&rec.motoristaNoturno)||p.motoristaNoturno||'—';
+      return `<tr>
+        <td style="font-weight:500;font-family:'DM Mono',monospace;font-size:12px">${esc(p.placa)}</td>
+        <td style="font-size:11px;color:var(--muted)">${esc(p.operacao)}</td>
+        <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
+        <td>${stBadge}</td>
+        <td style="font-size:11px;font-family:'DM Mono',monospace;color:var(--dim)">${rec&&rec.hodometro!==undefined&&rec.hodometro!==null?rec.hodometro:'—'}</td>
+        <td>${rec&&rec.hodometroFotoUrl?`<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--dim);">📷 ver foto</a>`:isMonday(ds)?`<span style="font-size:10px;color:var(--red)">Sem foto</span>`:`<span style="font-size:10px;color:var(--muted)">—</span>`}</td>
+        <td style="font-size:11px;font-family:'DM Mono',monospace">${timeBadge}</td>
+        <td>${renderDriverCell(motD,motN)}</td>
+      </tr>`;
+    }
+    const blankOpt=cur===null?`<option value="" selected disabled>— Selecione —</option>`:"";
+    const sOpts=blankOpt+STATUS_OPTS.map(s=>`<option value="${attr(s.val)}"${cur===s.val?" selected":""}>${esc(s.label)}</option>`).join("");
+    const selCls=cur?`st-sel ${st.cls}`:`st-sel st-blank`;
+    const timeCls=isIndisp?`time-sel time-na`:curTime?`time-sel time-filled`:`time-sel time-blank`;
+    const timeDisabled=(!cur||isIndisp)?'disabled':'';
+    const opDrvAtivos   = (allDrivers[carrier]||[]).filter(d=>d.ativo!==false&&d.operacao===p.operacao);
+    const opDrvInativos = (allDrivers[carrier]||[]).filter(d=>d.ativo===false&&d.operacao===p.operacao);
+    // Função: retorna nome apenas se motorista estiver ativo (oculta inativos na exibição)
+    function filtrarMotoristaSalvo(nome){
+      if(!nome) return '';
+      const inativo=opDrvInativos.find(d=>d.nome===nome);
+      return inativo ? '' : nome;
+    }
+    const savedMotD = filtrarMotoristaSalvo((rec&&rec.motoristaDiurno) || p.motoristaDiurno || '');
+    const savedMotN = filtrarMotoristaSalvo((rec&&rec.motoristaNoturno) || p.motoristaNoturno || '');
+    function buildDriverOpts(savedVal, turno){
+      const ativos   = opDrvAtivos.filter(d=>d.turno===turno);
+      const inativos = opDrvInativos.filter(d=>d.turno===turno);
+      let opts = `<option value="">— Sem motorista —</option>`;
+      opts += ativos.map(d=>optHtml(d.nome, d.nome===savedVal)).join('');
+      if(inativos.length){
+        opts += `<optgroup label="──────────────" style="color:rgba(228,242,200,.2);font-size:9px"></optgroup>`;
+        opts += inativos.map(d=>`<option value="${attr(d.nome)}"${d.nome===savedVal?' selected':''} style="color:rgba(228,242,200,.35)">▪ ${esc(d.nome)} (inativo)</option>`).join('');
+      }
+      return opts;
+    }
+    const driverSelStyle = 'width:100%;box-sizing:border-box;font-size:11px;padding:4px 6px;border-radius:6px;background:var(--dark);border:1px solid var(--border2);color:var(--text);outline:none;font-family:inherit';
+    const driverCell = isCarrierUser
+      ? `<div style="display:grid;gap:4px;min-width:120px">
+           <div style="display:grid;grid-template-columns:16px 1fr;align-items:center;gap:3px">
+             <span style="color:var(--amber);font-size:12px;text-align:center">☀</span>
+             <select class="driver-sel-d" style="${driverSelStyle}">${buildDriverOpts(savedMotD,'Diurno')}</select>
+           </div>
+           <div style="display:grid;grid-template-columns:16px 1fr;align-items:center;gap:3px">
+             <span style="color:var(--blue);font-size:12px;text-align:center">🌙</span>
+             <select class="driver-sel-n" style="${driverSelStyle}">${buildDriverOpts(savedMotN,'Noturno')}</select>
+           </div>
+         </div>`
+      : renderDriverCell(savedMotD, savedMotN);
+    return `<tr data-placa="${attr(p.placa)}" data-tem-foto="${rec&&rec.hodometroFotoUrl?'1':'0'}" data-foto-url="${attr(rec&&rec.hodometroFotoUrl?rec.hodometroFotoUrl:'')}">
+      <td style="font-weight:500;font-family:'DM Mono',monospace;font-size:12px">${esc(p.placa)}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(p.operacao)}</td>
+      <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
+      <td><select class="${selCls}" style="width:128px;box-sizing:border-box;font-size:11px" onchange="onStChange(this)">${sOpts}</select></td>
+      <td>${isCarrierUser?`<input class="odo-input" type="number" min="0" placeholder="Ex: 251000" value="${rec&&rec.hodometro!==undefined&&rec.hodometro!==null?rec.hodometro:''}" style="width:96px;box-sizing:border-box;font-size:11px;padding:5px 8px;border-radius:6px;background:var(--dark);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace">`:`<span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)">${rec&&rec.hodometro!==undefined&&rec.hodometro!==null?rec.hodometro:'—'}</span>`}</td>
+      <td>${renderHodFotoCell(p, rec, ds, isCarrierUser)}</td>
+      <td><select class="${timeCls}" ${timeDisabled} onchange="onTimeChange(this)" style="width:96px;box-sizing:border-box;font-size:11px">${isIndisp?`<option value="">N/A</option>`:buildTimeOpts(curTime,cur==='manutencao')}</select></td>
+      <td>${driverCell}</td>
+    </tr>`;
+  }).join("");
+  const userOpsForLabel=userOperacoes(USERS_DB[S.user]);
+  const userOpsLabel2=userOpsForLabel?` — ${userOpsForLabel.join(' / ')}`:'';
+  const lockedBanner=lock?`
+    <div class="locked-banner" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div>🔒 Disponibilidade enviada em ${esc(lock.lockedAt)} — não é possível editar.</div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="refreshSystem()">🔄 Atualizar</button>
+    </div>`:'';
+  const actionBar=lock?'':`
+    <div style="display:flex;gap:10px;margin-top:1rem;">
+      <button type="button" class="btn btn-lime" id="save-btn" data-carrier="${attr(carrier)}" data-date="${attr(ds)}">💾 Salvar disponibilidade</button>
+    </div>`;
+  mc.innerHTML=`
+    <p class="sec-title">Disponibilidade da frota</p>
+    <p class="sec-sub">${esc(carrier)}${esc(userOpsLabel2)} — Informe o status de cada veículo</p>
+    <div class="date-nav">
+      <button onclick="chDate(-1)">‹</button>
+      <span class="date-label">${fmtDate(S.dateOffset)}</span>
+      <button onclick="chDate(1)">›</button>
+    </div>
+    ${lockedBanner}
+    <div class="tscroll">
+      <table class="table" style="min-width:900px">
+        <thead><tr><th style="width:10%">PLACA</th><th style="width:16%">OPERAÇÃO</th><th style="width:9%">TIPO</th><th style="width:13%">STATUS</th><th style="width:10%">HODÔMETRO</th><th style="width:12%">FOTO HODÔM. <span title="Obrigatória às segundas-feiras, comprovando o km preenchido" style="cursor:help;">ⓘ</span></th><th style="width:10%">DISPONÍVEL ÀS</th><th style="width:20%">MOTORISTAS</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${actionBar}`;
+  const saveBtn=document.getElementById("save-btn");
+  if(saveBtn){
+    saveBtn.addEventListener("click", (ev)=>{
+      ev.preventDefault();
+      saveAll(saveBtn.dataset.carrier, saveBtn.dataset.date, saveBtn);
+    });
+  }
+}
+function onStChange(sel){
+  const row=sel.closest('tr');
+  const timeSel=row?row.querySelector('.time-sel, .time-na, .time-blank, .time-filled'):null;
+  if(!sel.value){
+    sel.className='st-sel st-blank';
+    if(timeSel){ timeSel.disabled=true; timeSel.value=''; timeSel.className='time-sel time-blank'; }
+    return;
+  }
+  const st=getSt(sel.value);
+  sel.className=`st-sel ${st.cls}`;
+  if(timeSel){
+    if(statusSemHorario(sel.value)){
+      timeSel.disabled=true; timeSel.value='';
+      timeSel.className='time-sel time-na';
+      timeSel.innerHTML='<option value="">N/A</option>';
+    } else {
+      timeSel.disabled=false;
+      const allowNoForecast=sel.value==='manutencao';
+      const keepValue=timeSel.value==='sem_previsao'&&!allowNoForecast?'':timeSel.value;
+      timeSel.innerHTML=buildTimeOpts(keepValue,allowNoForecast);
+      timeSel.className=timeSel.value?'time-sel time-filled':'time-sel time-blank';
+    }
+  }
+}
+function onTimeChange(sel){
+  if(sel.value) sel.className='time-sel time-filled';
+  else sel.className='time-sel time-blank';
+}
+async function saveAll(carrier, ds, btnEl=null){
+  const btn=btnEl || document.getElementById("save-btn");
+  if(btn && btn.dataset.saving==="1") return;
+  carrier = carrier || btn?.dataset?.carrier || USERS_DB[S.user]?.carrier || "";
+  ds = ds || btn?.dataset?.date || dateStr(S.dateOffset);
+  const table=btn?.closest("#main-content")?.querySelector(".table") || document.querySelector("#main-content .table");
+  const rows=[...(table?.querySelectorAll("tbody tr") || [])];
+  const u=USERS_DB[S.user] || {};
+  const isCarrierUser = u.role==='carrier';
+  if(!carrier || !ds || !rows.length){
+    showToast("Não foi possível localizar os dados para salvar. Atualize a página e tente novamente.", false);
+    return;
+  }
+  let missing=[];
+  const hojeEhSegunda = isMonday(ds);
+  rows.forEach(row=>{
+    const plate=row.dataset.placa||row.cells[0]?.textContent.trim()||"";
+    const statusSel=row.querySelector(".st-sel");
+    const timeSel=row.querySelector(".time-sel");
+    const odoInput=row.querySelector('.odo-input');
+    const hasStatus=!!(statusSel&&statusSel.value);
+    const isIndisp=statusSel&&statusSemHorario(statusSel.value);
+    const hasTime=!!(timeSel&&timeSel.value);
+    const hasOdo = !isCarrierUser || (odoInput && odoInput.value!=='');
+    // Foto do hodômetro só é obrigatória às segundas-feiras — já tinha uma
+    // salva antes (data-tem-foto="1") OU foi selecionado um arquivo novo
+    // agora nesta mesma tela, antes de clicar em Salvar.
+    const fotoInput = row.querySelector('.hod-foto-input');
+    const temFotoNova = !!(fotoInput && fotoInput.files && fotoInput.files[0]);
+    const temFotoSalva = row.dataset.temFoto === '1';
+    const hasFotoSeNecessaria = !isCarrierUser || !hojeEhSegunda || temFotoNova || temFotoSalva;
+    if(!hasStatus||(!isIndisp&&!hasTime)||!hasOdo||!hasFotoSeNecessaria) missing.push(plate);
+  });
+  if(missing.length>0){
+    showToast(hojeEhSegunda
+      ? "Preencha status, hodômetro, horário quando aplicável e a FOTO do hodômetro (obrigatória às segundas-feiras) antes de salvar."
+      : "Preencha status, hodômetro e horário quando aplicável antes de salvar.", false);
+    rows.forEach(row=>{
+      const plate=row.dataset.placa||row.cells[0]?.textContent.trim()||"";
+      row.style.background=missing.includes(plate)?"rgba(240,96,96,.08)":"";
+    });
+    return;
+  }
+  const prevOdoCache = {};
+  const invalidOdoRows=[];
+  const suspeitoOdoRows=new Set();
+  if(isCarrierUser){
+    for (const row of rows){
+      const plate=row.dataset.placa||row.cells[0]?.textContent.trim()||"";
+      const odoInput=row.querySelector('.odo-input');
+      if(!odoInput) continue;
+      const currentOdo=Number(odoInput.value);
+      if(!Number.isFinite(currentOdo)){
+        invalidOdoRows.push(plate);
+        row.style.background="rgba(240,96,96,.08)";
+        continue;
+      }
+      let previousOdo;
+      try {
+        previousOdo=await dbGetPreviousHodometro(carrier, plate, ds);
+      } catch(e) {
+        // Não dá pra validar → não salva. Melhor pedir pra tentar de novo do
+        // que deixar passar um hodômetro menor sem ninguém perceber.
+        showToast(`Não consegui conferir o hodômetro anterior de ${plate}. Verifique a conexão e tente salvar de novo.`, false);
+        row.style.background="rgba(240,96,96,.08)";
+        return;
+      }
+      prevOdoCache[plate]=previousOdo;
+      if(previousOdo !== null && currentOdo < previousOdo){
+        invalidOdoRows.push(plate);
+        row.style.background="rgba(240,96,96,.08)";
+      } else if(previousOdo !== null && previousOdo >= 500 && currentOdo >= previousOdo*5){
+        // Salto de 5x ou mais em relação ao último registro não acontece na
+        // vida real — é quase sempre um dígito a mais (ex.: digitou também
+        // a casa decimal/centena de metros que aparece no painel do
+        // caminhão: 3113,2 → "31132"). Bloqueia pra corrigir na hora, em
+        // vez de o erro contaminar todos os lançamentos seguintes.
+        invalidOdoRows.push(plate);
+        suspeitoOdoRows.add(plate);
+        row.style.background="rgba(240,96,96,.08)";
+      } else {
+        row.style.background="";
+      }
+    }
+  }
+  if(invalidOdoRows.length>0){
+    const detalhes = invalidOdoRows.map(plate => suspeitoOdoRows.has(plate)
+      ? `${plate} (último: ${prevOdoCache[plate]??'—'} — valor 5x maior, tem dígito a mais? Não digite a casa decimal)`
+      : `${plate} (último: ${prevOdoCache[plate]??'—'})`);
+    showToast(`Hodômetro inválido: ${detalhes.join(', ')}`, false);
+    return;
+  }
+  if(btn){btn.disabled=true;btn.dataset.saving="1";btn.textContent="Salvando...";}
+  try{
+    const allP=await dbGetPlates();
+    if(btn) btn.textContent="Enviando foto(s)...";
+    const saves=rows.map(async row=>{
+      const plate=row.dataset.placa||row.cells[0]?.textContent.trim()||"";
+      const statusSel=row.querySelector(".st-sel");
+      const timeSel=row.querySelector(".time-sel");
+      const pRecord=(allP[carrier]||[]).find(p=>p.placa===plate)||{};
+      const dSelD = row.querySelector('.driver-sel-d');
+      const dSelN = row.querySelector('.driver-sel-n');
+      const motDiurno  = dSelD ? dSelD.value  : (pRecord.motoristaDiurno||'');
+      const motNoturno = dSelN ? dSelN.value  : (pRecord.motoristaNoturno||'');
+      const odoInput=row.querySelector('.odo-input');
+      const hodometro = odoInput && odoInput.value!==''? Number(odoInput.value) : null;
+      const timeValue = statusSemHorario(statusSel.value) ? "" : (timeSel?.value || "");
+      // Foto do hodômetro: se um arquivo novo foi escolhido nesta tela, sobe
+      // pro Storage primeiro e usa a URL nova; senão, mantém a que já
+      // estava salva (não apaga uma foto de segunda anterior sem motivo).
+      const fotoInput = row.querySelector('.hod-foto-input');
+      let hodometroFotoUrl = row.dataset.fotoUrl || null;
+      if(fotoInput && fotoInput.files && fotoInput.files[0]){
+        try {
+          hodometroFotoUrl = await uploadHodometroFoto(carrier, plate, ds, fotoInput.files[0]);
+        } catch(eFoto) {
+          console.error(`Falha ao subir foto do hodômetro (${plate}):`, eFoto);
+          throw new Error(`Falha ao enviar a foto de ${plate}: ${eFoto.message}`);
+        }
+      }
+      return dbSaveStatus(carrier,plate,ds,statusSel.value,timeValue,motDiurno,motNoturno,hodometro,hodometroFotoUrl);
+    });
+    const results=await Promise.allSettled(saves);
+    const failed=results.filter(r=>r.status==="rejected");
+    if(failed.length){
+      console.error("Falha ao salvar disponibilidade", failed.map(f=>f.reason));
+      showToast(`Falha ao salvar ${failed.length} placa(s). Verifique sua conexão e tente novamente.`, false);
+      return;
+    }
+    try { await dbSetLock(carrier, ds, u.name||carrier); }
+    catch(e) { console.warn("Disponibilidade salva, mas não foi possível bloquear o lançamento.", e); }
+    Promise.allSettled([
+      dbAddNotif(`${u.name||carrier} enviou a disponibilidade — ${fmtDateStr(ds)}`),
+      dbAddAudit("status_submit", { carrier, date: ds, rows: rows.length })
+    ]).then(res=>{
+      res.forEach(r=>{ if(r.status==="rejected") console.warn("Registro auxiliar pós-salvamento falhou", r.reason); });
+    });
+    showToast("Disponibilidade salva com sucesso! ✓");
+    await renderCarrier(carrier);
+  } catch(e){
+    console.error("saveAll error", e);
+    showToast(`Erro ao salvar: ${e.code||e.message||"tente novamente."}`, false);
+  } finally {
+    if(btn){
+      btn.disabled=false;
+      btn.dataset.saving="";
+      btn.innerHTML="💾 Salvar disponibilidade";
+    }
+  }
+}
+async function chDate(d){
+  S.dateOffset += d;
+  _cache.clear();
+  await render();
+}
+// ═══════════════════════════════════════════════════════════
+// ADMIN SHELL
+// ═══════════════════════════════════════════════════════════
+async function renderOperacional(){
+  // Operacional sees same admin panel minus register, users tabs and unlock button
+  await renderAdmin();
+}
+async function renderAdmin(){
+  // Auto-generate monthly archive if needed (first 3 days of month)
+  checkAndGenerateMonthlyArchive().catch(()=>{});
+  const u=USERS_DB[S.user];
+  const isOper=u.role==="operacional";
+  const mc=document.getElementById("main-content");
+  const allTabs=[
+    {id:"dashboard",label:"Daily Briefing"},
+    {id:"kpis",label:"KPIs Mensais"},
+    {id:"today",label:"Painel de Disponibilidade"},
+    {id:"history",label:"Auditoria"},
+    {id:"export",label:"Relatórios"},
+    {id:"roteirizador",label:"Roteirizador"},
+    {id:"sobdemanda",label:"Operação sob demanda"},
+    {id:"register",label:"Cadastros"},
+  ];
+  // Operacional não acessa Cadastros (que agora também contempla Usuários)
+  const tabs=isOper?allTabs.filter(t=>t.id!=="register"):allTabs;
+  // Reset adminTab se ficou apontando pra uma aba que não existe mais
+  // (archives/users foram fundidas em export/register) ou se operacional
+  // estiver numa aba restrita.
+  if(S.adminTab==="archives") S.adminTab="export";
+  if(S.adminTab==="users") S.adminTab="register";
+  if(isOper&&S.adminTab==="register") S.adminTab="dashboard";
+  mc.innerHTML=`
+    <p class="sec-title">${isOper?"Painel operacional":"Painel do administrador"}</p>
+    <div class="tabs admin-tabs">
+      ${tabs.map(t=>`<button class="tab ${S.adminTab===t.id?"active":""}" data-tab="${t.id}" onclick="setTab('${t.id}')">${t.label}</button>`).join("")}
+    </div>
+    <div id="tab-body"><div class="loading"><span class="spin"></span>Carregando...</div></div>`;
+  await renderTabBody();
+}
+async function setTab(t){
+  const u2=USERS_DB[S.user];
+  // Somente admin e operacional acessam o roteirizador
+  if(t==="roteirizador"&&u2&&u2.role!=="admin"&&u2.role!=="operacional"){
+    showToast("Acesso restrito.",false); return;
+  }
+  // Operacional não acessa register/users
+  if(u2&&u2.role==="operacional"&&(t==="register"||t==="users")){
+    showToast("Acesso restrito.",false); return;
+  }
+  S.adminTab=t;
+  // Marca a aba ativa pelo id (data-tab), não pelo texto exibido — comparar
+  // texto contra um mapa de rótulos "congelado" quebra silenciosamente toda
+  // vez que um rótulo muda (foi o que aconteceu com Auditoria/Relatórios:
+  // o mapa antigo ainda tinha "Histórico"/"Exportar", nomes que esta tela
+  // já não usa há tempo, então a comparação nunca batia e o grifo lima
+  // sumia só nessas duas abas).
+  document.querySelectorAll("#main-content .admin-tabs .tab").forEach(el=>{
+    el.classList.toggle("active", el.dataset.tab===t);
+  });
+  await renderTabBody();
+}
+async function renderTabBody(){
+  const body=document.getElementById("tab-body");
+  if(!body) return;
+  document.querySelector('.main')?.classList.remove('sob-larga'); // só a aba Operação sob demanda usa a tela toda
+  parkRoteirizadorShell();
+  if(S.adminTab==="dashboard") await renderDashboard(body);
+  else if(S.adminTab==="kpis") await renderKpisMensais(body);
+  else if(S.adminTab==="today") await renderToday(body);
+  else if(S.adminTab==="history") await renderHistory(body);
+  else if(S.adminTab==="export") await renderExport(body); // "Relatórios" — agora também contém Arquivos Mensais (ver sub-abas dentro de renderExport)
+  else if(S.adminTab==="sobdemanda"){
+    if(typeof window.renderSobDemanda==="function") await window.renderSobDemanda(body);
+    else body.innerHTML=`<div class="empty">Módulo da operação sob demanda não carregado (confira o arquivo nexta-frota-sobdemanda.js).</div>`;
+  }
+  else if(S.adminTab==="register") await renderRegister(body); // "Cadastros" — agora também contém Usuários (ver sub-aba dentro de renderRegister)
+  else if(S.adminTab==="roteirizador"){
+    const uRot=USERS_DB[S.user];
+    if(uRot&&uRot.role!=="admin"&&uRot.role!=="operacional"){
+      body.innerHTML=`<div class="empty">Acesso restrito.</div>`; return;
+    }
+    await renderRoteirizador(body);
+  }
+  else await renderUsers(body);
+}
+function parkRoteirizadorShell(){
+  const shell=document.getElementById("roteirizador-shell");
+  const stash=document.getElementById("roteirizador-stash");
+  if(shell&&stash&&!stash.contains(shell)){
+    shell.style.display="none";
+    stash.appendChild(shell);
+  }
+}
+async function renderRoteirizador(body){
+  body.innerHTML=`<div id="roteirizador-mount" style="min-height:200px"></div>`;
+  const mount=document.getElementById("roteirizador-mount");
+  if(!mount) return;
+  // Busca o shell — pode estar no DOM normal ou no stash
+  let shell=document.getElementById("roteirizador-shell");
+  if(!shell){
+    const stash=document.getElementById("roteirizador-stash");
+    if(stash) shell=stash.querySelector("[id='roteirizador-shell']") || stash.firstElementChild;
+  }
+  if(!shell){
+    // Shell não existe ainda — inicializa pela primeira vez
+    if(window.initRoteirizadorIntegrado){
+      await window.initRoteirizadorIntegrado();
+      shell=document.getElementById("roteirizador-shell");
+    }
+  }
+  if(!shell){
+    body.innerHTML=`
+      <div class="empty" style="flex-direction:column;gap:12px">
+        <span class="ei">⚠</span>
+        <p>Módulo de roteirização não encontrado.</p>
+        <button class="btn btn-lime btn-sm" onclick="reiniciarRoteirizador()">🔄 Reiniciar módulo</button>
+      </div>`;
+    return;
+  }
+  mount.appendChild(shell);
+  shell.style.display="block";
+  if(window.initRoteirizadorIntegrado) await window.initRoteirizadorIntegrado();
+}
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════
+async function renderDashboard(body){
+  body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando dashboard...</div>`;
+  const ds=dateStr(S.dateOffset);
+  const allP=_semSobDemanda(await dbGetPlates()); // placas sob demanda ficam fora da disponibilidade diária
+  const _uOps=userOperacoes(USERS_DB[S.user]);
+  const pendingAlerts=await buildPendingAlerts(allP,_uOps);
+  const allPairs=[];
+  for(const carrier of CARRIERS) for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter))) allPairs.push({carrier,plate:p.placa,dateStr:ds});
+  const statusMap=await dbLoadStatusBulk(allPairs);
+  let counts={disponivel:0,indisponivel:0,manutencao:0,folga:0,total:0};
+  let byCarrier={};
+  let byOp={};
+  for(const carrier of CARRIERS){
+    byCarrier[carrier]={disponivel:0,indisponivel:0,manutencao:0,folga:0};
+    for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter))){
+      const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
+      const v=rec?rec.status:null;
+      const op=p.operacao||"Sem operação";
+      if(!byOp[op]) byOp[op]={disponivel:0,indisponivel:0,manutencao:0,folga:0,programado:0,pendente:0,total:0};
+      if(v){ counts[v]=(counts[v]||0)+1; byCarrier[carrier][v]=(byCarrier[carrier][v]||0)+1; }
+      if(v) byOp[op][v]=(byOp[op][v]||0)+1; else byOp[op].pendente++;
+      byOp[op].total++; counts.total++;
+    }
+  }
+  const activeCarrierList = CARRIERS.filter(c=>(allP[c]||[]).some(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)));
+  const todayDone = await Promise.all(activeCarrierList.map(async carrier => {
+    const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter));
+    const lock=await dbGetLock(carrier, ds);
+    const filledByStatus=plates.length>0 && plates.every(p=>recordHasStatus(statusMap[`${carrier}||${p.placa}||${ds}`]));
+    return { carrier, done: !!lock || filledByStatus };
+  }));
+  const lockedToday = todayDone.filter(x=>x.done).length;
+  const pendingToday = Math.max(0, activeCarrierList.length - lockedToday);
+  const slaToday = activeCarrierList.length ? Math.round((lockedToday/activeCarrierList.length)*100) : 100;
+  const pendingRanking = activeCarrierList.map(carrier=>{
+    const opSet = new Set((allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)).map(p=>p.operacao||"Sem operação"));
+    let pendOps = 0;
+    for(const op of opSet){
+      const opPlates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)&&(p.operacao||"Sem operação")===op);
+      const opFilled=opPlates.every(p=>recordHasStatus(statusMap[`${carrier}||${p.placa}||${ds}`]));
+      if(!opFilled) pendOps++;
+    }
+    return { carrier, pendOps, totalOps: opSet.size };
+  }).filter(r=>r.pendOps>0).sort((a,b)=>b.pendOps-a.pendOps||a.carrier.localeCompare(b.carrier)).slice(0,5);
+  const opOrder=[...OPERACOES,...Object.keys(byOp).filter(o=>!OPERACOES.includes(o)).sort()];
+  const opRows=opOrder.filter(op=>byOp[op]).map(op=>{
+    const r=byOp[op];
+    // Mesma correção: folga/"Programado/Em viagem" fora do denominador do %.
+    const denomOp = r.total - r.folga - (r.programado||0);
+    const dispPct = denomOp > 0 ? Math.round((r.disponivel/denomOp)*100) : 0;
+    return `<tr><td style="font-weight:500">${esc(op)}</td><td><span class="badge b-green">${r.disponivel}</span></td><td><span class="badge b-red">${r.indisponivel}</span></td><td><span class="badge b-amber">${r.manutencao}</span></td><td><span class="badge b-blue">${r.folga}</span></td><td><span class="badge b-purple">${r.programado||0}</span></td><td><span class="badge b-blank">${r.pendente}</span></td><td><span class="cap-tag">${r.total}</span></td><td><div class="op-meter"><span style="width:${dispPct}%"></span></div><div class="op-meter-label">${dispPct}% disponível</div></td></tr>`;
+  }).join("");
+  const tDates=getDates(14);
+  const tPairs=[];
+  for(const d of tDates) for(const carrier of CARRIERS) for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter))) tPairs.push({carrier,plate:p.placa,dateStr:d});
+  const tMap=await dbLoadStatusBulk(tPairs);
+  const tDisp=tDates.map(d=>{ let c=0; for(const carrier of CARRIERS) for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter))) if(tMap[`${carrier}||${p.placa}||${d}`]?.status==="disponivel") c++; return c; });
+  const cutoffSel = Array.from({length:24},(_,h)=>`<option value="${h}"${h===ALERT_CUTOFF_HOUR?' selected':''}>${String(h).padStart(2,'0')}:00</option>`).join("");
+  const currentUser=USERS_DB[S.user]||{};
+  body.innerHTML=`
+    <div class="date-nav" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button onclick="chDate(-1)">&lsaquo;</button><span class="date-label">${fmtDate(S.dateOffset)}</span><button onclick="chDate(1)">&rsaquo;</button><div style="margin-left:auto;">${renderContratoFilterUI()}</div></div>
+    ${pendingAlerts}
+    <!-- Cards de contagem bruta (Disponíveis/Indisponíveis/Manutenção/Folga/
+    Prog.Viagem/Total) foram REMOVIDOS daqui de propósito — são a mesma
+    informação, já detalhada, que já existe no topo do Painel de
+    Disponibilidade. O Daily Briefing é a visão do gestor: fica só com o
+    painel de SLA abaixo (% sintetizado), não com contagem bruta de slots. -->
+    <div class="sla-panel">
+      <!-- Row 1: KPIs -->
+      <div class="sla-kpi-row">
+        <div class="sla-kpi ${slaToday>=META_SLA?'sla-kpi-ok':slaToday>=70?'sla-kpi-warn':'sla-kpi-bad'}">
+          <div class="sla-kpi-num">${slaToday}%</div>
+          <div class="sla-kpi-lbl">SLA Hoje</div>
+          <div class="sla-kpi-bar"><span style="width:${Math.min(slaToday,100)}%;background:${slaToday>=META_SLA?'var(--green)':slaToday>=70?'var(--amber)':'var(--red)'}"></span></div>
+        </div>
+        <div class="sla-kpi">
+          <div class="sla-kpi-num" style="color:var(--lime)">${lockedToday}<span style="font-size:14px;font-weight:400;color:var(--muted)">/${activeCarrierList.length}</span></div>
+          <div class="sla-kpi-lbl">Enviados hoje</div>
+          <div class="sla-kpi-bar"><span style="width:${activeCarrierList.length?Math.round(lockedToday/activeCarrierList.length*100):0}%;background:var(--lime)"></span></div>
+        </div>
+        <div class="sla-kpi ${pendingToday===0?'sla-kpi-ok':'sla-kpi-bad'}">
+          <div class="sla-kpi-num">${pendingToday}</div>
+          <div class="sla-kpi-lbl">Pendentes</div>
+          <div class="sla-kpi-bar"><span style="width:${activeCarrierList.length?Math.round(pendingToday/activeCarrierList.length*100):0}%;background:${pendingToday===0?'var(--green)':'var(--red)'}"></span></div>
+        </div>
+        <div class="sla-kpi-meta">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.04em">META</div>
+          <div style="font-size:22px;font-weight:600;color:var(--lime)">≥ ${META_SLA}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">SLA de preenchimento</div>
+        </div>
+      </div>
+      <!-- Row 2: Ranking + corte -->
+      <!-- Ranking — ocupa largura total -->
+      <div class="sla-ranking">
+        <div class="sla-section-title">⚠ Maiores pendências de preenchimento — hoje</div>
+        <div class="sla-ranking-list">
+          ${pendingRanking.map((r,i)=>{
+            const pendPct = r.totalOps ? Math.round((r.pendOps/r.totalOps)*100) : 0;
+            const severity = i===0?'sla-rank-critical':i<=2?'sla-rank-high':'sla-rank-pend';
+            return `<div class="sla-rank-item ${severity}">
+              <span class="sla-rank-medal">${i+1}.</span>
+              <span class="sla-rank-name">${esc(r.carrier)}</span>
+              <span class="sla-rank-bar-wrap"><span class="sla-rank-bar-fill" style="width:${pendPct}%;background:${i===0?'var(--red)':'var(--amber)'}"></span></span>
+              <span class="sla-rank-tag sla-tag-pend">${r.pendOps}/${r.totalOps} pend.</span>
+            </div>`;
+          }).join('') || '<div style="font-size:12px;color:var(--green);padding:6px 0">✓ Nenhuma pendência de preenchimento hoje</div>'}
+        </div>
+      </div>
+      <!-- Config cards — três lado a lado, só para admin -->
+      ${currentUser.role==="admin" ? `
+      <div class="sla-config-row">
+        <div class="sla-cutoff">
+          <div class="sla-section-title">⏰ Horário de corte</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Alerta acende quando passa deste horário sem preenchimento</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="cutoff-hour-sel" style="background:var(--dark);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:8px 12px;font-size:13px;outline:none">${cutoffSel}</select>
+            <button class="btn btn-lime btn-sm" onclick="saveCutoffHour()">Salvar</button>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">Corte atual: <span style="color:var(--lime);font-weight:500">${String(ALERT_CUTOFF_HOUR).padStart(2,'0')}:00</span></div>
+        </div>
+        <div class="sla-cutoff">
+          <div class="sla-section-title">🎯 Meta de disponibilidade</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">% mínimo de veículos disponíveis — usado nos KPIs Mensais e gráficos</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:4px;background:var(--dark);border:1px solid var(--border2);border-radius:8px;padding:4px 10px">
+              <input id="meta-disp-input" type="number" min="50" max="100" value="${META_DISP}" oninput="const s=document.getElementById('meta-disp-slider');if(s)s.value=this.value" style="width:48px;background:transparent;border:none;color:var(--lime);font-size:15px;font-weight:600;font-family:'DM Mono',monospace;outline:none;text-align:center">
+              <span style="font-size:13px;color:var(--lime);font-weight:600">%</span>
+            </div>
+            <input id="meta-disp-slider" type="range" min="50" max="100" value="${META_DISP}" oninput="document.getElementById('meta-disp-input').value=this.value" style="flex:1;min-width:80px;accent-color:var(--lime)">
+            <button class="btn btn-lime btn-sm" onclick="saveMetaDisp()">Salvar</button>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">Meta atual: <span style="color:var(--lime);font-weight:500">${META_DISP}%</span></div>
+        </div>
+        <div class="sla-cutoff">
+          <div class="sla-section-title">🎯 Meta de SLA de preenchimento</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">% mínimo de dias com preenchimento enviado — usado no Daily Briefing e nos KPIs Mensais</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:4px;background:var(--dark);border:1px solid var(--border2);border-radius:8px;padding:4px 10px">
+              <input id="meta-sla-input" type="number" min="50" max="100" value="${META_SLA}" oninput="const s=document.getElementById('meta-sla-slider');if(s)s.value=this.value" style="width:48px;background:transparent;border:none;color:var(--lime);font-size:15px;font-weight:600;font-family:'DM Mono',monospace;outline:none;text-align:center">
+              <span style="font-size:13px;color:var(--lime);font-weight:600">%</span>
+            </div>
+            <input id="meta-sla-slider" type="range" min="50" max="100" value="${META_SLA}" oninput="document.getElementById('meta-sla-input').value=this.value" style="flex:1;min-width:80px;accent-color:var(--lime)">
+            <button class="btn btn-lime btn-sm" onclick="saveMetaSla()">Salvar</button>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">Meta atual: <span style="color:var(--lime);font-weight:500">${META_SLA}%</span></div>
+        </div>
+      </div>` : ''}
+    </div>
+    <div class="dash-grid"><div class="chart-card"><div class="chart-title">Distribuição de status - hoje</div><canvas id="pie-chart" height="260"></canvas></div><div class="chart-card"><div class="chart-title">Tendência de disponibilidade - 14 dias</div><canvas id="line-chart" height="260"></canvas></div></div>
+    <div class="chart-card" style="margin-bottom:1.5rem"><div class="chart-title">Disponibilidade por transportador - hoje</div><canvas id="bar-chart" height="300"></canvas></div>
+    <div class="chart-card" style="margin-bottom:1.5rem"><div class="chart-title">Resumo por operação - ${fmtDate(S.dateOffset)}</div><div class="tscroll"><table class="table op-summary-table" style="min-width:860px"><thead><tr><th style="width:22%">OPERAÇÃO</th><th>DISP.</th><th>INDISP.</th><th>MANUT.</th><th>FOLGA</th><th>PROG.</th><th>PEND.</th><th>TOTAL</th><th style="width:18%">DISPONIBILIDADE</th></tr></thead><tbody>${opRows||'<tr><td colspan="9" style="color:var(--muted);font-size:13px">Nenhuma operação com placas ativas.</td></tr>'}</tbody></table></div></div>`;
+  requestAnimationFrame(()=>{ drawPie(counts); drawLine(tDates,tDisp); drawBar(byCarrier); });
+}
+// ═══════════════════════════════════════════════════════════
+// KPIs MENSAIS
+// ═══════════════════════════════════════════════════════════
+async function renderKpisMensais(body){
+  body.innerHTML=`<div class="loading"><span class="spin"></span>Calculando KPIs mensais...</div>`;
+  const now=new Date();
+  // Default: mês atual
+  if(S.kpiYear===undefined){ S.kpiYear=now.getFullYear(); S.kpiMonth=now.getMonth(); }
+  // Build month selector options (last 6 months + current)
+  const MONTH_NAMES_PT=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const monthOpts=[];
+  for(let i=0;i<=5;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    monthOpts.push({year:d.getFullYear(),month:d.getMonth(),label:`${MONTH_NAMES_PT[d.getMonth()]} ${d.getFullYear()}`});
+  }
+  const selOpts=monthOpts.map(m=>`<option value="${m.year}-${m.month}" ${m.year===S.kpiYear&&m.month===S.kpiMonth?"selected":""}>${m.label}</option>`).join("");
+  const allP=_semSobDemanda(await dbGetPlates());
+  const dates=getMonthDates(S.kpiYear,S.kpiMonth);
+  // Only dates up to today
+  const todayDs=dateStr(0);
+  const effectiveDates=dates.filter(d=>d<=todayDs);
+  if(!effectiveDates.length){
+    body.innerHTML=`<div class="empty"><span class="ei">📊</span>Nenhum dado ainda para este mês.</div>`;
+    return;
+  }
+  // Bulk load all status for this month
+  const allPairs=[];
+  for(const carrier of CARRIERS)
+    for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)))
+      for(const ds of effectiveDates)
+        allPairs.push({carrier,plate:p.placa,dateStr:ds});
+  const statusMap=await dbLoadStatusBulk(allPairs);
+  // ── Per-carrier metrics ──────────────────────────────────
+  const carrierMetrics=CARRIERS.map(carrier=>{
+    const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter));
+    if(!plates.length) return null;
+    let totalSlots=0,filledSlots=0,availSlots=0,unavailSlots=0,manutSlots=0,folgaSlots=0,progSlots=0;
+    let diasEnviados=0;
+    for(const ds of effectiveDates){
+      const allFilled=plates.every(p=>recordHasStatus(statusMap[`${carrier}||${p.placa}||${ds}`]));
+      if(allFilled) diasEnviados++;
+      for(const p of plates){
+        const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
+        totalSlots++;
+        if(rec){ filledSlots++; }
+        const v=rec?rec.status:null;
+        if(v==="disponivel") availSlots++;
+        else if(v==="indisponivel") unavailSlots++;
+        else if(v==="manutencao") manutSlots++;
+        else if(v==="folga") folgaSlots++;
+        else if(v==="programado") progSlots++;
+      }
+    }
+    // % Disponível não pode ser distorcido por "Folga" ou "Programado/Em
+    // viagem" — motorista de folga ou já programado/em viagem não é uma
+    // "falha de disponibilidade" da transportadora, então esses dias saem
+    // do denominador dessa conta específica (continuam contando normal em
+    // fillPct/diasEnviados e nos totais brutos de folgaSlots/progSlots).
+    const dispDenom=filledSlots-folgaSlots-progSlots;
+    const dispPct=dispDenom>0?Math.round((availSlots/dispDenom)*100):0;
+    const fillPct=totalSlots?Math.round((filledSlots/totalSlots)*100):0;
+    const slaEnvio=effectiveDates.length?Math.round((diasEnviados/effectiveDates.length)*100):0;
+    return {carrier,plates:plates.length,totalSlots,filledSlots,availSlots,unavailSlots,
+      manutSlots,folgaSlots,progSlots,dispPct,fillPct,slaEnvio,diasEnviados,
+      diasTotal:effectiveDates.length};
+  }).filter(Boolean);
+  // ── Global totals ────────────────────────────────────────
+  const totFilled=carrierMetrics.reduce((s,m)=>s+m.filledSlots,0);
+  const totAvail=carrierMetrics.reduce((s,m)=>s+m.availSlots,0);
+  const totSlots=carrierMetrics.reduce((s,m)=>s+m.totalSlots,0);
+  const totFolga=carrierMetrics.reduce((s,m)=>s+m.folgaSlots,0);
+  const totProg=carrierMetrics.reduce((s,m)=>s+m.progSlots,0);
+  const globalDispDenom=totFilled-totFolga-totProg;
+  const avgDisp=globalDispDenom>0?Math.round((totAvail/globalDispDenom)*100):0;
+  const avgFill=totSlots?Math.round((totFilled/totSlots)*100):0;
+  const totalPlates=carrierMetrics.reduce((s,m)=>s+m.plates,0);
+  // ── Dias abaixo da meta (substitui os cards "Slots disponíveis"/"Slots
+  // não preenchidos" — números brutos que não diziam nada de acionável pra
+  // um gestor bater o olho. Isso aqui responde uma pergunta de verdade:
+  // "em quantos dias do mês a operação ficou abaixo da meta?" — mesma
+  // trava de folga/programado fora do denominador, pra consistência com o
+  // resto da tela. ─────────────────────────────────────────────────────
+  let diasAbaixoMeta=0;
+  for(const ds of effectiveDates){
+    let availDia=0, filledDia=0, folgaProgDia=0;
+    for(const carrier of CARRIERS){
+      const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter));
+      for(const p of plates){
+        const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
+        if(!rec) continue;
+        filledDia++;
+        if(rec.status==='disponivel') availDia++;
+        else if(rec.status==='folga'||rec.status==='programado') folgaProgDia++;
+      }
+    }
+    const denomDia=filledDia-folgaProgDia;
+    const pctDia=denomDia>0?Math.round((availDia/denomDia)*100):0;
+    if(denomDia>0 && pctDia<META_DISP) diasAbaixoMeta++;
+  }
+  // ── 6-month trend (disponibilidade média por mês) ────────
+  const trendMonths=[];
+  for(let i=5;i>=0;i--){
+    const td=new Date(now.getFullYear(),now.getMonth()-i,1);
+    trendMonths.push({year:td.getFullYear(),month:td.getMonth(),
+      label:MONTH_NAMES_PT[td.getMonth()].slice(0,3)});
+  }
+  // Load trend data (cached — only past months hit Firestore once)
+  const trendData=await Promise.all(trendMonths.map(async tm=>{
+    const mDates=getMonthDates(tm.year,tm.month).filter(d=>d<=todayDs);
+    if(!mDates.length) return {label:tm.label,pct:null};
+    const pairs=[];
+    for(const carrier of CARRIERS)
+      for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)))
+        for(const ds of mDates)
+          pairs.push({carrier,plate:p.placa,dateStr:ds});
+    const sm=await dbLoadStatusBulk(pairs);
+    // Mesma regra do card "Disponibilidade média" do topo: Folga e
+    // Programado/Em viagem saem do denominador (não são falha de
+    // disponibilidade da transportadora). Antes essa exclusão só existia no
+    // card, não aqui — o gráfico contava esses dias como "indisponível" no
+    // denominador, puxando a % pra baixo e destoando do card (ex.: card em
+    // 96%, gráfico em 75-81% no mesmo período, mesma base de dados).
+    let f=0,a=0,folgaProg=0;
+    for(const {carrier,plate,dateStr:ds} of pairs){
+      const rec=sm[`${carrier}||${plate}||${ds}`];
+      if(rec){
+        f++;
+        if(rec.status==="disponivel") a++;
+        else if(rec.status==="folga"||rec.status==="programado") folgaProg++;
+      }
+    }
+    const denom=f-folgaProg;
+    return {label:tm.label,pct:denom>0?Math.round((a/denom)*100):null};
+  }));
+  // ── Ranking (sorted by dispPct desc) ─────────────────────
+  const ranked=[...carrierMetrics].sort((a,b)=>b.dispPct-a.dispPct);
+  // META_DISP é a variável global carregada do Firestore (padrão 95%)
+  const rankRows=ranked.map((m,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    const aboveMeta=m.dispPct>=META_DISP;
+    const barColor=aboveMeta?'var(--green)':m.dispPct>=75?'var(--amber)':'var(--red)';
+    const slaColor=m.slaEnvio>=META_SLA?'var(--green)':m.slaEnvio>=70?'var(--amber)':'var(--red)';
+    return `<tr class="kpi-rank-row">
+      <td style="font-size:15px;text-align:center;width:36px">${medal}</td>
+      <td style="font-weight:500;font-size:13px">${esc(m.carrier)}</td>
+      <td style="text-align:center"><span class="cap-tag">${m.plates}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:6px;background:rgba(228,242,200,.1);border-radius:99px;overflow:hidden;min-width:60px">
+            <div style="height:100%;border-radius:99px;background:${barColor};width:${m.dispPct}%;transition:width .5s"></div>
+          </div>
+          <span style="font-size:13px;font-weight:600;color:${barColor};min-width:36px;text-align:right">${m.dispPct}%</span>
+          ${aboveMeta?`<span class="kpi-badge kpi-badge-ok">✓ Meta</span>`:`<span class="kpi-badge kpi-badge-warn">${META_DISP-m.dispPct}% abaixo</span>`}
+        </div>
+      </td>
+      <td style="text-align:center;font-size:12px;color:${slaColor};font-weight:600">${m.slaEnvio}%</td>
+      <td style="text-align:center;font-size:12px;color:var(--muted)">${m.diasEnviados}/${m.diasTotal}</td>
+      <td style="text-align:center"><span class="badge b-green">${m.availSlots}</span></td>
+      <td style="text-align:center"><span class="badge b-red">${m.unavailSlots}</span></td>
+      <td style="text-align:center"><span class="badge b-amber">${m.manutSlots}</span></td>
+    </tr>`;
+  }).join("");
+  const monthLabel=`${MONTH_NAMES_PT[S.kpiMonth]} ${S.kpiYear}`;
+  const diasDecorridos=effectiveDates.length;
+  const diasNoMes=dates.length;
+  body.innerHTML=`
+    <!-- Cabeçalho + seletor de mês -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:1.5rem">
+      <div>
+        <p class="sec-title" style="margin-bottom:2px">KPIs Mensais</p>
+        <p style="font-size:12px;color:var(--muted)">${diasDecorridos} de ${diasNoMes} dias contabilizados · ${totalPlates} veículos ativos</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${renderContratoFilterUI()}
+        <select onchange="S.kpiYear=+this.value.split('-')[0];S.kpiMonth=+this.value.split('-')[1];renderTabBody()"
+          style="background:var(--dark);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:8px 12px;font-size:13px;outline:none">${selOpts}</select>
+      </div>
+    </div>
+    <!-- Cards de resumo global -->
+    <div class="summary-grid" style="margin-bottom:1.5rem">
+      <div class="sum-card">
+        <div class="sum-num" style="color:var(--green)">${avgDisp}%</div>
+        <div class="sum-label">Disponibilidade média</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-num" style="color:${avgFill>=META_SLA?'var(--green)':avgFill>=70?'var(--amber)':'var(--red)'}">${avgFill}%</div>
+        <div class="sum-label">SLA de preenchimento</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-num" style="color:var(--lime)">${totalPlates}</div>
+        <div class="sum-label">Veículos ativos</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-num" style="color:var(--lime)">${carrierMetrics.length}</div>
+        <div class="sum-label">Transportadores</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-num" style="color:${diasAbaixoMeta===0?'var(--green)':diasAbaixoMeta<=3?'var(--amber)':'var(--red)'}">${diasAbaixoMeta}<span style="font-size:14px;font-weight:400;color:var(--muted)">/${diasDecorridos}</span></div>
+        <div class="sum-label">Dias abaixo da meta (${META_DISP}%)</div>
+      </div>
+    </div>
+    <!-- Gráfico de tendência 6 meses -->
+    <div class="chart-card" style="margin-bottom:1.5rem">
+      <div class="chart-title">Evolução da disponibilidade — últimos 6 meses</div>
+      <canvas id="kpi-trend-chart" height="280"></canvas>
+    </div>
+    <!-- Ranking por transportador -->
+    <div class="chart-card" style="margin-bottom:1.5rem">
+      <div class="chart-title">Ranking de disponibilidade — ${monthLabel}</div>
+      <div class="tscroll">
+        <table class="table" style="min-width:780px">
+          <thead><tr>
+            <th style="width:4%">#</th>
+            <th style="width:24%">TRANSPORTADOR</th>
+            <th style="width:6%">VEÍC.</th>
+            <th style="width:28%">DISPONIBILIDADE</th>
+            <th style="width:8%">SLA ENVIO</th>
+            <th style="width:8%">DIAS ENV.</th>
+            <th style="width:7%">DISP.</th>
+            <th style="width:7%">INDISP.</th>
+            <th style="width:8%">MANUT.</th>
+          </tr></thead>
+          <tbody>${rankRows||'<tr><td colspan="9" style="color:var(--muted);font-size:13px;text-align:center;padding:2rem">Nenhum dado para o período.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="kpi-legend">
+        <div class="kpi-legend-item">
+          <span class="kpi-legend-dot" style="background:var(--lime)"></span>
+          <span class="kpi-legend-key">Meta</span>
+          <span class="kpi-legend-val">${META_DISP}%</span>
+        </div>
+        <div class="kpi-legend-sep"></div>
+        <div class="kpi-legend-item">
+          <span class="kpi-legend-dot" style="background:var(--green)"></span>
+          <span class="kpi-legend-key">Disponibilidade</span>
+          <span class="kpi-legend-val">slots disponíveis ÷ slots preenchidos</span>
+        </div>
+        <div class="kpi-legend-sep"></div>
+        <div class="kpi-legend-item">
+          <span class="kpi-legend-dot" style="background:var(--blue)"></span>
+          <span class="kpi-legend-key">SLA de envio</span>
+          <span class="kpi-legend-val">dias com 100% preenchidos ÷ dias do período</span>
+        </div>
+      </div>
+    </div>
+    <!-- Gráfico de barras comparativo -->
+    <div class="chart-card" style="margin-bottom:1.5rem">
+      <div class="chart-title">Disponibilidade por transportador — ${monthLabel}</div>
+      <canvas id="kpi-bar-chart" height="300"></canvas>
+    </div>`;
+  // Draw charts after DOM is ready
+  requestAnimationFrame(()=>{
+    drawKpiTrend(trendData);
+    drawKpiBar(ranked, META_DISP);
+  });
+}
+function drawKpiTrend(trendData){
+  const canvas=document.getElementById("kpi-trend-chart"); if(!canvas) return;
+  const {ctx,W,H}=setupHiDpiCanvas(canvas,280,900);
+  const C=chartColors();
+  const pad={t:28,r:34,b:46,l:46};
+  const W2=W-pad.l-pad.r, H2=H-pad.t-pad.b;
+  const valid=trendData.filter(d=>d.pct!==null);
+  if(!valid.length) return;
+  const maxV=100;
+  // Grid + labels
+  ctx.strokeStyle="rgba(200,240,50,.12)"; ctx.lineWidth=1;
+  [0,25,50,75,100].forEach(v=>{
+    const y=pad.t+H2-(v/maxV)*H2;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+W2,y); ctx.stroke();
+    ctx.fillStyle="rgba(228,242,200,.48)"; ctx.font="500 11px DM Mono,monospace";
+    ctx.textAlign="right"; ctx.fillText(v+"%",pad.l-4,y+3); ctx.textAlign="left";
+  });
+  // Meta line
+  const metaY=pad.t+H2-(META_DISP/maxV)*H2;
+  ctx.strokeStyle="rgba(200,240,50,.4)"; ctx.lineWidth=1.5;
+  ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,metaY); ctx.lineTo(pad.l+W2,metaY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle="rgba(200,240,50,.7)"; ctx.font="600 11px DM Sans,sans-serif";
+  ctx.fillText(`meta ${META_DISP}%`,pad.l+W2-60,metaY-5);
+  // Gradient fill
+  const grad=ctx.createLinearGradient(0,pad.t,0,pad.t+H2);
+  grad.addColorStop(0,"rgba(110,224,74,.22)"); grad.addColorStop(1,"rgba(110,224,74,0)");
+  const pts=trendData.map((d,i)=>({
+    x:pad.l+i*(W2/(trendData.length-1||1)),
+    y:d.pct!==null?pad.t+H2-(d.pct/maxV)*H2:null
+  }));
+  // Fill area
+  ctx.beginPath();
+  let started=false;
+  pts.forEach((p,i)=>{ if(p.y===null) return; if(!started){ctx.moveTo(p.x,p.y);started=true;}else ctx.lineTo(p.x,p.y); });
+  const lastValid=pts.filter(p=>p.y!==null).pop();
+  const firstValid=pts.filter(p=>p.y!==null)[0];
+  if(lastValid&&firstValid){
+    ctx.lineTo(lastValid.x,pad.t+H2); ctx.lineTo(firstValid.x,pad.t+H2);
+    ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+  }
+  // Line
+  ctx.strokeStyle=C.green; ctx.lineWidth=3;
+  ctx.beginPath(); started=false;
+  pts.forEach(p=>{ if(p.y===null){started=false;return;} if(!started){ctx.moveTo(p.x,p.y);started=true;}else ctx.lineTo(p.x,p.y); });
+  ctx.stroke();
+  // Dots + values
+  pts.forEach((p,i)=>{
+    if(p.y===null) return;
+    const v=trendData[i].pct;
+    ctx.beginPath(); ctx.arc(p.x,p.y,4,0,2*Math.PI);
+    ctx.fillStyle=v>=META_DISP?C.green:v>=75?C.amber:C.red; ctx.fill();
+    ctx.strokeStyle=C.dark; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle=C.text; ctx.font="700 12px DM Sans,sans-serif";
+    ctx.textAlign="center"; ctx.fillText(v+"%",p.x,p.y-10); ctx.textAlign="left";
+    ctx.fillStyle="rgba(228,242,200,.62)"; ctx.font="600 11px DM Sans,sans-serif";
+    ctx.textAlign="center"; ctx.fillText(trendData[i].label,p.x,pad.t+H2+15); ctx.textAlign="left";
+  });
+}
+function drawKpiBar(ranked, meta){
+  const canvas=document.getElementById("kpi-bar-chart"); if(!canvas) return;
+  if(!ranked.length) return;
+  const {ctx,W,H}=setupHiDpiCanvas(canvas,300,900);
+  const C=chartColors();
+  const pad={t:28,r:30,b:76,l:46};
+  const W2=W-pad.l-pad.r, H2=H-pad.t-pad.b;
+  const maxV=100;
+  // Grid
+  ctx.strokeStyle="rgba(200,240,50,.1)"; ctx.lineWidth=1;
+  [0,25,50,75,100].forEach(v=>{
+    const y=pad.t+H2-(v/maxV)*H2;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+W2,y); ctx.stroke();
+    ctx.fillStyle="rgba(228,242,200,.48)"; ctx.font="500 11px DM Mono,monospace";
+    ctx.textAlign="right"; ctx.fillText(v+"%",pad.l-4,y+3); ctx.textAlign="left";
+  });
+  // Meta line
+  const metaY=pad.t+H2-(meta/maxV)*H2;
+  ctx.strokeStyle="rgba(200,240,50,.45)"; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,metaY); ctx.lineTo(pad.l+W2,metaY); ctx.stroke();
+  ctx.setLineDash([]);
+  // Bars
+  const barW=Math.min(52, W2/ranked.length*.72);
+  const step=W2/ranked.length;
+  ranked.forEach((m,i)=>{
+    const x=pad.l+i*step+(step-barW)/2;
+    const h=(m.dispPct/maxV)*H2||0;
+    const barTop=pad.t+H2-h;
+    const color=m.dispPct>=meta?C.green:m.dispPct>=75?C.amber:C.red;
+    // Bar with rounded top
+    ctx.fillStyle=color;
+    const r=Math.min(5,barW/2,h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,barTop); ctx.lineTo(x+barW-r,barTop);
+    ctx.quadraticCurveTo(x+barW,barTop,x+barW,barTop+r);
+    ctx.lineTo(x+barW,pad.t+H2); ctx.lineTo(x,pad.t+H2);
+    ctx.lineTo(x,barTop+r); ctx.quadraticCurveTo(x,barTop,x+r,barTop);
+    ctx.closePath(); ctx.fill();
+    // Value label
+    ctx.fillStyle=C.text; ctx.font="700 12px DM Sans,sans-serif";
+    ctx.textAlign="center"; ctx.fillText(m.dispPct+"%",x+barW/2,barTop-6);
+    // Carrier name
+    const words=m.carrier.split(" ");
+    const cx=x+barW/2; const lineY=pad.t+H2+14;
+    ctx.fillStyle="rgba(228,242,200,.72)"; ctx.font="600 11px DM Sans,sans-serif";
+    if(words.length<=2){ ctx.fillText(m.carrier,cx,lineY); }
+    else { ctx.fillText(words[0],cx,lineY); ctx.fillText(words.slice(1).join(" "),cx,lineY+12); }
+    ctx.textAlign="left";
+  });
+}
+function drawPie(counts){
+  const canvas=document.getElementById("pie-chart"); if(!canvas) return;
+  const {ctx,W,H}=setupHiDpiCanvas(canvas,260,520);
+  const C=chartColors();
+  const data=[counts.disponivel,counts.indisponivel,counts.manutencao,counts.folga,counts.programado||0];
+  const colors=["#6ee04a","#f06060","#f0be40","#70a8f0","#b07ef0"];
+  const labels=["Disponível","Indisponível","Manutenção","Folga","Prog./Viagem"];
+  const total=data.reduce((a,b)=>a+b,0)||1;
+  const r=Math.min(94,Math.max(70,H*.36));
+  const cx=Math.min(Math.max(r+28,W*.28),W*.42);
+  const cy=H/2;
+  let start=-Math.PI/2;
+  data.forEach((v,i)=>{
+    const angle=(v/total)*2*Math.PI;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+angle);
+    ctx.fillStyle=colors[i]; ctx.fill(); start+=angle;
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,r*.52,0,2*Math.PI); ctx.fillStyle=C.card; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,r*.525,0,2*Math.PI); ctx.strokeStyle="rgba(200,240,50,.22)"; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle=C.text; ctx.font="700 24px DM Sans,sans-serif"; ctx.textAlign="center";
+  ctx.fillText(total,cx,cy+8); ctx.font="600 11px DM Sans,sans-serif"; ctx.fillStyle="rgba(228,242,200,.58)";
+  ctx.fillText("total",cx,cy+26); ctx.textAlign="left";
+  const lx=Math.min(cx+r+44,W-180),ly=Math.max(24,cy-76);
+  labels.forEach((l,i)=>{
+    ctx.fillStyle=colors[i]; ctx.beginPath(); ctx.arc(lx+7,ly+i*34+7,6,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle=C.text; ctx.font="600 12px DM Sans,sans-serif";
+    ctx.fillText(`${l}: ${data[i]}`,lx+20,ly+i*34+11);
+  });
+}
+function drawLine(dates,disp){
+  const canvas=document.getElementById("line-chart"); if(!canvas) return;
+  const {ctx,W,H}=setupHiDpiCanvas(canvas,260,520);
+  const C=chartColors();
+  const pad={t:28,r:28,b:48,l:44};
+  const W2=W-pad.l-pad.r, H2=H-pad.t-pad.b;
+  const maxV=Math.max(...disp,1);
+  ctx.strokeStyle="rgba(200,240,50,.14)"; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=pad.t+H2-i*(H2/4);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+W2,y); ctx.stroke();
+    ctx.fillStyle="rgba(228,242,200,.48)"; ctx.font="500 11px DM Mono,monospace";
+    ctx.fillText(Math.round(i*(maxV/4)),4,y+3);
+  }
+  // gradient fill
+  const grad=ctx.createLinearGradient(0,pad.t,0,pad.t+H2);
+  grad.addColorStop(0,"rgba(200,240,50,.24)"); grad.addColorStop(1,"rgba(200,240,50,0)");
+  ctx.beginPath();
+  disp.forEach((v,i)=>{
+    const x=pad.l+i*(W2/(disp.length-1));
+    const y=pad.t+H2-(v/maxV)*H2;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.lineTo(pad.l+W2,pad.t+H2); ctx.lineTo(pad.l,pad.t+H2);
+  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+  ctx.strokeStyle=C.lime; ctx.lineWidth=3; ctx.beginPath();
+  disp.forEach((v,i)=>{
+    const x=pad.l+i*(W2/(disp.length-1));
+    const y=pad.t+H2-(v/maxV)*H2;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle=C.lime;
+  disp.forEach((v,i)=>{
+    const x=pad.l+i*(W2/(disp.length-1));
+    const y=pad.t+H2-(v/maxV)*H2;
+    ctx.beginPath(); ctx.arc(x,y,4,0,2*Math.PI); ctx.fill();
+    ctx.strokeStyle=C.dark; ctx.lineWidth=1.5; ctx.stroke();
+  });
+  ctx.fillStyle="rgba(228,242,200,.6)"; ctx.font="600 10px DM Mono,monospace";
+  dates.forEach((d,i)=>{ if(i%2===0){ const x=pad.l+i*(W2/(dates.length-1)); ctx.fillText(d.slice(5),x-10,H-2); } });
+}
+function drawBar(byCarrier){
+  const canvas=document.getElementById("bar-chart"); if(!canvas) return;
+  const {ctx,W,H}=setupHiDpiCanvas(canvas,300,900);
+  const C=chartColors();
+  const colors=["#6ee04a","#f06060","#f0be40","#70a8f0","#b07ef0"];
+  const statKeys=["disponivel","indisponivel","manutencao","folga","programado"];
+  const pad={t:30,r:30,b:78,l:44};
+  const W2=W-pad.l-pad.r, H2=H-pad.t-pad.b;
+  const grpW=W2/CARRIERS.length, barW=grpW/(statKeys.length+1);
+  const maxV=Math.max(...CARRIERS.map(c=>Object.values(byCarrier[c]||{}).reduce((a,b)=>a+b,0)),4);
+  // Grid lines
+  ctx.strokeStyle="rgba(200,240,50,.14)"; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=pad.t+H2-i*(H2/4);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+W2,y); ctx.stroke();
+    ctx.fillStyle="rgba(228,242,200,.48)"; ctx.font="500 11px DM Mono,monospace";
+    ctx.fillText(Math.round(i*(maxV/4)),4,y+3);
+  }
+  CARRIERS.forEach((carrier,ci)=>{
+    const gx=pad.l+ci*grpW;
+    statKeys.forEach((sk,si)=>{
+      const v=(byCarrier[carrier]||{})[sk]||0;
+      const x=gx+si*barW+barW*.3;
+      const h=(v/maxV)*H2||0;
+      const barTop=pad.t+H2-h;
+      // Draw bar
+      ctx.fillStyle=colors[si]; ctx.fillRect(x,barTop,barW*.78,h);
+      // Data label on top of bar (only if value > 0)
+      if(v>0){
+        ctx.fillStyle=C.text;
+        ctx.font="700 11px DM Sans,sans-serif";
+        ctx.textAlign="center";
+        ctx.fillText(v, x+barW*.4, barTop-4);
+        ctx.textAlign="left";
+      }
+    });
+    // Full carrier name — split into words, max 2 lines
+    const words=carrier.split(" ");
+    const mid=gx+grpW/2;
+    const lineY=pad.t+H2+14;
+    ctx.fillStyle="rgba(228,242,200,.72)";
+    ctx.textAlign="center";
+    if(words.length<=2){
+      ctx.font="600 11px DM Sans,sans-serif";
+      ctx.fillText(carrier, mid, lineY);
+    } else {
+      // Split into two lines: first word on line1, rest on line2
+      const line1=words[0];
+      const line2=words.slice(1).join(" ");
+      ctx.font="600 11px DM Sans,sans-serif";
+      ctx.fillText(line1, mid, lineY);
+      ctx.fillText(line2, mid, lineY+13);
+    }
+    ctx.textAlign="left";
+  });
+}
+function setupHiDpiCanvas(canvas,cssHeight,fallbackWidth){
+  const dpr=Math.min(4,Math.max(1,window.devicePixelRatio||1));
+  canvas.style.width="100%";
+  canvas.style.height=`${cssHeight}px`;
+  const rect=canvas.getBoundingClientRect();
+  const parentW=canvas.parentElement ? canvas.parentElement.getBoundingClientRect().width : 0;
+  const W=Math.max(280,Math.round(rect.width||parentW||fallbackWidth));
+  const H=cssHeight;
+  canvas.width=Math.round(W*dpr);
+  canvas.height=Math.round(H*dpr);
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality="high";
+  return {ctx,W,H,dpr};
+}
+function chartColors(){
+  const css=getComputedStyle(document.documentElement);
+  const get=(name,fallback)=>css.getPropertyValue(name).trim()||fallback;
+  return {
+    lime:get("--lime","#c8f032"),
+    green:get("--green","#6ee04a"),
+    amber:get("--amber","#f0be40"),
+    red:get("--red","#f06060"),
+    dark:get("--dark","#0b1607"),
+    card:get("--card","#14240d"),
+    text:get("--text","#e4f2c8")
+  };
+}
+async function saveMetaDisp(){
+  const input = document.getElementById("meta-disp-input");
+  if(!input) return;
+  const val = parseInt(input.value, 10);
+  if(isNaN(val) || val < 50 || val > 100){
+    showToast("Meta deve ser entre 50% e 100%.", false);
+    return;
+  }
+  META_DISP = val;
+  await dbSaveMetaDisp(val);
+  await dbAddAudit("meta_disp_update", { value: val });
+  showToast(`Meta de disponibilidade definida para ${val}%! ✓`);
+  await renderTabBody();
+}
+async function saveMetaSla(){
+  const input = document.getElementById("meta-sla-input");
+  if(!input) return;
+  const val = parseInt(input.value, 10);
+  if(isNaN(val) || val < 50 || val > 100){
+    showToast("Meta deve ser entre 50% e 100%.", false);
+    return;
+  }
+  META_SLA = val;
+  await dbSaveMetaSla(val);
+  await dbAddAudit("meta_sla_update", { value: val });
+  showToast(`Meta de SLA de preenchimento definida para ${val}%! ✓`);
+  await renderTabBody();
+}
+async function saveCutoffHour(){
+  const u = USERS_DB[S.user];
+  if(!u || u.role!=="admin"){ showToast("Acesso restrito.", false); return; }
+  const sel=document.getElementById("cutoff-hour-sel");
+  if(!sel){ showToast("Campo de corte não encontrado.", false); return; }
+  const hour=Number(sel.value);
+  if(!Number.isFinite(hour) || hour<0 || hour>23){ showToast("Hora invalida.", false); return; }
+  try{
+    await dbSaveAlertCutoffHour(hour);
+    ALERT_CUTOFF_HOUR = hour;
+    await dbAddAudit("alert_cutoff_update", { hour });
+    showToast(`Horario de corte atualizado para ${String(hour).padStart(2,'0')}:00`);
+    await renderTabBody();
+  } catch(e){
+    console.error(e);
+    showToast("Erro ao salvar horario de corte.", false);
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// TODAY
+// ═══════════════════════════════════════════════════════════
+async function renderToday(body){
+  body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando...</div>`;
+  const ds=dateStr(S.dateOffset);
+  const [allPTodas, allDrivers]=await Promise.all([dbGetPlates(), dbGetDrivers().catch(()=>({}))]);
+  const allP=_semSobDemanda(allPTodas); // sob demanda: seção própria de ofertas (abaixo), fora dos números
+  const _uRoleToday=USERS_DB[S.user]?.role;
+  const ofertasHtml=(_uRoleToday==='admin'||_uRoleToday==='operacional') ? await renderOfertasSobDemanda(allPTodas, ds) : '';
+  // Retorna nome do motorista somente se ele estiver ativo (ou não estiver cadastrado — legado)
+  function driverAtivoNome(carrier, operacao, nome){
+    if(!nome) return '';
+    const driversCarrier=(allDrivers[carrier]||[]);
+    const cadastro=driversCarrier.find(d=>d.nome===nome&&d.operacao===operacao);
+    if(cadastro && cadastro.ativo===false) return ''; // inativo → oculta
+    return nome; // ativo ou não cadastrado (legado) → exibe
+  }
+  const _uOps2=userOperacoes(USERS_DB[S.user]);
+  const pendingAlerts = await buildPendingAlerts(allP,_uOps2);
+  const opFilter=S.todayOp||"";
+  const placaFilter=(S.todayPlaca||"").toUpperCase();
+  const carrierFilter=S.todayCarrier||"";
+  const volumeFilter=S.todayVolume||"";
+  // Lista real de volumes/capacidades cadastrados (não é uma lista fixa
+  // inventada) — junta todas as placas ativas de todos os transportadores,
+  // pega os valores distintos de capacidade e ordena numericamente.
+  const volumesDisponiveis = [...new Set(
+    CARRIERS.flatMap(c => (allP[c]||[]).filter(p=>p.ativo!==false).map(p=>p.capacidade)).filter(v=>v!=null&&v!=='')
+  )].sort((a,b)=>Number(a)-Number(b));
+  const volumeOpts=`<option value="">Todos os volumes</option>${volumesDisponiveis.map(v=>`<option value="${attr(v)}" ${String(v)===volumeFilter?'selected':''}>${esc(v)} m³</option>`).join('')}`;
+  const carrierOptsToday=`<option value="">Todos os transportadores</option>${CARRIERS.map(c=>`<option value="${attr(c)}" ${c===carrierFilter?'selected':''}>${esc(c)}</option>`).join('')}`;
+  let counts={disponivel:0,indisponivel:0,manutencao:0,folga:0,total:0};
+  const allPairs=[];
+  for(const carrier of CARRIERS){
+    if(carrierFilter && carrier!==carrierFilter) continue;
+    for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)&&(!opFilter||p.operacao===opFilter)&&(!volumeFilter||String(p.capacidade)===volumeFilter)&&(!placaFilter||p.placa.toUpperCase().includes(placaFilter)||carrier.toUpperCase().includes(placaFilter))))
+      allPairs.push({carrier,plate:p.placa,dateStr:ds});
+  }
+  const statusMap=await dbLoadStatusBulk(allPairs);
+  let sections="";
+  for(const carrier of CARRIERS){
+    if(carrierFilter && carrier!==carrierFilter){ continue; }
+    const plates=(allP[carrier]||[]).filter(p=>p.ativo!==false&&(!S.contratoFilter||p.contrato===S.contratoFilter)&&(!opFilter||p.operacao===opFilter)&&(!volumeFilter||String(p.capacidade)===volumeFilter)&&(!placaFilter||p.placa.toUpperCase().includes(placaFilter)||carrier.toUpperCase().includes(placaFilter)));
+    if(!plates.length&&!(allP[carrier]||[]).length){
+      sections+=`<div class="carrier-block"><div class="carrier-head"><span class="ch-icon">🚛</span>${esc(carrier)}</div><div style="background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:1rem;font-size:13px;color:var(--muted)">Nenhuma placa cadastrada</div></div>`;
+      continue;
+    }
+    if(!plates.length) continue;
+    const isAdmin2=USERS_DB[S.user]&&USERS_DB[S.user].role==="admin";
+    const rows=plates.map(p=>{
+      const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
+      const v=rec?rec.status:null;
+      if(v){ counts[v]=(counts[v]||0)+1; } counts.total++;
+      const st=v?getSt(v):null;
+      // Only show drivers if availability was actually filled, and only if driver is active
+      const motDToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaDiurno)||p.motoristaDiurno||''):'';
+      const motNToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaNoturno)||p.motoristaNoturno||''):'';
+      const unlockPlateBtn=(v&&isAdmin2)?`<button class="btn-unlock-plate" onclick="adminUnlockPlate('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Desbloquear apenas esta placa">🔓</button>`:''
+      return `<tr>
+        <td style="font-weight:500;font-family:'DM Mono',monospace">${esc(p.placa)}</td>
+        <td style="font-size:12px">${esc(p.operacao)}</td>
+        <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
+        <td><span class="badge ${p.identificacao==="Petronas"?"b-teal":"b-gray"}">${esc(p.identificacao)}</span></td>
+        <td><span class="badge ${p.contrato==="Dedicado"?"b-ded":"b-spot"}">${esc(p.contrato)}</span></td>
+        <td><span class="cap-tag">${esc(p.capacidade)}m³</span></td>
+        <td>${v?`<span class="badge ${st.badge}">${esc(st.label)}</span>`:`<span class="badge b-blank">Não preenchido</span>`}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap">${rec&&rec.hodometro!==undefined&&rec.hodometro!==null?`<span style="color:var(--dim)">${rec.hodometro}</span>`:'—'}${isAdmin2?` <span onclick="abrirCorrecaoHodometro('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}')" title="Corrigir hodômetro dessa placa em lote (todo o histórico)" style="cursor:pointer;font-size:10px;opacity:.7">✏️</span>`:''}</td>
+        <td>${rec&&rec.hodometroFotoUrl?`<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--dim);">📷 ver</a>`:isMonday(ds)?`<span style="font-size:10px;color:var(--red)">sem foto</span>`:`<span style="font-size:11px;color:var(--muted)">—</span>`}</td>
+        <td style="font-size:12px;color:var(--lime);font-family:'DM Mono',monospace">${rec&&rec.time?fmtTimeValue(rec.time):'—'}</td>
+        <td>${renderDriverCell(motDToday,motNToday)}</td>
+        <td style="text-align:center">${unlockPlateBtn}</td>
+      </tr>`;
+    }).join("");
+    let lock=await dbGetLock(carrier,ds);
+    const allFilled=plates.length>0 && plates.every(p=>recordHasStatus(statusMap[`${carrier}||${p.placa}||${ds}`]));
+    const isStaleLock = lock && !allFilled;
+    if(isStaleLock){
+      console.warn("Ignorando bloqueio inconsistente em Today", carrier, ds);
+      await dbRemoveLock(carrier, ds).catch(()=>{});
+      lock = null;
+      _cache.clear();
+    }
+    const done=!!lock && !isStaleLock || allFilled;
+    const lockBadge=done
+      ?`<span style="font-size:11px;color:var(--lime);margin-left:8px;background:var(--lime-bg);border:1px solid var(--border2);padding:2px 8px;border-radius:99px;">🔒 Enviado ${lock?lock.lockedAt:'preenchimento concluído'}</span>`
+      :`<span style="font-size:11px;color:var(--muted);margin-left:8px;">Pendente</span>`;
+    const unlockBtn=(done&&isAdmin2)
+      ?`<button class="btn-unlock" onclick="adminUnlock('${attr(jsArg(carrier))}','${attr(jsArg(ds))}')" title="Desfazer lançamento">🔓 Desbloquear tudo</button>`
+      :'';
+    sections+=`<div class="carrier-block">
+      <div class="carrier-head"><span class="ch-icon">🚛</span>${esc(carrier)}<span class="ch-count">${plates.length} placa(s)</span>${lockBadge}<span style="flex:1"></span>${unlockBtn}</div>
+      <div class="tscroll"><table class="table" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);min-width:1100px">
+        <thead><tr><th style="width:7%">PLACA</th><th style="width:10%">OPERAÇÃO</th><th style="width:6%">TIPO</th><th style="width:6%">IDENTIFICAÇÃO</th><th style="width:6%">CONTRATO</th><th style="width:6%">CAPACIDADE</th><th style="width:10%">STATUS</th><th style="width:6%"><span style="font-size:9px">HODÔMETRO</span></th><th style="width:7%"><span style="font-size:9px">FOTO</span></th><th style="width:6%">HORÁRIO</th><th style="width:16%">MOTORISTAS</th><th style="width:5%">AÇÃO</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div></div>`;
+  }
+  const opOpts=`<option value="">Todas as operações</option>${OPERACOES.map(o=>optHtml(o, o===opFilter)).join("")}`;
+  body.innerHTML=`
+    <div class="date-nav">
+      <button onclick="chDate(-1)">‹</button>
+      <span class="date-label">${fmtDate(S.dateOffset)}</span>
+      <button onclick="chDate(1)">›</button>
+    </div>
+    <div class="filters-bar">
+      <select onchange="S.todayCarrier=this.value;renderTabBody()">${carrierOptsToday}</select>
+      <select onchange="S.todayOp=this.value;renderTabBody()">${opOpts}</select>
+      <select onchange="S.todayVolume=this.value;renderTabBody()">${volumeOpts}</select>
+      <input type="text" placeholder="🔍 Buscar placa ou transportador..." value="${attr(S.todayPlaca||"")}" id="today-search-input" oninput="S.todayPlaca=this.value;_debouncedTodaySearch()" style="background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:13px;padding:8px 12px;outline:none;transition:border-color .15s;">
+      ${renderContratoFilterUI()}
+    </div>
+    ${pendingAlerts}
+    ${ofertasHtml}
+    <div class="summary-grid">
+      <div class="sum-card"><div class="sum-num" style="color:var(--green)">${counts.disponivel}</div><div class="sum-label">Disponíveis</div></div>
+      <div class="sum-card"><div class="sum-num" style="color:var(--red)">${counts.indisponivel}</div><div class="sum-label">Indisponíveis</div></div>
+      <div class="sum-card"><div class="sum-num" style="color:var(--amber)">${counts.manutencao}</div><div class="sum-label">Manutenção</div></div>
+      <div class="sum-card"><div class="sum-num" style="color:var(--blue)">${counts.folga}</div><div class="sum-label">Folga</div></div>
+      <div class="sum-card"><div class="sum-num" style="color:var(--purple)">${counts.programado||0}</div><div class="sum-label">Prog./Viagem</div></div>
+      <div class="sum-card"><div class="sum-num" style="color:var(--lime)">${counts.total}</div><div class="sum-label">Total</div></div>
+    </div>
+    ${sections||'<div class="empty"><span class="ei">🔍</span>Nenhuma placa com esse filtro.</div>'}`;
+}
+// ── Ofertas da operação sob demanda (Painel de Disponibilidade) ──────────────
+// A oferta É o registro de disponibilidade do dia (coleção availability), com
+// oferta:true — o Roteirizador já entende sem nada novo: placa ofertada =
+// Disponível a partir do horário informado, na base escolhida.
+async function renderOfertasSobDemanda(allP, ds){
+  const linhas = [];
+  for (const carrier of CARRIERS) (allP[carrier]||[]).forEach(p => { if (p.ativo !== false && ehSobDemanda(p)) linhas.push({ carrier, p }); });
+  if (!linhas.length) return '';
+  const [sm, allDrivers] = await Promise.all([
+    dbLoadStatusBulk(linhas.map(({carrier,p}) => ({ carrier, plate: p.placa, dateStr: ds }))),
+    dbGetDrivers().catch(() => ({})),
+  ]);
+  // Motorista do dia: começa no vinculado no cadastro da placa e pode ser
+  // trocado aqui (lista = motoristas ativos da transportadora nas bases da placa).
+  const optsMot = (carrier, bases, turno, atual) => {
+    const lista = (allDrivers[carrier] || []).filter(d => d.ativo !== false && (!d.turno || d.turno === turno) && (!bases.length || bases.includes(d.operacao) || !d.operacao));
+    const nomes = [...new Set(lista.map(d => d.nome))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (atual && !nomes.includes(atual)) nomes.unshift(atual);
+    return `<option value="">— ${turno === 'Diurno' ? '☀' : '🌙'} sem motorista —</option>` + nomes.map(n => `<option value="${attr(n)}"${n === atual ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  };
+  const nOf = linhas.filter(({carrier,p}) => sm[`${carrier}||${p.placa}||${ds}`]?.status === 'disponivel').length;
+  const inp = 'background:var(--dark);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:4px 6px;font-size:12px';
+  const rows = linhas.map(({carrier,p}) => {
+    const rec = sm[`${carrier}||${p.placa}||${ds}`];
+    const of = rec?.status === 'disponivel';
+    const bases = (p.basesCarregamento && p.basesCarregamento.length) ? p.basesCarregamento : [p.operacao].filter(Boolean);
+    const rid = `of-${(carrier+'_'+p.placa).replace(/[^A-Za-z0-9_]/g,'_')}`;
+    const args = `'${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${ds}','${rid}'`;
+    const seOf = `if(this.closest('tr').querySelector('.of-chk').checked) salvarOfertaSobDemanda(${args})`;
+    const motD = of ? (rec.motoristaDiurno || p.motoristaDiurno || '') : (p.motoristaDiurno || '');
+    const motN = of ? (rec.motoristaNoturno || p.motoristaNoturno || '') : (p.motoristaNoturno || '');
+    return `<tr id="${rid}" style="${of?'background:rgba(110,224,74,.07)':''}">
+      <td style="font-size:12px">${esc(carrier)}</td>
+      <td style="font-family:'DM Mono',monospace;font-weight:600">${esc(p.placa)}</td>
+      <td><span class="cap-tag">${esc(p.capacidade)}m³</span></td>
+      <td style="text-align:center"><input type="checkbox" class="of-chk" ${of?'checked':''} onchange="salvarOfertaSobDemanda(${args})" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" title="Ofertar esta placa para o dia"></td>
+      <td><input type="time" class="of-hora" value="${attr(of ? (rec.time||'') : '')}" onchange="${seOf}" style="${inp}"></td>
+      <td style="min-width:210px"><select class="of-base" onchange="${seOf}" style="${inp};width:100%;box-sizing:border-box">
+        <option value="">${esc(bases.length>1 ? 'Qualquer: '+bases.join(' ou ') : (bases[0]||'Operação da placa'))}</option>
+        ${bases.length>1?bases.map(b=>`<option value="${attr(b)}"${rec?.baseOferta===b?' selected':''}>${esc(b)}</option>`).join(''):''}
+      </select></td>
+      <td style="min-width:170px"><select class="of-mot-d" onchange="${seOf}" style="${inp};width:100%;box-sizing:border-box;margin-bottom:4px">${optsMot(carrier, bases, 'Diurno', motD)}</select><select class="of-mot-n" onchange="${seOf}" style="${inp};width:100%;box-sizing:border-box">${optsMot(carrier, bases, 'Noturno', motN)}</select></td>
+      <td style="min-width:170px"><input type="text" class="of-obs" value="${attr(of ? (rec.obsOferta||'') : '')}" placeholder="Obs. (opcional)" onchange="${seOf}" style="width:100%;box-sizing:border-box;${inp}"></td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${of ? `✓ ${esc(rec.ofertadoPor||'')}${rec.ofertadoEm?' · '+esc(new Date(rec.ofertadoEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):''}` : (rec?.status ? `<span title="Registro já existente para este dia, lançado pela transportadora no painel dela (antes da placa virar sob demanda). Ao ofertar, a oferta substitui esse registro.">Transportadora informou: <b style="color:var(--text)">${esc(getSt(rec.status).label)}</b></span>` : 'Não ofertada')}</td>
+    </tr>`;
+  }).join('');
+  // Bloco recolhido por padrão (não polui o Painel); abre com um clique e
+  // lembra a escolha neste computador. Recolhido, mostra só as ofertadas.
+  const aberto = _ofertasSobAberto();
+  const chips = linhas.filter(({carrier,p}) => sm[`${carrier}||${p.placa}||${ds}`]?.status === 'disponivel').map(({carrier,p}) => {
+    const r = sm[`${carrier}||${p.placa}||${ds}`];
+    return `<span title="${attr(carrier)}" style="font-size:11px;font-family:'DM Mono',monospace;background:rgba(110,224,74,.1);border:1px solid rgba(110,224,74,.35);color:var(--text);border-radius:10px;padding:2px 8px;white-space:nowrap">${esc(p.placa)}${r.time?' · '+esc(r.time):''}${r.baseOferta?' · '+esc(r.baseOferta):''}</span>`;
+  }).join('');
+  return `<div class="carrier-block" style="margin-bottom:1.25rem">
+    <div class="carrier-head" onclick="alternarOfertasSob()" title="${aberto?'Recolher':'Abrir para ofertar placas'}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer;user-select:none;${aberto?'':'border-radius:var(--radius-lg)'}">
+      <span style="display:inline-block;width:12px;color:var(--muted);transition:transform .15s;transform:rotate(${aberto?90:0}deg)">▶</span><span class="ch-icon">🚚</span>Operação sob demanda — ofertas do dia
+      <span class="ch-count">${nOf} de ${linhas.length} ofertada(s)</span>
+      ${aberto
+        ? `<span style="font-size:11px;color:var(--muted);font-weight:400">Fora dos números da disponibilidade diária. Marque as placas que podem rodar neste dia — o Roteirizador só usa as ofertadas.</span>`
+        : `${chips}<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:auto">clique para ${nOf?'editar / ofertar mais':'ofertar'}</span>`}
+    </div>
+    ${aberto ? `<div class="tscroll"><table class="table" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);min-width:1180px">
+      <thead><tr><th>TRANSPORTADOR</th><th>PLACA</th><th>CAP.</th><th style="text-align:center">OFERTADA</th><th>DISPONÍVEL A PARTIR DE</th><th>BASE DO DIA</th><th>MOTORISTAS</th><th>OBSERVAÇÃO</th><th>REGISTRO</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : ''}</div>`;
+}
+function _ofertasSobAberto(){ try { return localStorage.getItem('nexta_ofertas_sob_aberto') === '1'; } catch(e) { return !!window._ofertasSobAbertoMem; } }
+function alternarOfertasSob(){
+  const novo = !_ofertasSobAberto();
+  window._ofertasSobAbertoMem = novo;
+  try { localStorage.setItem('nexta_ofertas_sob_aberto', novo ? '1' : '0'); } catch(e) {}
+  renderTabBody();
+}
+window.alternarOfertasSob = alternarOfertasSob;
+async function salvarOfertaSobDemanda(carrier, plate, ds, rid){
+  const row = document.getElementById(rid); if (!row) return;
+  const ofertada = row.querySelector('.of-chk').checked;
+  const id = `${carrier}__${plate}__${ds}`;
+  const cKey = `status||${carrier}||${plate}||${ds}`;
+  try {
+    if (!ofertada) {
+      await deleteDoc(doc(db, "availability", id));
+      cacheSet(cKey, null);
+      showToast(`${plate}: oferta retirada para ${fmtDateStr(ds)}.`, true);
+    } else {
+      const agora = new Date().toISOString();
+      const data = { carrier, plate, dateStr: ds, status: 'disponivel', time: row.querySelector('.of-hora').value || '', filled: true,
+        oferta: true, baseOferta: row.querySelector('.of-base').value || '', obsOferta: row.querySelector('.of-obs').value.trim(),
+        ofertadoPor: USERS_DB[S.user]?.name || S.user || '', ofertadoEm: agora, updatedAt: agora,
+        motoristaDiurno: row.querySelector('.of-mot-d')?.value || '', motoristaNoturno: row.querySelector('.of-mot-n')?.value || '',
+        hodometro: null, hodometroFotoUrl: null };
+      await setDoc(doc(db, "availability", id), data);
+      cacheSet(cKey, { status: 'disponivel', time: data.time, motoristaDiurno: data.motoristaDiurno, motoristaNoturno: data.motoristaNoturno, hodometro: null, hodometroFotoUrl: null,
+        oferta: true, baseOferta: data.baseOferta, obsOferta: data.obsOferta, ofertadoPor: data.ofertadoPor, ofertadoEm: data.ofertadoEm });
+      showToast(`${plate} ofertada para ${fmtDateStr(ds)}${data.time?' a partir das '+data.time:''}.`, true);
+    }
+    try { await dbAddAudit(ofertada ? "oferta_sob_demanda" : "oferta_sob_demanda_retirada", { carrier, plate, date: ds }); } catch(e) {}
+    try { window._rotAposOferta?.([{ plate, dateStr: ds, tipo: ofertada ? 'added' : 'removed' }]); } catch(e) {}
+    await renderTabBody();
+  } catch(e) {
+    console.error('[oferta sob demanda]', e);
+    showToast('Não consegui salvar a oferta: ' + (e.code || e.message || e), false);
+  }
+}
+window.salvarOfertaSobDemanda = salvarOfertaSobDemanda;
+// ═══════════════════════════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════════════════════════
+async function renderHistory(body){
+  const u=USERS_DB[S.user];
+  const isAdmin=u&&u.role==='admin';
+  const subTabsAudit=`
+    <div style="display:flex;gap:4px;background:var(--mid);border:1px solid var(--border);border-radius:var(--radius);padding:4px;width:fit-content;margin-bottom:1.5rem">
+      <button class="tab ${S.auditSubTab==='disponibilidade'?'active':''}" onclick="setAuditSubTab('disponibilidade')">📜 Disponibilidade</button>
+      ${isAdmin?`<button class="tab ${S.auditSubTab==='atividade'?'active':''}" onclick="setAuditSubTab('atividade')">🔒 Atividade dos Usuários</button>`:''}
+    </div>`;
+  if(S.auditSubTab==='atividade'&&isAdmin){ await renderAtividadeUsuarios(body, subTabsAudit); return; }
+  const cf=S.histCarrier, sf=S.histStatus, of=S.histOp;
+  const placaFilter=(S.histPlaca||"").toUpperCase();
+  const carrierOpts=`<option value="">Todos transportadores</option>${CARRIERS.map(c=>optHtml(c, c===cf)).join("")}`;
+  const statusOpts=`<option value="">Todos os status</option>${STATUS_OPTS.map(s=>`<option value="${attr(s.val)}"${s.val===sf?" selected":""}>${esc(s.label)}</option>`).join("")}<option value="nao_preenchido"${"nao_preenchido"===sf?" selected":""}>Não preenchido</option>`;
+  const opOpts=`<option value="">Todas as operações</option>${OPERACOES.map(o=>optHtml(o, o===of)).join("")}`;
+  const daysOpts=[7,15,30,45].map(d=>`<option value="${d}"${d===S.histDays?" selected":""}>${d} dias</option>`).join("");
+  body.innerHTML=subTabsAudit+`
+    <div class="filters-bar">
+      <select onchange="S.histCarrier=this.value;renderTabBody()">${carrierOpts}</select>
+      <select onchange="S.histStatus=this.value;renderTabBody()">${statusOpts}</select>
+      <select onchange="S.histOp=this.value;renderTabBody()">${opOpts}</select>
+      <select onchange="S.histDays=+this.value;renderTabBody()">${daysOpts}</select>
+      <input type="text" placeholder="🔍 Buscar placa ou transportador..." value="${attr(S.histPlaca||"")}" id="hist-search-input" oninput="S.histPlaca=this.value;_debouncedHistSearch()" style="background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:13px;padding:8px 12px;outline:none;transition:border-color .15s;">
+    </div>
+    <div id="hist-result"><div class="loading"><span class="spin"></span>Buscando registros...</div></div>`;
+  const dates=getDates(S.histDays);
+  const [allPHist, allDrivers]=await Promise.all([dbGetPlates(), dbGetDrivers().catch(()=>({}))]);
+  const allP=_semSobDemanda(allPHist);
+  // Retorna nome apenas se motorista ativo (ou não cadastrado — legado)
+  function driverAtivoHist(carrier, operacao, nome){
+    if(!nome) return '';
+    const d=(allDrivers[carrier]||[]).find(d=>d.nome===nome&&d.operacao===operacao);
+    return (d&&d.ativo===false) ? '' : nome;
+  }
+  const carriersToShow=cf?[cf]:CARRIERS;
+  const allPairs=[];
+  for(const carrier of carriersToShow)
+    for(const p of (allP[carrier]||[]).filter(p=>(!of||p.operacao===of)&&(!placaFilter||p.placa.toUpperCase().includes(placaFilter)||carrier.toUpperCase().includes(placaFilter))))
+      for(const ds of dates)
+        allPairs.push({carrier,plate:p.placa,dateStr:ds});
+  const statusMap=await dbLoadStatusBulk(allPairs);
+  const groups={};
+  for(const ds of dates){
+    groups[ds]={ rows:[], counts:{disponivel:0, indisponivel:0, manutencao:0, folga:0, programado:0, nao_preenchido:0, total:0}, carriers:new Set() };
+  }
+  for(const carrier of carriersToShow){
+    for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&(!of||p.operacao===of)&&(!placaFilter||p.placa.toUpperCase().includes(placaFilter)||carrier.toUpperCase().includes(placaFilter)))){
+      for(const ds of dates){
+        const rec=statusMap[`${carrier}||${p.placa}||${ds}`]; // null = não preenchido
+        const v=rec?rec.status:null;
+        const t=rec?rec.time:"";
+        if(sf==="nao_preenchido"){ if(v!==null) continue; }
+        else if(sf){ if(v!==sf) continue; }
+        const isBlank=v===null;
+        const st=isBlank?null:getSt(v);
+        const statusBadge=isBlank
+          ?`<span class="badge b-blank">Não preenchido</span>`
+          :`<span class="badge ${st.badge}">${esc(st.label)}</span>`;
+        const row=`<tr>
+          <td style="font-size:12px;color:var(--muted)">${esc(carrier)}</td>
+          <td style="font-family:'DM Mono',monospace;font-weight:500">${esc(p.placa)}</td>
+          <td style="font-size:12px">${esc(p.operacao)}</td>
+          <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
+          <td>${statusBadge}</td>
+          <td style="font-size:12px;color:var(--lime);font-family:'DM Mono',monospace">${fmtTimeValue(t)}</td>
+          <td style="font-family:'DM Mono',monospace">${rec&&rec.hodometro!==undefined&&rec.hodometro!==null?esc(rec.hodometro):'Não preenchido'}</td>
+          <td>${rec&&rec.hodometroFotoUrl?`<a href="${attr(rec.hodometroFotoUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--dim);">📷 ver</a>`:isMonday(ds)?`<span style="font-size:10px;color:var(--red)">sem foto</span>`:`<span style="font-size:11px;color:var(--muted)">—</span>`}</td>
+          <td>${renderDriverCell(!isBlank?driverAtivoHist(carrier, p.operacao, (rec&&rec.motoristaDiurno)||p.motoristaDiurno||''):'', !isBlank?driverAtivoHist(carrier, p.operacao, (rec&&rec.motoristaNoturno)||p.motoristaNoturno||''):'')}</td>
+        </tr>`;
+        const g=groups[ds];
+        g.rows.push(row);
+        g.counts.total++;
+        g.counts[v||"nao_preenchido"]=(g.counts[v||"nao_preenchido"]||0)+1;
+        g.carriers.add(carrier);
+      }
+    }
+  }
+  const groupRows=dates.slice().reverse().map(ds=>{
+    const g=groups[ds];
+    if(!g||!g.rows.length) return "";
+    const c=g.counts;
+    const open=!!(S.histOpenDays&&S.histOpenDays[ds]);
+    const detailId=`hist-day-${ds}`;
+    const detail=`<tr class="hist-detail-row" id="${detailId}" style="${open?'':'display:none'}">
+      <td colspan="8">
+        <div class="hist-detail-box">
+          <table class="table hist-detail-table">
+            <thead><tr><th style="width:16%">TRANSPORTADOR</th><th style="width:9%">PLACA</th><th style="width:13%">OPERAÇÃO</th><th style="width:8%">TIPO</th><th style="width:12%">STATUS</th><th style="width:8%">HORÁRIO</th><th style="width:11%">HODÔMETRO</th><th style="width:8%">FOTO</th><th style="width:15%">MOTORISTAS</th></tr></thead>
+            <tbody>${g.rows.join("")}</tbody>
+          </table>
+        </div>
+      </td>
+    </tr>`;
+    return `<tr class="hist-day-row" onclick="toggleHistoryDay('${ds}')">
+      <td style="width:46px"><button class="hist-expand-btn" title="${open?'Recolher dia':'Expandir dia'}">${open?'−':'+'}</button></td>
+      <td style="font-size:13px;font-weight:600;white-space:nowrap">${fmtDateStr(ds)}</td>
+      <td><span class="cap-tag">${c.total} registro(s)</span></td>
+      <td style="font-size:12px;color:var(--muted)">${g.carriers.size} transportador(es)</td>
+      <td><span class="badge b-green">${c.disponivel||0}</span></td>
+      <td><span class="badge b-red">${c.indisponivel||0}</span></td>
+      <td><span class="badge b-amber">${c.manutencao||0}</span> <span class="badge b-blue">${c.folga||0}</span> <span class="badge b-purple">${c.programado||0}</span></td>
+      <td><span class="badge b-blank">${c.nao_preenchido||0}</span></td>
+    </tr>${detail}`;
+  }).join("");
+  const result=document.getElementById("hist-result");
+  if(!groupRows){result.innerHTML=`<div class="empty"><span class="ei">🔍</span>Nenhum registro encontrado.</div>`;return;}
+  result.innerHTML=`
+    <div class="tscroll"><table class="table hist-table">
+      <thead><tr><th style="width:46px"></th><th style="width:13%">DATA</th><th style="width:13%">TOTAL</th><th style="width:18%">TRANSPORTADORES</th><th style="width:11%">DISP.</th><th style="width:11%">INDISP.</th><th style="width:18%">OUTROS</th><th style="width:16%">NÃO PREENCHIDO</th></tr></thead>
+      <tbody>${groupRows}</tbody>
+    </table></div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">Últimos ${S.histDays} dias</p>`;
+}
+function toggleHistoryDay(ds){
+  S.histOpenDays = S.histOpenDays || {};
+  S.histOpenDays[ds] = !S.histOpenDays[ds];
+  const detail=document.getElementById(`hist-day-${ds}`);
+  const row=detail?.previousElementSibling;
+  const btn=row?.querySelector('.hist-expand-btn');
+  const open=!!S.histOpenDays[ds];
+  if(detail) detail.style.display=open?'':'none';
+  if(btn){
+    btn.textContent=open?'−':'+';
+    btn.title=open?'Recolher dia':'Expandir dia';
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// AUDITORIA — Atividade dos Usuários (admin-only)
+// ═══════════════════════════════════════════════════════════
+// Antes vivia resumida (só 8 itens) solta no Daily Briefing, sem filtro nem
+// paginação de verdade. Agora é uma sub-aba dedicada dentro de "Auditoria",
+// só pra admin, com o log completo (até 300 eventos, o máximo que
+// dbAddAudit guarda) e um filtro simples por usuário/ação.
+async function renderAtividadeUsuarios(body, subTabs=''){
+  body.innerHTML = subTabs+`<div class="loading"><span class="spin"></span>Carregando atividade...</div>`;
+  const items = await dbGetAudit(300);
+  const actorSet = [...new Set(items.map(a=>a.actor||"Sistema"))].sort();
+  const actorOpts = `<option value="">Todos os usuários</option>${actorSet.map(a=>`<option value="${attr(a)}" ${S.auditActorFiltro===a?'selected':''}>${esc(a)}</option>`).join('')}`;
+  const filtrados = S.auditActorFiltro ? items.filter(a=>(a.actor||"Sistema")===S.auditActorFiltro) : items;
+  const rows = filtrados.length ? filtrados.map(a=>`
+    <tr>
+      <td style="font-size:12px;color:var(--lime)">${fmtAuditAction(a.action, a.details||{})}</td>
+      <td style="font-size:12px;color:var(--text)">${esc(a.actor||"Sistema")}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${esc(a.atBR||"")}</td>
+    </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px;">Nenhuma atividade registrada${S.auditActorFiltro?' para esse usuário':''}.</td></tr>`;
+  body.innerHTML = subTabs+`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem">
+      <div>
+        <p class="sec-title" style="margin-bottom:2px">🔒 Atividade dos Usuários</p>
+        <p style="font-size:12px;color:var(--muted)">Log completo de ações no sistema — só administradores veem isso. Mostrando ${filtrados.length} de ${items.length} evento(s) guardado(s) (máximo 300).</p>
+      </div>
+      <select onchange="S.auditActorFiltro=this.value;renderTabBody()">${actorOpts}</select>
+    </div>
+    <div class="tscroll">
+      <table class="table">
+        <thead><tr><th style="width:45%">AÇÃO</th><th style="width:25%">USUÁRIO</th><th style="width:30%">DATA/HORA</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+// ═══════════════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════════════
+async function renderExport(body){
+  const subTabsReports=`
+    <div style="display:flex;gap:4px;background:var(--mid);border:1px solid var(--border);border-radius:var(--radius);padding:4px;width:fit-content;margin-bottom:1.5rem">
+      <button class="tab ${S.reportsSubTab==='exportar'?'active':''}" onclick="setReportsSubTab('exportar')">📤 Exportar</button>
+      <button class="tab ${S.reportsSubTab==='arquivos'?'active':''}" onclick="setReportsSubTab('arquivos')">🗄 Arquivos Mensais</button>
+    </div>`;
+  if(S.reportsSubTab==='arquivos'){ await renderArchives(body, subTabsReports); return; }
+  const now=new Date();
+  const mons=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const maxDate=localDateStr(now);
+  const minD=new Date(); minD.setDate(minD.getDate()-45);
+  const minDate=localDateStr(minD);
+  const todayFmt=fmtDate(0).replace(' — Hoje','');
+  const weekDates=getDates(7);
+  const weekLabel=`${fmtDateStr(weekDates[0])} → ${fmtDateStr(weekDates[6])}`;
+  const monthLabel=`${mons[now.getMonth()]} ${now.getFullYear()}`;
+  const carrierOptsExp=[["",'Todas']].concat(CARRIERS.map(c=>[c,c])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.carrier===v?'selected':''}>${esc(l)}</option>`).join('');
+  const opOptsExp=[["",'Todas']].concat(OPERACOES.map(o=>[o,o])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.operacao===v?'selected':''}>${esc(l)}</option>`).join('');
+  const tipoOptsExp=[["",'Todos']].concat(TIPOS_VEIC.map(t=>[t,t])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.tipo===v?'selected':''}>${esc(l)}</option>`).join('');
+  const identOptsExp=[["",'Todas']].concat(IDENTS.map(i=>[i,i])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.identificacao===v?'selected':''}>${esc(l)}</option>`).join('');
+  const ctOptsExp=[["",'Todos']].concat(CONTRATOS.map(c=>[c,c])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.contrato===v?'selected':''}>${esc(l)}</option>`).join('');
+  const stOptsExp=[["",'Todos']].concat(STATUS_OPTS.map(s=>[s.val,s.label])).concat([["nao_preenchido","Não preenchido"]]).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.status===v?'selected':''}>${esc(l)}</option>`).join('');
+  const filtroAtivo = Object.values(S.expFiltro).some(Boolean);
+  const filtrosBar = `
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <p style="font-size:13px;font-weight:600;">🎛 Filtros do relatório</p>
+        ${filtroAtivo?`<button class="btn btn-outline btn-sm" onclick="limparFiltroExport()">✕ Limpar filtros</button>`:''}
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">Aplica em Diário, Semanal, Mensal e Personalizado — nos 3 formatos (Excel, CSV, PDF). Deixe em "Todas/Todos" pra não filtrar aquele campo.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+        <div class="form-field" style="margin:0"><label>TRANSPORTADORA</label><select onchange="S.expFiltro.carrier=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${carrierOptsExp}</select></div>
+        <div class="form-field" style="margin:0"><label>OPERAÇÃO</label><select onchange="S.expFiltro.operacao=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${opOptsExp}</select></div>
+        <div class="form-field" style="margin:0"><label>TIPO DE VEÍCULO</label><select onchange="S.expFiltro.tipo=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${tipoOptsExp}</select></div>
+        <div class="form-field" style="margin:0"><label>IDENTIFICAÇÃO</label><select onchange="S.expFiltro.identificacao=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${identOptsExp}</select></div>
+        <div class="form-field" style="margin:0"><label>CONTRATO</label><select onchange="S.expFiltro.contrato=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${ctOptsExp}</select></div>
+        <div class="form-field" style="margin:0"><label>STATUS</label><select onchange="S.expFiltro.status=this.value" style="width:100%;background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;padding:7px 9px;">${stOptsExp}</select></div>
+      </div>
+    </div>`;
+  body.innerHTML=subTabsReports+filtrosBar+`
+    <!-- Header -->
+    <div style="margin-bottom:2rem">
+      <p class="sec-title" style="margin-bottom:4px">Exportar relatórios</p>
+      <p style="font-size:13px;color:var(--muted)">Escolha o período e o formato. Os dados incluem status, hodômetro, motoristas e km percorrido.</p>
+    </div>
+    <!-- Format legend -->
+    <div class="exp-fmt-legend">
+      <div class="exp-fmt-tag exp-fmt-xlsx">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Excel — planilha editável, ideal para análises
+      </div>
+      <div class="exp-fmt-tag exp-fmt-csv">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        CSV — dados brutos, ideal para sistemas externos
+      </div>
+      <div class="exp-fmt-tag exp-fmt-pdf">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-4"/><path d="M12 15v-6"/><path d="M15 15v-2"/></svg>
+        PDF — relatório executivo com gráficos e KPIs
+      </div>
+    </div>
+    <!-- Report cards grid -->
+    <div class="exp-grid">
+      <!-- Diário -->
+      <div class="exp-card exp-card--day">
+        <div class="exp-card-accent"></div>
+        <div class="exp-card-body">
+          <div class="exp-card-icon">📅</div>
+          <div class="exp-card-info">
+            <div class="exp-card-title">Diário</div>
+            <div class="exp-card-period">${todayFmt}</div>
+            <div class="exp-card-desc">Disponibilidade de todos os veículos no dia selecionado</div>
+          </div>
+        </div>
+        <div class="exp-card-actions">
+          <button class="exp-btn exp-btn-xlsx" onclick="exportDay('xlsx')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
+          </button>
+          <button class="exp-btn exp-btn-csv" onclick="exportDay('csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="exp-btn exp-btn-pdf" onclick="exportDay('pdf')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            PDF
+          </button>
+        </div>
+      </div>
+      <!-- Semanal -->
+      <div class="exp-card exp-card--week">
+        <div class="exp-card-accent"></div>
+        <div class="exp-card-body">
+          <div class="exp-card-icon">📆</div>
+          <div class="exp-card-info">
+            <div class="exp-card-title">Semanal</div>
+            <div class="exp-card-period">${weekLabel}</div>
+            <div class="exp-card-desc">Últimos 7 dias de disponibilidade da frota</div>
+          </div>
+        </div>
+        <div class="exp-card-actions">
+          <button class="exp-btn exp-btn-xlsx" onclick="exportWeek('xlsx')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
+          </button>
+          <button class="exp-btn exp-btn-csv" onclick="exportWeek('csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="exp-btn exp-btn-pdf" onclick="exportWeek('pdf')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            PDF
+          </button>
+        </div>
+      </div>
+      <!-- Mensal -->
+      <div class="exp-card exp-card--month">
+        <div class="exp-card-accent"></div>
+        <div class="exp-card-body">
+          <div class="exp-card-icon">🗓</div>
+          <div class="exp-card-info">
+            <div class="exp-card-title">Mensal</div>
+            <div class="exp-card-period">${monthLabel}</div>
+            <div class="exp-card-desc">Todos os dias do mês atual com KPIs consolidados</div>
+          </div>
+        </div>
+        <div class="exp-card-actions">
+          <button class="exp-btn exp-btn-xlsx" onclick="exportMonth('xlsx')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
+          </button>
+          <button class="exp-btn exp-btn-csv" onclick="exportMonth('csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="exp-btn exp-btn-pdf" onclick="exportMonth('pdf')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            PDF
+          </button>
+        </div>
+      </div>
+      <!-- Personalizado -->
+      <div class="exp-card exp-card--custom" style="grid-column:1/-1">
+        <div class="exp-card-accent"></div>
+        <div class="exp-card-body" style="flex-wrap:wrap;gap:20px">
+          <div style="display:flex;gap:16px;align-items:flex-start">
+            <div class="exp-card-icon">🗂</div>
+            <div class="exp-card-info">
+              <div class="exp-card-title">Período personalizado</div>
+              <div class="exp-card-desc" style="margin-top:2px">Intervalo livre dentro dos últimos 45 dias</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-end;flex:1;flex-wrap:wrap">
+            <div class="form-field" style="min-width:150px;margin:0">
+              <label>DATA INICIAL</label>
+              <input type="date" id="exp-date-from" min="${minDate}" max="${maxDate}" value="${minDate}"
+                style="background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:13px;padding:8px 11px;outline:none;width:100%;transition:border-color .15s"
+                onchange="validateCustomDates()" onfocus="this.style.borderColor='var(--lime)'" onblur="this.style.borderColor='var(--border2)'">
+            </div>
+            <div style="color:var(--muted);font-size:18px;padding-bottom:8px">→</div>
+            <div class="form-field" style="min-width:150px;margin:0">
+              <label>DATA FINAL</label>
+              <input type="date" id="exp-date-to" min="${minDate}" max="${maxDate}" value="${maxDate}"
+                style="background:var(--dark);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:13px;padding:8px 11px;outline:none;width:100%;transition:border-color .15s"
+                onchange="validateCustomDates()" onfocus="this.style.borderColor='var(--lime)'" onblur="this.style.borderColor='var(--border2)'">
+            </div>
+            <div id="custom-date-msg" style="font-size:12px;color:var(--red);align-self:center"></div>
+          </div>
+        </div>
+        <div class="exp-card-actions">
+          <button class="exp-btn exp-btn-xlsx" onclick="exportCustom('xlsx')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
+          </button>
+          <button class="exp-btn exp-btn-csv" onclick="exportCustom('csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="exp-btn exp-btn-pdf" onclick="exportCustom('pdf')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            PDF
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+function validateCustomDates(){
+  const from=document.getElementById('exp-date-from')?.value;
+  const to=document.getElementById('exp-date-to')?.value;
+  const msg=document.getElementById('custom-date-msg');
+  if(!msg) return true;
+  if(from&&to&&from>to){
+    msg.textContent='A data inicial deve ser anterior à data final.';
+    return false;
+  }
+  msg.textContent='';
+  return true;
+}
+async function exportCustom(fmt){
+  if(!validateCustomDates()) return;
+  const from=document.getElementById('exp-date-from')?.value;
+  const to=document.getElementById('exp-date-to')?.value;
+  if(!from||!to){ showToast('Selecione as datas.',false); return; }
+  const dates=[];
+  const cur=new Date(from+'T12:00:00');
+  const end=new Date(to+'T12:00:00');
+  while(cur<=end){
+    dates.push(localDateStr(cur));
+    cur.setDate(cur.getDate()+1);
+  }
+  if(dates.length===0){ showToast('N\u00ednhuma data no intervalo.',false); return; }
+  const totalDays = dates.length;
+  // Show progress bar for larger ranges (>3 days)
+  const showProg = totalDays > 3;
+  if(showProg) showExportProgress(0, totalDays);
+  else showToast('Gerando relat\u00f3rio...',true);
+  const rows=await buildRows(dates, showProg ? pct => showExportProgress(pct, totalDays) : null);
+  const filtro=resumoFiltroExport();
+  const fn=`NEXTA_Personalizado_${from}_a_${to}${filtro?'_filtrado':''}`;
+  if(showProg) hideExportProgress();
+  if(fmt==='pdf') await exportPdf(rows,fn,`Relatório personalizado — ${fmtDateStr(from)} a ${fmtDateStr(to)}${filtro?` · ${filtro}`:''}`);
+  else if(fmt==='xlsx') exportXlsx(rows,fn);
+  else exportCsv(rows,fn);
+}
+function showExportProgress(pct, totalDays){
+  let bar = document.getElementById('export-progress-bar');
+  if(!bar){
+    const card = document.querySelector('.card');
+    if(!card) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'export-progress-wrap';
+    wrap.style.cssText = 'margin-top:1rem;display:flex;flex-direction:column;gap:6px';
+    wrap.innerHTML = `
+      <div style="font-size:12px;color:var(--muted)" id="export-progress-label">Buscando dados...</div>
+      <div style="height:6px;background:rgba(228,242,200,.1);border-radius:99px;overflow:hidden;border:1px solid rgba(228,242,200,.1)">
+        <div id="export-progress-bar" style="height:100%;background:var(--lime);border-radius:99px;transition:width .25s ease;width:0%"></div>
+      </div>`;
+    // Insert after the export buttons
+    const btnArea = document.querySelector('#export-progress-wrap');
+    if(btnArea) btnArea.replaceWith(wrap);
+    else card.appendChild(wrap);
+    bar = document.getElementById('export-progress-bar');
+  }
+  const label = document.getElementById('export-progress-label');
+  if(bar) bar.style.width = pct + '%';
+  if(label){
+    if(pct < 95) label.textContent = `Buscando dados\u2026 ${pct}%`;
+    else if(pct < 100) label.textContent = 'Montando planilha\u2026';
+    else label.textContent = 'Conclu\u00eddo!';
+  }
+}
+function hideExportProgress(){
+  const wrap = document.getElementById('export-progress-wrap');
+  if(wrap) setTimeout(()=>wrap.remove(), 800);
+}
+async function buildRows(dates, onProgress){
+  const allP = _semSobDemanda(await dbGetPlates());
+  // Filtro dinâmico de relatório (ver painel "🎛 Filtros do relatório" em
+  // renderExport) — aplica nas placas ANTES de buscar os dados (mais
+  // barato: menos placas = menos leituras no Firestore), exceto "status",
+  // que é valor por dia/registro, então esse filtra as LINHAS depois de
+  // montadas (mais abaixo).
+  const f = S.expFiltro || {};
+  const passaFiltroPlaca = p =>
+    (!f.operacao || p.operacao === f.operacao) &&
+    (!f.tipo || p.tipo === f.tipo) &&
+    (!f.identificacao || p.identificacao === f.identificacao) &&
+    (!f.contrato || p.contrato === f.contrato);
+  // Collect all active plates across all carriers (respeitando o filtro)
+  const allActivePlates = [];
+  for(const carrier of CARRIERS){
+    if(f.carrier && carrier !== f.carrier) continue;
+    for(const p of (allP[carrier]||[]).filter(p=>p.ativo!==false&&passaFiltroPlaca(p)))
+      allActivePlates.push({carrier, plate:p.placa, meta:p});
+  }
+  // Fetch all records for the requested dates in parallel (batched by date)
+  const statusMap = {};
+  const totalBatches = dates.length;
+  let doneBatches = 0;
+  await Promise.all(dates.map(async ds => {
+    const pairs = allActivePlates.map(({carrier,plate}) => ({carrier,plate,dateStr:ds}));
+    const batchResult = await dbLoadStatusBulk(pairs);
+    Object.assign(statusMap, batchResult);
+    doneBatches++;
+    if(onProgress) onProgress(Math.round((doneBatches/totalBatches)*85));
+  }));
+  // Pre-fetch anchor date (day before the first date in range) so the first date
+  // can also have km calculated without extra calls.
+  const anchorPairs = allActivePlates.map(({carrier,plate}) => ({carrier,plate,dateStr:_prevDateStr(dates[0])}));
+  const anchorMap = await dbLoadStatusBulk(anchorPairs);
+  Object.assign(statusMap, anchorMap);
+  if(onProgress) onProgress(95);
+  // Build per-plate sorted hodômetro history from everything fetched so far.
+  // This lets us find the last known value before any date in O(n) without
+  // extra Firestore calls, correctly handling gaps in the data.
+  const plateHodoHistory = {}; // plate -> [{dateStr, hod}] sorted asc
+  for(const key of Object.keys(statusMap)){
+    const rec = statusMap[key];
+    if(!rec || rec.hodometro===undefined || rec.hodometro===null || rec.hodometro==='') continue;
+    const val = Number(rec.hodometro);
+    if(!Number.isFinite(val)) continue;
+    const parts = key.split('||');
+    if(parts.length < 3) continue;
+    const plate = parts[1];
+    if(!plateHodoHistory[plate]) plateHodoHistory[plate] = [];
+    plateHodoHistory[plate].push({dateStr: parts[2], hod: val});
+  }
+  for(const plate of Object.keys(plateHodoHistory))
+    plateHodoHistory[plate].sort((a,b) => a.dateStr.localeCompare(b.dateStr));
+  // Returns the most recent hodômetro registered strictly before targetDate.
+  function lastKnownHodoBefore(plate, targetDate){
+    const hist = plateHodoHistory[plate];
+    if(!hist) return null;
+    let best = null;
+    for(const entry of hist){
+      if(entry.dateStr < targetDate) best = entry.hod;
+      else break;
+    }
+    return best;
+  }
+  const rows=[["Data","Transportador","Placa","Operação","Tipo de Veículo","Identificação","Contrato","Capacidade (m³)","Status","Horário","Hodômetro","Km percorrido (km)","Motorista Diurno","Motorista Noturno"]];
+  for(const ds of dates)
+    for(const {carrier, plate, meta:p} of allActivePlates){
+      const rec = statusMap[`${carrier}||${plate}||${ds}`];
+      // Filtro de status — único campo que é por REGISTRO (dia), não por
+      // cadastro de placa, então filtra aqui, linha a linha, em vez de na
+      // lista de placas (ver passaFiltroPlaca acima).
+      if(f.status){
+        const statusAtual = rec ? rec.status : null;
+        if(f.status==="nao_preenchido" ? statusAtual!==null : statusAtual!==f.status) continue;
+      }
+      const statusLabel = rec ? getSt(rec.status).label : "Não preenchido";
+      const timeLabel   = rec ? (statusSemHorario(rec.status) ? "N/A" : fmtTimeValue(rec.time)) : "—";
+      const hod = rec && rec.hodometro!==undefined && rec.hodometro!==null ? rec.hodometro : "Não preenchido";
+      let km = "";
+      if(hod !== "Não preenchido"){
+        const numCur  = Number(hod);
+        const numPrev = lastKnownHodoBefore(plate, ds);
+        if(Number.isFinite(numCur) && numPrev !== null) km = numCur - numPrev;
+      }
+      const motDLabel = rec ? ((rec.motoristaDiurno)||p.motoristaDiurno||"—") : "—";
+      const motNLabel = rec ? ((rec.motoristaNoturno)||p.motoristaNoturno||"—") : "—";
+      rows.push([fmtDateExport(ds),carrier,p.placa,p.operacao,p.tipo,p.identificacao,p.contrato,p.capacidade,statusLabel,timeLabel,hod,km,motDLabel,motNLabel]);
+    }
+  if(onProgress) onProgress(100);
+  return rows;
+}
+// Returns the dateStr for the day immediately before ds
+function _prevDateStr(ds){
+  const [y,m,day] = ds.split('-').map(Number);
+  const d = new Date(y, m-1, day);
+  d.setDate(d.getDate()-1);
+  return localDateStr(d);
+}
+// ═══════════════════════════════════════════════════════════
+// EXPORT PDF — Relatório executivo NEXTA
+// ═══════════════════════════════════════════════════════════
+async function exportPdf(rows, filename, periodLabel) {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast("jsPDF não carregado. Aguarde e tente novamente.", false); return; }
+  // ── Paleta NEXTA ────────────────────────────────────────
+  const C = {
+    dark:   [17,  29, 10],
+    mid:    [23,  36, 16],
+    card:   [28,  45, 18],
+    lime:   [200, 240, 50],
+    lime2:  [168, 204, 40],
+    green:  [110, 224, 74],
+    red:    [240,  96, 96],
+    amber:  [240, 190, 64],
+    blue:   [112, 168, 240],
+    purple: [176, 126, 240],
+    text:   [228, 242, 200],
+    muted:  [130, 150, 110],
+    border: [50,  75, 30],
+    white:  [255, 255, 255],
+  };
+  const STATUS_COLOR = {
+    "Disponível":         C.green,
+    "Indisponível":       C.red,
+    "Manutenção":         C.amber,
+    "Folga":              C.blue,
+    "Programado/Em viagem": C.purple,
+    "Não preenchido":     C.muted,
+  };
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const PW = doc.internal.pageSize.getWidth();   // 297
+  const PH = doc.internal.pageSize.getHeight();  // 210
+  // ── Helpers ─────────────────────────────────────────────
+  const setFont = (size, style="normal", color=C.text) => {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", style);
+    doc.setTextColor(...color);
+  };
+  const rect = (x,y,w,h,color,r=0) => {
+    doc.setFillColor(...color);
+    if(r>0) doc.roundedRect(x,y,w,h,r,r,"F");
+    else doc.rect(x,y,w,h,"F");
+  };
+  const line = (x1,y1,x2,y2,color=[50,75,30],lw=0.3) => {
+    doc.setDrawColor(...color);
+    doc.setLineWidth(lw);
+    doc.line(x1,y1,x2,y2);
+  };
+  const pill = (x,y,text,color,textColor=C.dark) => {
+    const w = doc.getTextWidth(text) + 5;
+    doc.setFillColor(...color);
+    doc.roundedRect(x,y-3.2,w,4.5,1,1,"F");
+    doc.setTextColor(...textColor);
+    doc.setFontSize(7);
+    doc.setFont("helvetica","bold");
+    doc.text(text, x+2.5, y);
+    return w;
+  };
+  // ── Aggregate data from rows (skip header row[0]) ───────
+  const dataRows = rows.slice(1);
+  const statusCounts = {};
+  const carrierSet = new Set();
+  const opSet = new Set();
+  let totalVehicles = dataRows.length;
+  dataRows.forEach(r => {
+    const status = r[8] || "Não preenchido";
+    statusCounts[status] = (statusCounts[status]||0) + 1;
+    carrierSet.add(r[1]);
+    opSet.add(r[3]);
+  });
+  const avail     = statusCounts["Disponível"] || 0;
+  const unavail   = statusCounts["Indisponível"] || 0;
+  const manut     = statusCounts["Manutenção"] || 0;
+  const folga     = statusCounts["Folga"] || 0;
+  const prog      = statusCounts["Programado/Em viagem"] || 0;
+  const nfill     = statusCounts["Não preenchido"] || 0;
+  const filled    = totalVehicles - nfill;
+  // Mesma correção do resto do sistema: folga/"Programado/Em viagem" fora
+  // do denominador do % disponível (o PDF de exportação tinha o mesmo
+  // cálculo duplicado, então tinha o mesmo problema).
+  const dispDenomPdf = filled - folga - prog;
+  const dispPct   = dispDenomPdf > 0 ? Math.round((avail/dispDenomPdf)*100) : 0;
+  const fillPct   = totalVehicles ? Math.round((filled/totalVehicles)*100) : 0;
+  const metaOk    = dispPct >= META_DISP;
+  // Per-carrier summary
+  const byCarrier = {};
+  dataRows.forEach(r => {
+    const c = r[1]; if(!byCarrier[c]) byCarrier[c]={avail:0,total:0,filled:0,folgaOuProg:0};
+    byCarrier[c].total++;
+    if(r[8] !== "Não preenchido") byCarrier[c].filled++;
+    if(r[8] === "Disponível") byCarrier[c].avail++;
+    if(r[8] === "Folga" || r[8] === "Programado/Em viagem") byCarrier[c].folgaOuProg++;
+  });
+  // ════════════════════════════════════════════════════════
+  // PAGE 1 — COVER + KPIs
+  // ════════════════════════════════════════════════════════
+  rect(0, 0, PW, PH, C.dark);
+  // Left sidebar accent
+  rect(0, 0, 4, PH, C.lime);
+  // Top header band
+  rect(4, 0, PW-4, 28, C.mid);
+  line(4, 28, PW, 28, C.border, 0.4);
+  // NEXTA wordmark
+  setFont(22, "bold", C.lime);
+  doc.text("NEXTA", 14, 18);
+  setFont(8, "normal", C.muted);
+  doc.text("GESTÃO DE FROTA", 14, 24);
+  // Period label top right
+  setFont(9, "normal", C.muted);
+  doc.text(periodLabel, PW - 10, 12, { align: "right" });
+  setFont(8, "normal", C.muted);
+  const now = new Date();
+  doc.text(`Gerado em ${now.toLocaleString("pt-BR")}`, PW - 10, 18, { align: "right" });
+  // Report title
+  setFont(18, "bold", C.text);
+  doc.text("Relatório de Disponibilidade de Frota", 14, 44);
+  setFont(10, "normal", C.muted);
+  doc.text(periodLabel, 14, 52);
+  // Thin accent line below title
+  line(14, 56, PW - 14, 56, C.lime2, 0.5);
+  // ── KPI cards row ─────────────────────────────────────
+  const kpis = [
+    { label: "Disponibilidade",  value: `${dispPct}%`,   sub: `${avail} disponíveis`,         color: metaOk ? C.green : C.amber },
+    { label: "Preenchimento",    value: `${fillPct}%`,   sub: `${filled}/${totalVehicles}`,    color: fillPct>=META_SLA?C.green:C.amber },
+    { label: "Meta",             value: `${META_DISP}%`, sub: metaOk?"✓ Atingida":"✗ Abaixo", color: metaOk?C.green:C.red },
+    { label: "Transportadores",  value: `${carrierSet.size}`, sub: `${opSet.size} operações`, color: C.blue },
+    { label: "Total de veículos",value: `${totalVehicles}`, sub: `${filled} preenchidos`,     color: C.lime },
+  ];
+  const cardW = (PW - 28 - (kpis.length-1)*4) / kpis.length;
+  kpis.forEach((k, i) => {
+    const kx = 14 + i*(cardW+4);
+    const ky = 62;
+    rect(kx, ky, cardW, 30, C.card, 2);
+    // color accent left edge
+    doc.setFillColor(...k.color);
+    doc.roundedRect(kx, ky, 2, 30, 1, 1, "F");
+    setFont(16, "bold", k.color);
+    doc.text(k.value, kx+6, ky+13);
+    setFont(7, "bold", C.muted);
+    doc.text(k.label.toUpperCase(), kx+6, ky+20);
+    setFont(7, "normal", C.muted);
+    doc.text(k.sub, kx+6, ky+26);
+  });
+  // ── Status breakdown bar ───────────────────────────────
+  const barY = 100;
+  setFont(8, "bold", C.muted);
+  doc.text("DISTRIBUIÇÃO DE STATUS", 14, barY-2);
+  const statusItems = [
+    { label:"Disponível",         count:avail,  color:C.green  },
+    { label:"Indisponível",       count:unavail,color:C.red    },
+    { label:"Manutenção",         count:manut,  color:C.amber  },
+    { label:"Folga",              count:folga,  color:C.blue   },
+    { label:"Prog./Viagem",       count:prog,   color:C.purple },
+    { label:"Não preenchido",     count:nfill,  color:C.muted  },
+  ].filter(s=>s.count>0);
+  const totalBar = statusItems.reduce((s,x)=>s+x.count,0)||1;
+  const barW2 = PW - 28;
+  let bx = 14;
+  statusItems.forEach(s => {
+    const sw = (s.count/totalBar)*barW2;
+    doc.setFillColor(...s.color);
+    doc.rect(bx, barY, sw, 5, "F");
+    bx += sw;
+  });
+  // round the ends
+  doc.setFillColor(...statusItems[0].color);
+  doc.roundedRect(14, barY, 3, 5, 1, 1, "F");
+  doc.setFillColor(...statusItems[statusItems.length-1].color);
+  doc.roundedRect(PW-17, barY, 3, 5, 1, 1, "F");
+  // Legend row
+  let lx = 14;
+  const ly = barY + 10;
+  statusItems.forEach(s => {
+    doc.setFillColor(...s.color);
+    doc.roundedRect(lx, ly-3, 3, 3, 0.5, 0.5, "F");
+    setFont(7, "normal", C.muted);
+    const lab = `${s.label} (${s.count})`;
+    doc.text(lab, lx+5, ly);
+    lx += doc.getTextWidth(lab) + 12;
+  });
+  // ── Per-carrier mini-bars ──────────────────────────────
+  const cbY = barY + 20;
+  setFont(8, "bold", C.muted);
+  doc.text("DISPONIBILIDADE POR TRANSPORTADOR", 14, cbY - 2);
+  const cKeys = Object.keys(byCarrier);
+  const cbW = (PW - 28 - (cKeys.length-1)*6) / Math.max(cKeys.length,1);
+  cKeys.forEach((c, i) => {
+    const d = byCarrier[c];
+    const denomC = d.filled - d.folgaOuProg;
+    const pct = denomC > 0 ? Math.round((d.avail/denomC)*100) : 0;
+    const col = pct>=META_DISP?C.green:pct>=70?C.amber:C.red;
+    const cx2 = 14 + i*(cbW+6);
+    const maxBarH = 24;
+    const barH2 = Math.max(2, (pct/100)*maxBarH);
+    // background track
+    rect(cx2, cbY+4, cbW, maxBarH, C.card, 1);
+    // fill
+    doc.setFillColor(...col);
+    doc.roundedRect(cx2, cbY+4+maxBarH-barH2, cbW, barH2, 1, 1, "F");
+    // pct label
+    setFont(8, "bold", col);
+    doc.text(`${pct}%`, cx2+cbW/2, cbY+4+maxBarH-barH2-2, {align:"center"});
+    // carrier name — abbreviate
+    const shortC = c.replace("Transportes","Transp.").replace("Transportadora","Transp.");
+    setFont(6, "normal", C.muted);
+    const lines2 = doc.splitTextToSize(shortC, cbW);
+    doc.text(lines2[0]||shortC, cx2+cbW/2, cbY+4+maxBarH+5, {align:"center"});
+    if(lines2[1]) doc.text(lines2[1], cx2+cbW/2, cbY+4+maxBarH+9, {align:"center"});
+  });
+  // ── Footer p1 ─────────────────────────────────────────
+  rect(0, PH-10, PW, 10, C.mid);
+  line(0, PH-10, PW, PH-10, C.border, 0.3);
+  setFont(7, "normal", C.muted);
+  doc.text("NEXTA — Gestão de Frota  |  Documento confidencial", 14, PH-4);
+  doc.text("1", PW-10, PH-4, {align:"right"});
+  // ════════════════════════════════════════════════════════
+  // PAGE 2 — DETAILED TABLE
+  // ════════════════════════════════════════════════════════
+  doc.addPage();
+  rect(0, 0, PW, PH, C.dark);
+  rect(0, 0, 4, PH, C.lime);
+  rect(4, 0, PW-4, 18, C.mid);
+  line(4, 18, PW, 18, C.border, 0.4);
+  setFont(15, "bold", C.lime);
+  doc.text("NEXTA", 14, 12);
+  setFont(8, "normal", C.muted);
+  doc.text("Detalhamento por veículo — " + periodLabel, 36, 12);
+  doc.text(`${dataRows.length} registros`, PW-10, 12, {align:"right"});
+  // Build table body
+  const tableBody = dataRows.map(r => {
+    const status = r[8] || "Não preenchido";
+    return [
+      r[0],  // data
+      r[1],  // transportador
+      r[2],  // placa
+      r[3],  // operação
+      r[4],  // tipo
+      r[10]==="Não preenchido"?"—":r[10],  // hodômetro — ERA r[7] (Capacidade) por engano; a coluna
+                                           // "Hodômetro" de verdade é o índice 10 no array de rows
+                                           // (ver header em buildRows: Data,Transportador,Placa,Operação,
+                                           // Tipo,Identificação,Contrato,Capacidade,Status,Horário,
+                                           // Hodômetro,...) — o PDF estava mostrando a capacidade do
+                                           // veículo (m³) rotulada como hodômetro.
+      r[8],  // status
+      r[9]==="—"?"":r[9],  // horário
+      r[12]||"—", // mot. diurno
+    ];
+  });
+  // Pre-fill page backgrounds for all pages the table will need.
+  // autoTable draws AFTER didDrawPage on each new page, so we must NOT
+  // overdraw the table area. Instead we use willDrawPage to paint only
+  // the header strip + footer strip, leaving the body area untouched.
+  doc.autoTable({
+    startY: 24,
+    head: [["DATA","TRANSPORTADOR","PLACA","OPERAÇÃO","TIPO","HODÔMETRO","STATUS","HORÁRIO","MOTORISTA"]],
+    body: tableBody,
+    theme: "plain",
+    styles: {
+      font: "helvetica",
+      fontSize: 7,
+      cellPadding: { top:2.5, bottom:2.5, left:3, right:3 },
+      textColor: [200, 220, 170],
+      lineColor: [40, 60, 20],
+      lineWidth: 0.2,
+      fillColor: [17, 29, 10],
+    },
+    headStyles: {
+      fillColor: [28, 45, 18],
+      textColor: [200, 240, 50],
+      fontStyle: "bold",
+      fontSize: 7,
+      lineColor: [200, 240, 50],
+      lineWidth: { bottom: 0.5 },
+    },
+    alternateRowStyles: {
+      fillColor: [20, 34, 12],
+    },
+    columnStyles: {
+      0: { cellWidth: 22 },
+      1: { cellWidth: 46 },
+      2: { cellWidth: 20, fontStyle:"bold" },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 22, halign:"right" },
+      6: { cellWidth: 30 },
+      7: { cellWidth: 16, halign:"center" },
+      8: { cellWidth: "auto" },
+    },
+    didParseCell(data) {
+      if(data.section === "body" && data.column.index === 6) {
+        const col = STATUS_COLOR[data.cell.raw] || C.muted;
+        data.cell.styles.textColor = col;
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
+    didDrawCell(data) {
+      if(data.section==="body" && data.column.index===6) {
+        const col = STATUS_COLOR[data.cell.raw] || C.muted;
+        doc.setFillColor(...col);
+        doc.circle(data.cell.x+1.8, data.cell.y+data.cell.height/2, 0.9, "F");
+      }
+    },
+    margin: { top: 20, left: 14, right: 10, bottom: 14 },
+    tableWidth: PW - 24,
+    // willDrawPage fires BEFORE the table rows are drawn.
+    // Paint full dark background first, then header/footer strips on top.
+    // The table rows will be drawn after this by autoTable, covering the body area.
+    willDrawPage(data) {
+      const pg = data.pageNumber;
+      // 1. Full page dark background
+      rect(0, 0, PW, PH, C.dark);
+      // 2. Left lime accent bar
+      rect(0, 0, 4, PH, C.lime);
+      // 3. Header strip (only from page 2 onward — page 1 header drawn manually above)
+      if(pg > 1){
+        rect(4, 0, PW-4, 16, C.mid);
+        line(4, 16, PW, 16, C.border, 0.3);
+        setFont(7, "bold", C.lime);
+        doc.text("NEXTA — Gestão de Frota", 14, 10);
+        setFont(7, "normal", C.muted);
+        doc.text(periodLabel, PW-10, 10, {align:"right"});
+      }
+      // 4. Footer strip
+      rect(4, PH-12, PW-4, 12, C.mid);
+      line(4, PH-12, PW, PH-12, C.border, 0.3);
+      setFont(7, "normal", C.muted);
+      doc.text("NEXTA — Gestão de Frota  |  Documento confidencial", 14, PH-5);
+      doc.text(String(pg), PW-10, PH-5, {align:"right"});
+    },
+  });
+  doc.save(`${filename}.pdf`);
+  showToast("PDF exportado! ✓");
+}
+function exportXlsx(rows,filename){
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"]=[{wch:18},{wch:28},{wch:12},{wch:20},{wch:16},{wch:14},{wch:12},{wch:14},{wch:14},{wch:10},{wch:12},{wch:14},{wch:22},{wch:22}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Relatório");
+  XLSX.writeFile(wb,filename+".xlsx"); showToast("Excel exportado!");
+}
+function exportCsv(rows,filename){
+  const csv=rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
+  const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename+".csv"; a.click();
+  showToast("CSV exportado!");
+}
+// Resumo curto do filtro ativo (ver S.expFiltro / painel "🎛 Filtros do
+// relatório" em renderExport) — aparece no cabeçalho do PDF e no nome do
+// arquivo, pra deixar claro que aquele relatório NÃO é a frota inteira,
+// evitando um gestor ler um PDF filtrado achando que é o total geral.
+function resumoFiltroExport(){
+  const f = S.expFiltro || {};
+  const stLabel = f.status ? (f.status==="nao_preenchido" ? "Não preenchido" : getSt(f.status).label) : "";
+  const partes = [
+    f.carrier && `Transportadora: ${f.carrier}`,
+    f.operacao && `Operação: ${f.operacao}`,
+    f.tipo && `Tipo: ${f.tipo}`,
+    f.identificacao && `Identificação: ${f.identificacao}`,
+    f.contrato && `Contrato: ${f.contrato}`,
+    stLabel && `Status: ${stLabel}`,
+  ].filter(Boolean);
+  return partes.join(" · ");
+}
+async function exportDay(fmt){
+  showToast("Gerando relatório...",true);
+  const rows=await buildRows([dateStr(S.dateOffset)]);
+  const filtro=resumoFiltroExport();
+  const fn=`NEXTA_Diario_${dateStr(S.dateOffset)}${filtro?'_filtrado':''}`;
+  if(fmt==="pdf") await exportPdf(rows,fn,`Relatório diário — ${fmtDate(S.dateOffset)}${filtro?` · ${filtro}`:''}`);
+  else if(fmt==="xlsx") exportXlsx(rows,fn);
+  else exportCsv(rows,fn);
+}
+async function exportWeek(fmt){
+  showToast("Gerando relatório...",true);
+  const dates=getDates(7);
+  const rows=await buildRows(dates);
+  const filtro=resumoFiltroExport();
+  const fn=`NEXTA_Semanal_${dates[0]}_a_${dates[6]}${filtro?'_filtrado':''}`;
+  if(fmt==="pdf") await exportPdf(rows,fn,`Relatório semanal — ${fmtDateStr(dates[0])} a ${fmtDateStr(dates[6])}${filtro?` · ${filtro}`:''}`);
+  else if(fmt==="xlsx") exportXlsx(rows,fn);
+  else exportCsv(rows,fn);
+}
+async function exportMonth(fmt){
+  showToast("Gerando relatório...",true);
+  const now=new Date();
+  const mons=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const dates=getMonthDates(now.getFullYear(),now.getMonth());
+  const rows=await buildRows(dates);
+  const filtro=resumoFiltroExport();
+  const fn=`NEXTA_Mensal_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}${filtro?'_filtrado':''}`;
+  if(fmt==="pdf") await exportPdf(rows,fn,`Relatório mensal — ${mons[now.getMonth()]} ${now.getFullYear()}${filtro?` · ${filtro}`:''}`);
+  else if(fmt==="xlsx") exportXlsx(rows,fn);
+  else exportCsv(rows,fn);
+}
+// ═══════════════════════════════════════════════════════════
+// REGISTER
+// ═══════════════════════════════════════════════════════════
+async function renderRegister(body){
+  const u=USERS_DB[S.user];
+  const isAdmin=u&&u.role==='admin';
+  if(!S.registerSubTab) S.registerSubTab='plates';
+  const subTabs=`
+    <div style="display:flex;gap:4px;background:var(--mid);border:1px solid var(--border);border-radius:var(--radius);padding:4px;width:fit-content;margin-bottom:1.5rem">
+      <button class="tab ${S.registerSubTab==='plates'?'active':''}" onclick="setRegSubTab('plates')">🚛 Placas</button>
+      <button class="tab ${S.registerSubTab==='drivers'?'active':''}" onclick="setRegSubTab('drivers')">👤 Motoristas</button>
+      ${isAdmin?`<button class="tab ${S.registerSubTab==='ops'?'active':''}" onclick="setRegSubTab('ops')">📍 Operações</button>`:''}
+      ${isAdmin?`<button class="tab ${S.registerSubTab==='users'?'active':''}" onclick="setRegSubTab('users')">👥 Usuários</button>`:''}
+    </div>`;
+  if(S.registerSubTab==='ops'&&isAdmin){ await renderRegisterOps(body, subTabs); return; }
+  if(S.registerSubTab==='drivers'){ await renderRegisterDrivers(body, subTabs); return; }
+  if(S.registerSubTab==='users'&&isAdmin){ await renderUsers(body, subTabs); return; }
+  body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando placas...</div>`;
+  const allP=await dbGetPlates();
+  const carrierOpts=CARRIERS.map(c=>optHtml(c)).join("");
+  const opOpts=OPERACOES.map(o=>optHtml(o)).join("");
+  const tvOpts=TIPOS_VEIC.map(o=>optHtml(o)).join("");
+  const idOpts=IDENTS.map(o=>optHtml(o)).join("");
+  const ctOpts=CONTRATOS.map(o=>optHtml(o)).join("");
+  let listHTML="";
+  for(const carrier of CARRIERS){
+    const plates=allP[carrier]||[];
+    if(!plates.length) continue;
+    const rows=plates.map((p,idx)=>{
+      const ativo=p.ativo!==false;
+      const statusBadge=ativo
+        ?`<span class="badge b-green" style="font-size:10px">Ativo</span>`
+        :`<span class="badge b-red" style="font-size:10px">Inativo</span>`;
+      const toggleBtn=ativo
+        ?`<button class="btn-toggle-off" onclick="togglePlate('${attr(jsArg(carrier))}',${idx},false,'${attr(jsArg(p.placa))}')" title="Desativar">⏸</button>`
+        :`<button class="btn-toggle-on" onclick="togglePlate('${attr(jsArg(carrier))}',${idx},true,'${attr(jsArg(p.placa))}')" title="Ativar">▶</button>`;
+      return `<tr id="row-${attr(carrier.replace(/ /g,'_'))}-${idx}" style="${ativo?'':'opacity:.55;background:rgba(240,96,96,.04)'}">
+        <td style="font-family:'DM Mono',monospace;font-weight:500">${esc(p.placa)}</td>
+        <td style="font-size:12px">${esc(p.operacao)}</td>
+        <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
+        <td><span class="badge ${p.identificacao==="Petronas"?"b-teal":"b-gray"}">${esc(p.identificacao)}</span></td>
+        <td><span class="badge ${p.contrato==="Dedicado"?"b-ded":"b-spot"}">${esc(p.contrato)}</span>${ehSobDemanda(p)?`<div style="margin-top:4px"><span class="badge b-blue" style="font-size:10px" title="Fora da disponibilidade diária — a operação oferta a placa. Bases: ${attr((p.basesCarregamento||[]).join(', ')||p.operacao||'—')}">Sob demanda</span></div>`:''}</td>
+        <td><span class="cap-tag">${esc(p.capacidade)}m³</span></td>
+        <td>${statusBadge}</td>
+        <td>${renderDriverCell(p.motoristaDiurno,p.motoristaNoturno)}</td>
+        <td style="white-space:nowrap;vertical-align:middle">
+          <div style="display:inline-flex;gap:5px;align-items:center">
+            ${toggleBtn}
+            <button class="btn-edit" onclick="openEditModal('${attr(jsArg(carrier))}',${idx})" title="Editar">✏️</button>
+            <button class="btn-danger" onclick="delPlate('${attr(jsArg(carrier))}',${idx},'${attr(jsArg(p.placa))}')" title="Remover">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+    const activeCount=plates.filter(p=>p.ativo!==false).length;
+    const inactiveCount=plates.length-activeCount;
+    listHTML+=`<div class="carrier-block">
+      <div class="carrier-head"><span class="ch-icon">🚛</span>${esc(carrier)}<span class="ch-count">${activeCount} ativo(s)</span>${inactiveCount>0?`<span class="ch-count" style="color:var(--red)">${inactiveCount} inativo(s)</span>`:''}</div>
+      <div class="tscroll"><table class="table" style="border-radius:0 0 var(--radius-lg) var(--radius-lg);min-width:620px">
+        <thead><tr><th style="width:10%">PLACA</th><th style="width:16%">OPERAÇÃO</th><th style="width:10%">TIPO</th><th style="width:12%">IDENTIFICAÇÃO</th><th style="width:10%">CONTRATO</th><th style="width:9%">CAPACIDADE</th><th style="width:8%">STATUS</th><th style="width:15%">MOTORISTAS</th><th style="width:10%">AÇÕES</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div></div>`;
+  }
+  if(!listHTML) listHTML=`<div class="empty"><span class="ei">📋</span>Nenhuma placa cadastrada ainda.<br>Use o formulário acima para começar.</div>`;
+  // After render, populate driver dropdowns and add listeners
+  body.innerHTML=subTabs+`
+    <div class="card" style="margin-bottom:1.5rem">
+      <p class="reg-heading">+ Nova placa</p>
+      <div class="form-grid">
+        <div class="form-field"><label>TRANSPORTADOR</label><select id="r-carrier" onchange="populateDriverSelects()">${carrierOpts}</select></div>
+        <div class="form-field"><label>OPERAÇÃO</label><select id="r-op" onchange="populateDriverSelects()">${opOpts}</select></div>
+        <div class="form-field"><label>PLACA</label><input id="r-placa" type="text" placeholder="Ex: ABC-1234" style="text-transform:uppercase"></div>
+        <div class="form-field"><label>TIPO DE VEÍCULO</label><select id="r-tipo">${tvOpts}</select></div>
+        <div class="form-field"><label>IDENTIFICAÇÃO</label><select id="r-id">${idOpts}</select></div>
+        <div class="form-field"><label>TIPO DE CONTRATO</label><select id="r-contrato">${ctOpts}</select></div>
+        <div class="form-field"><label>CAPACIDADE (m³)</label><input id="r-cap" type="number" placeholder="Ex: 25" min="1" max="999"></div>
+        <div class="form-field"><label>MOTORISTA DIURNO</label><select id="r-mot-d"><option value="">— Sem motorista —</option></select></div>
+        <div class="form-field"><label>MOTORISTA NOTURNO</label><select id="r-mot-n"><option value="">— Sem motorista —</option></select></div>
+        ${_escalaCamposHtml('r', null)}
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-lime" id="add-btn" onclick="addPlate()">+ Cadastrar placa</button>
+        <span id="reg-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+    <p class="sec-title" style="margin-bottom:1rem">Placas cadastradas</p>
+    <div id="plates-list">${listHTML}</div>`;
+  // Populate driver selects after render
+  setTimeout(()=>populateDriverSelects(), 50);
+}
+// Campos "Escala" no cadastro/edição da placa. prefixo: 'r' (nova) ou 'e' (editar).
+function _escalaCamposHtml(prefixo, p){
+  const esc_ = (p && p.escala) || 'diaria';
+  const bases = new Set((p && p.basesCarregamento) || []);
+  return `
+    <div class="form-field"><label>ESCALA</label>
+      <select id="${prefixo}-escala" onchange="document.getElementById('${prefixo}-sob-box').style.display=this.value==='sob_demanda'?'grid':'none'">
+        ${ESCALAS.map(([v,l])=>`<option value="${v}"${v===esc_?' selected':''}>${l}</option>`).join('')}
+      </select></div>
+    <div id="${prefixo}-sob-box" style="display:${esc_==='sob_demanda'?'grid':'none'};grid-column:1/-1;grid-template-columns:1fr;gap:12px;background:rgba(112,168,240,.06);border:1px dashed var(--border2);border-radius:var(--radius);padding:10px 12px">
+      <div class="form-field"><label>BASES ONDE PODE CARREGAR</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px">${OPERACOES.map(o=>`<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);white-space:nowrap;margin:0"><input type="checkbox" class="${prefixo}-base-chk" value="${attr(o)}"${bases.has(o)?' checked':''}>${esc(o)}</label>`).join('')}</div>
+        <p style="font-size:11px;color:var(--muted);margin-top:4px">Sem nenhuma marcada, vale a operação da placa.</p></div>
+      <p style="font-size:11px;color:var(--muted);margin:0">Quais clientes a placa atende é definido no cadastro do CLIENTE (Roteirizador › Clientes › "Atendido pela operação sob demanda") — clientes do RJ da operação diária continuam com a frota diária.</p>
+    </div>`;
+}
+function _escalaLerCampos(prefixo){
+  const escala = document.getElementById(`${prefixo}-escala`)?.value || 'diaria';
+  if (escala !== 'sob_demanda') return { escala: 'diaria', basesCarregamento: [] };
+  return { escala, basesCarregamento: [...document.querySelectorAll(`.${prefixo}-base-chk:checked`)].map(c => c.value) };
+}
+async function addPlate(){
+  const carrier=document.getElementById("r-carrier").value;
+  const operacao=document.getElementById("r-op").value;
+  const operação=document.getElementById("r-op").value;
+  const placa=document.getElementById("r-placa").value.trim().toUpperCase();
+  const tipo=document.getElementById("r-tipo").value;
+  const identificacao=document.getElementById("r-id").value;
+  const contrato=document.getElementById("r-contrato").value;
+  const capacidade=document.getElementById("r-cap").value.trim();
+  const msg=document.getElementById("reg-msg");
+  const btn=document.getElementById("add-btn");
+  if(!placa){msg.textContent="Informe a placa.";msg.style.color="var(--red)";return;}
+  if(!capacidade||isNaN(capacidade)||+capacidade<=0){msg.textContent="Informe a capacidade.";msg.style.color="var(--red)";return;}
+  btn.disabled=true; btn.textContent="Salvando...";
+  const motDiurno=document.getElementById('r-mot-d')?.value||'';
+  const motNoturno=document.getElementById('r-mot-n')?.value||'';
+  try{
+    // Checagem de duplicidade e inclusão acontecem DENTRO da mesma operação
+    // enfileirada, sobre o dado mais fresco possível — evita a corrida de
+    // duas pessoas cadastrando a mesma placa quase ao mesmo tempo e as duas
+    // passando pela checagem "ainda não existe" antes de qualquer uma gravar.
+    let duplicada = false;
+    await dbAtualizarPlates(allP => {
+      if(CARRIERS.some(c=>(allP[c]||[]).some(p=>p.placa===placa))){ duplicada = true; return; }
+      if(!allP[carrier]) allP[carrier]=[];
+      allP[carrier].push({placa,operacao,tipo,identificacao,contrato,capacidade:+capacidade,motoristaDiurno:motDiurno,motoristaNoturno:motNoturno,..._escalaLerCampos('r')});
+    });
+    if(duplicada){
+      msg.textContent="Placa já cadastrada.";msg.style.color="var(--red)";
+      btn.disabled=false;btn.textContent="+ Cadastrar placa";return;
+    }
+    await dbAddAudit("plate_add", { carrier, placa, operacao, tipo, contrato });
+    document.getElementById("r-placa").value="";
+    document.getElementById("r-cap").value="";
+    msg.textContent=`Placa ${placa} cadastrada!`;msg.style.color="var(--green)";
+    showToast(`Placa ${placa} cadastrada!`);
+    setTimeout(()=>{msg.textContent="";},3000);
+    btn.disabled=false;btn.textContent="+ Cadastrar placa";
+    await renderTabBody();
+  } catch(e) {
+    console.error("Erro ao cadastrar placa:", e);
+    msg.textContent="Erro ao cadastrar placa. Tente novamente.";msg.style.color="var(--red)";
+    showToast("Erro ao cadastrar placa.", false);
+    btn.disabled=false;btn.textContent="+ Cadastrar placa";
+  }
+}
+async function delPlate(carrier,idx,placa){
+  if(!confirm("Remover esta placa?")) return;
+  let removidaPlaca = placa || null;
+  await dbAtualizarPlates(allP => {
+    if(!allP[carrier]) return;
+    // Prefere achar pela PLACA (identidade de verdade) — só cai pro índice
+    // se a placa não foi passada por algum motivo. Sem isso, se a lista
+    // mudou entre a tela ser desenhada e o clique (alguém mais mexendo ao
+    // mesmo tempo), o índice podia já apontar pra OUTRA placa.
+    let i = placa ? allP[carrier].findIndex(p=>p.placa===placa) : idx;
+    if(i<0 || i==null || !allP[carrier][i]) i = idx;
+    if(!allP[carrier][i]) return;
+    removidaPlaca = allP[carrier][i].placa;
+    allP[carrier].splice(i,1);
+  });
+  await dbAddAudit("plate_remove", { carrier, placa: removidaPlaca || "" });
+  showToast(`Placa ${removidaPlaca} removida.`);
+  await renderTabBody();
+}
+// ═══════════════════════════════════════════════════════════
+// MONTHLY ARCHIVES
+// ═══════════════════════════════════════════════════════════
+const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+async function checkAndGenerateMonthlyArchive() {
+  // Roda no login. Antes, só gerava o arquivo do mês anterior se o login
+  // acontecesse nos 3 primeiros dias do mês novo — se ninguém logasse nessa
+  // janela estreita (ex.: início de julho), o arquivo de junho nunca era
+  // gerado sozinho, e ficava faltando pra sempre (só dava pra gerar na mão).
+  // Agora é autorrecuperável: verifica os últimos 3 meses fechados e gera
+  // qualquer um que ainda esteja faltando, não importa em que dia o login
+  // aconteça — resolve tanto o caso normal (login no início do mês) quanto o
+  // caso de "ninguém abriu o painel a tempo".
+  const now = new Date();
+  const archives = await dbGetArchives();
+  const chavesExistentes = new Set(archives.map(a => a.key));
+  for (let i = 1; i <= 3; i++) {
+    const mes = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${mes.getFullYear()}-${String(mes.getMonth()+1).padStart(2,'0')}`;
+    if (chavesExistentes.has(key)) continue; // já existe, não regenera à toa
+    try {
+      await generateMonthlyArchive(mes.getFullYear(), mes.getMonth(), true);
+    } catch (e) {
+      console.error(`[checkAndGenerateMonthlyArchive] falhou ao gerar ${key}:`, e);
+      // não interrompe o loop — tenta os outros meses mesmo se um falhar
+    }
+  }
+}
+async function generateMonthlyArchive(year, month, silent=false) {
+  const key = `${year}-${String(month+1).padStart(2,'0')}`;
+  const label = `${MONTH_NAMES[month]} ${year}`;
+  if(!silent) showToast(`Gerando arquivo de ${label}...`, true);
+  const dates = getMonthDates(year, month);
+  const rows = await buildRows(dates);
+  // Convert to XLSX base64
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{wch:18},{wch:28},{wch:12},{wch:20},{wch:16},{wch:14},{wch:12},{wch:14},{wch:14},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Relatório");
+  const xlsxData = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
+  const now = new Date();
+  await dbSaveArchive({
+    key, label,
+    generatedAt: now.toLocaleString("pt-BR"),
+    filename: `NEXTA_Mensal_${key}`,
+    data: xlsxData,
+    rows: rows.length - 1 // exclude header
+  });
+  if(!silent) showToast(`Arquivo de ${label} gerado!`);
+}
+async function renderArchives(body, subTabs='') {
+  body.innerHTML = subTabs+`<div class="loading"><span class="spin"></span>Carregando arquivos...</div>`;
+  const archives = await dbGetArchives();
+  const now = new Date();
+  // Available months to manually generate (last 6 months)
+  const monthOpts = [];
+  for(let i=1; i<=6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    monthOpts.push({ key, label, year: d.getFullYear(), month: d.getMonth() });
+  }
+  const monthSelOpts = monthOpts.map(m =>
+    `<option value="${m.key}" data-year="${m.year}" data-month="${m.month}">${m.label}</option>`
+  ).join('');
+  const archiveCards = archives.length === 0
+    ? `<div class="empty"><span class="ei">📁</span>Nenhum arquivo gerado ainda.<br>Os relatórios mensais são gerados automaticamente no início de cada mês,<br>ou manualmente pelo botão abaixo.</div>`
+    : archives.map(a => `
+      <div class="archive-card">
+        <div class="archive-icon">📄</div>
+        <div class="archive-info">
+          <div class="archive-label">${a.label}</div>
+          <div class="archive-meta">${a.rows} registros · Gerado em ${a.generatedAt}</div>
+        </div>
+        <div class="archive-actions">
+          <button class="btn btn-lime btn-sm" onclick="downloadArchive('${a.key}')">⬇ Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="downloadArchiveCsv('${a.key}')">⬇ CSV</button>
+          <button class="btn btn-outline btn-sm" onclick="regenArchive('${a.key}')">🔄</button>
+        </div>
+      </div>`).join('');
+  body.innerHTML = subTabs+`
+    <div class="card" style="margin-bottom:1.5rem">
+      <p style="font-size:13px;font-weight:500;margin-bottom:.5rem">⚡ Gerar arquivo manualmente</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">Selecione o mês e gere ou atualize o arquivo a qualquer momento</p>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-field" style="min-width:200px">
+          <label>MÊS DE REFERÊNCIA</label>
+          <select id="archive-month-sel">${monthSelOpts}</select>
+        </div>
+        <button class="btn btn-lime" onclick="manualGenArchive()">📊 Gerar arquivo</button>
+      </div>
+    </div>
+    <p class="sec-title" style="margin-bottom:1rem">
+      Últimos arquivos gerados
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">Armazenados os 6 mais recentes</span>
+    </p>
+    <div id="archive-list">${archiveCards}</div>`;
+}
+async function manualGenArchive() {
+  const sel = document.getElementById('archive-month-sel');
+  if(!sel) return;
+  const opt = sel.options[sel.selectedIndex];
+  const year = parseInt(opt.dataset.year);
+  const month = parseInt(opt.dataset.month);
+  try {
+    await generateMonthlyArchive(year, month, false);
+  } catch (e) {
+    // dbSaveArchive já mostrou o toast de erro específico — aqui só garante
+    // que a tela não fique travada no spinner de "Carregando..."
+  } finally {
+    await renderTabBody();
+  }
+}
+async function regenArchive(key) {
+  const [year, month] = key.split('-').map(Number);
+  try {
+    await generateMonthlyArchive(year, month - 1, false);
+  } catch (e) {
+    // erro já mostrado via toast em dbSaveArchive
+  } finally {
+    await renderTabBody();
+  }
+}
+function downloadArchive(key) {
+  dbGetArchives().then(archives => {
+    const a = archives.find(x => x.key === key);
+    if(!a || !a.data) { showToast('Arquivo não encontrado.', false); return; }
+    const bin = atob(a.data);
+    const bytes = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${a.filename}.xlsx`;
+    link.click();
+    showToast('Excel baixado!');
+  });
+}
+async function downloadArchiveCsv(key) {
+  const archives = await dbGetArchives();
+  const arch = archives.find(x => x.key === key);
+  if(!arch) { showToast('Arquivo não encontrado.', false); return; }
+  // Re-generate CSV from stored data by rebuilding rows
+  const [year, month] = key.split('-').map(Number);
+  const dates = getMonthDates(year, month - 1);
+  const rows = await buildRows(dates);
+  exportCsv(rows, arch.filename);
+}
+// ═══════════════════════════════════════════════════════════
+// ADMIN UNLOCK
+// ═══════════════════════════════════════════════════════════
+async function adminUnlock(carrier, ds){
+  if(!confirm(`Desbloquear o lançamento de "${carrier}" em ${fmtDateStr(ds)}?\n\nOs status serão apagados e o transportador deverá preencher novamente.`)) return;
+  // Remove lock AND clear all status records so carrier starts fresh
+  await Promise.all([
+    dbRemoveLock(carrier, ds),
+    dbClearStatusForDate(carrier, ds)
+  ]);
+  cacheLimparTudo(); // dia antigo foi alterado: descarta também o que estava guardado no navegador
+  await dbAddNotif(`Admin desbloqueou e resetou o lançamento de ${carrier} — ${fmtDateStr(ds)}`);
+  await dbAddAudit("admin_unlock", { carrier, date: ds });
+  showToast(`Lançamento de ${carrier} desbloqueado e resetado!`);
+  await renderTabBody();
+}
+// ADMIN UNLOCK SINGLE PLATE
+// ═══════════════════════════════════════════════════════════
+async function adminUnlockPlate(carrier, plate, ds){
+  if(!confirm(`Desbloquear apenas a placa "${plate}" de "${carrier}" em ${fmtDateStr(ds)}?\n\nO status será apagado e poderá ser preenchido novamente.`)) return;
+  try{
+    // Delete only this specific plate's status record and remove the carrier/date lock if present
+    const id = `${carrier}__${plate}__${ds}`;
+    await Promise.all([
+      deleteDoc(doc(db, "availability", id)),
+      dbRemoveLock(carrier, ds)
+    ]);
+    // Invalidate cache
+    const cKey = `status||${carrier}||${plate}||${ds}`;
+    cacheInvalidate(cKey);
+    cacheLimparTudo(); // dia antigo foi alterado: descarta também o que estava guardado no navegador
+    await dbAddNotif(`Admin desbloqueou a placa ${plate} de ${carrier} — ${fmtDateStr(ds)}`);
+    await dbAddAudit("admin_unlock_plate", { carrier, plate, date: ds });
+    showToast(`Placa ${plate} desbloqueada!`);
+    await renderTabBody();
+  } catch(e){
+    console.error(e);
+    showToast("Erro ao desbloquear placa.", false);
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// CORREÇÃO DE HODÔMETRO EM LOTE (admin)
+// ═══════════════════════════════════════════════════════════
+// Caso típico: o transportador passou a digitar o hodômetro com um dígito
+// a mais no final (a casa decimal que aparece no painel: 3113,2 → 31132).
+// Como a validação do lançamento não aceita valor MENOR que o anterior, o
+// erro se autoperpetua — ninguém consegue lançar o valor certo depois.
+// Aqui o admin vê TODO o histórico daquela placa, com o valor proposto
+// (sem o último dígito) editável linha a linha, e grava tudo de uma vez.
+// Só o campo `hodometro` (e updatedAt) muda em cada documento — os valores
+// antigos ficam guardados no Log de Auditoria, pra dar pra desfazer.
+let _corrHodo = null; // { carrier, plate, rows:[{id, dateStr, atual}] }
+
+async function abrirCorrecaoHodometro(carrier, plate){
+  const u = USERS_DB[S.user];
+  if(!u || u.role!=='admin'){ showToast('Só administrador pode corrigir hodômetro em lote.', false); return; }
+  document.getElementById('corr-hodo-modal')?.remove();
+  const modal=document.createElement('div');
+  modal.id='corr-hodo-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.onclick=e=>{ if(e.target===modal) modal.remove(); };
+  modal.innerHTML=`<div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:620px;max-height:90vh;display:flex;flex-direction:column">
+    <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:.35rem">✏️ Corrigir hodômetro em lote — ${esc(plate)}</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">${esc(carrier)} · carregando histórico...</p>
+    <div id="corr-hodo-body" style="flex:1;overflow:auto"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  try{
+    // Só igualdades (carrier + plate) — não depende de índice composto, e o
+    // filtro por carrier é o mesmo exigido pelas regras do Firestore.
+    const snap = await getDocs(query(collection(db,"availability"), where("carrier","==",carrier), where("plate","==",plate)));
+    const rows = snap.docs
+      .map(d=>({ id:d.id, ...d.data() }))
+      .filter(d=>d.hodometro!==undefined && d.hodometro!==null && d.hodometro!=='' && Number.isFinite(Number(d.hodometro)))
+      .map(d=>({ id:d.id, dateStr:d.dateStr, atual:Number(d.hodometro) }))
+      .sort((a,b)=>String(a.dateStr).localeCompare(String(b.dateStr)));
+    _corrHodo = { carrier, plate, rows };
+    modal.querySelector('p:nth-of-type(2)').textContent = `${carrier} · ${rows.length} lançamento(s) com hodômetro`;
+    if(!rows.length){ document.getElementById('corr-hodo-body').innerHTML='<p style="font-size:13px;color:var(--muted)">Nenhum hodômetro lançado pra essa placa.</p>'; return; }
+    // Linhas muito abaixo da mediana provavelmente JÁ estão certas (ex.: um
+    // dia em que digitaram certo) — começam desmarcadas pra não dividir por
+    // 10 o que não precisa.
+    const ordenados=[...rows.map(r=>r.atual)].sort((a,b)=>a-b);
+    const mediana=ordenados[Math.floor(ordenados.length/2)];
+    const linhas = rows.map((r,i)=>{
+      const pareceCerto = r.atual < mediana/3;
+      const proposto = pareceCerto ? r.atual : Math.floor(r.atual/10);
+      return `<tr data-i="${i}">
+        <td style="padding:5px 8px;font-size:12px;white-space:nowrap">${fmtDateStr(r.dateStr)}</td>
+        <td style="padding:5px 8px;font-size:12px;font-family:'DM Mono',monospace;text-align:right">${r.atual}</td>
+        <td style="padding:5px 8px;text-align:right"><input type="number" class="corr-hodo-novo" min="0" value="${proposto}" oninput="_corrHodoValidar()" style="width:100px;font-size:12px;padding:4px 6px;text-align:right;font-family:'DM Mono',monospace;background:var(--dark);border:1px solid var(--border2);color:var(--text);border-radius:6px"></td>
+        <td style="padding:5px 8px;text-align:center"><input type="checkbox" class="corr-hodo-chk" ${pareceCerto?'':'checked'} onchange="_corrHodoValidar()" style="width:16px;height:16px;cursor:pointer"></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('corr-hodo-body').innerHTML=`
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="_corrHodoAplicarRegra()">Recalcular: tirar último dígito das marcadas</button>
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="_corrHodoMarcarTodas(true)">Marcar todas</button>
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="_corrHodoMarcarTodas(false)">Desmarcar todas</button>
+      </div>
+      <div style="border:1px solid var(--border2);border-radius:8px;overflow:auto;max-height:50vh">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--mid)"><tr>
+            <th style="text-align:left;padding:6px 8px;font-size:11px">Data</th>
+            <th style="text-align:right;padding:6px 8px;font-size:11px">Atual</th>
+            <th style="text-align:right;padding:6px 8px;font-size:11px">Corrigido</th>
+            <th style="text-align:center;padding:6px 8px;font-size:11px">Corrigir?</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+      <div id="corr-hodo-aviso" style="display:none;margin-top:10px;font-size:11.5px;color:#FCA5A5;background:rgba(240,96,96,.1);border:1px solid rgba(240,96,96,.35);border-radius:8px;padding:8px 10px"></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">Linhas bem abaixo da média começam desmarcadas (parecem já estar certas). Só o hodômetro muda; os valores antigos ficam registrados no Log de Auditoria.</p>
+      <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('corr-hodo-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" id="corr-hodo-salvar" onclick="salvarCorrecaoHodometro()">💾 Salvar correção</button>
+      </div>`;
+    _corrHodoValidar();
+  } catch(e){
+    console.error('[corrHodo] falha ao carregar:', e);
+    document.getElementById('corr-hodo-body').innerHTML=`<p style="font-size:13px;color:var(--red)">Erro ao carregar histórico: ${esc(e.message)}</p>`;
+  }
+}
+function _corrHodoLinhas(){
+  return [...document.querySelectorAll('#corr-hodo-modal tbody tr')].map(tr=>{
+    const i=Number(tr.dataset.i);
+    return { tr, r:_corrHodo.rows[i], chk:tr.querySelector('.corr-hodo-chk'), inp:tr.querySelector('.corr-hodo-novo') };
+  });
+}
+function _corrHodoAplicarRegra(){
+  _corrHodoLinhas().forEach(({r,chk,inp})=>{ inp.value = chk.checked ? Math.floor(r.atual/10) : r.atual; });
+  _corrHodoValidar();
+}
+function _corrHodoMarcarTodas(v){
+  _corrHodoLinhas().forEach(({chk})=>{ chk.checked=v; });
+  _corrHodoAplicarRegra();
+}
+// Confere se a sequência FINAL (corrigidas + não corrigidas) fica sempre
+// crescente — é a mesma regra que o lançamento diário exige, então se
+// ficar alguma queda, o transportador trava de novo no próximo lançamento.
+function _corrHodoValidar(){
+  let anterior=null; const quedas=[];
+  _corrHodoLinhas().forEach(({tr,r,chk,inp})=>{
+    const final = chk.checked ? Number(inp.value) : r.atual;
+    const ruim = !Number.isFinite(final) || (anterior!==null && final<anterior);
+    tr.style.background = ruim ? 'rgba(240,96,96,.12)' : (chk.checked ? 'rgba(163,230,53,.06)' : '');
+    if(ruim) quedas.push(fmtDateStr(r.dateStr));
+    if(Number.isFinite(final)) anterior=final;
+  });
+  const aviso=document.getElementById('corr-hodo-aviso');
+  if(aviso){
+    if(quedas.length){
+      aviso.style.display='';
+      aviso.textContent=`⚠️ O hodômetro diminui em ${quedas.length} data(s): ${quedas.slice(0,6).join(', ')}${quedas.length>6?'...':''}. Confere essas linhas — se salvar assim, o próximo lançamento pode ser recusado.`;
+    } else aviso.style.display='none';
+  }
+  return quedas.length;
+}
+async function salvarCorrecaoHodometro(){
+  if(!_corrHodo) return;
+  const { carrier, plate } = _corrHodo;
+  const mudancas = _corrHodoLinhas()
+    .filter(({chk})=>chk.checked)
+    .map(({r,inp})=>({ id:r.id, dateStr:r.dateStr, de:r.atual, para:Number(inp.value) }))
+    .filter(m=>Number.isFinite(m.para) && m.para>=0 && m.para!==m.de);
+  if(!mudancas.length){ showToast('Nada pra corrigir — nenhuma linha marcada com valor diferente.', false); return; }
+  const quedas=_corrHodoValidar();
+  const ultima=mudancas[mudancas.length-1];
+  if(!confirm(`Corrigir ${mudancas.length} lançamento(s) de hodômetro da placa ${plate}?\n\nExemplo: ${fmtDateStr(ultima.dateStr)}: ${ultima.de} → ${ultima.para}`+
+    (quedas?`\n\nATENÇÃO: a sequência ainda tem ${quedas} queda(s) de hodômetro. Salvar mesmo assim?`:'')+
+    `\n\nOs valores antigos ficam registrados no Log de Auditoria.`)) return;
+  const btn=document.getElementById('corr-hodo-salvar');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
+  try{
+    const agora=new Date().toISOString();
+    // writeBatch aceita até 500 operações — divide em blocos de 400.
+    for(let i=0;i<mudancas.length;i+=400){
+      const batch=writeBatch(db);
+      mudancas.slice(i,i+400).forEach(m=>batch.update(doc(db,"availability",m.id), { hodometro:m.para, updatedAt:agora }));
+      await batch.commit();
+    }
+    cacheLimparTudo(); // dia antigo foi alterado: descarta também o que estava guardado no navegador
+    await dbAddAudit("hodometro_correcao_lote", {
+      carrier, plate, qtd: mudancas.length,
+      alteracoes: mudancas.map(m=>[m.dateStr, m.de, m.para]), // [data, antes, depois] — pra desfazer se precisar
+    });
+    document.getElementById('corr-hodo-modal')?.remove();
+    showToast(`Hodômetro de ${plate} corrigido em ${mudancas.length} lançamento(s)!`);
+    await renderTabBody();
+  } catch(e){
+    console.error('[corrHodo] falha ao salvar:', e);
+    showToast('Erro ao salvar correção: '+(e.code==='permission-denied'?'sem permissão no Firestore (regras).':e.message), false);
+    if(btn){ btn.disabled=false; btn.textContent='💾 Salvar correção'; }
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// USERS MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+async function renderUsers(body, subTabs=''){
+  body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando...</div>`;
+  // Busca fresca antes de desenhar a tabela — esta tela é onde o admin
+  // decide excluir/criar usuário, então não pode confiar numa cópia da
+  // aba que já pode estar aberta há tempo. Sem isso, dava pra "confirmar"
+  // visualmente que um usuário sumiu quando na verdade só a aba é que
+  // estava desatualizada.
+  try {
+    cacheInvalidate('cfg_users', 'cfg_carriers');
+    const [freshUsers, freshCarriers] = await Promise.all([
+      withTimeout(dbGetUsers(), 8000, "Timeout dbGetUsers").catch(e=>{console.warn(e); return null;}),
+      withTimeout(dbGetCarriers(), 8000, "Timeout dbGetCarriers").catch(e=>{console.warn(e); return null;}),
+    ]);
+    if(freshUsers) _atualizarUsersDb(freshUsers);
+    if(freshCarriers){ CARRIERS.length=0; CARRIERS.push(...freshCarriers); window.CARRIERS=CARRIERS; }
+  } catch(e) { console.warn('[renderUsers] falha ao atualizar antes de renderizar:', e); }
+  // Carriers section
+  const carrierRows = CARRIERS.map((c,i)=>`
+    <tr>
+      <td style="font-size:13px">${esc(c)}</td>
+      <td><button class="btn-danger" onclick="deleteCarrier(${i})">🗑</button></td>
+    </tr>`).join("");
+  // Users section (exclude admin from edit/delete)
+  const userRows = Object.entries(USERS_DB).map(([uid,u])=>{
+    const ops = userOperacoes(u);
+    const inativo = u.ativo===false;
+    return `
+    <tr style="${inativo?'opacity:.55':''}">
+      <td style="font-family:'DM Mono',monospace;font-weight:500;word-break:break-word;overflow-wrap:anywhere;">${esc(uid)}${inativo?' <span class="badge b-red" style="margin-left:4px;">Inativo</span>':''}</td>
+      <td style="font-size:12px">${esc(u.name)}</td>
+      <td><span class="badge ${u.role==='admin'?'b-lime':u.role==='operacional'?'b-amber':'b-blue'}">${u.role==='admin'?'Admin':u.role==='operacional'?'Operacional':'Transportador'}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${esc(u.carrier||'—')}</td>
+      <td style="font-size:11px;color:${u.email?'var(--dim)':'var(--muted)'};line-height:1.6;">${u.email ? u.email.split(',').map(e => esc(e.trim())).filter(Boolean).join('<br>') : '— sem e-mail —'}</td>
+      <td style="font-size:11px;color:var(--muted)">${ops?esc(ops.join(', ')):'Todas'}</td>
+      <td style="white-space:nowrap;vertical-align:middle">
+        <div style="display:inline-flex;gap:5px;align-items:center">
+          <button class="btn-edit" onclick="openEditUser('${attr(jsArg(uid))}')" title="Editar">✏️</button>
+          ${uid!==S.user?`<button class="btn-reset-pwd" onclick="openResetPwd('${attr(jsArg(uid))}')" title="Resetar senha">🔑</button>`:''}
+          ${uid!=='admin'&&uid!==S.user?`<button class="btn-edit" onclick="toggleUserAtivo('${attr(jsArg(uid))}')" title="${inativo?'Reativar acesso':'Inativar acesso'}">${inativo?'🔓':'🔒'}</button>`:''}
+          ${uid!=='admin'?`<button class="btn-danger" onclick="deleteUser('${attr(jsArg(uid))}')" title="Remover">🗑</button>`:''}
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+  body.innerHTML=subTabs+`
+    <!-- NEW CARRIER -->
+    <div class="card" style="margin-bottom:1.5rem">
+      <p class="reg-heading">+ Novo transportador</p>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-field" style="flex:1;min-width:200px">
+          <label>NOME DO TRANSPORTADOR</label>
+          <input id="new-carrier-name" type="text" placeholder="Ex: Souza Transportes">
+        </div>
+        <button class="btn btn-lime" onclick="addCarrier()" style="margin-bottom:0">+ Adicionar</button>
+        <span id="carrier-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+    <!-- CARRIERS LIST -->
+    <p class="sec-title" style="margin-bottom:.75rem">Transportadores cadastrados</p>
+    <div class="tscroll" style="margin-bottom:2rem">
+      <table class="table" style="min-width:360px">
+        <thead><tr><th style="width:85%">TRANSPORTADOR</th><th style="width:15%">AÇÕES</th></tr></thead>
+        <tbody>${carrierRows||'<tr><td colspan="2" style="color:var(--muted);font-size:13px">Nenhum transportador</td></tr>'}</tbody>
+      </table>
+    </div>
+    <!-- NEW USER -->
+    <div class="card" style="margin-bottom:1.5rem">
+      <p class="reg-heading">+ Novo usuário</p>
+      <div class="form-grid">
+        <div class="form-field"><label>LOGIN (usuário)</label><input id="new-uid" type="text" placeholder="Ex: souza"></div>
+        <div class="form-field"><label>NOME DE EXIBIÇÃO</label><input id="new-uname" type="text" placeholder="Ex: Souza Transportes"></div>
+        <div class="form-field"><label>SENHA</label><input id="new-upwd" type="text" placeholder="Mín. 6 caracteres"></div>
+        <div class="form-field"><label>E-MAIL <span style="font-weight:400;color:var(--muted)">(p/ avisos de disponibilidade — separe vários por vírgula)</span></label><input id="new-uemail" type="email" multiple placeholder="Ex: contato@transportadora.com, financeiro@transportadora.com"></div>
+        <div class="form-field"><label>PERFIL</label>
+          <select id="new-urole" onchange="toggleCarrierField()">
+            <option value="carrier">Transportador</option>
+            <option value="operacional">Operacional</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <div class="form-field" id="new-carrier-field"><label>TRANSPORTADOR</label>
+          <select id="new-ucarrier" onchange="renderOpCheckboxes('new-op-checks','new-ucarrier')">${CARRIERS.map(c=>optHtml(c)).join('')}</select>
+        </div>
+        <div class="form-field" id="new-op-field" style="display:none;grid-column:1/-1">
+          <label>OPERACOES VISÍVEIS <span style="font-weight:400;color:var(--muted)">(deixe vazio para ver todas)</span></label>
+          <div id="new-op-checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-lime" onclick="addUser()">+ Criar usuário</button>
+        <span id="user-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+    <!-- USERS LIST -->
+    <p class="sec-title" style="margin-bottom:.75rem">Usuários cadastrados</p>
+    <div class="tscroll">
+      <table class="table" style="min-width:680px">
+        <thead><tr><th style="width:13%">LOGIN</th><th style="width:15%">NOME</th><th style="width:9%">PERFIL</th><th style="width:15%">TRANSPORTADOR</th><th style="width:17%">E-MAIL</th><th style="width:17%">OPERACOES</th><th style="width:14%">AÇÕES</th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </div>`;
+}
+function toggleCarrierField(){
+  const role=document.getElementById('new-urole')?.value;
+  const field=document.getElementById('new-carrier-field');
+  const opField=document.getElementById('new-op-field');
+  const isCarrier=!(role==='admin'||role==='operacional');
+  if(field) field.style.display=isCarrier?'':'none';
+  if(opField) opField.style.display=isCarrier?'':'none';
+  if(isCarrier) renderOpCheckboxes('new-op-checks','new-ucarrier');
+}
+function renderOpCheckboxes(containerId, carrierSelId){
+  const container=document.getElementById(containerId);
+  if(!container) return;
+  container.innerHTML=OPERACOES.map(op=>`
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);background:var(--dark);border:1px solid var(--border2);border-radius:7px;padding:5px 10px;cursor:pointer;user-select:none">
+      <input type="checkbox" value="${attr(op)}" style="accent-color:var(--lime);cursor:pointer"> ${esc(op)}
+    </label>`).join('');
+}
+function getCheckedOps(containerId){
+  const container=document.getElementById(containerId);
+  if(!container) return [];
+  return Array.from(container.querySelectorAll('input[type=checkbox]:checked')).map(cb=>cb.value);
+}
+async function addCarrier(){
+  const name=document.getElementById('new-carrier-name').value.trim();
+  const msg=document.getElementById('carrier-msg');
+  if(!name){msg.textContent='Informe o nome.';msg.style.color='var(--red)';return;}
+  if(CARRIERS.includes(name)){msg.textContent='Transportador já existe.';msg.style.color='var(--red)';return;}
+  CARRIERS.push(name);
+  await dbSaveCarriers(CARRIERS);
+  document.getElementById('new-carrier-name').value='';
+  msg.textContent=`${name} adicionado!`;msg.style.color='var(--green)';
+  showToast(`Transportador ${name} cadastrado!`);
+  setTimeout(()=>{msg.textContent='';},3000);
+  await renderTabBody();
+}
+async function deleteCarrier(idx){
+  const name=CARRIERS[idx];
+  if(!confirm(`Remover o transportador "${name}"?
+Isso não remove as placas já cadastradas.`)) return;
+  CARRIERS.splice(idx,1);
+  await dbSaveCarriers(CARRIERS);
+  showToast(`${name} removido.`);
+  await renderTabBody();
+}
+async function addUser(){
+  const uid=document.getElementById('new-uid').value.trim().toLowerCase().replace(/\s/g,'');
+  const name=document.getElementById('new-uname').value.trim();
+  const pwd=document.getElementById('new-upwd').value.trim();
+  const email=document.getElementById('new-uemail').value.trim();
+  const role=document.getElementById('new-urole').value;
+  const carrier=(role==='carrier')?document.getElementById('new-ucarrier').value:'';
+  const operacoes=(role==='carrier')?getCheckedOps('new-op-checks'):[];
+  const msg=document.getElementById('user-msg');
+  if(!uid){msg.textContent='Informe o login.';msg.style.color='var(--red)';return;}
+  if(!name){msg.textContent='Informe o nome.';msg.style.color='var(--red)';return;}
+  if(!pwd||pwd.length<6){msg.textContent='Senha deve ter mín. 6 caracteres.';msg.style.color='var(--red)';return;}
+  if(USERS_DB[uid]){msg.textContent='Login já existe.';msg.style.color='var(--red)';return;}
+  const btn=document.querySelector('#user-msg')?.previousElementSibling;
+  // Cria o usuário no Firebase Auth secundário para preservar a sessão atual do admin.
+  try {
+    await createUserWithEmailAndPassword(userCreateAuth, uidToEmail(uid), pwd);
+    await signOut(userCreateAuth).catch(()=>{});
+  } catch(e) {
+    const code=e.code||"";
+    if(code==='auth/email-already-in-use'){
+      msg.textContent=`⚠️ Já existe uma conta de login "${uid}" no Firebase Authentication (provavelmente de uma exclusão anterior que não apagou a conta). O perfil NÃO foi criado. Apague a conta em Authentication no Firebase Console antes de tentar de novo.`;
+      showToast(`Não foi possível criar "${uid}": já existe conta de login com esse nome no Firebase Auth.`, false);
+    } else if(code==='auth/weak-password'){
+      msg.textContent='Senha muito fraca. Use pelo menos 6 caracteres.';
+    } else {
+      msg.textContent='Erro ao criar: '+code;
+    }
+    msg.style.color='var(--red)'; return;
+  }
+  const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  // Salva perfil no Firestore SEM a senha
+  USERS_DB[uid]={name, role, initials, ...(email?{email}:{}), ...(carrier?{carrier}:{}), ...(operacoes.length?{operacoes}:{})};
+  await dbSaveUsers(USERS_DB);
+  ['new-uid','new-uname','new-upwd','new-uemail'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  msg.textContent=`Usuário ${uid} criado!`;msg.style.color='var(--green)';
+  showToast(`Usuário ${uid} criado com sucesso!`);
+  setTimeout(()=>{msg.textContent='';},3000);
+  await renderTabBody();
+}
+async function deleteUser(uid){
+  if(!confirm(`Remover o usuário "${uid}"?\n\nIsso remove o acesso ao sistema, mas NÃO apaga a conta de login (${uidToEmail(uid)}) do Firebase Authentication — ela continua existindo. Se for recriar esse mesmo login depois, é preciso apagar a conta pelo Firebase Console primeiro (Authentication > buscar o e-mail > excluir), senão a recriação falha silenciosamente.`)) return;
+  delete USERS_DB[uid];
+  await dbSaveUsers(USERS_DB);
+  showToast(`Usuário ${uid} removido. Lembrete: a conta de login continua no Firebase Auth.`);
+  await renderTabBody();
+}
+// Inativar/reativar acesso — diferente de excluir: o cadastro (nome, e-mail,
+// transportador, operações) continua intacto, só fica bloqueado de entrar
+// no sistema. onAuthStateChanged confere "ativo===false" logo após a
+// autenticação e desloga na hora, mesmo que a senha esteja certa — ver lá.
+// Tela só é alcançável por admin (mesma trava de acesso do resto de
+// "Usuários"), mas ainda assim não deixa inativar a própria conta logada
+// nem a "admin" fixa, pra ninguém se trancar pra fora sem querer.
+async function toggleUserAtivo(uid){
+  const u=USERS_DB[uid];
+  if(!u) return;
+  if(uid==='admin'||uid===S.user){ showToast('Não é possível inativar esta conta.', false); return; }
+  const vaiInativar = u.ativo!==false;
+  const acao = vaiInativar ? 'inativar' : 'reativar';
+  if(!confirm(`Deseja ${acao} o acesso de "${uid}"?${vaiInativar?'\n\nO usuário não vai mais conseguir entrar no sistema até ser reativado. O cadastro (nome, e-mail, transportador, operações) continua salvo, nada é apagado.':''}`)) return;
+  u.ativo = vaiInativar ? false : true;
+  await dbSaveUsers(USERS_DB);
+  showToast(`Acesso de ${uid} ${vaiInativar?'inativado':'reativado'}.`);
+  await renderTabBody();
+}
+function openEditUser(uid){
+  const u=USERS_DB[uid];
+  if(!u) return;
+  const currentOps=userOperacoes(u) || [];
+  const carrierOpts=CARRIERS.map(c=>optHtml(c, c===u.carrier)).join('');
+  const isAdmin=uid==='admin';
+  const roleOpts=[
+    {val:'carrier',  label:'Transportador'},
+    {val:'operacional',label:'Operacional'},
+    {val:'admin',    label:'Administrador'},
+  ].map(r=>`<option value="${attr(r.val)}"${u.role===r.val?' selected':''}>${esc(r.label)}</option>`).join('');
+  const modal=document.createElement('div');
+  modal.id='edit-user-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.innerHTML=`
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:480px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Editar usuário — ${esc(uid)}</p>
+      <div class="form-grid">
+        <div class="form-field"><label>NOME DE EXIBIÇÃO</label><input id="eu-name" type="text" value="${attr(u.name)}"></div>
+        <div class="form-field"><label>NOVA SENHA <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><input id="eu-pwd" type="password" placeholder="Deixe em branco para manter"></div>
+        <div class="form-field"><label>E-MAIL <span style="font-weight:400;color:var(--muted)">(p/ avisos de disponibilidade — separe vários por vírgula)</span></label><input id="eu-email" type="email" multiple value="${attr(u.email||'')}" placeholder="Ex: contato@transportadora.com, financeiro@transportadora.com"></div>
+        ${isAdmin?'':`<div class="form-field"><label>PERFIL</label><select id="eu-role" onchange="onEditRoleChange()">${roleOpts}</select></div>`}
+        <div class="form-field" id="eu-carrier-field" style="display:${u.role==='carrier'?'block':'none'}">
+          <label>TRANSPORTADOR</label>
+          <select id="eu-carrier">${carrierOpts}</select>
+        </div>
+        <div class="form-field" id="eu-op-field" style="display:${u.role==='carrier'?'block':'none'};grid-column:1/-1">
+          <label>OPERACOES VISÍVEIS <span style="font-weight:400;color:var(--muted)">(deixe vazio para ver todas)</span></label>
+          <div id="eu-op-checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+            ${OPERACOES.map(op=>`<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);background:var(--dark);border:1px solid var(--border2);border-radius:7px;padding:5px 10px;cursor:pointer;user-select:none"><input type="checkbox" value="${attr(op)}"${currentOps.includes(op)?' checked':''} style="accent-color:var(--lime);cursor:pointer"> ${esc(op)}</label>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('edit-user-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" onclick="saveEditUser('${attr(jsArg(uid))}')">💾 Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function onEditRoleChange(){
+  const role=document.getElementById('eu-role')?.value;
+  const field=document.getElementById('eu-carrier-field');
+  const opField=document.getElementById('eu-op-field');
+  if(field) field.style.display=role==='carrier'?'block':'none';
+  if(opField) opField.style.display=role==='carrier'?'block':'none';
+}
+async function saveEditUser(uid){
+  const name=document.getElementById('eu-name').value.trim();
+  const email=document.getElementById('eu-email').value.trim();
+  const pwd=document.getElementById('eu-pwd').value.trim();
+  const roleEl=document.getElementById('eu-role');
+  const carrierEl=document.getElementById('eu-carrier');
+  const newRole=roleEl?roleEl.value:USERS_DB[uid].role;
+  const newCarrier=(newRole==='carrier'&&carrierEl)?carrierEl.value:'';
+  if(!name){showToast('Informe o nome.',false);return;}
+  if(pwd&&pwd.length<6){showToast('Senha deve ter mín. 6 caracteres.',false);return;}
+  // Nome, e-mail, perfil, transportador e operações SEMPRE salvam, independente
+  // do campo de senha — antes, digitar algo em "Nova senha" ao editar OUTRO
+  // usuário cancelava o salvamento inteiro (inclusive o e-mail), porque o
+  // aviso de "só é possível alterar a própria senha" media com um "return"
+  // que interrompia tudo. Agora a senha é tratada à parte, só avisa/erra
+  // sobre ela mesma, sem travar o resto.
+  let avisoSenha = null;
+  if(pwd){
+    if(auth.currentUser && auth.currentUser.email===uidToEmail(uid)){
+      try {
+        await updatePassword(auth.currentUser, pwd);
+      } catch(e) {
+        avisoSenha = 'Erro ao atualizar senha: '+(e.code||e.message);
+      }
+    } else {
+      // Senha de outro usuário — não é possível alterar via client SDK sem
+      // re-autenticar como ele. Isso NÃO impede salvar o resto do formulário.
+      avisoSenha = 'Nome/e-mail/perfil salvos. A senha não foi alterada: só é possível trocar a própria senha por aqui — para redefinir a de outro usuário, use "🔑 Resetar senha" na listagem ou o Console do Firebase.';
+    }
+  }
+  const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const newOps=newRole==='carrier'?getCheckedOps('eu-op-checks'):[];
+  // Salva perfil no Firestore SEM a senha
+  USERS_DB[uid]={
+    ...USERS_DB[uid],
+    name,
+    initials,
+    email,
+    role: newRole,
+    ...(newCarrier?{carrier:newCarrier}:{carrier:''}),
+    operacoes: newOps
+  };
+  delete USERS_DB[uid].operações;
+  delete USERS_DB[uid].password; // garante remoção caso ainda exista localmente
+  await dbSaveUsers(USERS_DB);
+  document.getElementById('edit-user-modal').remove();
+  if(avisoSenha){
+    showToast(avisoSenha, false);
+  } else {
+    showToast(`Usuário ${uid} atualizado!`);
+  }
+  await renderTabBody();
+}
+// ═══════════════════════════════════════════════════════════
+// REGISTER SUB-TAB CONTROLLER
+// ═══════════════════════════════════════════════════════════
+function setRegSubTab(tab){
+  S.registerSubTab=tab;
+  renderTabBody();
+}
+function setReportsSubTab(tab){
+  S.reportsSubTab=tab;
+  renderTabBody();
+}
+function limparFiltroExport(){
+  S.expFiltro = { carrier:"", operacao:"", tipo:"", identificacao:"", contrato:"", status:"" };
+  renderTabBody();
+}
+function setAuditSubTab(tab){
+  S.auditSubTab=tab;
+  renderTabBody();
+}
+// ── Populate driver selects in plate form ──
+async function populateDriverSelects(selDiurno='', selNoturno=''){
+  const carrier=document.getElementById('r-carrier')?.value;
+  const op=document.getElementById('r-op')?.value;
+  const selD=document.getElementById('r-mot-d');
+  const selN=document.getElementById('r-mot-n');
+  if(!selD||!selN) return;
+  const allDrivers=await dbGetDrivers();
+  const blank='<option value="">— Sem motorista —</option>';
+  let optsD=blank;
+  let optsN=blank;
+  if(carrier&&op){
+    const list=(allDrivers[carrier]||[]).filter(d=>d.ativo!==false&&d.operacao===op);
+    optsD+=list.map(d=>optHtml(d.nome, d.nome===selDiurno)).join('');
+    optsN+=list.map(d=>optHtml(d.nome, d.nome===selNoturno)).join('');
+  }
+  selD.innerHTML=optsD;
+  selN.innerHTML=optsN;
+  if(selNoturno) selN.value=selNoturno;
+}
+// ═══════════════════════════════════════════════════════════
+// DRIVERS MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+async function renderRegisterDrivers(body, subTabs=''){
+  const u=USERS_DB[S.user];
+  const isAdmin=u&&u.role==='admin';
+  const allDrivers=await dbGetDrivers();
+  // Filter by carrier for non-admin
+  const carriersToShow=isAdmin?CARRIERS:[u.carrier].filter(Boolean);
+  // Build driver list grouped by carrier then operation
+  let listHTML='';
+  for(const carrier of carriersToShow){
+    const drivers=(allDrivers[carrier]||[]);
+    if(!drivers.length&&!isAdmin) continue;
+    // Group by operation
+    const byOp={};
+    for(const d of drivers){
+      if(!byOp[d.operacao]) byOp[d.operacao]=[];
+      byOp[d.operacao].push(d);
+    }
+    let opSections='';
+    for(const [op,drvs] of Object.entries(byOp)){
+      const rows=drvs.map((d,i)=>{
+        const realIdx=(allDrivers[carrier]||[]).findIndex(x=>x.nome===d.nome&&x.operacao===d.operacao&&x.turno===d.turno);
+        const ativo=d.ativo!==false;
+        return `<tr style="${ativo?'':'opacity:.5;background:rgba(240,96,96,.04)'}">
+          <td style="font-weight:500">${esc(d.nome)}</td>
+          <td><span class="badge ${d.turno==='Diurno'?'b-amber':'b-blue'}">${d.turno==='Diurno'?'☀ Diurno':'🌙 Noturno'}</span></td>
+          <td><span class="badge ${ativo?'b-green':'b-red'}" style="font-size:10px">${ativo?'Ativo':'Inativo'}</span></td>
+          <td style="white-space:nowrap">
+            <button class="btn-toggle-${ativo?'off':'on'}" onclick="toggleDriver('${attr(jsArg(carrier))}',${realIdx},${!ativo})" title="${ativo?'Desativar':'Ativar'}">${ativo?'⏸':'▶'}</button>
+            <button class="btn-edit" onclick="openEditDriver('${attr(jsArg(carrier))}',${realIdx})" title="Editar">✏️</button>
+            <button class="btn-danger" onclick="deleteDriver('${attr(jsArg(carrier))}',${realIdx})" title="Remover">🗑</button>
+          </td>
+        </tr>`;
+      }).join('');
+      opSections+=`<div style="margin-bottom:1rem">
+        <p style="font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:.5rem;padding:0 2px">📍 ${esc(op)}</p>
+        <table class="table" style="min-width:420px;table-layout:fixed;width:100%">
+          <thead><tr><th style="width:55%">NOME</th><th style="width:15%">TURNO</th><th style="width:12%">STATUS</th><th style="width:18%">AÇÕES</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+    if(!opSections) opSections=`<p style="font-size:13px;color:var(--muted);padding:.75rem 0">Nenhum motorista cadastrado.</p>`;
+    listHTML+=`<div class="carrier-block" style="margin-bottom:1.5rem">
+      <div class="carrier-head"><span class="ch-icon">🚛</span>${esc(carrier)}<span class="ch-count">${drivers.filter(d=>d.ativo!==false).length} ativo(s)</span></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:1rem">
+        <div class="tscroll">${opSections}</div>
+      </div>
+    </div>`;
+  }
+  if(!listHTML) listHTML=`<div class="empty"><span class="ei">👤</span>Nenhum motorista cadastrado.</div>`;
+  const carrierOpts=carriersToShow.map(c=>optHtml(c)).join('');
+  const opOpts=OPERACOES.map(o=>optHtml(o)).join('');
+  // Only admin/same carrier can add drivers
+  const addForm=isAdmin||u.role==='operacional'?`
+    <div class="card" style="margin-bottom:1.5rem">
+      <p class="reg-heading">+ Novo motorista</p>
+      <div class="form-grid">
+        <div class="form-field"><label>TRANSPORTADOR</label><select id="drv-carrier">${carrierOpts}</select></div>
+        <div class="form-field"><label>OPERAÇÃO</label><select id="drv-op">${opOpts}</select></div>
+        <div class="form-field"><label>NOME COMPLETO</label><input id="drv-nome" type="text" placeholder="Ex: João da Silva"></div>
+        <div class="form-field"><label>TURNO</label>
+          <select id="drv-turno">
+            <option value="Diurno">☀ Diurno</option>
+            <option value="Noturno">🌙 Noturno</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-lime" onclick="addDriver()">+ Cadastrar motorista</button>
+        <span id="drv-msg" style="font-size:12px"></span>
+      </div>
+    </div>`:
+    `<div class="card" style="margin-bottom:1.5rem;padding:.75rem 1rem;font-size:13px;color:var(--muted)">
+      ℹ️ Somente administradores e operacionais podem cadastrar novos motoristas.
+    </div>`;
+  body.innerHTML=subTabs+addForm+`
+    <p class="sec-title" style="margin-bottom:1rem">Motoristas cadastrados</p>
+    <div id="drivers-list">${listHTML}</div>`;
+}
+async function addDriver(){
+  const carrier=document.getElementById('drv-carrier')?.value;
+  const op=document.getElementById('drv-op')?.value;
+  const nome=document.getElementById('drv-nome')?.value.trim();
+  const turno=document.getElementById('drv-turno')?.value;
+  const msg=document.getElementById('drv-msg');
+  if(!nome){msg.textContent='Informe o nome.';msg.style.color='var(--red)';return;}
+  const allDrivers=await dbGetDrivers();
+  if(!allDrivers[carrier]) allDrivers[carrier]=[];
+  const dup=allDrivers[carrier].find(d=>d.nome===nome&&d.operacao===op&&d.turno===turno);
+  if(dup){msg.textContent='Motorista já cadastrado com esse turno e operação.';msg.style.color='var(--red)';return;}
+  allDrivers[carrier].push({nome,operacao:op,turno,ativo:true});
+  await dbSaveDrivers(allDrivers);
+  document.getElementById('drv-nome').value='';
+  msg.textContent=`${nome} cadastrado!`;msg.style.color='var(--green)';
+  showToast(`Motorista ${nome} cadastrado!`);
+  setTimeout(()=>{msg.textContent='';},3000);
+  await renderTabBody();
+}
+async function toggleDriver(carrier,idx,activate){
+  const allDrivers=await dbGetDrivers();
+  if(!allDrivers[carrier]||!allDrivers[carrier][idx]) return;
+  const nome=allDrivers[carrier][idx].nome;
+  if(!confirm(`${activate?'Ativar':'Desativar'} motorista ${nome}?`)) return;
+  allDrivers[carrier][idx].ativo=activate;
+  await dbSaveDrivers(allDrivers);
+  showToast(`${nome} ${activate?'ativado':'desativado'}!`);
+  await renderTabBody();
+}
+async function deleteDriver(carrier,idx){
+  const allDrivers=await dbGetDrivers();
+  if(!allDrivers[carrier]||!allDrivers[carrier][idx]) return;
+  const nome=allDrivers[carrier][idx].nome;
+  if(!confirm(`Remover motorista ${nome}?`)) return;
+  allDrivers[carrier].splice(idx,1);
+  await dbSaveDrivers(allDrivers);
+  showToast(`${nome} removido.`);
+  await renderTabBody();
+}
+function openEditDriver(carrier,idx){
+  dbGetDrivers().then(allDrivers=>{
+    const d=allDrivers[carrier]&&allDrivers[carrier][idx];
+    if(!d) return;
+    _editPending={driverCarrier:carrier,driverIdx:idx};
+    const opOpts=OPERACOES.map(o=>optHtml(o, o===d.operacao)).join('');
+    const existing=document.getElementById('edit-driver-modal');
+    if(existing) existing.remove();
+    const modal=document.createElement('div');
+    modal.id='edit-driver-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+    modal.innerHTML=`
+      <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:460px">
+        <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Editar motorista — ${esc(d.nome)}</p>
+        <div class="form-grid">
+          <div class="form-field"><label>NOME COMPLETO</label><input id="ed-nome" type="text" value="${attr(d.nome)}"></div>
+          <div class="form-field"><label>OPERAÇÃO</label><select id="ed-op">${opOpts}</select></div>
+          <div class="form-field"><label>TURNO</label>
+            <select id="ed-turno">
+              <option value="Diurno"${d.turno==='Diurno'?' selected':''}>☀ Diurno</option>
+              <option value="Noturno"${d.turno==='Noturno'?' selected':''}>🌙 Noturno</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="document.getElementById('edit-driver-modal').remove()">Cancelar</button>
+          <button class="btn btn-lime" onclick="saveEditDriver()">💾 Salvar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  });
+}
+async function saveEditDriver(){
+  const {driverCarrier:carrier,driverIdx:idx}=_editPending;
+  if(!carrier&&carrier!==0) return;
+  const nome=document.getElementById('ed-nome')?.value.trim();
+  const op=document.getElementById('ed-op')?.value;
+  const turno=document.getElementById('ed-turno')?.value;
+  if(!nome){showToast('Informe o nome.',false);return;}
+  const allDrivers=await dbGetDrivers();
+  allDrivers[carrier][idx]={...allDrivers[carrier][idx],nome,operacao:op,turno};
+  await dbSaveDrivers(allDrivers);
+  document.getElementById('edit-driver-modal')?.remove();
+  _editPending={};
+  showToast('Motorista atualizado!');
+  await renderTabBody();
+}
+// ═══════════════════════════════════════════════════════════
+// OPERACOES MANAGEMENT (admin only)
+// ═══════════════════════════════════════════════════════════
+async function renderRegisterOps(body, subTabs=''){
+  const opRows=OPERACOES.map((o,i)=>`
+    <tr>
+      <td style="font-size:13px">${esc(o)}</td>
+      <td style="white-space:nowrap;vertical-align:middle">
+        <div style="display:inline-flex;gap:5px;align-items:center">
+          <button class="btn-edit" onclick="openEditOp(${i})" title="Editar">✏️</button>
+          <button class="btn-danger" onclick="deleteOp(${i})" title="Remover">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  body.innerHTML=subTabs+`
+    <div class="card" style="margin-bottom:1.5rem">
+      <p class="reg-heading">+ Nova operação</p>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-field" style="flex:1;min-width:200px">
+          <label>NOME DA OPERAÇÃO</label>
+          <input id="new-op-name" type="text" placeholder="Ex: Uberlândia">
+        </div>
+        <button class="btn btn-lime" onclick="addOp()">+ Cadastrar</button>
+        <span id="op-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+    <p class="sec-title" style="margin-bottom:.75rem">Operações cadastradas</p>
+    <div class="tscroll">
+      <table class="table" style="min-width:320px">
+        <thead><tr><th style="width:85%">OPERAÇÃO</th><th style="width:15%">AÇÕES</th></tr></thead>
+        <tbody>${opRows||'<tr><td colspan="2" style="color:var(--muted);font-size:13px">Nenhuma operação cadastrada</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+async function addOp(){
+  const name=document.getElementById('new-op-name')?.value.trim();
+  const msg=document.getElementById('op-msg');
+  if(!name){msg.textContent='Informe o nome.';msg.style.color='var(--red)';return;}
+  if(OPERACOES.includes(name)){msg.textContent='Operação já existe.';msg.style.color='var(--red)';return;}
+  OPERACOES.push(name);
+  await dbSaveOperacoes(OPERACOES);
+  document.getElementById('new-op-name').value='';
+  msg.textContent=`"${name}" cadastrada!`;msg.style.color='var(--green)';
+  showToast(`Operação "${name}" cadastrada!`);
+  setTimeout(()=>{msg.textContent='';},3000);
+  await renderTabBody();
+}
+async function deleteOp(idx){
+  const name=OPERACOES[idx];
+  if(!confirm(`Remover a operação "${name}"?
+Ela continuará nas placas já cadastradas.`)) return;
+  OPERACOES.splice(idx,1);
+  await dbSaveOperacoes(OPERACOES);
+  showToast(`Operação "${name}" removida.`);
+  await renderTabBody();
+}
+function openEditOp(idx){
+  const name=OPERACOES[idx];
+  const modal=document.createElement('div');
+  modal.id='edit-op-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.innerHTML=`
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:400px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Editar operação</p>
+      <div class="form-field">
+        <label>NOME DA OPERAÇÃO</label>
+        <input id="edit-op-name" type="text" value="${attr(name)}">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('edit-op-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" onclick="saveEditOp(${idx})">💾 Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+async function saveEditOp(idx){
+  const newName=document.getElementById('edit-op-name')?.value.trim();
+  if(!newName){showToast('Informe o nome.',false);return;}
+  if(OPERACOES.includes(newName)&&OPERACOES[idx]!==newName){showToast('Já existe uma operação com esse nome.',false);return;}
+  OPERACOES[idx]=newName;
+  await dbSaveOperacoes(OPERACOES);
+  document.getElementById('edit-op-modal').remove();
+  showToast(`Operação atualizada para "${newName}"!`);
+  await renderTabBody();
+}
+// ═══════════════════════════════════════════════════════════
+// TOGGLE PLATE ACTIVE/INACTIVE
+// ═══════════════════════════════════════════════════════════
+async function togglePlate(carrier, idx, activate, placa){
+  const allPAtual=await dbGetPlates(); // só pra achar a placa e montar a mensagem de confirmação — a gravação de verdade relê fresco dentro de dbAtualizarPlates
+  const plateAtual = (placa ? (allPAtual[carrier]||[]).find(p=>p.placa===placa) : allPAtual[carrier]?.[idx]);
+  if(!plateAtual) return;
+  const action=activate?'ativar':'desativar';
+  if(!confirm(`Deseja ${action} a placa ${plateAtual.placa}?`)) return;
+  await dbAtualizarPlates(allP => {
+    if(!allP[carrier]) return;
+    let i = placa ? allP[carrier].findIndex(p=>p.placa===placa) : idx;
+    if(i<0 || i==null || !allP[carrier][i]) i = idx;
+    if(!allP[carrier][i]) return;
+    allP[carrier][i].ativo=activate;
+    allP[carrier][i].ativoUpdatedAt=localDateStr(new Date());
+  });
+  showToast(`Placa ${plateAtual.placa} ${activate?'ativada':'desativada'}!`);
+  await renderTabBody();
+}
+// ═══════════════════════════════════════════════════════════
+// EDIT PLATE MODAL
+// ═══════════════════════════════════════════════════════════
+// Store pending edit info globally to avoid inline string escaping issues
+let _editPending = {};
+async function openEditModal(carrier, idx){
+  const allP = await dbGetPlates();
+  const p = allP[carrier] && allP[carrier][idx];
+  if(!p){ showToast('Placa não encontrada.', false); return; }
+  // Store for saveEdit to reference
+  _editPending = { carrier, idx, placa: p.placa };
+  const opOpts=OPERACOES.map(o=>optHtml(o, o===p.operacao)).join('');
+  const tvOpts=TIPOS_VEIC.map(o=>optHtml(o, o===p.tipo)).join('');
+  const idOpts=IDENTS.map(o=>optHtml(o, o===p.identificacao)).join('');
+  const ctOpts=CONTRATOS.map(o=>optHtml(o, o===p.contrato)).join('');
+  // Load drivers for this carrier + operation
+  const allDrivers = await dbGetDrivers();
+  const drvList = (allDrivers[carrier]||[]).filter(d=>d.ativo!==false && d.operacao===p.operacao);
+  const drvDiurnos = drvList.filter(d=>d.turno==='Diurno');
+  const drvNoturnos = drvList.filter(d=>d.turno==='Noturno');
+  const blankOpt = '<option value="">— Sem motorista —</option>';
+  const dOptsDiurno = blankOpt + drvDiurnos.map(d=>optHtml(d.nome, d.nome===p.motoristaDiurno)).join('');
+  const dOptsNoturno = blankOpt + drvNoturnos.map(d=>optHtml(d.nome, d.nome===p.motoristaNoturno)).join('');
+  // helper note if no drivers
+  const noDiurnoNote = drvDiurnos.length===0 ? `<p style="font-size:11px;color:var(--muted);margin-top:4px">Nenhum motorista diurno ativo nesta operação</p>` : '';
+  const noNoturnoNote = drvNoturnos.length===0 ? `<p style="font-size:11px;color:var(--muted);margin-top:4px">Nenhum motorista noturno ativo nesta operação</p>` : '';
+  // Remove any existing modal
+  const existing=document.getElementById('edit-modal');
+  if(existing) existing.remove();
+  const modal=document.createElement('div');
+  modal.id='edit-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.innerHTML=`
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:620px;max-height:90vh;overflow-y:auto">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Editar placa — ${esc(p.placa)}</p>
+      <div class="form-grid">
+        <div class="form-field"><label>OPERAÇÃO</label><select id="e-op" onchange="refreshEditDriverOpts('${attr(jsArg(carrier))}')">${opOpts}</select></div>
+        <div class="form-field"><label>TIPO DE VEÍCULO</label><select id="e-tipo">${tvOpts}</select></div>
+        <div class="form-field"><label>IDENTIFICAÇÃO</label><select id="e-id">${idOpts}</select></div>
+        <div class="form-field"><label>TIPO DE CONTRATO</label><select id="e-contrato">${ctOpts}</select></div>
+        <div class="form-field"><label>CAPACIDADE (m³)</label><input id="e-cap" type="number" value="${attr(p.capacidade)}" min="1" max="999"></div>
+        ${_escalaCamposHtml('e', p)}
+      </div>
+      <div style="border-top:1px solid var(--border);margin:1.25rem 0;padding-top:1.25rem">
+        <p style="font-size:12px;font-weight:500;color:var(--lime);margin-bottom:1rem;letter-spacing:.04em">MOTORISTAS VINCULADOS</p>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>☀ MOTORISTA DIURNO</label>
+            <select id="e-mot-d">${dOptsDiurno}</select>
+            ${noDiurnoNote}
+          </div>
+          <div class="form-field">
+            <label>🌙 MOTORISTA NOTURNO</label>
+            <select id="e-mot-n">${dOptsNoturno}</select>
+            ${noNoturnoNote}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('edit-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" onclick="saveEdit()">💾 Salvar alterações</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+// Refresh driver selects when operation changes inside edit modal
+async function refreshEditDriverOpts(carrier){
+  const op = document.getElementById('e-op')?.value;
+  if(!op) return;
+  const allDrivers = await dbGetDrivers();
+  const drvList = (allDrivers[carrier]||[]).filter(d=>d.ativo!==false && d.operacao===op);
+  const drvDiurnos = drvList.filter(d=>d.turno==='Diurno');
+  const drvNoturnos = drvList.filter(d=>d.turno==='Noturno');
+  const blank = '<option value="">— Sem motorista —</option>';
+  const selD = document.getElementById('e-mot-d');
+  const selN = document.getElementById('e-mot-n');
+  if(selD) selD.innerHTML = blank + drvDiurnos.map(d=>optHtml(d.nome)).join('');
+  if(selN) selN.innerHTML = blank + drvNoturnos.map(d=>optHtml(d.nome)).join('');
+}
+async function saveEdit(){
+  const {carrier, idx} = _editPending;
+  if(!carrier && carrier!==0){ showToast('Erro: dados da placa não encontrados.', false); return; }
+  const operacao=document.getElementById('e-op').value;
+  const tipo=document.getElementById('e-tipo').value;
+  const identificacao=document.getElementById('e-id').value;
+  const contrato=document.getElementById('e-contrato').value;
+  const capacidade=document.getElementById('e-cap').value.trim();
+  if(!capacidade||isNaN(capacidade)||+capacidade<=0){showToast('Informe a capacidade.',false);return;}
+  const motD=document.getElementById('e-mot-d')?.value||'';
+  const motN=document.getElementById('e-mot-n')?.value||'';
+  const btn=document.querySelector('#edit-modal .btn-lime');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
+  try {
+    let naoEncontrada = false;
+    await dbAtualizarPlates(allP => {
+      if(!allP[carrier]){ naoEncontrada = true; return; }
+      let i = _editPending.placa ? allP[carrier].findIndex(p=>p.placa===_editPending.placa) : idx;
+      if(i<0 || i==null || !allP[carrier][i]) i = idx;
+      if(!allP[carrier][i]){ naoEncontrada = true; return; }
+      allP[carrier][i]={...allP[carrier][i], operacao, tipo, identificacao, contrato, capacidade:+capacidade, motoristaDiurno:motD, motoristaNoturno:motN, ..._escalaLerCampos('e')};
+    });
+    if(naoEncontrada){ showToast('Placa não encontrada.',false); return; }
+    const modal=document.getElementById('edit-modal');
+    if(modal) modal.remove();
+    _editPending={};
+    showToast('Placa atualizada com sucesso!');
+    await renderTabBody();
+  } catch(e) {
+    // Antes, uma falha aqui (permissão do Firestore, rede, etc.) parava a
+    // função no meio sem avisar nada — o modal continuava aberto, sem
+    // mensagem nenhuma, e parecia que o botão "não fazia nada". Agora o
+    // erro real aparece no toast (e no console), em vez de falhar em
+    // silêncio.
+    console.error('[saveEdit] falha ao salvar placa:', e);
+    showToast('Erro ao salvar: ' + (e.code || e.message || 'falha desconhecida'), false);
+    if(btn){ btn.disabled=false; btn.textContent='💾 Salvar alterações'; }
+  }
+}
+// ── Expose to window for inline onclick handlers ──
+// ═══════════════════════════════════════════════════════════
+// ALTERAR SENHA (usuário logado)
+// ═══════════════════════════════════════════════════════════
+function openChangePwd(){
+  const existing=document.getElementById('change-pwd-modal');
+  if(existing) existing.remove();
+  const modal=document.createElement('div');
+  modal.id='change-pwd-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.innerHTML=`
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:400px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">🔑 Alterar senha</p>
+      <div class="form-grid" style="grid-template-columns:1fr">
+        <div class="form-field">
+          <label>NOVA SENHA</label>
+          <input id="cp-new" type="password" placeholder="Mín. 6 caracteres" autocomplete="new-password">
+        </div>
+        <div class="form-field">
+          <label>CONFIRMAR NOVA SENHA</label>
+          <input id="cp-confirm" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
+        </div>
+      </div>
+      <div id="cp-msg" style="font-size:12px;color:var(--red);min-height:18px;margin-bottom:.75rem"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('change-pwd-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" id="cp-btn" onclick="saveChangePwd()">💾 Salvar senha</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(()=>document.getElementById('cp-new')?.focus(), 80);
+}
+async function saveChangePwd(){
+  const newPwd=document.getElementById('cp-new')?.value||'';
+  const confirmPwd=document.getElementById('cp-confirm')?.value||'';
+  const msg=document.getElementById('cp-msg');
+  const btn=document.getElementById('cp-btn');
+  if(newPwd.length<6){ msg.textContent='A senha deve ter pelo menos 6 caracteres.'; return; }
+  if(newPwd!==confirmPwd){ msg.textContent='As senhas não coincidem.'; return; }
+  btn.disabled=true; btn.textContent='Salvando...';
+  try {
+    await updatePassword(auth.currentUser, newPwd);
+    document.getElementById('change-pwd-modal').remove();
+    showToast('Senha alterada com sucesso! ✓');
+  } catch(e){
+    const code=e.code||'';
+    if(code==='auth/requires-recent-login'){
+      msg.textContent='Por segurança, faça logout e login novamente antes de alterar a senha.';
+    } else {
+      msg.textContent='Erro: '+(code||e.message);
+    }
+    btn.disabled=false; btn.textContent='💾 Salvar senha';
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// RESET DE SENHA PELO ADMIN
+// ═══════════════════════════════════════════════════════════
+function openResetPwd(uid){
+  const u = USERS_DB[uid];
+  if(!u){ showToast('Usuário não encontrado.', false); return; }
+  const existing = document.getElementById('reset-pwd-modal');
+  if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'reset-pwd-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+  modal.innerHTML = `
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:420px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:.4rem">🔑 Resetar senha</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:.75rem">Será criada uma senha temporária para <b style="color:var(--text)">${esc(uidToEmail(uid))}</b> e exibida para que você possa passá-la ao usuário.</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1.25rem">O usuário deverá trocar essa senha assim que acessar o sistema.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('reset-pwd-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" id="reset-pwd-submit" onclick="saveResetPwd('${attr(jsArg(uid))}')">Gerar senha temporária</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function randomTempPassword(){
+  return `Tmp${Math.random().toString(36).slice(2,12)}#`;
+}
+async function ensureAuthAccountTempPwd(uid){
+  const email = uidToEmail(uid);
+  const tempPwd = randomTempPassword();
+  try{
+    await createUserWithEmailAndPassword(userCreateAuth, email, tempPwd);
+    await signOut(userCreateAuth).catch(()=>{});
+    return tempPwd;
+  } catch(e){
+    const code = e.code||"";
+    await signOut(userCreateAuth).catch(()=>{});
+    if(code==='auth/email-already-in-use'){
+      return null;
+    }
+    throw e;
+  }
+}
+function renderResetPwdResult(uid, tempPwd){
+  const modal = document.getElementById('reset-pwd-modal');
+  if(!modal) return;
+  modal.innerHTML = `
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:420px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:.4rem">✅ Senha temporária gerada</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">Copie e entregue esta senha ao usuário. Ele deve alterá-la ao acessar o sistema.</p>
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:1rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;">
+        <code style="font-size:14px;color:var(--text);font-family:monospace;word-break:break-all;">${esc(tempPwd)}</code>
+        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${attr(jsArg(tempPwd))}').then(()=>showToast('Senha copiada!'))">Copiar</button>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-lime" onclick="document.getElementById('reset-pwd-modal').remove()">Fechar</button>
+      </div>
+    </div>`;
+}
+function renderResetPwdAccountExists(uid){
+  const modal = document.getElementById('reset-pwd-modal');
+  if(!modal) return;
+  modal.innerHTML = `
+    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:420px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:.4rem">⚠️ Conta já existe</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">Esta conta já está registrada no Firebase Auth e não pode ter a senha alterada diretamente pelo cliente do navegador.</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">Use o console Firebase ou um endpoint administrativo para trocar a senha.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('reset-pwd-modal').remove()">Fechar</button>
+      </div>
+    </div>`;
+}
+async function saveResetPwd(uid){
+  const btn = document.getElementById('reset-pwd-submit');
+  if(btn){ btn.disabled = true; btn.textContent = 'Gerando...'; }
+  try{
+    const tempPwd = await ensureAuthAccountTempPwd(uid);
+    if(tempPwd){
+      renderResetPwdResult(uid, tempPwd);
+      showToast('Senha temporária gerada com sucesso!');
+      return;
+    }
+    renderResetPwdAccountExists(uid);
+    showToast('Conta já existe no Auth; redefinição direta não é possível pelo cliente.', false);
+  } catch(e){
+    console.error('Erro ao gerar senha temporária', e);
+    showToast(`Falha ao gerar senha: ${e.code||e.message}`, false);
+    if(btn){ btn.disabled=false; btn.textContent='Gerar senha temporária'; }
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// EXPOSIÇÃO GLOBAL (contrato com onclick / Roteirizador)
+// ═══════════════════════════════════════════════════════════
+// Este script roda como <script type="module">, então suas funções NÃO vão
+// automaticamente para `window` (diferente de scripts comuns). Como o HTML
+// usa atributos onclick="funcao()" inline, e o script do Roteirizador
+// (não-module, mais abaixo no documento) também precisa chamar algumas
+// dessas funções, cada função usada fora deste módulo precisa ser exposta
+// explicitamente aqui. As atribuições continuam ao longo do restante do
+// script, próximas de onde cada função é definida.
+window.openResetPwd=openResetPwd; window.saveResetPwd=saveResetPwd;
+window.openChangePwd=openChangePwd; window.saveChangePwd=saveChangePwd;
+window.doLogin=doLogin; window.logout=logout;
+window.refreshSystem=refreshSystem;
+window.chDate=chDate; window.setTab=setTab;
+window.onStChange=onStChange; window.saveAll=saveAll;
+// Firestore — exposto para o Roteirizador (script não-module) poder ler/gravar
+// os dados do "Aprendizado do Otimizador" (padrões de não-consolidação e
+// parâmetros auto-ajustados). Só o necessário é exposto, não o app inteiro.
+window.fbDb = db;
+window.fbDoc = doc; window.fbGetDoc = getDoc; window.fbSetDoc = setDoc;
+window.fbCollection = collection; window.fbGetDocs = getDocs;
+window.fbQuery = query; window.fbWhere = where; window.fbOrderBy = orderBy;
+window.fbLimit = limit; window.fbWriteBatch = writeBatch; window.fbDeleteDoc = deleteDoc;
+// Usados pelo módulo da Operação sob demanda (nexta-frota-sobdemanda.js)
+window.ehSobDemanda = ehSobDemanda; window._casarPlacaPainel = _casarPlacaPainel;
+window._invalidarStatusPlaca = (carrier, plate, ds) => cacheInvalidate(`status||${carrier}||${plate}||${ds}`);
+window.dbAddAudit = (...a) => dbAddAudit(...a);
+async function reiniciarRoteirizador(){
+  // ── 1. Zera arrays de dados de todas as abas ──────────────────────────────
+  if(typeof pedidos       !== 'undefined') pedidos       = [];
+  if(typeof veiculos      !== 'undefined') veiculos      = [];
+  if(typeof terminaisCad  !== 'undefined') terminaisCad  = [];
+  if(typeof clientes      !== 'undefined') clientes      = [];
+  // ── 2. Zera flags de carregamento para permitir novo upload ───────────────
+  if(typeof _cadastralCarregado !== 'undefined') _cadastralCarregado = false;
+  if(typeof _pedidosCarregados  !== 'undefined') _pedidosCarregados  = false;
+  window.__roteirizadorDadosCarregados = false;
+  // ── 3. Zera todo o estado da otimização ───────────────────────────────────
+  if(typeof ultimoResultado       !== 'undefined') ultimoResultado       = null;
+  if(typeof ultimoControleTempo   !== 'undefined') ultimoControleTempo   = null;
+  if(typeof resultadoOriginal     !== 'undefined') resultadoOriginal     = null;
+  if(typeof historicoManual       !== 'undefined') historicoManual       = [];
+  if(typeof estadoAtual           !== 'undefined') estadoAtual           = null;
+  if(typeof ultimoItensOtimizacao !== 'undefined') ultimoItensOtimizacao = [];
+  if(typeof _modoOtimizarPendente !== 'undefined') _modoOtimizarPendente = null;
+  if(typeof _quebraIdAtual        !== 'undefined') _quebraIdAtual        = null;
+  if(typeof _placaDropOrigId      !== 'undefined') _placaDropOrigId      = null;
+  if(typeof filtroMapaPlaca       !== 'undefined') filtroMapaPlaca       = '';
+  if(typeof filtroMapaTerminais   !== 'undefined') filtroMapaTerminais   = new Set();
+  if(typeof editandoTerminalId    !== 'undefined') editandoTerminalId    = null;
+  if(typeof editandoPedidoId      !== 'undefined') editandoPedidoId      = null;
+  if(typeof editandoClienteId     !== 'undefined') editandoClienteId     = null;
+  if(typeof editandoVeiculoId     !== 'undefined') editandoVeiculoId     = null;
+  // ── 4. Limpa listas de cada aba no DOM ────────────────────────────────────
+  const limpar = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = html || ''; };
+  limpar('terminais-list');
+  limpar('clientes-list');
+  limpar('pedidos-list');
+  limpar('veiculos-list');
+  limpar('resultado-content', '<div class="empty">\u25BA Clique em "Roteirizar Pedidos" para gerar a programação</div>');
+  // Seleções da aba Pedidos (marcação em lote de pernoite, seleção no mapa
+  // de pedidos) ficavam "presas" depois do Reiniciar — o array `pedidos`
+  // zerava, mas esses Sets de seleção (guardam só o id do pedido, não o
+  // pedido em si) continuavam com os ids antigos, e a barra "X pedidos
+  // selecionados"/pernoite continuava visível com número errado.
+  if (typeof _pedSelecionados !== 'undefined') _pedSelecionados.clear();
+  if (typeof _pmapaSelecionados !== 'undefined') _pmapaSelecionados.clear();
+  ['pedidos-pernoite-bar', 'pedidos-resumo-box'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = ''; el.classList.add('hidden'); }
+  });
+  // Limpa filtros de texto de todas as abas
+  ['f-term-terminal','f-term-cidade',
+   'f-cli-cliente','f-cli-cidade',
+   'f-ped-cliente','f-ped-cidade','f-ped-terminal',
+   'f-vei-placa','f-vei-transp','f-vei-terminal',
+   'f-res-cliente','f-res-cidade','f-res-terminal','f-res-placa','f-res-transp'
+  ].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  // Esconde barra de ajuste manual
+  const ajusteBar = document.getElementById('ajuste-manual-bar');
+  if(ajusteBar) ajusteBar.style.display = 'none';
+  // ── 5. Destroi mapas para forçar recriação limpa ──────────────────────────
+  try { if(mapaGeral)  { mapaGeral.remove();  mapaGeral  = null; camadaMapaGeral = null; } } catch(e){}
+  try { if(mapaViagem) { mapaViagem.remove(); mapaViagem = null; camadaViagem    = null; dadosMapaAtual = null; } } catch(e){}
+  // ── 6. Volta para a aba inicial (Terminais) ───────────────────────────────
+  if(typeof showTab === 'function') showTab('terminais');
+  // ── 7. Garante shell no stash para reinicialização limpa ──────────────────
+  const shell = document.getElementById('roteirizador-shell');
+  const stash = document.getElementById('roteirizador-stash');
+  if(shell && stash && !stash.contains(shell)){
+    shell.style.display = 'none';
+    stash.appendChild(shell);
+  }
+  showToast("Roteirizador reiniciado com sucesso.", true);
+  await renderTabBody();
+}
+window.reiniciarRoteirizador=reiniciarRoteirizador;
+// ═══════════════════════════════════════════════════════════
+// IMPORTAR DADOS CADASTRAIS (Terminais + Clientes + Veículos)
+// ═══════════════════════════════════════════════════════════
+async function importarDadosCadastrais(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') {
+    showToast('SheetJS não carregado. Tente recarregar a página.', false);
+    return;
+  }
+  // Feedback visual imediato
+  const btnImport = document.querySelector('[onclick*="input-import-cadastral"]');
+  const txtOriginal = btnImport ? btnImport.textContent : '';
+  if (btnImport) { btnImport.textContent = '⏳ Importando...'; btnImport.disabled = true; }
+  try {
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array', cellDates: true });
+    const sheet = nome => {
+      // Busca pelo nome exato ou case-insensitive
+      const found = wb.SheetNames.find(n => n.trim().toLowerCase() === nome.toLowerCase()) || wb.SheetNames.find(n => n.trim().toLowerCase().includes(nome.toLowerCase()));
+      return found ? XLSX.utils.sheet_to_json(wb.Sheets[found], { defval: '' }) : null;
+    };
+    const rowsT = sheet('Terminais');
+    const rowsC = sheet('Clientes');
+    const rowsP = sheet('Placas');
+    let msgs = [];
+    let erros = [];
+    let novosTerminais = 0, novosClientes = 0, novosVeiculos = 0;
+    // Próximo id livre de cada array — segue o mesmo esquema de faixas que os
+    // mapeadores já usavam (terminal ~1+, cliente 100+, veículo 200+), só que
+    // agora continuando a partir do maior id já carregado, pra não colidir
+    // com o que veio do Firestore.
+    const proxId = (arr, base) => Math.max(base, ...arr.map(x => (x.id || 0) + 1));
+    // ── Terminais ──────────────────────────────────────────
+    if (rowsT && rowsT.length) {
+      try {
+        const mapeados = rowsT.map(xlsxMapTerminal);
+        const chavesAtuais = new Set(terminaisCad.map(t => chaveCadastro('terminais', t)));
+        const novos = [];
+        const vistosNaPlanilha = new Set(); // evita duplicar se a própria planilha repetir a linha
+        mapeados.forEach(t => {
+          const k = chaveCadastro('terminais', t);
+          if (k && !chavesAtuais.has(k) && !vistosNaPlanilha.has(k)) { novos.push(t); vistosNaPlanilha.add(k); }
+        });
+        let id = proxId(terminaisCad, 1);
+        novos.forEach(t => { t.id = id++; terminaisCad.push(t); });
+        if (novos.length) {
+          const mapa = {}; novos.forEach(t => { mapa[chaveCadastro('terminais', t)] = t; });
+          try { await dbAdicionarCadastroItens('terminais', mapa); } catch(e) { console.warn('[Firestore terminais]', e); }
+        }
+        if (typeof renderTerminais === 'function')        renderTerminais();
+        if (typeof atualizarDropdownsTerminais === 'function') atualizarDropdownsTerminais();
+        const ignorados = mapeados.length - novos.length;
+        novosTerminais = novos.length;
+        msgs.push(`${novos.length} terminal(is) novo(s)${ignorados ? ` (${ignorados} já cadastrado(s))` : ''}`);
+      } catch(e) { erros.push('Terminais: ' + e.message); }
+    }
+    // ── Clientes ───────────────────────────────────────────
+    if (rowsC && rowsC.length) {
+      try {
+        const mapeados = rowsC.map(xlsxMapCliente);
+        const chavesAtuais = new Set(clientes.map(c => chaveCadastro('clientes', c)));
+        const novos = [];
+        const vistosNaPlanilha = new Set();
+        mapeados.forEach(c => {
+          const k = chaveCadastro('clientes', c);
+          if (k && !chavesAtuais.has(k) && !vistosNaPlanilha.has(k)) { novos.push(c); vistosNaPlanilha.add(k); }
+        });
+        let id = proxId(clientes, 100);
+        novos.forEach(c => { c.id = id++; clientes.push(c); });
+        if (novos.length) {
+          // Chave de ARMAZENAMENTO por id (não por SAP) — várias linhas novas
+          // da planilha podem legitimamente compartilhar o mesmo Código SAP
+          // corporativo (vários postos da mesma rede); usar SAP aqui faria a
+          // 2ª sobrescrever a 1ª no próprio objeto `mapa` antes de gravar.
+          const mapa = {}; novos.forEach(c => { mapa[chavePersistenciaCadastro('clientes', c)] = c; });
+          try { await dbAdicionarCadastroItens('clientes', mapa); } catch(e) { console.warn('[Firestore clientes]', e); }
+        }
+        if (typeof renderClientes === 'function')         renderClientes();
+        if (typeof atualizarDropdownsClientes === 'function') atualizarDropdownsClientes();
+        const ignorados = mapeados.length - novos.length;
+        novosClientes = novos.length;
+        msgs.push(`${novos.length} cliente(s) novo(s)${ignorados ? ` (${ignorados} já cadastrado(s))` : ''}`);
+      } catch(e) { erros.push('Clientes: ' + e.message); }
+    }
+    // ── Veículos / Placas ──────────────────────────────────
+    if (rowsP && rowsP.length) {
+      try {
+        const mapeados = rowsP.map(xlsxMapPlaca);
+        const chavesAtuais = new Set(veiculos.map(v => chaveCadastro('veiculos', v)));
+        const novos = [];
+        const vistosNaPlanilha = new Set();
+        mapeados.forEach(v => {
+          const k = chaveCadastro('veiculos', v);
+          if (k && !chavesAtuais.has(k) && !vistosNaPlanilha.has(k)) { novos.push(v); vistosNaPlanilha.add(k); }
+        });
+        let id = proxId(veiculos, 200);
+        novos.forEach(v => { v.id = id++; veiculos.push(v); });
+        if (novos.length) {
+          const mapa = {}; novos.forEach(v => { mapa[chaveCadastro('veiculos', v)] = v; });
+          try { await dbAdicionarCadastroItens('veiculos', mapa); } catch(e) { console.warn('[Firestore veiculos]', e); }
+        }
+        // Consulta imediata ao painel e cadastro Firestore para definir status real
+        if (btnImport) btnImport.textContent = '⏳ Consultando painel...';
+        const hoje = new Date();
+        const ds = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+        await sincronizarDisponibilidadeVeiculos(ds);
+        if (typeof renderVeiculos === 'function') renderVeiculos();
+        const ignorados = mapeados.length - novos.length;
+        novosVeiculos = novos.length;
+        msgs.push(`${novos.length} veículo(s) novo(s)${ignorados ? ` (${ignorados} já cadastrado(s))` : ''}`);
+      } catch(e) { erros.push('Veículos: ' + e.message); }
+    }
+    if (!msgs.length && !erros.length) {
+      showToast(`Nenhuma aba reconhecida em "${file.name}". Verifique se as abas se chamam "Terminais", "Clientes" e "Placas".`, false);
+      return;
+    }
+    // Atualiza guard para não recarregar automaticamente
+    _cadastralCarregado = true;
+    window.__roteirizadorDadosCarregados = true;
+    // Navega para a primeira aba com dados
+    if (rowsT?.length)      showTab('terminais');
+    else if (rowsC?.length) showTab('clientes');
+    else if (rowsP?.length) showTab('veiculos');
+    const resumo = msgs.join(', ');
+    const avisoErros = erros.length ? ` | ⚠ Erros: ${erros.join('; ')}` : '';
+    showToast(`✓ Importado: ${resumo}${avisoErros}`, erros.length === 0);
+    // Modal de resumo detalhado — mostra quantos são NOVOS (o que de fato foi
+    // salvo no Firestore), não o total de linhas da planilha.
+    _mostrarResumoImportacao({ terminais: novosTerminais, clientes: novosClientes, veiculos: novosVeiculos, erros, arquivo: file.name });
+  } catch(e) {
+    console.error('[importarDadosCadastrais]', e);
+    showToast(`Erro ao ler "${file.name}": ${e.message}`, false);
+  } finally {
+    if (btnImport) { btnImport.textContent = txtOriginal; btnImport.disabled = false; }
+  }
+}
+function _mostrarResumoImportacao({ terminais, clientes, veiculos, erros, arquivo }) {
+  // Remove modal anterior se existir
+  const anterior = document.getElementById('modal-import-resumo');
+  if (anterior) anterior.remove();
+  const linhasErro = erros.length
+    ? `<div style="margin-top:14px;padding:10px 14px;background:#FFF1F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#B91C1C;">
+        <strong>⚠ Atenção:</strong><br>${erros.map(e=>`• ${e}`).join('<br>')}
+       </div>` : '';
+  const modal = document.createElement('div');
+  modal.id = 'modal-import-resumo';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(17,26,10,0.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:#1A2A0D;border:1px solid rgba(124,184,43,0.3);border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.5);padding:28px 32px;width:100%;max-width:420px;position:relative;color:#E8F5D0;">
+      <div style="font-family:var(--font-cond,'Arial');font-size:17px;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;color:#EEFE7A;">✓ Importação concluída</div>
+      <div style="font-size:11px;color:#4F46E5;margin-bottom:20px;word-break:break-all;">${arquivo}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:${erros.length?'0':'20px'};">
+        <div style="background:rgba(124,184,43,0.12);border:1px solid rgba(124,184,43,0.25);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:26px;font-weight:700;color:#EEFE7A;font-family:var(--font-cond,'Arial');">${terminais}</div>
+          <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Terminais novos</div>
+        </div>
+        <div style="background:rgba(124,184,43,0.12);border:1px solid rgba(124,184,43,0.25);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:26px;font-weight:700;color:#EEFE7A;font-family:var(--font-cond,'Arial');">${clientes}</div>
+          <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Clientes novos</div>
+        </div>
+        <div style="background:rgba(124,184,43,0.12);border:1px solid rgba(124,184,43,0.25);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:26px;font-weight:700;color:#EEFE7A;font-family:var(--font-cond,'Arial');">${veiculos}</div>
+          <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Veículos novos</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:${erros.length?'0':'-8px'};margin-bottom:${erros.length?'0':'20px'};">Só o que ainda não existia foi salvo — nada é sobrescrito.</div>
+      ${linhasErro}
+      <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+        <button onclick="document.getElementById('modal-import-resumo').remove()" style="background:#4F46E5;color:#fff;border:none;border-radius:8px;padding:9px 28px;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0;">OK</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+}
+// Bloco consolidado: demais funções usadas via onclick="" no HTML (cadastros,
+// notificações, exportações, usuários/transportadores, motoristas, etc) e
+// `window.S` — o objeto de estado da UI, também consultado pelo Roteirizador
+// para saber qual usuário está logado (ver dashSalvarAtual / exportarRelatorioRoteirizacao).
+window.importarDadosCadastrais = importarDadosCadastrais;
+window.toggleNotif=toggleNotif; window.clearNotifsAndRender=clearNotifsAndRender;
+window.addPlate=addPlate; window.onTimeChange=onTimeChange; window.togglePlate=togglePlate; window.setRegSubTab=setRegSubTab; window.setReportsSubTab=setReportsSubTab; window.limparFiltroExport=limparFiltroExport; window.setAuditSubTab=setAuditSubTab; window.addOp=addOp; window.deleteOp=deleteOp; window.openEditOp=openEditOp; window.saveEditOp=saveEditOp; window.renderRegisterDrivers=renderRegisterDrivers; window.addDriver=addDriver; window.toggleDriver=toggleDriver; window.deleteDriver=deleteDriver; window.openEditDriver=openEditDriver; window.saveEditDriver=saveEditDriver; window.populateDriverSelects=populateDriverSelects; window.delPlate=delPlate; window.openEditModal=openEditModal; window.saveEdit=saveEdit; window.refreshEditDriverOpts=refreshEditDriverOpts; window.renderUsers=renderUsers; window.adminUnlock=adminUnlock; window.adminUnlockPlate=adminUnlockPlate; window.renderArchives=renderArchives; window.manualGenArchive=manualGenArchive; window.regenArchive=regenArchive; window.downloadArchive=downloadArchive; window.downloadArchiveCsv=downloadArchiveCsv; window.addCarrier=addCarrier; window.deleteCarrier=deleteCarrier; window.addUser=addUser; window.deleteUser=deleteUser; window.openEditUser=openEditUser; window.saveEditUser=saveEditUser; window.toggleCarrierField=toggleCarrierField; window.onEditRoleChange=onEditRoleChange; window.renderOpCheckboxes=renderOpCheckboxes; window.getCheckedOps=getCheckedOps; window.openHelpModal=openHelpModal; window.toggleUserAtivo=toggleUserAtivo; window.abrirCorrecaoHodometro=abrirCorrecaoHodometro; window.salvarCorrecaoHodometro=salvarCorrecaoHodometro; window._corrHodoValidar=_corrHodoValidar; window._corrHodoAplicarRegra=_corrHodoAplicarRegra; window._corrHodoMarcarTodas=_corrHodoMarcarTodas;
+window.exportDay=exportDay; window.exportWeek=exportWeek; window.exportMonth=exportMonth; window.exportCustom=exportCustom; window.validateCustomDates=validateCustomDates; window.exportPdf=exportPdf;
+window.renderTabBody=renderTabBody; window.buildStatusBoardAlert=buildStatusBoardAlert; window._debouncedTodaySearch=_debouncedTodaySearch; window._debouncedHistSearch=_debouncedHistSearch; window.toggleHistoryDay=toggleHistoryDay; window.saveCutoffHour=saveCutoffHour; window.saveMetaDisp=saveMetaDisp; window.saveMetaSla=saveMetaSla; window.S=S; window.renderKpisMensais=renderKpisMensais;
+window.showToast=showToast; window.dateStr=dateStr; window.sincronizarDisponibilidadeVeiculos=sincronizarDisponibilidadeVeiculos; window.USERS_DB=USERS_DB; window.dbGetPlates=dbGetPlates; window.dbGetStatus=dbGetStatus;
+window.addEventListener("resize", _debouncedViewportQualityRefresh, { passive:true });
+window.visualViewport?.addEventListener("resize", _debouncedViewportQualityRefresh, { passive:true });
+// ── INIT ──
+// 1. Carrega config pública (carriers, operações) sem precisar estar logado
+loadConfig().catch(e=>{ console.error(e); }).then(()=>{
+  // 2. Firebase Auth mantém a sessão automaticamente entre recarregamentos.
+  //    onAuthStateChanged é chamado assim que o SDK determina o estado de auth.
+  let authResolved = false;
+  const authFallback = setTimeout(()=>{
+    if(authResolved) return;
+    authResolved = true;
+    S.user = null;
+    clearSession();
+    console.warn("Firebase Auth demorou para responder; exibindo login como fallback.");
+    render();
+  }, 6000);
+  onAuthStateChanged(auth, async (firebaseUser) => {
+    authResolved = true;
+    clearTimeout(authFallback);
+    if(firebaseUser){
+      // Extrai o uid da convenção email: uid@nexta-frota.app
+      const uid = firebaseUser.email.replace(/@nexta-frota\.app$/, "");
+      // Agora que a autenticação foi confirmada de verdade pelo Firebase, a
+      // leitura de "config/users" no Firestore deve ser permitida (regras
+      // que antes bloqueavam leitura sem login não se aplicam mais aqui).
+      // Busca fresco antes de decidir se existe perfil — sem isso, alguém
+      // recém-cadastrado podia autenticar certinho e ainda assim ser
+      // deslogado na hora, com a lista local desatualizada dizendo
+      // erroneamente que o perfil "não existe".
+      try {
+        cacheInvalidate('cfg_users');
+        const freshUsers = await withTimeout(dbGetUsers(), 8000, "Timeout dbGetUsers");
+        if(freshUsers) _atualizarUsersDb(freshUsers);
+      } catch(e) {
+        console.warn('[onAuthStateChanged] falha ao atualizar usuários, seguindo com a última cópia conhecida:', e);
+      }
+      if(USERS_DB[uid]){
+        if(USERS_DB[uid].ativo===false){
+          // Conta existe e a senha bateu, mas o admin inativou o acesso —
+          // desloga na hora. Roda em toda checagem de sessão (não só no
+          // login novo), então também pega quem já estava logado quando
+          // foi inativado.
+          await signOut(auth);
+          S.user = null;
+          clearSession();
+          S.loginErrMsg = 'Este usuário foi inativado. Fale com o administrador.';
+          render();
+          return;
+        }
+        S.user = uid;
+        saveSession(uid);
+        // A config (transportadoras, operações, metas) é lida uma vez ANTES do
+        // login — e as regras do Firestore exigem login, então essa primeira
+        // leitura é recusada e o sistema ficava com a lista FIXA de 5
+        // transportadoras/7 operações do código. O admin só via a lista real
+        // porque a tela Cadastros › Usuários recarrega as transportadoras;
+        // o operacional nunca passava por ali e via placas/transportadoras
+        // faltando no Daily Briefing, KPIs, Disponibilidade, Auditoria e
+        // Relatórios. Agora, com o login confirmado, recarrega tudo de verdade.
+        try {
+          cacheInvalidate('cfg_carriers', 'cfg_operacoes', 'alert_cutoff', 'cfg_meta_disp', 'cfg_meta_sla');
+          await loadConfig();
+        } catch(e) { console.warn('[onAuthStateChanged] falha ao recarregar a configuração:', e); }
+      } else {
+        // Usuário existe no Auth mas não tem perfil no Firestore → logout
+        await signOut(auth);
+        S.user = null;
+        clearSession();
+      }
+    } else {
+      S.user = null;
+      clearSession();
+    }
+    render();
+  });
+});

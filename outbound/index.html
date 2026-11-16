@@ -1,58 +1,1863 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Portal Programação Outbound · Nexta</title>
-  <style>
-    body { margin: 0; background: #0c1921; color: #e2edf5; font: 16px/1.6 system-ui, sans-serif; }
-    main { max-width: 640px; margin: 12vh auto; padding: 28px; }
-    section { background: #13242e; border: 1px solid #294452; border-radius: 12px; padding: 28px; }
-    h1 { margin: 0 0 12px; font-size: 26px; }
-    p { color: #b1cbdc; }
-    a { color: #56d5ca; }
-    [hidden] { display: none !important; }
-    .icone { font-size: 36px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXTA — Gestão de Frota Integrada</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzE3MjQxMCIvPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgcng9IjciIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2M4ZjAzMiIgc3Ryb2tlLXdpZHRoPSIxLjUiIG9wYWNpdHk9IjAuNSIvPgogIDx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1mYW1pbHk9IkRNIFNhbnMsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iNzAwIgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9IjEiIGZpbGw9IiNjOGYwMzIiPk5YPC90ZXh0Pgo8L3N2Zz4=">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="assets/pedagios-utils.js?v=0b3e17c8"></script>
+<script src="assets/km-utils.js?v=690925e3"></script>
+<script type="module" src="assets/nexta-frota-main.js?v=2ef5ad78"></script>
+<link rel="stylesheet" href="assets/nexta-frota-main.css?v=bde92fa5">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="assets/nexta-frota-roteirizador.css?v=7699b38f">
 </head>
 <body>
-  <main>
-    <section aria-live="polite">
-      <div class="icone" aria-hidden="true">🚚</div>
-      <h1>Portal Programação Outbound</h1>
-      <p id="estado" role="status">Verificando seu acesso…</p>
-      <div id="piloto" hidden>
-        <p>Estamos preparando o Outbound neste portal. A abertura da aplicação será liberada após validar a conexão e o login.</p>
+<div class="app" id="app"><div class="loading" style="min-height:100vh"><span class="spin"></span>Iniciando o sistema...</div></div>
+<!-- Modal de data de carregamento — fora do shell para position:fixed funcionar -->
+<div id="modal-data-carga" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(17,26,10,0.72);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:14px;box-shadow:var(--shadow-lg);padding:28px 32px;width:100%;max-width:380px;position:relative;">
+    <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;">Programar Roteirização</div>
+    <div style="font-size:12px;color:var(--text-2);margin-bottom:20px;line-height:1.55;">
+      Informe a data em que os caminhões irão carregar no terminal. O sistema usará esta data como base para calcular os horários e âncora das datas de entrega.
+    </div>
+    <div class="field" style="margin-bottom:20px;">
+      <label>Data de carregamento</label>
+      <input type="date" id="input-data-carga" style="font-size:14px;padding:10px 12px;"/>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-sm" onclick="fecharModalDataCarga()">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarOtimizar()" style="padding:8px 22px;">▶ Roteirizar</button>
+    </div>
+  </div>
+</div>
+<div id="roteirizador-stash" style="display:none">
+<div class="app" id="roteirizador-shell" style="display:none">
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-text">
+        <svg class="logo-nexta" viewBox="0 0 242 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M149.631 0.870612H138.515L127.579 14.6805L116.586 0.870612H105.356L121.715 21.6422L104.148 43.9406H114.999L127.078 28.421L139.156 43.7829L139.279 43.9406H150.833L133.011 21.5161L149.631 0.870612ZM67.2515 43.9437H97.073V35.4805H65.8352V26.5725H86.6225V18.1756H65.8352V9.26758H97.073V0.870612H56.9272V43.9437H67.2515ZM196.417 0.870612H155.382V9.26758H171.479V43.9406H180.324V9.27074H196.42V0.870612H196.417ZM224.4 0.870612H211.811L195.01 43.9437H204.426L208.498 33.1273H227.523L231.658 43.9437H241.2L224.4 0.870612ZM224.453 24.7304H211.618L217.892 8.75657L224.457 24.7304H224.453ZM36.8748 0.870612V34.8938C36.8748 35.2786 36.5719 35.6666 36.1019 35.6666C35.9127 35.6666 35.6729 35.6004 35.4963 35.3764L17.8759 4.82621C17.0305 3.35942 15.8508 2.0882 14.3777 1.25545C13.0718 0.517321 11.4504 1.75258e-06 9.54517 1.75258e-06C4.25526 -0.00315263 0 4.25211 0 9.86061V43.9437H8.93006V9.92054C8.93006 9.53571 9.23288 9.14772 9.70289 9.14772C9.89215 9.14772 10.1319 9.21396 10.3085 9.43792L26.5599 37.9031C27.2097 39.0387 27.8595 40.0828 28.503 40.9755C29.7774 42.7514 32.4586 44.8207 36.2691 44.8207C41.559 44.8207 45.8111 40.5654 45.8111 34.9569V0.870612H36.8811H36.8748Z" fill="#EEFE7A"/>
+        </svg>
+        <div class="logo-sub" style="letter-spacing:0.12em;text-transform:uppercase;font-size:9px;">Roteirização Outbound</div>
       </div>
-      <a href="/?menu">Voltar aos sistemas</a>
-    </section>
-  </main>
-  <script type="module">
-    import { podeVerOutbound } from '/central/config.js';
-    import { usuarioAtual, meuCadastro, vigiarInatividade, sair, aoMudarLogin } from '/central/cliente.js';
-    const estado = document.getElementById('estado');
-    const piloto = document.getElementById('piloto');
-    const login = () => location.replace('/?entrar&voltar=%2Foutbound%2F');
-    try {
-      const usuario = await usuarioAtual();
-      if (!usuario) {
-        login();
-      } else if (vigiarInatividade(async () => { piloto.hidden = true; await sair(); login(); })) {
-        const cadastro = await meuCadastro();
-        if (podeVerOutbound(usuario, cadastro)) {
-          estado.textContent = 'Ambiente de validação exclusivo.';
-          piloto.hidden = false;
-          aoMudarLogin(atual => {
-            if (atual?.uid !== usuario.uid) { piloto.hidden = true; login(); }
-          });
-        } else {
-          estado.textContent = 'Este ambiente ainda não está liberado para sua conta.';
-        }
-      }
-    } catch {
-      piloto.hidden = true;
-      estado.textContent = 'Não foi possível verificar seu acesso. Volte ao menu e tente novamente.';
-    }
-  </script>
+    </div>
+    <div class="header-actions">
+      <input type="file" id="input-import-cadastral" accept=".xlsx,.xls" style="display:none" onchange="importarDadosCadastrais(this)"/>
+      <button class="btn btn-sm" onclick="document.getElementById('input-import-cadastral').click()" title="Importa terminais, clientes e veículos de uma planilha .xlsx" style="background:rgba(100,220,120,0.12);color:#7CDB8A;border:1px solid rgba(100,220,120,0.30);white-space:nowrap;font-size:11px;letter-spacing:0.02em;padding:5px 12px;border-radius:7px;">⬆ Importar</button>
+      <!-- Seletor de data de operação — compacto -->
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);border-radius:7px;padding:5px 8px;" title="Data de operação — sincroniza disponibilidade e roteirização">
+        <span style="font-size:11px;line-height:1;">📅</span>
+        <input type="date" id="rot-data-operacao"
+          style="background:transparent;border:none;color:#EEFE7A;font-size:12px;font-weight:600;font-family:Inter,sans-serif;outline:none;cursor:pointer;width:100px;"
+          onchange="onDataOperacaoChange(this.value)"
+          title="Data de carregamento — sincroniza disponibilidade e roteirização"/>
+      </div>
+      <button class="btn btn-sm" onclick="exportarDadosPainel()" style="background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.70);border:1px solid rgba(255,255,255,0.14);white-space:nowrap;font-size:11px;letter-spacing:0.02em;padding:5px 12px;border-radius:7px;">Exportar cadastrais</button>
+      <button class="btn btn-sm" id="btn-reiniciar-rot" onclick="reiniciarRoteirizador()" title="Reinicia o módulo de roteirização mantendo os dados" style="background:rgba(200,240,50,0.09);color:#c8f032;border:1px solid rgba(200,240,50,0.22);white-space:nowrap;font-size:11px;letter-spacing:0.02em;padding:5px 12px;border-radius:7px;">🔄 Reiniciar</button>
+      <div style="width:1px;height:20px;background:rgba(200,240,50,0.2);margin:0 4px;flex-shrink:0;"></div>
+      <button class="btn-otimizar-ded" onclick="abrirModalDataCarga('dedicado')" title="Prioriza uso de todos os dedicados (custo fixo)" style="letter-spacing:0.07em;padding:8px 18px;font-size:12px;white-space:nowrap;">ROTEIRIZAR PEDIDOS</button>
+    </div>
+  </div>
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('terminais')">Terminais</button>
+    <button class="tab" onclick="showTab('clientes')">Clientes</button>
+    <button class="tab" onclick="showTab('pedidos')">Pedidos</button>
+    <button class="tab" onclick="showTab('veiculos')">Veículos & Turnos</button>
+    <button class="tab" onclick="showTab('resultado')">Otimização Rotas</button>
+    <button class="tab" onclick="showTab('mapa')">Resumo Operação</button>
+    <button class="tab" onclick="showTab('operacao')">Envio Transportadora</button>
+    <button class="tab" onclick="showTab('dashboard_rot')">📊 Dashboard</button>
+    <button class="tab" onclick="showTab('frete')">💰 Frete</button>
+    <button class="tab" onclick="showTab('historico')">Histórico</button>
+    <button class="tab" onclick="showTab('aprendizado')">🧠 Aprendizado</button>
+  </div>
+  <!-- ── TERMINAIS ─────────────────────────────────────────────────────────── -->
+  <div id="tab-terminais" class="page active">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="sec-title" style="margin:0;">Terminais de carga</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-green btn-sm" onclick="abrirFormTerminal()">+ Terminal</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>Terminal</label><input id="f-term-terminal" placeholder="Filtrar terminal..." oninput="renderTerminais()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-term-cidade" placeholder="Filtrar cidade..." oninput="renderTerminais()"/></div>
+      <button class="btn btn-sm" onclick="limparFiltros('terminais')">Limpar</button>
+    </div>
+    <div id="terminais-list">
+      <div class="empty">Nenhum terminal cadastrado.<br>Clique em "+ Terminal" para começar.</div>
+    </div>
+    <div id="form-terminal" class="card-form hidden" style="margin-top:12px;">
+      <div class="sec-title" id="form-terminal-title">Novo terminal</div>
+      <div class="row">
+        <div class="field" style="flex:2;"><label>Nome fantasia</label><input id="t-nome" placeholder="Ex: Terminal Paulínia — Torrão"/></div>
+        <div class="field"><label>Cidade / UF</label><input id="t-cidade" placeholder="Ex: Paulínia / SP"/></div>
+        <div class="field"><label>Distribuidora (CIA)</label><input id="t-distribuidora" placeholder="Ex: PETRONAS"/></div>
+        <div class="field"><label>Empresa Local Expedição</label><input id="t-empresa-local" placeholder="Ex: SIM, Nexta, VIBRA"/></div>
+        <div class="field" style="max-width:190px;"><label>CNPJ</label><input id="t-cnpj" placeholder="00.000.000/0000-00" onblur="(r=>{if(r.ok)this.value=r.valor})(normalizarDocumento(this.value))"/></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Latitude</label><input id="t-lat" type="number" step="0.0001" placeholder="-22.7589"/></div>
+        <div class="field"><label>Longitude</label><input id="t-lon" type="number" step="0.0001" placeholder="-47.1539"/></div>
+        <div class="field">
+          <label>Fuso horário</label>
+          <select id="t-fuso">
+            <option value="-3">UTC-3 (Brasília)</option>
+            <option value="-4">UTC-4 (Manaus)</option>
+            <option value="-5">UTC-5 (Acre)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tempo médio de carregamento (min)</label>
+          <input id="t-carregamento" type="number" min="1" step="1" value="60" placeholder="60"/>
+        </div>
+      </div>
+      <hr class="divider"/>
+      <div class="sec-title">Dias e horários de funcionamento</div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9.5px;color:var(--text-2);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">Dias ativos</div>
+        <div class="dias-semana" id="dias-semana-btns">
+          <button class="dia-btn ativo" data-dia="0" onclick="toggleDia(this)">DOM</button>
+          <button class="dia-btn ativo" data-dia="1" onclick="toggleDia(this)">SEG</button>
+          <button class="dia-btn ativo" data-dia="2" onclick="toggleDia(this)">TER</button>
+          <button class="dia-btn ativo" data-dia="3" onclick="toggleDia(this)">QUA</button>
+          <button class="dia-btn ativo" data-dia="4" onclick="toggleDia(this)">QUI</button>
+          <button class="dia-btn ativo" data-dia="5" onclick="toggleDia(this)">SEX</button>
+          <button class="dia-btn" data-dia="6" onclick="toggleDia(this)">SÁB</button>
+        </div>
+      </div>
+      <div style="margin-bottom:4px;">
+        <div style="font-size:9.5px;color:var(--text-2);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">
+          Horários por dia <span style="font-weight:400;color:var(--text-3);margin-left:8px;">— deixe em branco para usar o horário padrão</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end;">
+          <div class="field" style="max-width:110px;"><label>Abertura padrão</label><input type="time" id="t-abertura-padrao" value="06:00" oninput="aplicarPadrao()"/></div>
+          <div class="field" style="max-width:110px;"><label>Fechamento padrão</label><input type="time" id="t-fechamento-padrao" value="18:00" oninput="aplicarPadrao()"/></div>
+          <button class="btn btn-sm" onclick="aplicarPadrao(true)" style="margin-bottom:0;flex-shrink:0;">Aplicar a todos</button>
+        </div>
+        <div class="horario-grid" id="horario-grid"></div>
+      </div>
+      <hr class="divider"/>
+      <div style="display:flex;gap:6px;justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="cancelarFormTerminal()">Cancelar</button>
+        <button class="btn btn-green btn-sm" onclick="salvarTerminal()">Salvar terminal</button>
+      </div>
+    </div>
+  </div>
+  <!-- ── CLIENTES ───────────────────────────────────────────────────────────── -->
+  <div id="tab-clientes" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="sec-title" style="margin:0;">Cadastro de clientes</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-green btn-sm" onclick="abrirFormCliente(null)">+ Cliente</button>
+      </div>
+    </div>
+    <div id="banner-cadastro-incompleto" onclick="mostrarClientesIncompletos()" style="display:none;cursor:pointer;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12.5px;color:#92400E;font-weight:600;align-items:center;gap:8px;">
+      <span>⚠️</span><span id="banner-cadastro-incompleto-texto"></span><span style="margin-left:auto;font-weight:700;text-decoration:underline;">Ver clientes</span>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>Cliente</label><input id="f-cli-cliente" placeholder="Filtrar cliente..." oninput="renderClientes()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-cli-cidade" placeholder="Filtrar cidade..." oninput="renderClientes()"/></div>
+      <div class="field"><label>Segmento</label><input id="f-cli-segmento" placeholder="Filtrar segmento..." oninput="renderClientes()"/></div>
+      <div class="field"><label>Assessor</label><input id="f-cli-assessor" placeholder="Filtrar assessor..." oninput="renderClientes()"/></div>
+      <div class="field" style="max-width:200px;">
+        <label>Operação</label>
+        <select id="f-cli-operacao" onchange="renderClientes()">
+          <option value="">Todas as operações</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:170px;">
+        <label>Bandeira</label>
+        <select id="f-cli-bandeira" onchange="renderClientes()">
+          <option value="">Todas as bandeiras</option>
+          <option value="__vazio__">Não informado</option>
+          <option value="Bandeira branca">Bandeira branca</option>
+          <option value="Total Energies">Total Energies</option>
+          <option value="Bravo">Bravo</option>
+          <option value="Charrua">Charrua</option>
+          <option value="Petronas">Petronas</option>
+          <option value="TRR">TRR</option>
+          <option value="Sem bandeira (B2B)">Sem bandeira (B2B)</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:170px;">
+        <label>Tipo de Contrato</label>
+        <select id="f-cli-contrato" onchange="renderClientes()">
+          <option value="">Todos os contratos</option>
+          <option value="__vazio__">Não informado</option>
+          <option value="CIF">CIF</option>
+          <option value="FOB">FOB</option>
+          <option value="CIF/FOB">CIF/FOB</option>
+        </select>
+      </div>
+      <button class="btn btn-sm" onclick="limparFiltros('clientes')">Limpar</button>
+      <button class="btn btn-sm" id="btn-clientes-mapa-toggle" onclick="toggleClientesMapa()">🗺️ Ver no Mapa</button>
+      <div style="position:relative;">
+        <button class="btn btn-sm" onclick="toggleMenuExportarClientes()" id="btn-exportar-clientes">📤 Exportar</button>
+        <div id="menu-exportar-clientes" style="display:none;position:fixed;z-index:500;background:var(--surface);border:1px solid var(--border-dk);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16);min-width:170px;overflow:hidden;padding:5px;">
+          <button onclick="exportarClientesFiltrados('pdf'); toggleMenuExportarClientes();" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='none'"
+            style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+            📄 PDF
+          </button>
+          <button onclick="exportarClientesFiltrados('png'); toggleMenuExportarClientes();" onmouseover="this.style.background='rgba(79,70,229,0.1)'" onmouseout="this.style.background='none'"
+            style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+            🖼 PNG
+          </button>
+          <button onclick="exportarClientesFiltrados('xlsx'); toggleMenuExportarClientes();" onmouseover="this.style.background='rgba(21,128,61,0.1)'" onmouseout="this.style.background='none'"
+            style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+            📊 XLSX
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="preencherEnderecosTodosClientes()" id="btn-preencher-enderecos" title="Busca o endereço de cada cliente a partir da latitude/longitude cadastrada, usando OpenStreetMap">📍 Preencher endereços</button>
+    </div>
+    <div id="clientes-list">
+      <div class="empty">Nenhum cliente cadastrado.<br>Clique em "+ Cliente" para começar.</div>
+    </div>
+    <div id="clientes-mapa-wrap" class="hidden" style="margin-top:8px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;background:var(--bg-2,#F4F6F1);border-radius:8px;">
+        <span id="clientes-mapa-contador" style="font-size:12px;font-weight:700;color:var(--text-2);">Carregando...</span>
+        <span style="font-size:11px;color:var(--text-3);margin-left:auto;">Acompanha os filtros acima — clique num pino pra ver os detalhes do cliente.</span>
+      </div>
+      <div id="clientes-mapa" style="width:100%;height:560px;border-radius:10px;overflow:hidden;border:1px solid var(--border);"></div>
+    </div>
+    <div id="form-cliente" class="card-form hidden" style="margin-top:12px;">
+      <div class="sec-title" id="form-cliente-title">Novo cliente</div>
+      <div class="row">
+        <div class="field" style="max-width:140px;">
+          <label>Código SAP</label>
+          <input id="cl-sap" placeholder="Ex: 1003456"/>
+        </div>
+        <div class="field" style="max-width:190px;">
+          <label>CNPJ / CPF</label>
+          <input id="cl-cnpj" placeholder="00.000.000/0000-00" onblur="(r=>{if(r.ok)this.value=r.valor})(normalizarDocumento(this.value))"/>
+        </div>
+        <div class="field" style="flex:3;">
+          <label>Nome do cliente</label>
+          <input id="cl-nome" placeholder="Razão social ou nome fantasia"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Cidade / UF</label><input id="cl-cidade" placeholder="Ex: Campinas / SP"/></div>
+        <div class="field"><label>Latitude</label><input id="cl-lat" type="number" step="0.0001" placeholder="-23.5505"/></div>
+        <div class="field"><label>Longitude</label><input id="cl-lon" type="number" step="0.0001" placeholder="-46.6333"/></div>
+        <div class="field">
+          <label>Tempo médio de descarga (min)</label>
+          <input id="cl-descarga" type="number" min="1" step="1" value="45" placeholder="45"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:3;">
+          <label>Endereço</label>
+          <div style="display:flex;gap:6px;">
+            <input id="cl-endereco" placeholder="Rua, número, bairro..." style="flex:1;"/>
+            <button type="button" class="btn btn-sm" onclick="buscarEnderecoPorCoordenada(this)" title="Busca o endereço a partir da latitude/longitude preenchidas, usando OpenStreetMap">📍 Buscar</button>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="max-width:200px;">
+          <label>Restrição de horário de recebimento</label>
+          <input id="cl-restricao" placeholder="Ex: 07:00–17:00"/>
+        </div>
+        <div class="field" style="flex:2;">
+          <label>Observações</label>
+          <textarea id="cl-obs" placeholder="Acesso restrito, portaria, contato, instruções de entrega…"></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="max-width:160px;">
+          <label>Segmento</label>
+          <select id="cl-segmento">
+            <option value="">— não informado —</option>
+            <option value="B2B">B2B</option>
+            <option value="B2C">B2C</option>
+            <option value="TRR">TRR</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:220px;">
+          <label>Operação (cidade que atende)</label>
+          <select id="cl-operacao">
+            <option value="">— não informado —</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:220px;">
+          <label>Assessor</label>
+          <input id="cl-assessor" placeholder="Nome do assessor responsável"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="max-width:180px;">
+          <label>Bandeira</label>
+          <select id="cl-bandeira">
+            <option value="">Não informado</option>
+            <option value="Bandeira branca">Bandeira branca</option>
+            <option value="Total Energies">Total Energies</option>
+            <option value="Bravo">Bravo</option>
+          <option value="Charrua">Charrua</option>
+            <option value="Petronas">Petronas</option>
+            <option value="TRR">TRR</option>
+            <option value="Sem bandeira (B2B)">Sem bandeira (B2B)</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:160px;">
+          <label>Tipo de Contrato</label>
+          <select id="cl-contrato">
+            <option value="">Não informado</option>
+            <option value="CIF">CIF</option>
+            <option value="FOB">FOB</option>
+            <option value="CIF/FOB">CIF/FOB</option>
+          </select>
+        </div>
+      </div>
+      <hr class="divider"/>
+      <div style="font-size:9.5px;color:var(--text-2);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">
+        Foto do posto
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <div id="cl-foto-thumb-wrap" onclick="abrirFotoClienteExpandida()" style="width:72px;height:72px;border-radius:8px;border:1px solid var(--border-dk);overflow:hidden;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:var(--bg-2, #F3F4F6);">
+          <img id="cl-foto-thumb" src="" style="display:none;width:100%;height:100%;object-fit:cover;"/>
+          <span id="cl-foto-thumb-placeholder" style="font-size:22px;color:var(--text-3);">📷</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;gap:6px;">
+            <input type="file" id="cl-foto-input" accept="image/*" style="display:none;" onchange="selecionarFotoCliente(this)"/>
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('cl-foto-input').click()">📤 Escolher foto</button>
+            <button type="button" class="btn btn-sm btn-danger" id="cl-foto-remover-btn" style="display:none;" onclick="removerFotoCliente()">Remover</button>
+          </div>
+          <div id="cl-foto-status" style="font-size:10.5px;color:var(--text-3);">Clique na miniatura para ver em tamanho maior.</div>
+        </div>
+      </div>
+      <hr class="divider"/>
+      <div style="font-size:9.5px;color:var(--text-2);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">
+        Tipos de caminhão aceitos
+        <span style="font-weight:400;color:var(--text-3);margin-left:8px;">— deixe sem seleção para aceitar todos</span>
+      </div>
+      <div class="tipos-group" id="cl-tipos-btns">
+        <!-- gerado pelo JS -->
+      </div>
+      <div style="margin-top:12px;">
+        <label class="toggle-label">
+          <span class="toggle-dot"></span>
+          <input type="checkbox" id="cl-identidade-petronas"/>
+          Exige identidade Petronas na entrega
+        </label>
+      </div>
+      <div style="margin-top:8px;">
+        <label class="toggle-label" title="Pedidos deste cliente só vão para placas da operação sob demanda (ofertadas no Painel de Disponibilidade) — e essas placas só atendem clientes marcados aqui.">
+          <span class="toggle-dot"></span>
+          <input type="checkbox" id="cl-operacao-sob-demanda"/>
+          Atendido pela operação sob demanda (ex.: Petronas RJ)
+        </label>
+      </div>
+      <hr class="divider"/>
+      <div style="display:flex;gap:6px;justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="cancelarFormCliente()">Cancelar</button>
+        <button class="btn btn-green btn-sm" onclick="salvarCliente()">Salvar cliente</button>
+      </div>
+    </div>
+  </div>
+  <!-- ── PEDIDOS ──────────────────────────────────────────────────────────── -->
+  <div id="tab-pedidos" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="sec-title" style="margin:0;">Pedidos de entrega</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="file" id="upload-pedidos-input" accept=".xlsx,.xls" style="display:none;" onchange="uploadPedidosLiberados(this)"/>
+        <button class="btn btn-sm" onclick="baixarModeloPedidos()" title="Baixar planilha modelo de pedidos">Modelo</button>
+        <button class="btn btn-sm" id="btn-pedidos-resumo" onclick="togglePedidosResumo()" title="Resumo dos pedidos filtrados: volume total, por operação, quantidade de pedidos e clientes">📊 Resumo</button>
+        <button class="btn btn-yellow btn-sm" onclick="document.getElementById('upload-pedidos-input').click()">Importar Excel</button>
+        <button class="btn btn-sm" onclick="exportarPedidosPlanilha()" title="Baixar os pedidos atuais no mesmo arquivo/formato que foi importado">⬇ Exportar Excel</button>
+        <button class="btn btn-green btn-sm" onclick="abrirFormPedido(null)">+ Inserir</button>
+        <button class="btn btn-danger btn-sm" onclick="limparTodosPedidos()">Limpar todos</button>
+        <button class="btn btn-sm" id="btn-pedidos-mapa-toggle" onclick="togglePedidosMapa()">🗺️ Ver no Mapa</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>Cliente</label><input id="f-ped-cliente" placeholder="Filtrar cliente..." oninput="renderPedidos()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-ped-cidade" placeholder="Filtrar cidade..." oninput="renderPedidos()"/></div>
+      <div class="field"><label>Terminal</label><input id="f-ped-terminal" placeholder="Filtrar terminal..." oninput="renderPedidos()"/></div>
+      <button class="btn btn-sm" onclick="limparFiltros('pedidos')">Limpar</button>
+    </div>
+    <div id="pedidos-resumo-box" class="hidden" style="margin-bottom:14px;"></div>
+    <div id="pedidos-pernoite-bar" class="hidden" style="margin-bottom:12px;"></div>
+    <div id="pedidos-list"></div>
+    <div id="pedidos-mapa-wrap" class="hidden" style="margin-top:8px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;background:var(--bg-2,#F4F6F1);border-radius:8px;">
+        <label style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;">Terminal de carga</label>
+        <select id="pmapa-terminal" onchange="renderPedidosMapa()" style="padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;min-width:180px;"></select>
+        <button class="btn btn-sm" id="pmapa-btn-lasso" onclick="_pmapaAtivarSelecao()">✏️ Selecionar área</button>
+        <button class="btn btn-sm" onclick="pmapaLimparSelecao()">✕ Limpar seleção</button>
+        <span style="font-size:11px;color:var(--text-3);margin-left:auto;">Desenhe um contorno ao redor dos pedidos no mapa para selecioná-los.</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <div id="pedidos-mapa" style="flex:1;min-width:0;height:520px;border-radius:10px;overflow:hidden;border:1px solid var(--border);"></div>
+        <div id="pmapa-painel" style="width:300px;flex-shrink:0;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg);max-height:520px;overflow-y:auto;">
+          <!-- gerado pelo JS -->
+        </div>
+      </div>
+    </div>
+    <div id="form-pedido" class="card-form hidden" style="margin-top:12px;">
+      <div class="sec-title" id="form-pedido-title">Novo pedido</div>
+      <!-- Importar de cliente -->
+      <div class="import-bar">
+        <label>Importar de cliente cadastrado</label>
+        <select id="p-importar-cliente" data-ph="Buscar cliente por nome ou código..." onchange="preencherPedidoDeCliente(this.value)">
+          <option value="">— selecionar cliente —</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="field" style="max-width:140px;"><label>Código SAP</label><input id="p-sap" placeholder="Ex: 1003456"/></div>
+        <div class="field" style="flex:3;"><label>Cliente</label><input id="p-cliente" placeholder="Nome do cliente"/></div>
+        <div class="field"><label>Cidade</label><input id="p-cidade" placeholder="Cidade"/></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Latitude</label><input id="p-lat" type="number" step="0.0001" placeholder="-23.5505"/></div>
+        <div class="field"><label>Longitude</label><input id="p-lon" type="number" step="0.0001" placeholder="-46.6333"/></div>
+        <div class="field" style="flex:2;">
+          <label>Terminal de carga</label>
+          <select id="p-terminal" data-ph="Buscar terminal..."><option value="">Selecione o terminal...</option></select>
+        </div>
+        <div class="field"><label>Restrição de horário</label><input id="p-restricao" placeholder="Ex: 08:00–12:00"/></div>
+        <div class="field" style="max-width:150px;"><label>Data de entrega</label><input id="p-data-entrega" type="date"/></div>
+        <div class="field" style="max-width:140px;"><label>Turno de entrega</label>
+          <select id="p-turno">
+            <option value="">—</option>
+            <option value="Manhã">Manhã</option>
+            <option value="Tarde">Tarde</option>
+            <option value="Noite">Noite</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9.5px;color:var(--text-2);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">
+          Tipos de caminhão aceitos
+          <span style="font-weight:400;color:var(--text-3);margin-left:8px;">— deixe sem seleção para aceitar todos</span>
+        </div>
+        <div class="tipos-group" id="p-tipos-btns">
+          <!-- gerado pelo JS -->
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="toggle-label">
+          <span class="toggle-dot"></span>
+          <input type="checkbox" id="p-identidade-petronas"/>
+          Exige identidade Petronas na entrega
+        </label>
+      </div>
+      <hr class="divider"/>
+      <div class="sec-title">Produtos do pedido</div>
+      <div id="produtos-form"></div>
+      <button class="btn btn-sm" onclick="addProdutoForm()" style="margin-bottom:12px;">+ Produto</button>
+      <div style="display:flex;gap:6px;justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="cancelarFormPedido()">Cancelar</button>
+        <button class="btn btn-green btn-sm" onclick="salvarPedido()">Salvar pedido</button>
+      </div>
+    </div>
+  </div>
+  <!-- ── VEÍCULOS ──────────────────────────────────────────────────────────── -->
+  <div id="tab-veiculos" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="sec-title" style="margin:0;">Frota disponível</div>
+      <button class="btn btn-green btn-sm" onclick="abrirFormVeiculo()">+ Veículo</button>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>Placa</label><input id="f-vei-placa" placeholder="Filtrar placa..." oninput="_renderVeiculosInterno()"/></div>
+      <div class="field"><label>Transportadora</label><input id="f-vei-transp" placeholder="Filtrar transportadora..." oninput="_renderVeiculosInterno()"/></div>
+      <div class="field"><label>Terminal</label><input id="f-vei-terminal" placeholder="Filtrar terminal..." oninput="_renderVeiculosInterno()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-vei-cidade" placeholder="Filtrar cidade..." oninput="_renderVeiculosInterno()"/></div>
+      <div class="field" style="max-width:160px;">
+        <label>Tipo</label>
+        <select id="f-vei-tipo" onchange="_renderVeiculosInterno()">
+          <option value="">Todos os tipos</option>
+          <option>Truck</option>
+          <option>Bitruck</option>
+          <option>Cavalo Mecânico</option>
+        </select>
+      </div>
+      <button class="btn btn-sm" onclick="limparFiltros('veiculos')">Limpar</button>
+    </div>
+    <div id="veiculos-list"></div>
+    <div id="form-veiculo" class="card-form hidden" style="margin-top:12px;">
+      <div class="sec-title" id="form-veiculo-title">Novo veículo</div>
+      <div class="row">
+        <div class="field" style="flex:1.2;"><label>Placa (Cavalo)</label><input id="v-placa" placeholder="ABC-1234"/></div>
+        <div class="field" style="flex:1.2;"><label>Implemento</label><input id="v-implemento" placeholder="Ex: XYZ-5E78"/></div>
+        <div class="field" style="flex:2;"><label>Transportadora</label><input id="v-transportadora" placeholder="Ex: TransLog"/></div>
+        <div class="field"><label>Tipo</label>
+          <select id="v-tipo"><option>Truck</option><option>Bitruck</option><option>Cavalo Mecânico</option></select>
+        </div>
+        <div class="field"><label>Eixos</label>
+          <select id="v-eixos">
+            <option value="2">2 eixos</option>
+            <option value="3">3 eixos</option>
+            <option value="4">4 eixos</option>
+            <option value="5">5 eixos</option>
+            <option value="6">6 eixos</option>
+            <option value="7">7 eixos</option>
+            <option value="8">8 eixos</option>
+            <option value="9">9 eixos</option>
+          </select>
+        </div>
+        <div class="field"><label>Disponibilidade</label>
+          <select id="v-disponibilidade">
+            <option value="Disponível">Disponível</option>
+            <option value="Indisponível">Indisponível</option>
+          </select>
+        </div>
+        <div class="field"><label>Contrato</label>
+          <select id="v-contrato">
+            <option value="Dedicado">Dedicado</option>
+            <option value="Spot">Spot</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2;"><label>Motorista Diurno</label><input id="v-motorista-diurno" placeholder="Nome do motorista diurno"/></div>
+        <div class="field" style="flex:2;"><label>Motorista Noturno</label><input id="v-motorista-noturno" placeholder="Nome do motorista noturno (se houver)"/></div>
+        <div class="field" style="flex:2;"><label>Terminal de origem (opcional)</label>
+          <select id="v-terminal"><option value="">Selecione...</option></select>
+        </div>
+        <div class="field" style="flex:2;"><label>Cidade base (opcional)</label><input id="v-cidade-base" placeholder="Ex: Paulínia / SP"/></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Velocidade média carregado (km/h)</label><input id="v-vel-carregado" type="number" min="1" step="1" value="45" placeholder="45"/></div>
+        <div class="field"><label>Velocidade média vazio (km/h)</label><input id="v-vel-vazio" type="number" min="1" step="1" value="55" placeholder="55"/></div>
+        <div class="field" style="flex:0;display:flex;align-items:flex-end;padding-bottom:2px;">
+          <label class="toggle-label">
+            <span class="toggle-dot"></span>
+            <input type="checkbox" id="v-identidade-petronas"/>
+            Identidade Petronas
+          </label>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Turno</label>
+          <select id="v-turno" onchange="aplicarTurnoVeiculo()">
+            <option value="personalizado">Personalizado</option>
+            <option value="manha">Manhã</option>
+            <option value="tarde">Tarde</option>
+            <option value="noite">Noite</option>
+            <option value="integral">Integral</option>
+          </select>
+        </div>
+        <div class="field"><label>Início da jornada</label><input id="v-jornada-inicio" type="time" value="06:00"/></div>
+        <div class="field"><label>Fim da jornada</label><input id="v-jornada-fim" type="time" value="18:00"/></div>
+        <div class="field"><label>Tempo perdido (refeição)</label><input id="v-tempo-perdido" type="time" value="01:00"/></div>
+      </div>
+      <hr class="divider"/>
+      <div id="v-compartimentos"><div class="sec-title">Compartimentos (m³)</div></div>
+      <button class="btn btn-sm" onclick="addCompartimento()" style="margin-bottom:12px;">+ Compartimento</button>
+      <div style="display:flex;gap:6px;justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="cancelarFormVeiculo()">Cancelar</button>
+        <button class="btn btn-green btn-sm" onclick="salvarVeiculo()">Salvar veículo</button>
+      </div>
+    </div>
+  </div>
+  <!-- ── RESULTADO ─────────────────────────────────────────────────────────── -->
+  <div id="tab-resultado" class="page">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;">
+      <button class="btn btn-sm" onclick="exportarRelatorioRoteirizacao()" style="background:#EEF2FF;color:#3730A3;border-color:#C7D2FE;">
+        📊 Relatório Excel
+      </button>
+    </div>
+    <div id="painel-jornada-veiculos" style="margin-bottom:14px;"></div>
+    <div class="filter-bar">
+      <div class="field" style="flex:2;min-width:200px;">
+        <label>Roteirização</label>
+        <select class="sel-roteirizacao" onchange="onMudarRoteirizacao(this.value)">
+          <option value="">— Atual —</option>
+        </select>
+      </div>
+      <div class="field"><label>Cliente</label><input id="f-res-cliente" placeholder="Filtrar cliente..." oninput="aplicarFiltrosResultado()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-res-cidade" placeholder="Filtrar cidade..." oninput="aplicarFiltrosResultado()"/></div>
+      <div class="field"><label>Terminal</label><input id="f-res-terminal" placeholder="Filtrar terminal..." oninput="aplicarFiltrosResultado()"/></div>
+      <div class="field"><label>Placa</label><input id="f-res-placa" placeholder="Filtrar placa..." oninput="aplicarFiltrosResultado()"/></div>
+      <div class="field"><label>Transportadora</label><input id="f-res-transp" placeholder="Filtrar transportadora..." oninput="aplicarFiltrosResultado()"/></div>
+      <button class="btn btn-sm" onclick="limparFiltros('resultado'); aplicarFiltrosResultado();">Limpar</button>
+    </div>
+    <div id="ajuste-manual-bar" style="display:none;margin:8px 0;padding:10px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-left:4px solid #D97706;border-radius:var(--radius-sm);display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:11px;font-weight:700;color:#92400E;letter-spacing:0.07em;text-transform:uppercase;">✏ Ajuste manual</span>
+      <span id="ajuste-manual-info" style="font-size:11px;color:#92400E;"></span>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button id="btn-desfazer-manual" class="btn btn-sm" onclick="desfazerManual()" disabled>↩ Desfazer</button>
+        <span id="btn-resetar-wrap" style="position:relative;display:inline-block;">
+          <button class="btn btn-sm btn-danger" onclick="confirmarReset(this)">⟳ Resetar original</button>
+          <span id="resetar-confirm" style="display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:#1A2A0D;color:#fff;border-radius:6px;padding:8px 12px;font-size:11px;white-space:nowrap;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,0.3);">
+            Confirmar reset?
+            <button onclick="resetarOtimizacao()" style="margin-left:8px;background:#DC2626;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:700;">Sim</button>
+            <button onclick="fecharConfirmReset()" style="margin-left:4px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px;">Não</button>
+          </span>
+        </span>
+      </div>
+    </div>
+    <div id="resultado-content">
+      <div class="empty">▶ Clique em "Roteirizar Pedidos" para gerar a programação</div>
+    </div>
+  </div>
+  <div id="tab-operacao" class="page">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px;">
+      <div class="sec-title" style="margin-bottom:0;">Envio Transportadora</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="position:relative;">
+          <button id="resumo-dia-btn" class="btn btn-sm" onclick="resumoDiaAbrirFechar()"
+            style="font-size:12px;padding:5px 10px;border:1px solid var(--border-dk);border-radius:8px;background:var(--surface);color:var(--text);max-width:240px;white-space:nowrap;text-align:left;"
+            title="Selecione uma ou mais datas de entrega pra gerar o resumo consolidado delas">
+            📅 Selecionar data(s) de entrega ▾
+          </button>
+          <div id="resumo-dia-painel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border-dk);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);width:280px;">
+            <div style="padding:8px;border-bottom:1px solid var(--border-dk);">
+              <input id="resumo-dia-busca" type="text" placeholder="Buscar data (ex: 17/07)..." oninput="resumoDiaRenderLista(this.value)"
+                style="width:100%;font-size:12px;padding:6px 8px;border:1px solid var(--border-dk);border-radius:6px;background:var(--bg);color:var(--text);">
+            </div>
+            <div id="resumo-dia-lista" style="max-height:280px;overflow-y:auto;padding:4px;"></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;padding:8px;border-top:1px solid var(--border-dk);">
+              <button class="btn btn-sm" onclick="resumoDiaLimpar()" style="font-size:11px;">Limpar</button>
+              <button class="btn btn-green btn-sm" onclick="resumoDiaAbrirFechar()" style="font-size:11px;">Aplicar</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="gerarResumoDia()"
+          style="background:rgba(200,240,50,0.12);color:var(--pet-green);border:1px solid rgba(200,240,50,0.3);font-size:12px;padding:5px 14px;white-space:nowrap;"
+          title="Gera o resumo do dia e copia para a área de transferência">
+          📋 Gerar Resumo
+        </button>
+        <div id="turno-menu-wrap" style="position:relative;border-left:1px solid var(--border-dk);padding-left:8px;margin-left:2px;">
+          <button id="turno-menu-btn" class="btn btn-sm" onclick="turnoToggleMenu()"
+            style="display:flex;align-items:center;gap:5px;font-size:12px;padding:5px 14px;white-space:nowrap;"
+            title="Relatório de passagem de turno (1 linha por viagem), usando a(s) data(s) de entrega selecionadas acima">
+            🔄 Passagem de Turno <span style="font-size:8px;">▾</span>
+          </button>
+          <div id="turno-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:8px;z-index:500;background:var(--surface);border:1px solid var(--border-dk);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.25);min-width:180px;overflow:hidden;padding:5px;">
+            <button onclick="gerarPassagemTurno('pdf'); turnoToggleMenu();" onmouseover="this.style.background='rgba(239,68,68,0.12)'" onmouseout="this.style.background='none'"
+              style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+              📄 PDF
+            </button>
+            <button onclick="gerarPassagemTurno('png'); turnoToggleMenu();" onmouseover="this.style.background='rgba(79,70,229,0.12)'" onmouseout="this.style.background='none'"
+              style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+              🖼 PNG
+            </button>
+            <button onclick="gerarPassagemTurno('whatsapp'); turnoToggleMenu();" onmouseover="this.style.background='rgba(37,211,102,0.12)'" onmouseout="this.style.background='none'"
+              style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+              💬 WhatsApp
+            </button>
+            <button onclick="gerarPassagemTurno('email'); turnoToggleMenu();" onmouseover="this.style.background='rgba(200,240,50,0.12)'" onmouseout="this.style.background='none'"
+              style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:var(--text);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+              ✉️ E-mail
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="exportarTodasProgramacoesPDF()" title="Exportar todas as programações visíveis como PDF" style="background:rgba(239,68,68,0.1);color:#DC2626;border:1px solid rgba(239,68,68,0.3);">📄 PDF — Todas</button>
+        <button class="btn btn-sm" onclick="exportarTodasProgramacoesPNG()" title="Exportar todas as programações visíveis como imagens PNG" style="background:rgba(79,70,229,0.1);color:#4338CA;border:1px solid rgba(79,70,229,0.3);">🖼 PNG — Todas</button>
+        <button class="btn btn-sm" onclick="enviarTodasProgramacoesWhatsApp()" title="Enviar todas as programações visíveis para o grupo de WhatsApp de cada transportadora (robô)" style="background:rgba(22,163,74,0.1);color:#15803D;border:1px solid rgba(22,163,74,0.35);">📲 WhatsApp — Todas</button>
+        <button class="btn btn-sm" onclick="abrirConfigWhatsApp()" title="Status do robô de WhatsApp, QR code e grupo de cada transportadora" style="background:rgba(22,163,74,0.06);color:#15803D;border:1px solid rgba(22,163,74,0.25);">🤖 WhatsApp</button>
+        <button class="btn btn-green btn-sm" onclick="exportarHrrlog()" title="Exportar planilha de importação para o sistema Herrlog">⬇ Exportar Herrlog</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="field" style="flex:2;min-width:200px;">
+        <label>Roteirização</label>
+        <select class="sel-roteirizacao" onchange="onMudarRoteirizacao(this.value)">
+          <option value="">— Atual —</option>
+        </select>
+      </div>
+      <div class="field"><label>Cliente</label><input id="f-op-cliente" placeholder="Filtrar cliente..." oninput="aplicarFiltrosOperacao()"/></div>
+      <div class="field"><label>Cidade</label><input id="f-op-cidade" placeholder="Filtrar cidade..." oninput="aplicarFiltrosOperacao()"/></div>
+      <div class="field"><label>Terminal</label><input id="f-op-terminal" placeholder="Filtrar terminal..." oninput="aplicarFiltrosOperacao()"/></div>
+      <div class="field"><label>Placa</label><input id="f-op-placa" placeholder="Filtrar placa..." oninput="aplicarFiltrosOperacao()"/></div>
+      <div class="field"><label>Transportadora</label><input id="f-op-transp" placeholder="Filtrar transportadora..." oninput="aplicarFiltrosOperacao()"/></div>
+      <button class="btn btn-sm" onclick="limparFiltros('operacao'); aplicarFiltrosOperacao();">Limpar</button>
+    </div>
+    <div id="operacao-content">
+      <div class="empty">Execute a otimização para gerar o template operacional.</div>
+    </div>
+  </div>
+  <!-- ── DASHBOARD ─────────────────────────────────────────────────────────── -->
+  <div id="tab-dashboard_rot" class="page">
+    <div style="padding:20px 0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+        <div>
+          <div class="sec-title" style="margin:0;">Dashboard de Operações</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Análise histórica das roteirizações salvas</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <!-- Grupo: filtros de escopo dos dados (visual "segmented control" — um
+               contêiner só, com divisor fino desenhado direto em cada item via
+               border-right inline, em vez de depender de seletor CSS externo). -->
+          <div style="display:flex;align-items:stretch;background:#fff;border:1px solid #D1D5DB;border-radius:8px;">
+            <!-- overflow:hidden foi removido daqui de propósito: os painéis de
+                 Clientes e Operação (abaixo) usam position:absolute pra pop
+                 out por cima do resto da tela, mas overflow:hidden num
+                 ancestral corta/esconde esse conteúdo mesmo com display:flex
+                 ativo — o painel ficava "aberto" só que invisível, o clique
+                 parecia não fazer nada. O visual de pílula arredondada
+                 continua pela borda do próprio contêiner (border-radius
+                 abaixo); só não recorta mais o conteúdo. -->
+            <!-- Filtro de Transportadora — igual ao de Segmento, afeta a
+                 tela inteira (aplicado direto na fonte, dentro de
+                 dashAgregar, igual o filtro de Operação/Cidade). -->
+            <div style="position:relative;border-right:1px solid #D1D5DB;">
+              <button id="dash-transp-btn" onclick="dashTogglePainelTransportadora()" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;border-radius:8px 0 0 8px;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span>🚛 Transportadora</span>
+                <span id="dash-transp-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-transp-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:260px;max-height:400px;flex-direction:column;overflow:hidden;">
+                <div style="padding:10px 14px 8px;border-bottom:1px solid #D1D5DB;flex-shrink:0;">
+                  <input type="text" id="dash-transp-search" placeholder="Buscar transportadora..." oninput="dashFiltrarListaTransportadora(this.value)"
+                    style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-family:inherit;"/>
+                </div>
+                <div id="dash-transp-list" style="overflow-y:auto;max-height:240px;padding:4px 0;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;flex-shrink:0;">
+                  <button onclick="dashSelecionarTodosTransportadora(true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosTransportadora(false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroTransportadora()"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <!-- Filtro de Segmento (B2B/B2C/TRR) — afeta todos os
+                 gráficos/tabela/mapa que envolvem cliente no Dashboard,
+                 junto com o filtro de Clientes (os dois se cruzam). -->
+            <div style="position:relative;border-right:1px solid #D1D5DB;">
+              <button id="dash-seg-btn" onclick="dashTogglePainelSegmento('dash-seg-panel')" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span>🏷️ Segmento</span>
+                <span id="dash-seg-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-seg-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:220px;overflow:hidden;flex-direction:column;">
+                <div style="padding:10px 14px 8px;border-bottom:1px solid #D1D5DB;font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;">FILTRAR POR SEGMENTO</div>
+                <div class="dash-seg-list-inner" style="padding:4px 0;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                  <button onclick="dashSelecionarTodosSegmento('dash-seg-panel', true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosSegmento('dash-seg-panel', false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroSegmento('dash-seg-panel')"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <!-- Filtro de Bandeira — mesmo comportamento do Segmento: cruza
+                 com Clientes e Segmento e afeta a tela inteira. Opções vêm
+                 da lista do cadastro de cliente (cl-bandeira). -->
+            <div style="position:relative;border-right:1px solid #D1D5DB;">
+              <button id="dash-band-btn" onclick="dashTogglePainelBandeira()" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span>🚩 Bandeira</span>
+                <span id="dash-band-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-band-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:230px;overflow:hidden;flex-direction:column;">
+                <div style="padding:10px 14px 8px;border-bottom:1px solid #D1D5DB;font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;">FILTRAR POR BANDEIRA</div>
+                <div class="dash-band-list-inner" style="padding:4px 0;max-height:300px;overflow-y:auto;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                  <button onclick="dashSelecionarTodosBandeira(true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosBandeira(false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroBandeira()"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <!-- Filtro de clientes -->
+            <div style="position:relative;border-right:1px solid #D1D5DB;">
+              <button id="dash-cli-btn" onclick="dashToggleFiltroClientes()" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span>👥 Clientes</span>
+                <span id="dash-cli-badge" style="display:none;background:var(--accent,#4F46E5);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-cli-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:320px;max-height:400px;flex-direction:column;overflow:hidden;">
+                <div style="padding:12px 14px 10px;border-bottom:1px solid #D1D5DB;flex-shrink:0;">
+                  <div style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;margin-bottom:8px;">FILTRAR CLIENTES</div>
+                  <div style="position:relative;">
+                    <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;">🔍</span>
+                    <input id="dash-cli-search" type="text" placeholder="Buscar cliente..." oninput="dashFiltrarListaClientes(this.value)"
+                      style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.04);border:1px solid #D1D5DB;border-radius:8px;padding:7px 10px 7px 30px;font-size:12px;color:#111827;outline:none;"/>
+                  </div>
+                </div>
+                <div id="dash-cli-list" style="overflow-y:auto;flex:1;padding:6px 0;min-height:0;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;flex-shrink:0;background:#fff;">
+                  <button onclick="dashSelecionarTodosClientes(true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosClientes(false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroClientes()"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:var(--accent,#4F46E5);color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <!-- Filtro de Cidade da Operação -->
+            <div style="position:relative;border-right:1px solid #D1D5DB;">
+              <button id="dash-cid-btn" onclick="dashToggleFiltroCidades()" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span>🏙️ Operação</span>
+                <span id="dash-cid-badge" style="display:none;background:var(--accent,#4F46E5);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-cid-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:280px;max-height:400px;flex-direction:column;overflow:hidden;">
+                <div style="padding:12px 14px 10px;border-bottom:1px solid #D1D5DB;flex-shrink:0;">
+                  <div style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;margin-bottom:8px;">FILTRAR POR CIDADE DA OPERAÇÃO</div>
+                  <div style="position:relative;">
+                    <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;">🔍</span>
+                    <input id="dash-cid-search" type="text" placeholder="Buscar cidade..." oninput="dashFiltrarListaCidades(this.value)"
+                      style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.04);border:1px solid #D1D5DB;border-radius:8px;padding:7px 10px 7px 30px;font-size:12px;color:#111827;outline:none;"/>
+                  </div>
+                </div>
+                <div id="dash-cid-list" style="overflow-y:auto;flex:1;padding:6px 0;min-height:0;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;flex-shrink:0;background:#fff;">
+                  <button onclick="dashSelecionarTodosCidades(true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todas</button>
+                  <button onclick="dashSelecionarTodosCidades(false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroCidades()"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:var(--accent,#4F46E5);color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <!-- Período: meses (multi-seleção) + intervalo personalizado -->
+            <div style="position:relative;">
+              <button id="dash-periodo-btn" onclick="dashTogglePainelPeriodo()" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='transparent'"
+                style="display:flex;align-items:center;gap:5px;background:transparent;border:none;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;height:100%;">
+                <span id="dash-periodo-label">🗓️ Período</span>
+                <span id="dash-periodo-badge" style="display:none;background:var(--accent,#4F46E5);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-periodo-panel" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:280px;max-height:460px;flex-direction:column;overflow:hidden;">
+                <div style="padding:12px 14px 8px;border-bottom:1px solid #D1D5DB;flex-shrink:0;">
+                  <div style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;">MESES — SELECIONE 1 OU MAIS</div>
+                </div>
+                <div id="dash-periodo-mes-list" style="overflow-y:auto;max-height:180px;padding:6px 0;flex-shrink:0;"></div>
+                <div style="padding:10px 14px 4px;border-top:1px solid #D1D5DB;flex-shrink:0;">
+                  <div style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;margin-bottom:8px;">OU INTERVALO PERSONALIZADO</div>
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <input id="dash-periodo-data-ini" type="date" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(0,0,0,.04);border:1px solid #D1D5DB;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#111827;outline:none;font-family:inherit;"/>
+                    <span style="font-size:11px;color:#9CA3AF;">até</span>
+                    <input id="dash-periodo-data-fim" type="date" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(0,0,0,.04);border:1px solid #D1D5DB;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#111827;outline:none;font-family:inherit;"/>
+                  </div>
+                  <div style="font-size:10px;color:#9CA3AF;margin-bottom:4px;">Preenchendo as duas datas, o intervalo tem prioridade sobre os meses marcados acima.</div>
+                </div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;flex-shrink:0;background:#fff;">
+                  <button onclick="dashSelecionarTodosMeses(true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosMeses(false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroPeriodo()"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:var(--accent,#4F46E5);color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Relatórios — visível pra todo mundo (diferente de Ferramentas, que é só admin) -->
+          <div style="position:relative;">
+            <button id="dash-relatorios-btn" onclick="dashToggleMenuRelatorios()" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='#fff'"
+              style="display:flex;align-items:center;gap:5px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;">
+              📊 Relatórios <span style="font-size:8px;">▾</span>
+            </button>
+            <div id="dash-relatorios-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16);min-width:220px;overflow:hidden;padding:5px;">
+              <button onclick="dashAbrirRelatorioPersonalizado()" onmouseover="this.style.background='rgba(79,70,229,0.1)'" onmouseout="this.style.background='none'"
+                title="Monte o seu relatório: escolha como agrupar, quais colunas, filtre, veja o gráfico e exporte em Excel ou PDF. Modelos salvos ficam disponíveis para a equipe."
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:700;color:var(--accent,#4F46E5);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                🧩 Relatório personalizado
+              </button>
+              <div style="height:1px;background:#E5E7EB;margin:4px 2px;"></div>
+              <button onclick="dashExportarExcel(); dashToggleMenuRelatorios();" id="dash-export-btn" onmouseover="this.style.background='rgba(21,128,61,0.1)'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:600;color:#14532D;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📊 Exportar Excel
+              </button>
+              <div style="height:1px;background:#E5E7EB;margin:4px 2px;"></div>
+              <div style="padding:8px 10px 4px;font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;">Resumo Operação</div>
+              <button onclick="dashGerarResumoOperacao('pdf'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📄 PDF
+              </button>
+              <button onclick="dashGerarResumoOperacao('png'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(79,70,229,0.1)'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                🖼 PNG
+              </button>
+              <button onclick="dashGerarResumoOperacao('word'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(37,99,235,0.1)'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📝 Word
+              </button>
+              <div style="height:1px;background:#E5E7EB;margin:4px 2px;"></div>
+              <div style="padding:8px 10px 4px;font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;">Rotas - Roteirização</div>
+              <button onclick="dashGerarRelatorioRotas('pdf'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='none'"
+                title="Sequência completa da rota (base + todas as paradas em ordem) e km real percorrido, de todo o histórico — não respeita os filtros ativos, é sempre o histórico inteiro. Colunas extras aparecem sozinhas quando a viagem tem mais de uma entrega"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📄 PDF
+              </button>
+              <button onclick="dashGerarRelatorioRotas('xlsx'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(21,128,61,0.1)'" onmouseout="this.style.background='none'"
+                title="Mesma coisa, em planilha — colunas de entrega se repetem dinamicamente conforme o número de paradas de cada viagem"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📊 XLSX
+              </button>
+              <div style="height:1px;background:#E5E7EB;margin:4px 2px;"></div>
+              <div style="padding:8px 10px 4px;font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;">Rotas - Fretes</div>
+              <button onclick="dashGerarRelatorioRotasFretes('pdf'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='none'"
+                title="Base × Destino único (cada parada de uma rota multi-cidade vira sua própria linha), com o km calculado como trajeto direto até aquele destino — respeita os filtros ativos do Dashboard (período, Clientes, Operação, Segmento)"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📄 PDF
+              </button>
+              <button onclick="dashGerarRelatorioRotasFretes('xlsx'); dashToggleMenuRelatorios();" onmouseover="this.style.background='rgba(21,128,61,0.1)'" onmouseout="this.style.background='none'"
+                title="Mesma coisa, em planilha — respeita os filtros ativos do Dashboard"
+                style="display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12.5px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                📊 XLSX
+              </button>
+            </div>
+          </div>
+
+          <!-- Ferramentas avançadas (só admin) — antes 3 botões coloridos soltos
+               na barra, agora escondidos atrás de um menu, igual sistemas
+               grandes fazem com ações administrativas pouco usadas. -->
+          <div id="dash-km-admin-tools" style="display:none;position:relative;">
+            <button id="dash-tools-btn" onclick="dashToggleFerramentas()" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='#fff'"
+              style="display:flex;align-items:center;gap:5px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;">
+              ⚙️ Ferramentas <span style="font-size:8px;">▾</span>
+            </button>
+            <div id="dash-tools-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16);min-width:230px;overflow:hidden;padding:5px;">
+              <button onclick="dashRecalcularKmHistorico(); dashToggleFerramentas();" id="btn-dash-recalcular-km" onmouseover="this.style.background='#EEF2FF'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:flex-start;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                <span>🛣️</span><span>Km Real<span style="display:block;font-size:10.5px;font-weight:400;color:#9CA3AF;margin-top:1px;white-space:normal;">Busca o km real (via rota) das viagens que ainda não têm</span></span>
+              </button>
+              <button onclick="dashDiagnosticarKmReal(); dashToggleFerramentas();" id="btn-dash-diagnostico-km" onmouseover="this.style.background='#EEF2FF'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:flex-start;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                <span>🔍</span><span>Diagnóstico Km<span style="display:block;font-size:10.5px;font-weight:400;color:#9CA3AF;margin-top:1px;white-space:normal;">Compara km real vs. estimativa — acha valor suspeito</span></span>
+              </button>
+              <button onclick="dashDiagnosticarPedagioHoje(); dashToggleFerramentas();" id="btn-dash-diagnostico-pedagio" onmouseover="this.style.background='#EEF2FF'" onmouseout="this.style.background='none'"
+                style="display:flex;align-items:flex-start;gap:9px;width:100%;box-sizing:border-box;text-align:left;padding:9px 10px;font-size:12px;font-weight:500;color:#374151;background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;">
+                <span>🛣️</span><span>Diag. Pedágio<span style="display:block;font-size:10.5px;font-weight:400;color:#9CA3AF;margin-top:1px;white-space:normal;">Por que % Rotas Pedagiadas está baixo/zerado</span></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Ações -->
+          <button onclick="dashSincronizar()" id="dash-sync-btn" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='#fff'" title="Relê o histórico em disco e atualiza tudo"
+            style="display:flex;align-items:center;gap:5px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;padding:7px 11px;font-size:11px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap;font-family:inherit;">🔄 Sincronizar</button>
+        </div>
+      </div>
+
+      <div id="dash-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">
+        <div class="sum-card" title="Total de viagens realizadas nas roteirizações salvas dentro do período/filtro selecionado — cada trecho de carro carregado (terminal → paradas) conta como 1 viagem." style="cursor:help;"><div class="sum-num" id="dk-viagens" style="color:#FFFFFF">-</div><div class="sum-label">Viagens</div></div>
+        <div class="sum-card" title="Total de paradas de entrega realizadas — cada cliente visitado numa viagem conta como 1 entrega. Pode ser diferente do nº de pedidos se um pedido foi dividido em mais de uma carga." style="cursor:help;"><div class="sum-num" id="dk-entregas" style="color:#70a8f0">-</div><div class="sum-label">Entregas</div></div>
+        <div class="sum-card" title="Soma do volume (m³) de todas as entregas realizadas no período/filtro selecionado." style="cursor:help;"><div class="sum-num" id="dk-volume" style="color:#f0be40">-</div><div class="sum-label">Volume m3</div></div>
+        <div class="sum-card" title="Ocupação média da frota: volume total transportado ÷ capacidade total dos veículos escalados nas viagens do período. Mostra o quanto da capacidade dos caminhões foi de fato aproveitada." style="cursor:help;"><div class="sum-num" id="dk-ocup" style="color:#b07ef0">-</div><div class="sum-label">Ocup. Media</div></div>
+        <div class="sum-card" title="Média de entregas por viagem: total de entregas ÷ total de viagens do período/filtro selecionado." style="cursor:help;"><div class="sum-num" id="dk-drop-entregas" style="color:#ffb454">-</div><div class="sum-label">Drop Médio Entregas</div></div>
+        <div class="sum-card" title="Percentual de viagens do período/filtro selecionado em que a rota passa perto de algum pedágio. ESTIMATIVA por linha reta terminal→paradas (mesmo método usado no relatório de Frete antes do trajeto real carregar) — não é conferência financeira exata, serve pra ver a tendência de quantas rotas exigem lançar vale-pedágio." style="cursor:help;"><div class="sum-num" id="dk-perc-pedagiadas" style="color:#e879f9">-</div><div class="sum-label">% Rotas Pedagiadas</div></div>
+        <div class="sum-card" title="Soma da distância (km) de todas as viagens do período/filtro selecionado." style="cursor:help;"><div class="sum-num" id="dk-km" style="color:#6ee04a">-</div><div class="sum-label">Km Total</div></div>
+        <div class="sum-card" title="Nº de clientes distintos atendidos no período/filtro selecionado." style="cursor:help;"><div class="sum-num" id="dk-clientes" style="color:#f06060">-</div><div class="sum-label">Clientes</div></div>
+        <div class="sum-card" title="Horas de jornada USADAS ÷ horas de jornada DISPONÍVEIS, considerando só os veículos que tiveram viagem no dia. Cada veículo entra com sua jornada diária (ex.: 12h) contada uma única vez por dia, mesmo com várias viagens." style="cursor:help;"><div class="sum-num" id="dk-jornada" style="color:#00d9c0">-</div><div class="sum-label">Consumo Jornada</div><div id="dk-jornada-horas" style="font-size:10px;color:var(--text-3);margin-top:2px;"></div></div>
+        <div class="sum-card" title="1 − (veículos usados ÷ veículos disponibilizados), usando os registros do Painel de Disponibilidade (quem foi marcado Disponível naquele dia) cruzados com quem realmente teve viagem. Conta por veículo/dia, não por hora. Ex.: 20 disponibilizados, 10 usados = 50% de ociosidade." style="cursor:help;"><div class="sum-num" id="dk-ociosidade" style="color:var(--pet-green,#b5e51d)">-</div><div class="sum-label">Ociosidade da Frota</div><div id="dk-ociosidade-qtd" style="font-size:10px;color:var(--text-3);margin-top:2px;"></div></div>
+        <div class="sum-card" title="Média de volume (m³) por entrega: volume total ÷ total de entregas do período/filtro selecionado. Pondera pela frequência de entrega — clientes com mais entregas pesam mais nessa média." style="cursor:help;"><div class="sum-num" id="dk-drop-volume" style="color:#5ec8f0">-</div><div class="sum-label">Drop Médio Operacional</div></div>
+        <div class="sum-card" title="Drop Size médio da carteira: pra cada cliente, calcula (volume do cliente ÷ entregas do cliente), depois tira a média desses valores ÷ quantidade de clientes. Diferente do Drop Médio Operacional — aqui todo cliente pesa igual, não importa se entregou 1 vez ou 50 vezes no período." style="cursor:help;"><div class="sum-num" id="dk-drop-cliente" style="color:#c084fc">-</div><div class="sum-label">Drop Médio por Cliente</div></div>
+        <div class="sum-card" title="Tempo acumulado estimado para lançar os vale-pedágio das viagens pedagiadas (ver % Rotas Pedagiadas) no Sistema Sem Parar: 3 minutos por viagem, em média, × nº de viagens com pedágio detectado no período/filtro selecionado." style="cursor:help;"><div class="sum-num" id="dk-tempo-pedagio" style="color:#fb923c">-</div><div class="sum-label">Tempo c/ Lançamento Pedágio</div><div id="dk-tempo-pedagio-min" style="font-size:10px;color:var(--text-3);margin-top:2px;"></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-transp')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">🏆 Ranking de Transportadoras <span id="dash-secbody-transp-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Quem transporta mais volume, roda mais km e quanto foi pago (baseado nos contratos cadastrados em Frete)</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;">
+              <button class="dash-rank-tab active-rank" data-campo="volume" onclick="dashRankingSetOrdem('volume')"
+                style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;">Volume</button>
+              <button class="dash-rank-tab" data-campo="km" onclick="dashRankingSetOrdem('km')"
+                style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;">Km rodado</button>
+              <button class="dash-rank-tab" data-campo="custo" onclick="dashRankingSetOrdem('custo')"
+                style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;">Valor pago</button>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Ordenar do maior pro menor ou do menor pro maior">
+              <button class="dash-rankdir-tab active-rank" data-dir="desc" onclick="dashRankingSetDirecao('desc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior</button>
+              <button class="dash-rankdir-tab" data-dir="asc" onclick="dashRankingSetDirecao('asc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Menor</button>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Aumentar/diminuir o tamanho do gráfico">
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-ranking-transp',-1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">−</button>
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-ranking-transp',1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-secbody-transp" style="display:none;"><div id="dash-ranking-transp"><div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando...</div></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-jornada')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">⏱️ Consumo de Jornada por Transportadora <span id="dash-secbody-jornada-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Horas de jornada disponível (nº de veículos × jornada diária) vs. horas efetivamente usadas nas viagens, por veículo/dia — acompanha os mesmos filtros de mês/período e operação (cidade) acima</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Ordenar do maior pro menor ou do menor pro maior">
+              <button class="dash-jornadadir-tab active-rank" data-dir="desc" onclick="dashJornadaSetDirecao('desc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior</button>
+              <button class="dash-jornadadir-tab" data-dir="asc" onclick="dashJornadaSetDirecao('asc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Menor</button>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Aumentar/diminuir o tamanho do gráfico">
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-jornada-transp',-1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">−</button>
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-jornada-transp',1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-secbody-jornada" style="display:none;"><div id="dash-jornada-transp"><div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando...</div></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-ociosidade')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">🅿️ Ociosidade da Frota por Transportadora <span id="dash-secbody-ociosidade-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Veículos disponibilizados no dia que ficaram sem nenhuma viagem — conta por veículo, não por hora. Ex.: 20 disponibilizados, 10 usados = 50% de ociosidade. Acompanha os mesmos filtros de mês/período e operação (cidade) acima</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Ordenar do maior pro menor ou do menor pro maior">
+              <button class="dash-ociosidadedir-tab active-rank" data-dir="desc" onclick="dashOciosidadeSetDirecao('desc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior</button>
+              <button class="dash-ociosidadedir-tab" data-dir="asc" onclick="dashOciosidadeSetDirecao('asc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Menor</button>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Aumentar/diminuir o tamanho do gráfico">
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-ociosidade-transp',-1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">−</button>
+              <button class="btn btn-sm" onclick="dashChartZoom('dash-ociosidade-transp',1)" style="padding:5px 11px;font-size:12px;font-weight:700;background:transparent;color:var(--text-2);border:none;">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-secbody-ociosidade" style="display:none;"><div id="dash-ociosidade-transp"><div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando...</div></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-opocup')">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:2px;">Ocupação vs Volume por Operação (Cidade) <span id="dash-secbody-opocup-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:10.5px;color:var(--text-3);">Acompanha o filtro de "🏙️ Operação (Cidade)" acima — filtre pra ver só as operações que interessam</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;flex-shrink:0;">
+            <button class="dash-opocup-tab active-rank" data-campo="volume" onclick="dashOpOcupVolSetOrdem('volume')"
+              style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior Volume</button>
+            <button class="dash-opocup-tab" data-campo="ocup" onclick="dashOpOcupVolSetOrdem('ocup')"
+              style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior Ocupação</button>
+          </div>
+        </div>
+        <div class="dash-secbody-opocup" style="display:none;"><div id="dash-chart-op-ocup-vol" style="max-height:480px;overflow-y:auto;overflow-x:hidden;"></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-produtos')">
+          <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:2px;">📦 Volume por Produto (m³) <span id="dash-secbody-produtos-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+          <div style="font-size:10.5px;color:var(--text-3);">Soma de todos os produtos com registro de entrega no período/filtro selecionado acima. Clique num produto pra ver o ciclo de compra por cliente.</div>
+        </div>
+        <div class="dash-secbody-produtos" style="display:none;">
+          <div id="dash-chart-produtos" style="max-height:420px;overflow-y:auto;overflow-x:hidden;margin-bottom:14px;"></div>
+          <div id="dash-ciclo-produto" style="border-top:1px solid var(--border-dk);padding-top:12px;">
+            <div style="color:var(--text-3);font-size:12px;padding:12px;">Clique em um produto acima pra ver o ciclo de compra por cliente.</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px;">
+        <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-vol')">
+            <div style="font-size:12px;font-weight:600;color:var(--text-2);">Volume por Cliente (m3) <span id="dash-secbody-vol-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+            <div onclick="event.stopPropagation()" style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;flex-shrink:0;">
+              <button class="dash-ordvol-tab active-rank" data-ordem="desc" onclick="dashSetOrdemVol('desc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior</button>
+              <button class="dash-ordvol-tab" data-ordem="asc" onclick="dashSetOrdemVol('asc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Menor</button>
+            </div>
+          </div>
+          <div class="dash-secbody-vol" style="display:none;"><div id="dash-chart-vol" style="max-height:480px;overflow-y:auto;overflow-x:hidden;"></div></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-ent')">
+            <div style="font-size:12px;font-weight:600;color:var(--text-2);">Entregas por Cliente <span id="dash-secbody-ent-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+            <div onclick="event.stopPropagation()" style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;flex-shrink:0;">
+              <button class="dash-ordent-tab active-rank" data-ordem="desc" onclick="dashSetOrdemEnt('desc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Maior</button>
+              <button class="dash-ordent-tab" data-ordem="asc" onclick="dashSetOrdemEnt('asc')"
+                style="padding:5px 12px;font-size:10.5px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">Menor</button>
+            </div>
+          </div>
+          <div class="dash-secbody-ent" style="display:none;"><div id="dash-chart-ent" style="max-height:480px;overflow-y:auto;overflow-x:hidden;"></div></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px;">
+        <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;overflow:hidden;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-ocupcli')">Taxa de Ocupação por Cliente (%) <span id="dash-secbody-ocupcli-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+          <div class="dash-secbody-ocupcli" style="display:none;"><div id="dash-chart-ocup" style="max-height:480px;overflow-y:auto;overflow-x:hidden;"></div></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;overflow:hidden;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-km')">Km Rodado vs Volume por Cliente <span id="dash-secbody-km-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+          <div class="dash-secbody-km" style="display:none;"><div id="dash-chart-km" style="max-height:480px;overflow-y:auto;overflow-x:hidden;"></div></div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-dropsize')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">📦 Ranking de Drop Size por Cliente <span id="dash-secbody-dropsize-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Volume médio por entrega (m³) de cada cliente — mesmos filtros de Cliente/Operação/Segmento/Transportadora/Período do topo</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;" title="Esconde clientes com menos entregas do que esse número — drop size de quem entregou só 1-2 vezes não é um padrão confiável">
+              <label style="font-size:11px;color:var(--text-3);font-weight:600;white-space:nowrap;">Mín. entregas</label>
+              <input id="dash-dropsize-min-entregas" type="number" min="1" step="1" value="3" onchange="dashRenderRankingDropSize()" style="width:56px;font-size:12px;padding:5px 7px;border:1px solid var(--border-dk);border-radius:7px;background:var(--surface);color:var(--text);"/>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;">
+              <button id="dash-dropsize-btn-melhores" onclick="dashRenderRankingDropSize('melhores')"
+                style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;">🏆 15 Melhores</button>
+              <button id="dash-dropsize-btn-piores" onclick="dashRenderRankingDropSize('piores')"
+                style="padding:6px 14px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;">📉 15 Piores</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-secbody-dropsize" style="display:none;"><div id="dash-ranking-dropsize"><div class="empty">Sincronize o Dashboard pra ver o ranking.</div></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-inativos')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">🔔 Clientes sem comprar <span id="dash-secbody-inativos-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Última entrega de cada cliente no histórico COMPLETO (não muda com o filtro de mês/período acima) — quem passar do limite escolhido entra no alerta</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+            <!-- Mesmo filtro de Segmento do topo — botão próprio aqui do lado
+                 pra não precisar rolar até o topo, mas escreve no MESMO
+                 estado global (_dashSegmentosSelecionados), então os dois
+                 ficam sempre sincronizados. -->
+            <div style="position:relative;">
+              <button id="dash-seg-inativos-btn" onclick="dashTogglePainelSegmento('dash-seg-inativos-panel')"
+                style="display:flex;align-items:center;gap:5px;border:1px solid var(--border-dk);border-radius:8px;background:var(--surface);padding:6px 11px;font-size:11px;font-weight:600;color:var(--text-2);cursor:pointer;white-space:nowrap;">
+                <span>🏷️ Segmento</span>
+                <span id="dash-seg-inativos-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700;"></span>
+              </button>
+              <div id="dash-seg-inativos-panel" style="display:none;position:absolute;top:calc(100% + 8px);right:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:220px;overflow:hidden;flex-direction:column;">
+                <div style="padding:10px 14px 8px;border-bottom:1px solid #D1D5DB;font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.06em;">FILTRAR POR SEGMENTO</div>
+                <div class="dash-seg-list-inner" style="padding:4px 0;"></div>
+                <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                  <button onclick="dashSelecionarTodosSegmento('dash-seg-inativos-panel', true)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Todos</button>
+                  <button onclick="dashSelecionarTodosSegmento('dash-seg-inativos-panel', false)"
+                    style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;letter-spacing:.02em;">Limpar</button>
+                  <button onclick="dashAplicarFiltroSegmento('dash-seg-inativos-panel')"
+                    style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;letter-spacing:.02em;">✓ Aplicar</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="A partir de quantos dias sem comprar considerar alerta">
+              <button class="dash-inativo-limiar-tab" data-dias="7" onclick="dashSetLimiarInativos(7)"
+                style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">7 dias</button>
+              <button class="dash-inativo-limiar-tab active-rank" data-dias="15" onclick="dashSetLimiarInativos(15)"
+                style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">15 dias</button>
+              <button class="dash-inativo-limiar-tab" data-dias="30" onclick="dashSetLimiarInativos(30)"
+                style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">30 dias</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-secbody-inativos" style="display:none;"><div id="dash-clientes-inativos" style="margin-top:10px;"><div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;">Carregando...</div></div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;cursor:pointer;" onclick="dashToggleSecaoMapa()">
+          <div style="font-size:12px;font-weight:600;color:var(--text-2);">Mapa Historico de Viagens <span id="dash-secbody-mapa-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+          <div style="display:flex;gap:12px;align-items:center;font-size:11px;color:var(--text-3);">
+            <span><span style="display:inline-block;width:10px;height:10px;background:#00A499;border-radius:50%;margin-right:4px;vertical-align:middle;"></span>Terminal</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:#4F46E5;border-radius:50%;margin-right:4px;vertical-align:middle;"></span>Cliente</span>
+          </div>
+        </div>
+        <div class="dash-secbody-mapa" style="display:none;"><div id="dash-mapa" style="height:420px;border-radius:8px;background:#E5E7EB;isolation:isolate;position:relative;z-index:0;"></div></div>
+      </div>
+        <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:16px;margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-tabcli')">Tabela Detalhada por Cliente <span id="dash-secbody-tabcli-seta" style="font-size:11px;color:var(--text-3);">▼</span></div>
+        <div class="dash-secbody-tabcli" style="display:none;">
+        <div class="tscroll">
+          <table style="min-width:700px;width:100%;border-collapse:collapse;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+            <thead><tr style="background:#F9FAFB;">
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:left;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">CLIENTE</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:left;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">CIDADE</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:center;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">ENTREGAS</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:center;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">VOLUME (m³)</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:center;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">KM MÉDIO</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:600;color:#374151;text-align:center;border-bottom:1px solid #E5E7EB;letter-spacing:0.04em;white-space:nowrap;">VOL/KM</th>
+            </tr></thead>
+            <tbody id="dash-tabela-cli-body">
+              <tr><td colspan="6" style="color:#9CA3AF;text-align:center;padding:32px;font-size:13px;">Selecione um mes ou clique em Todos os periodos</td></tr>
+            </tbody>
+          </table>
+        </div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;font-weight:700;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-histveic')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">📅 Histórico por Veículo <span id="dash-secbody-histveic-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-top:2px;">Dia a dia: status marcado no Painel de Disponibilidade e km planejado (ida + volta) nas roteirizações. O calendário abaixo estreita o período só deste relatório, sem afetar o resto do Dashboard</div>
+          </div>
+        </div>
+        <div class="dash-secbody-histveic" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <select id="dash-histveic-transp" onchange="dashFiltrarPlacasHistVeiculo()"
+              style="background:var(--surface);border:1px solid var(--border-dk);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:var(--text-2);min-width:180px;">
+              <option value="">Todas as transportadoras</option>
+            </select>
+            <select id="dash-histveic-placa" onchange="dashSelecionarVeiculoHistVeiculo(this.value)"
+              style="background:var(--surface);border:1px solid var(--border-dk);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:var(--text-2);min-width:220px;">
+              <option value="">Carregando placas...</option>
+            </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border-dk);">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);">Período</span>
+          <input type="date" id="dash-histveic-de"
+            style="background:var(--surface);border:1px solid var(--border-dk);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--text-2);">
+          <span style="font-size:11px;font-weight:700;color:var(--text-3);">até</span>
+          <input type="date" id="dash-histveic-ate"
+            style="background:var(--surface);border:1px solid var(--border-dk);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--text-2);">
+          <button class="btn btn-green btn-sm" style="font-weight:700;" onclick="dashBuscarHistoricoVeiculo()" title="Só consulta o Firestore quando você clicar aqui">🔍 Buscar</button>
+          <button class="btn btn-sm" style="font-weight:700;" onclick="dashLimparFiltroDataHistVeiculo()">Limpar</button>
+          <span style="flex:1;"></span>
+          <button class="btn btn-sm" style="font-weight:700;" onclick="dashExportarHistoricoVeiculoCSV()" title="Baixar esta tabela em CSV">⬇ CSV</button>
+          <button class="btn btn-sm" style="font-weight:700;" onclick="dashExportarHistoricoVeiculoXLSX()" title="Baixar esta tabela em Excel">⬇ Excel</button>
+        </div>
+        <div id="dash-histveic-tabela"><div style="color:var(--text-3);text-align:center;padding:24px;font-size:12px;font-weight:700;">Selecione um veículo e um período, depois clique em "Buscar".</div></div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-agenda')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">🗓️ Agenda de Fechamento <span id="dash-secbody-agenda-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-top:2px;">Em qual dia da semana cada cliente costuma comprar mais — olhando todo o histórico (não só o período selecionado acima). Atualiza junto com o "🔄 Sincronizar" no topo da tela.</div>
+          </div>
+        </div>
+        <div class="dash-secbody-agenda" style="display:none;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 14px;padding-top:12px;border-top:1px solid var(--border-dk);">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin-right:2px;">Mín. de pedidos nesse dia</span>
+          <div style="display:flex;gap:4px;background:rgba(0,0,0,.15);padding:3px;border-radius:9px;" title="Só mostra cliente que já comprou pelo menos essa quantidade de vezes NESTE dia da semana — filtra quem comprou um volume grande só uma vez">
+            <button class="dash-agenda-freq-tab" data-freq="1" onclick="dashAgendaSetFreqMinima(1)"
+              style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">1+</button>
+            <button class="dash-agenda-freq-tab active-rank" data-freq="2" onclick="dashAgendaSetFreqMinima(2)"
+              style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--pet-green,#b5e51d);color:#000;cursor:pointer;letter-spacing:.02em;white-space:nowrap;">2+</button>
+            <button class="dash-agenda-freq-tab" data-freq="3" onclick="dashAgendaSetFreqMinima(3)"
+              style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">3+</button>
+            <button class="dash-agenda-freq-tab" data-freq="5" onclick="dashAgendaSetFreqMinima(5)"
+              style="padding:6px 13px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:transparent;color:var(--text-2);cursor:pointer;letter-spacing:.02em;white-space:nowrap;">5+</button>
+          </div>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin:0 2px 0 10px;">Filtrar por</span>
+          <!-- Operação -->
+          <div style="position:relative;">
+            <button id="dash-agenda-operacao-btn" class="btn btn-sm" style="font-weight:700;position:relative;" onclick="dashAgendaTogglePainel('operacao')">
+              Operação <span id="dash-agenda-operacao-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;font-size:9.5px;font-weight:800;padding:1px 6px;margin-left:5px;"></span> ▾
+            </button>
+            <div id="dash-agenda-operacao-panel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:240px;overflow:hidden;flex-direction:column;">
+              <div style="padding:8px 10px;border-bottom:1px solid #D1D5DB;">
+                <input type="text" class="dash-agenda-search" placeholder="Buscar operação..." oninput="dashAgendaFiltrarLista('operacao', this.value)"
+                  style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;"/>
+              </div>
+              <div id="dash-agenda-operacao-list" style="max-height:240px;overflow-y:auto;padding:4px 0;"></div>
+              <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                <button onclick="dashAgendaSelecionarTodos('operacao', true)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Todos</button>
+                <button onclick="dashAgendaSelecionarTodos('operacao', false)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Limpar</button>
+                <button onclick="dashAgendaAplicarFiltro('operacao')" style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;">✓ Aplicar</button>
+              </div>
+            </div>
+          </div>
+          <!-- Produto -->
+          <div style="position:relative;">
+            <button id="dash-agenda-produto-btn" class="btn btn-sm" style="font-weight:700;position:relative;" onclick="dashAgendaTogglePainel('produto')">
+              Produto <span id="dash-agenda-produto-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;font-size:9.5px;font-weight:800;padding:1px 6px;margin-left:5px;"></span> ▾
+            </button>
+            <div id="dash-agenda-produto-panel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:260px;overflow:hidden;flex-direction:column;">
+              <div style="padding:8px 10px;border-bottom:1px solid #D1D5DB;">
+                <input type="text" class="dash-agenda-search" placeholder="Buscar produto..." oninput="dashAgendaFiltrarLista('produto', this.value)"
+                  style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;"/>
+              </div>
+              <div id="dash-agenda-produto-list" style="max-height:240px;overflow-y:auto;padding:4px 0;"></div>
+              <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                <button onclick="dashAgendaSelecionarTodos('produto', true)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Todos</button>
+                <button onclick="dashAgendaSelecionarTodos('produto', false)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Limpar</button>
+                <button onclick="dashAgendaAplicarFiltro('produto')" style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;">✓ Aplicar</button>
+              </div>
+            </div>
+          </div>
+          <!-- Transportadora -->
+          <div style="position:relative;">
+            <button id="dash-agenda-transp-btn" class="btn btn-sm" style="font-weight:700;position:relative;" onclick="dashAgendaTogglePainel('transp')">
+              Transportadora <span id="dash-agenda-transp-badge" style="display:none;background:#4F46E5;color:#fff;border-radius:99px;font-size:9.5px;font-weight:800;padding:1px 6px;margin-left:5px;"></span> ▾
+            </button>
+            <div id="dash-agenda-transp-panel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:500;background:#fff;border:1px solid #D1D5DB;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);width:240px;overflow:hidden;flex-direction:column;">
+              <div style="padding:8px 10px;border-bottom:1px solid #D1D5DB;">
+                <input type="text" class="dash-agenda-search" placeholder="Buscar transportadora..." oninput="dashAgendaFiltrarLista('transp', this.value)"
+                  style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;"/>
+              </div>
+              <div id="dash-agenda-transp-list" style="max-height:240px;overflow-y:auto;padding:4px 0;"></div>
+              <div style="padding:10px 14px;border-top:1px solid #D1D5DB;display:flex;gap:8px;background:#fff;">
+                <button onclick="dashAgendaSelecionarTodos('transp', true)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Todos</button>
+                <button onclick="dashAgendaSelecionarTodos('transp', false)" style="flex:1;font-size:11px;font-weight:600;padding:7px 4px;border:1px solid #D1D5DB;border-radius:7px;background:transparent;color:#374151;cursor:pointer;">Limpar</button>
+                <button onclick="dashAgendaAplicarFiltro('transp')" style="flex:2;font-size:12px;font-weight:700;padding:7px 4px;border:none;border-radius:7px;background:#4F46E5;color:#fff;cursor:pointer;">✓ Aplicar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="dash-agenda-fechamento-grid" style="display:grid;grid-template-columns:repeat(6,minmax(160px,1fr));gap:10px;overflow-x:auto;">
+          <div style="grid-column:1/-1;color:var(--text-3);text-align:center;padding:32px;font-size:12px;font-weight:700;">Clique em "🔄 Sincronizar" no topo da tela para montar a agenda a partir do histórico completo.</div>
+        </div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-balfrota')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">⚖️ Balanceamento de Frota <span id="dash-secbody-balfrota-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-top:2px;">Onde falta caminhão (e quanto), onde sobra, e recomendação de realocação — compara a capacidade acumulada da frota com a demanda real, por operação, no período carregado com o "🗓️ Período" no topo.</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;gap:8px;flex-shrink:0;">
+            <button class="btn btn-sm" onclick="dashToggleAliasesOperacao()" title="Unificar nomes que representam a mesma operação mas vêm escritos diferente (ex.: 'São Caetano' e 'São Caetano do Sul')">⚙️ Unificar nomes</button>
+            <button class="btn btn-sm btn-green" style="font-weight:700;" onclick="dashCarregarBalanceamentoFrota()" title="Cruza todos os sinais de novo pro período atualmente carregado">📊 Gerar Relatório</button>
+          </div>
+        </div>
+        <div class="dash-secbody-balfrota" style="display:none;">
+        <div id="dash-aliases-panel" style="display:none;margin:10px 0;padding:12px 14px;background:rgba(0,0,0,0.02);border:1px solid var(--border-dk);border-radius:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-bottom:8px;">OPERAÇÕES QUE SÃO A MESMA COISA (unifica na hora de gerar o relatório)</div>
+          <div id="dash-aliases-lista" style="margin-bottom:10px;"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="dash-alias-de" placeholder="Nome que aparece (ex.: São Caetano)" style="flex:1;min-width:180px;font-size:12px;padding:6px 8px;border:1px solid var(--border-dk);border-radius:6px;background:var(--surface);color:var(--text);"/>
+            <span style="font-size:12px;color:var(--text-3);">é a mesma que</span>
+            <input id="dash-alias-para" placeholder="Nome canônico (ex.: São Caetano do Sul)" style="flex:1;min-width:180px;font-size:12px;padding:6px 8px;border:1px solid var(--border-dk);border-radius:6px;background:var(--surface);color:var(--text);"/>
+            <button class="btn btn-sm btn-green" onclick="dashAdicionarAliasOperacaoUI()">+ Unificar</button>
+          </div>
+        </div>
+        <div id="dash-balanceamento-box" style="margin-top:10px;">
+          <div style="color:var(--text-3);text-align:center;padding:32px;font-size:12px;font-weight:700;">Clique em "📊 Gerar Relatório" pra cruzar demanda, capacidade da frota, ocupação, utilização e jornada do período carregado.</div>
+        </div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border-dk);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;cursor:pointer;" onclick="dashToggleSecaoDash('dash-secbody-dev')">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);">🔄 Devoluções e Reentregas <span id="dash-secbody-dev-seta" style="font-size:12px;color:var(--text-3);">▼</span></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-top:2px;">Ocorrências registradas no Histórico (⚠️ Registrar, no detalhe de cada roteirização) — no período carregado com o "🗓️ Período" no topo, respeitando Cliente/Operação/Transportadora.</div>
+          </div>
+          <div onclick="event.stopPropagation()" style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
+            <input id="dash-dev-filtro-pedido" placeholder="Filtrar por pedido (id ou SAP)..." onkeydown="if(event.key==='Enter')dashCarregarDevolucoes()" style="font-size:12px;padding:7px 10px;border:1px solid var(--border-dk);border-radius:8px;background:var(--surface);color:var(--text);width:190px;"/>
+            <button class="btn btn-sm" onclick="dashExportarDevolucoes()" title="Exporta as ocorrências do relatório atual em Excel">📥 Exportar Excel</button>
+            <button class="btn btn-sm" onclick="dashExportarDevolucoesPDF()" title="Exporta o relatório atual (KPIs, gráficos e tabela) em PDF, com a identidade visual NEXTA">📄 Exportar PDF</button>
+            <button class="btn btn-sm btn-green" style="font-weight:700;" onclick="dashCarregarDevolucoes()" title="Busca de novo as ocorrências registradas pro período atualmente carregado, aplicando o filtro de pedido se preenchido">📊 Gerar Relatório</button>
+          </div>
+        </div>
+        <div class="dash-secbody-dev" style="display:none;">
+        <div id="dash-devolucoes-box" style="margin-top:10px;">
+          <div style="color:var(--text-3);text-align:center;padding:32px;font-size:12px;font-weight:700;">Clique em "📊 Gerar Relatório" pra buscar as ocorrências registradas no período carregado.</div>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ── FRETE ─────────────────────────────────────────────────────────────── -->
+  <div id="tab-frete" class="page">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+      <div>
+        <div class="sec-title" style="margin:0;">Calculadora de Frete</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Custos de frete por contrato, spot e histórico de viagens</div>
+      </div>
+      <button class="btn btn-sm" onclick="abrirSimuladorFrete()" style="background:#EEF2FF;color:#3730A3;border-color:#C7D2FE;font-weight:700;" title="Simula o custo de uma rota nova (ainda não roteirizada) antes de decidir">🧮 Simular Rota Nova</button>
+    </div>
+
+    <!-- Contratos de frete -->
+    <div style="border:1px solid var(--border-dk);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.03);border-bottom:1px solid var(--border-dk);">
+        <span style="font-size:12px;font-weight:700;color:var(--text);cursor:pointer;user-select:none;" onclick="toggleContratosPlacaTabela()">
+          Contratos por placa <span id="contratos-placa-seta" style="font-size:10px;color:var(--text-3);">▼</span>
+        </span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm" onclick="freteAbrirRestaurarBackup()" title="Recuperar contratos a partir de um backup salvo no Histórico">↺ Restaurar de backup</button>
+          <button class="btn btn-green btn-sm" onclick="freteAdicionarContrato()">+ Adicionar</button>
+        </div>
+      </div>
+      <div id="contratos-placa-conteudo" style="overflow-x:auto;display:none;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px;">
+          <thead><tr style="background:rgba(0,0,0,0.02);">
+            <th style="padding:8px;text-align:left;font-size:11px;color:var(--text-3);">PLACA</th>
+            <th style="padding:8px;text-align:left;font-size:11px;color:var(--text-3);">TRANSPORTADORA</th>
+            <th style="padding:8px;text-align:left;font-size:11px;color:var(--text-3);">TIPO</th>
+            <th style="padding:8px;text-align:left;font-size:11px;color:var(--text-3);">KM</th>
+            <th style="padding:8px;text-align:right;font-size:11px;color:var(--text-3);">FIXO (R$)</th>
+            <th style="padding:8px;text-align:right;font-size:11px;color:var(--text-3);">R$/KM</th>
+            <th style="padding:8px;text-align:right;font-size:11px;color:var(--text-3);">R$/M³</th>
+            <th style="padding:8px;text-align:right;font-size:11px;color:var(--text-3);">DIÁRIA (R$)</th>
+            <th style="padding:8px;text-align:center;font-size:11px;color:var(--text-3);"></th>
+          </tr></thead>
+          <tbody id="frete-contratos-body">
+            <tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">Nenhum contrato cadastrado. Clique em "+ Adicionar" para começar.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Rotas Spot -->
+    <div style="border:1px solid var(--border-dk);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.03);border-bottom:1px solid var(--border-dk);">
+        <span style="font-size:12px;font-weight:700;color:var(--text);">Rotas spot (R$/m³)</span>
+        <button class="btn btn-green btn-sm" onclick="freteAdicionarSpot()">+ Adicionar</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
+          <thead><tr style="background:rgba(0,0,0,0.02);">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text-3);">ORIGEM</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text-3);">DESTINO</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text-3);">TRANSPORTADORA</th>
+            <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text-3);">VALOR (R$/m³)</th>
+            <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text-3);"></th>
+          </tr></thead>
+          <tbody id="frete-spot-body">
+            <tr><td colspan="5" style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;">Nenhuma rota spot cadastrada.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Resultado calculado -->
+    <div style="border:1px solid var(--border-dk);border-radius:10px;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.03);border-bottom:1px solid var(--border-dk);flex-wrap:wrap;gap:10px;">
+        <span style="font-size:12px;font-weight:700;color:var(--text);">Custo calculado (histórico)</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:10px;color:var(--text-3);font-weight:600;letter-spacing:.04em;">VISTA</span>
+          <button id="frete-btn-viagem" onclick="freteSetVista('viagem')" style="font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;background:var(--pet-green);color:#000;font-weight:700;border:none;">Viagem</button>
+          <button id="frete-btn-dia" onclick="freteSetVista('dia')" style="font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;background:transparent;color:var(--text-3);border:1px solid var(--border-dk);">Dia</button>
+          <button id="frete-btn-semana" onclick="freteSetVista('semana')" style="font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;background:transparent;color:var(--text-3);border:1px solid var(--border-dk);">Semana</button>
+          <button id="frete-btn-mes" onclick="freteSetVista('mes')" style="font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;background:transparent;color:var(--text-3);border:1px solid var(--border-dk);">Mês</button>
+          <button id="frete-btn-periodo" onclick="freteSetVista('periodo')" style="font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;background:transparent;color:var(--text-3);border:1px solid var(--border-dk);">Período</button>
+          <span style="width:1px;height:16px;background:var(--border-dk);margin:0 2px;"></span>
+          <input type="date" id="frete-de" onchange="freteCalcular()" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-dk);border-radius:6px;background:var(--surface);color:var(--text);"/>
+          <span style="font-size:11px;color:var(--text-3);">até</span>
+          <input type="date" id="frete-ate" onchange="freteCalcular()" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-dk);border-radius:6px;background:var(--surface);color:var(--text);"/>
+          <button class="btn btn-sm" onclick="freteCalcular()">Calcular</button>
+        </div>
+      </div>
+      <div id="frete-resumo-total" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px;border-bottom:1px solid var(--border-dk);"></div>
+      <div id="frete-resultado" style="overflow-x:auto;">
+        <div style="padding:32px;text-align:center;color:var(--text-3);font-size:13px;">Selecione a pasta do Histórico na aba Histórico para carregar os dados.</div>
+      </div>
+    </div>
+  </div>
+  <!-- ── HISTORICO ─────────────────────────────────────────────────────────── -->
+  <div id="tab-historico" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="sec-title" style="margin:0;">Historico de roteirizacoes</div>
+      <div style="display:flex;gap:6px;">
+        <input type="file" id="herrlog-cruzar-input" accept=".xlsx,.xls" style="display:none;" onchange="cruzarHerrlogComPedidos(this)"/>
+        <button class="btn btn-sm" onclick="document.getElementById('herrlog-cruzar-input').click()" title="Escolha o export da Herrlog (tempos reais por viagem): devolve o mesmo arquivo com nº do pedido (Ordem SAP), produto e volume de cada parada">🔗 Cruzar Herrlog</button>
+        <button class="btn btn-sm" onclick="carregarListaHistorico()">Atualizar lista</button>
+        <button class="btn btn-green btn-sm" onclick="selecionarPastaHistorico()">Selecionar pasta</button>
+      </div>
+    </div>
+    <div class="hist-folder-bar">
+      <span style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-2);flex-shrink:0;">Pasta</span>
+      <div class="hist-folder-path" id="hist-pasta-path">Nenhuma pasta selecionada</div>
+      <button class="btn btn-sm" onclick="selecionarPastaHistorico()">Escolher...</button>
+    </div>
+    <div class="hist-folder-bar" style="flex-wrap:wrap;row-gap:8px;">
+      <span style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-2);flex-shrink:0;">Entrega</span>
+      <input type="date" id="hist-filtro-de" class="hist-folder-path" style="flex:0 0 150px;cursor:text;" onchange="aplicarFiltroHistoricoData()">
+      <span style="font-size:11px;color:var(--text-3);flex-shrink:0;">até</span>
+      <input type="date" id="hist-filtro-ate" class="hist-folder-path" style="flex:0 0 150px;cursor:text;" onchange="aplicarFiltroHistoricoData()">
+      <button class="btn btn-sm" onclick="limparFiltroHistoricoData()">Limpar filtro</button>
+      <span id="hist-filtro-contagem" style="font-size:11px;color:var(--text-3);"></span>
+      <div id="hist-filtro-totais" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;"></div>
+    </div>
+    <div id="historico-list">
+      <div class="empty">Selecione uma pasta para visualizar o histórico de roteirizações.</div>
+    </div>
+  </div>
+  <div id="tab-aprendizado" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="sec-title" style="margin:0;">🧠 Aprendizado do Otimizador</div>
+      <button class="btn btn-sm" onclick="renderAprendizado()">Atualizar</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;max-width:760px;">
+      Toda vez que a roteirização automática não consegue consolidar um pedido num veículo que já está em uso,
+      o motivo fica registrado aqui (compartilhado entre todas as roteirizações). Isso não é uma IA que decide
+      sozinha — é um raio-x acumulado dos motivos reais, pra você corrigir cadastro (terminal, compartimentação,
+      janela) onde o padrão se repetir, e algumas sugestões pontuais de ajuste fino que você aprova antes de aplicar.
+    </div>
+    <div id="aprendizado-conteudo">
+      <div class="empty">Carregando...</div>
+    </div>
+  </div>
+  <div id="tab-mapa" class="page">
+    <div class="sec-title">Resumo Operação</div>
+    <div id="mapa-geral-kpis-pedidos" class="mapa-geral-kpis"></div>
+    <div class="filter-bar">
+      <div class="field" style="flex:2;min-width:200px;">
+        <label>Roteirização</label>
+        <select class="sel-roteirizacao" onchange="onMudarRoteirizacao(this.value)">
+          <option value="">— Atual —</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:260px;">
+        <label>Transportadora</label>
+        <select id="f-map-transp" onchange="onFiltroMapaTransportadoraChange()">
+          <option value="">Todas transportadoras</option>
+        </select>
+      </div>
+      <div class="field term-filter-wrap" style="min-width:200px;">
+        <label>Terminal</label>
+        <button id="term-filter-btn" class="term-filter-btn" onclick="toggleTermFiltroPanel(event)" type="button">
+          <span id="term-filter-label">Todos os terminais</span>
+          <span style="font-size:10px;color:var(--text-3);">▾</span>
+        </button>
+        <div id="term-filter-panel" class="term-filter-panel">
+          <!-- preenchido por renderFiltroTerminaisMapa() -->
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="limparFiltros('mapa'); filtroMapaTerminais.clear(); renderFiltroTerminaisMapa(); renderMapaGeral();">Limpar</button>
+      <button class="btn btn-sm" onclick="telaoPublicarMes(this)" title="Republica no telão da sala de operação a programação de todas as datas de entrega deste mês e do anterior (já acontece sozinho a cada salvamento)" style="white-space:nowrap;">📺 Atualizar telão</button>
+    </div>
+    <div id="mapa-geral-kpis-placas" class="mapa-geral-kpis"></div>
+    <div id="mapa-geral-top" class="mapa-geral-top">Execute a otimização para visualizar as rotas consolidadas.</div>
+    <div class="mapa-geral-layout">
+      <div id="mapa-geral-mapa" class="mapa-geral"></div>
+      <div id="mapa-geral-legenda" class="mapa-geral-legenda"></div>
+    </div>
+  </div>
+  <!-- Dropdown global de troca de placa -->
+  <div id="placa-dropdown-menu" style="display:none;position:fixed;z-index:9990;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:220px;max-height:280px;overflow-y:auto;"></div>
+  <!-- ── MODAL QUEBRAR PEDIDO ──────────────────────────────────────────────── -->
+  <div id="modal-quebra-pedido" class="modal-backdrop" onclick="fecharQuebraPedido(event)">
+    <div class="modal-card" style="max-width:520px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">⌀ Quebrar pedido</div>
+        <button class="btn btn-sm btn-danger" onclick="fecharQuebraPedido()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;line-height:1.6;">
+          Selecione os produtos que formarão a <strong>segunda carga</strong>. Os demais permanecem na primeira.
+        </div>
+        <div id="quebra-pedido-info" style="font-family:var(--font-cond);font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text);"></div>
+        <div id="quebra-produtos-list" style="margin-bottom:14px;"></div>
+        <div id="quebra-preview" class="alert alert-info" style="display:none;margin-bottom:14px;font-size:11.5px;line-height:1.7;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" onclick="fecharQuebraPedido()">Cancelar</button>
+          <button class="btn btn-green" id="btn-confirmar-quebra" disabled onclick="confirmarQuebraPedido()">Confirmar quebra</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL RESTAURAR BACKUP DE FRETE ───────────────────────────────────── -->
+  <!-- ── MODAL FOTO DO CLIENTE (LIGHTBOX) ─────────────────────────────────── -->
+  <div id="modal-foto-cliente" class="modal-backdrop" onclick="fecharFotoClienteExpandida(event)">
+    <div onclick="event.stopPropagation()" style="max-width:92vw;max-height:88vh;display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <img id="modal-foto-cliente-img" src="" style="max-width:92vw;max-height:80vh;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.4);"/>
+      <button class="btn btn-sm btn-danger" onclick="fecharFotoClienteExpandida()">Fechar</button>
+    </div>
+  </div>
+  <!-- ── MODAL SIMULADOR DE FRETE (dimensionamento de rota nova) ──────────── -->
+  <div id="modal-simulador-frete" class="modal-backdrop" onclick="fecharSimuladorFrete(event)">
+    <div onclick="event.stopPropagation()" style="background:var(--surface,#fff);border-radius:12px;width:min(96vw,1180px);max-height:92vh;overflow-y:auto;padding:22px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="font-family:var(--font-cond);font-weight:700;font-size:19px;">🧮 Simulador de Rota Nova</div>
+        <button class="btn btn-sm" onclick="fecharSimuladorFrete()">Fechar</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:16px;">
+        Dimensiona uma rota antes de ela existir de verdade: quantos veículos ela precisa e quanto custaria por m³, com base num volume mensal esperado. Tempo de carga vem do terminal escolhido, tempo de descarga vem do cadastro do cliente, e a distância é calculada pela rota real (mesma API de rotas do resto do sistema, perfil de caminhão) — se algum estiver errado, corrige lá no cadastro.
+      </div>
+
+      <!-- Formulário de novo cenário -->
+      <div style="border:1px solid var(--border-dk);border-radius:10px;padding:14px 16px;margin-bottom:16px;background:rgba(0,0,0,0.015);">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;">Novo cenário</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:10px;">
+          <div class="field">
+            <label>Cliente</label>
+            <input id="sim-cliente" list="sim-cliente-lista" placeholder="Nome do cliente..." oninput="simFretePreencherCliente()"/>
+            <datalist id="sim-cliente-lista"></datalist>
+          </div>
+          <div class="field">
+            <label>Código SAP</label>
+            <input id="sim-sap" placeholder="Ex.: 1234567"/>
+          </div>
+          <div class="field">
+            <label>Origem (terminal)</label>
+            <select id="sim-origem" onchange="simFreteAoTrocarOrigemOuCliente()">
+              <option value="">Selecione...</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Destino (cidade)</label>
+            <div style="display:flex;gap:4px;">
+              <input id="sim-destino-cidade" placeholder="Preenche com o cliente, ou digite" style="flex:1;min-width:0;"/>
+              <button type="button" class="btn btn-sm" onclick="simFreteBuscarDistanciaPorCidade()" title="Sem cadastro do cliente? Digite a cidade (ex.: 'Contagem, MG') e busca a distância por aqui" style="flex-shrink:0;padding:0 10px;">🔍</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Distância (km, ida)</label>
+            <input id="sim-distancia" type="number" min="0" step="0.1" placeholder="Calcula pela rota real"/>
+          </div>
+          <input type="hidden" id="sim-destino-lat"/>
+          <input type="hidden" id="sim-destino-lon"/>
+          <div class="field">
+            <label>Volume mensal (m³)</label>
+            <input id="sim-volume" type="number" min="0" step="1" placeholder="Ex.: 3000"/>
+          </div>
+          <div class="field">
+            <label>Capacidade veículo (m³)</label>
+            <input id="sim-capacidade" type="number" min="1" step="1" value="20"/>
+          </div>
+          <div class="field">
+            <label>Jornada (h/dia)</label>
+            <input id="sim-jornada" type="number" min="1" step="0.5" value="12"/>
+          </div>
+          <div class="field">
+            <label>Vel. carregado (km/h)</label>
+            <input id="sim-vel-carregado" type="number" min="1" step="1" value="45"/>
+          </div>
+          <div class="field">
+            <label>Vel. vazio (km/h)</label>
+            <input id="sim-vel-vazio" type="number" min="1" step="1" value="55"/>
+          </div>
+          <div class="field">
+            <label>Tempo de carga (min)</label>
+            <input id="sim-tempo-carga" type="number" min="0" step="1" placeholder="Auto (terminal)"/>
+          </div>
+          <div class="field">
+            <label>Tempo de descarga (min)</label>
+            <input id="sim-tempo-descarga" type="number" min="0" step="1" placeholder="Auto (cliente)"/>
+          </div>
+          <div class="field">
+            <label>Manutenção (%)</label>
+            <input id="sim-manutencao" type="number" min="0" step="0.5" value="3"/>
+          </div>
+          <div class="field">
+            <label>Ociosidade (%)</label>
+            <input id="sim-ociosidade" type="number" min="0" step="0.5" value="5"/>
+          </div>
+          <div class="field">
+            <label>Dias úteis/mês</label>
+            <input id="sim-dias-mes" type="number" min="1" step="1" value="26"/>
+          </div>
+          <div class="field">
+            <label>Custo Fixo (R$/mês/veíc.)</label>
+            <input id="sim-custo-fixo" type="number" min="0" step="10" placeholder="Ex.: 38000"/>
+          </div>
+          <div class="field">
+            <label>Custo Variável (R$/km)</label>
+            <input id="sim-custo-variavel" type="number" min="0" step="0.01" placeholder="Ex.: 3.86"/>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn btn-green btn-sm" onclick="simFreteCalcularEAdicionar()">+ Calcular e Adicionar Cenário</button>
+        </div>
+      </div>
+
+      <!-- Comparação dos cenários desta sessão -->
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:18px 0 8px;">Cenários pra comparar</div>
+      <div id="sim-frete-tabela" style="overflow-x:auto;border:1px solid var(--border-dk);border-radius:10px;">
+        <div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">Nenhum cenário ainda — preenche o formulário acima e clica em "Calcular e Adicionar".</div>
+      </div>
+
+      <!-- Histórico salvo (por cliente) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 8px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);">Histórico salvo deste cliente</div>
+        <button class="btn btn-sm" onclick="simFreteBuscarHistoricoCliente()">🔍 Buscar histórico</button>
+      </div>
+      <div id="sim-frete-historico" style="overflow-x:auto;border:1px solid var(--border-dk);border-radius:10px;">
+        <div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px;">Digite um cliente acima e clique em "Buscar histórico" pra ver simulações salvas anteriormente pra ele.</div>
+      </div>
+    </div>
+  </div>
+  <div id="modal-frete-restaurar" class="modal-backdrop" onclick="freteFecharRestaurarBackup(event)">
+    <div class="modal-card" style="max-width:520px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">↺ Restaurar contratos de frete</div>
+        <button class="btn btn-sm btn-danger" onclick="freteFecharRestaurarBackup()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px;line-height:1.6;">
+          Escolha uma roteirização salva no Histórico. Os contratos de frete e rotas spot gravados
+          naquele momento serão restaurados, substituindo os cadastrados agora neste navegador.
+        </div>
+        <select id="frete-restaurar-select" style="width:100%;font-size:12px;border:1px solid var(--border-dk);border-radius:6px;padding:6px 8px;background:var(--surface);color:var(--text);margin-bottom:10px;">
+          <option value="">Carregando backups...</option>
+        </select>
+        <div id="frete-restaurar-info" style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" onclick="freteFecharRestaurarBackup()">Cancelar</button>
+          <button class="btn btn-green" onclick="freteConfirmarRestaurarBackup()">Restaurar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL DETALHE DE PEDIDOS DO HISTÓRICO ────────────────────────────── -->
+  <div id="modal-hist-detalhe" class="modal-backdrop" onclick="fecharDetalheHistorico(event)">
+    <div class="modal-card" style="max-width:640px;width:96vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--text-3);text-transform:uppercase;">Outbound</span>
+          <div id="hist-detalhe-titulo" style="font-family:var(--font-cond);font-size:16px;font-weight:700;">Detalhe da roteirização</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" onclick="exportarHerrlogHistorico(_histDetalheFilenameAtual)" title="Reexportar o mesmo Excel do Envio Transportadora a partir deste snapshot salvo — só baixa o arquivo de novo, não altera o histórico">📊 Exportar Herrlog</button>
+          <button class="btn btn-sm btn-danger" onclick="fecharDetalheHistorico()">Fechar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="hist-detalhe-body"><div class="empty">Carregando...</div></div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL REGISTRO DE DEVOLUÇÃO / REENTREGA ─────────────────────────── -->
+  <div id="modal-registro-devolucao" class="modal-backdrop" onclick="fecharRegistroDevolucao(event)">
+    <div class="modal-card" style="max-width:520px;width:94vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">⚠️ Registrar devolução / reentrega</div>
+        <button class="btn btn-sm btn-danger" onclick="fecharRegistroDevolucao()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="dev-ctx-idx"/>
+        <div id="dev-info" style="font-size:12px;color:var(--text-2);background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 12px;margin-bottom:14px;"></div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Tipo</label>
+          <select id="dev-tipo" onchange="devAtualizarCamposCondicionais()">
+            <option value="devolucao_total">Devolução total</option>
+            <option value="devolucao_parcial">Devolução parcial</option>
+            <option value="reentrega">Reentrega</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Motivo</label>
+          <select id="dev-motivo" onchange="devAtualizarCamposCondicionais()">
+            <option value="">Selecione...</option>
+            <option>Recebedor ausente</option>
+            <option>Pedido incorreto</option>
+            <option>Volume abaixo da seta</option>
+            <option>Produto fora de especificação</option>
+            <option>Estabelecimento fechado</option>
+            <option>Falta de espaço para produto</option>
+            <option>Outro</option>
+          </select>
+          <input id="dev-motivo-outro" placeholder="Descreve o motivo..." style="display:none;margin-top:6px;"/>
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Produtos dessa entrega — desmarque o que não foi afetado, ajuste o volume pra devolução parcial</label>
+          <div id="dev-produtos-lista" style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;max-height:180px;overflow-y:auto;"></div>
+          <div style="text-align:right;font-size:12.5px;font-weight:700;margin-top:6px;">Total selecionado: <span id="dev-volume-total">0.0</span> m³</div>
+        </div>
+        <div id="dev-bloco-reentrega" style="display:none;border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;">
+          <div class="field" style="margin-bottom:10px;">
+            <label>Onde vai ser reentregue?</label>
+            <select id="dev-reentrega-local" onchange="devAtualizarCamposCondicionais()">
+              <option value="mesma_viagem">Na mesma viagem (outra parada do mesmo veículo)</option>
+              <option value="outra_viagem">Em outra viagem</option>
+            </select>
+          </div>
+          <div id="dev-bloco-outra-viagem" style="display:none;margin-bottom:10px;">
+            <div class="field">
+              <label>Número da outra viagem (registro)</label>
+              <input id="dev-reentrega-viagem-codigo" placeholder="Ex.: P0926392"/>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:10px;">
+            <label>Nova data de entrega (se já souber)</label>
+            <input id="dev-nova-data" type="date"/>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:14px;">
+          <label>Observação</label>
+          <textarea id="dev-observacao" rows="3" placeholder="Detalhes adicionais (opcional)"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn btn-green" onclick="salvarRegistroDevolucao()">Salvar ocorrência</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL DETALHE DE OCORRÊNCIA(S) — a partir do selo no card do Histórico ── -->
+  <div id="modal-ocorrencias-arquivo" class="modal-backdrop" onclick="fecharOcorrenciasArquivo(event)">
+    <div class="modal-card" style="max-width:560px;width:94vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">⚠️ Ocorrências registradas</div>
+        <button class="btn btn-sm btn-danger" onclick="fecharOcorrenciasArquivo()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <div id="ocorrencias-arquivo-body"><div class="empty">Carregando...</div></div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL EDITAR VOLUME DE PRODUTOS DE UMA ENTREGA (Histórico) ─────────── -->
+  <div id="modal-editar-volumes" class="modal-backdrop" onclick="fecharEditarVolumesParada(event)">
+    <div class="modal-card" style="max-width:480px;width:94vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">✏️ Editar volume dos produtos</div>
+        <button class="btn btn-sm btn-danger" onclick="fecharEditarVolumesParada()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edvol-ctx-idx"/>
+        <div id="edvol-info" style="font-size:12px;color:var(--text-2);background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 12px;margin-bottom:14px;"></div>
+        <div id="edvol-produtos-lista" style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;max-height:220px;overflow-y:auto;"></div>
+        <div style="text-align:right;font-size:12.5px;font-weight:700;margin-top:6px;">Novo total: <span id="edvol-total">0.0</span> m³</div>
+        <div id="edvol-aviso-capacidade" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:11.5px;"></div>
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:10px;">Só essa entrega muda — o resto da viagem (outros clientes, outros veículos) fica intacto. Salva como nova revisão do arquivo.</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+          <button class="btn btn-green" onclick="salvarEdicaoVolumesParada()">Salvar edição</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ── MODAL INCLUIR PEDIDO NUMA VIAGEM JÁ SALVA (Histórico) ─────────────── -->
+  <div id="modal-incluir-pedido" class="modal-backdrop" onclick="fecharIncluirPedidoViagem(event)">
+    <div class="modal-card" style="max-width:560px;width:94vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="font-family:var(--font-cond);font-size:16px;font-weight:700;">➕ Incluir pedido na viagem</div>
+        <button class="btn btn-sm btn-danger" onclick="fecharIncluirPedidoViagem()">Fechar</button>
+      </div>
+      <div class="modal-body">
+        <div id="incped-info" style="font-size:12px;color:var(--text-2);background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 12px;margin-bottom:12px;"></div>
+        <input type="text" id="incped-busca" placeholder="Buscar por cliente, SAP, cidade, terminal ou Ordem SAP..." oninput="_incpedRenderCandidatos()" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:7px 10px;margin-bottom:8px;"/>
+        <div id="incped-lista" style="border:1px solid var(--border);border-radius:8px;padding:0 8px;max-height:240px;overflow-y:auto;"></div>
+        <div id="incped-produtos-box" style="display:none;margin-top:12px;">
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px;">Produtos a incluir</div>
+          <div id="incped-produtos-lista" style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;max-height:180px;overflow-y:auto;"></div>
+          <div style="text-align:right;font-size:12.5px;font-weight:700;margin-top:6px;">Total a incluir: <span id="incped-total">0.0</span> m³</div>
+        </div>
+        <div id="incped-aviso" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:11.5px;line-height:1.45;"></div>
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:10px;">A entrega entra no fim da viagem, sem recalcular rota nem horários. O km real da viagem é descartado e volta a ser calculado no próximo recálculo em lote do Dashboard. Salva como nova revisão do arquivo.</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+          <button class="btn btn-green" onclick="salvarIncluirPedidoViagem()">Incluir na viagem</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="modal-viagem" class="modal-backdrop" onclick="fecharModalViagem(event)">
+    <div class="modal-card" style="max-width:860px;width:98vw;">
+      <div class="modal-head">
+        <div id="mv-titulo" style="font-family:var(--font-cond);font-size:18px;font-weight:700;letter-spacing:0.04em;">Mapa da viagem</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <span id="mv-dist-total" style="font-size:12px;font-weight:600;color:var(--accent);display:none;background:var(--accent-bg);border:0.5px solid var(--accent-border);padding:3px 10px;border-radius:20px;">📏 — km</span>
+          <span id="mv-vias-badge" style="display:none;font-size:11px;font-weight:600;color:#818CF8;background:rgba(79,70,229,0.12);border:1px solid rgba(79,70,229,0.3);padding:3px 10px;border-radius:20px;">0 via(s)</span>
+          <button class="btn btn-sm" onclick="mvResetarRota()" title="Remove todas as vias e restaura a rota original">↺ Resetar rota</button>
+          <button class="btn btn-sm" onclick="mvCompartilharGoogleMaps()" title="Abrir rota ajustada no Google Maps para compartilhar com motorista">📤 Compartilhar</button>
+          <button class="btn btn-sm btn-danger" onclick="fecharModalViagem()">Fechar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="mv-custo" style="margin-bottom:8px;background:#F8FAFC;border:1px solid #D1D5DB;border-radius:8px;padding:8px 12px;"></div>
+        <div id="mv-resumo" class="alert alert-info" style="margin-bottom:8px;">-</div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;background:rgba(79,70,229,0.07);border:1px solid rgba(79,70,229,0.2);border-radius:7px;padding:7px 12px;">
+          🖱 <strong>Clique e arraste qualquer ponto da linha verde</strong> para desviar o trajeto por outra estrada. O km é recalculado automaticamente. Clique nos marcadores ◆ de via para removê-los.
+        </div>
+        <div id="mv-mapa" class="mini-map" style="height:420px;cursor:default;"></div>
+        <div id="mv-lista" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<div class="toast" id="toast">✓ <span id="toast-msg"></span></div>
+  <div style="background:var(--mid);border-top:1px solid rgba(200,240,50,.08);padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:'DM Sans',sans-serif;">
+    <div style="font-size:11px;color:rgba(228,242,200,.25);letter-spacing:.04em;">
+      Desenvolvido por <span style="color:rgba(200,240,50,.45);font-weight:500;">Natanael Lopes Pires</span> &nbsp;·&nbsp; NEXTA Gestão de Frota
+    </div>
+    <div style="font-size:11px;color:rgba(228,242,200,.22);font-style:italic;text-align:right;max-width:420px;line-height:1.6;letter-spacing:.02em;">
+      💚 <span style="color:rgba(200,240,50,.35);">"Sentimento de dono, de uma equipe que se realiza com as conquistas."</span>
+    </div>
+  </div>
+<script defer src="assets/nexta-frota-roteirizador.js?v=fe59d7a0"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script defer src="assets/nexta-frota-dashboard.js?v=2c04481a"></script>
+<script defer src="assets/nexta-frota-sobdemanda.js?v=1"></script>
 </body>
 </html>
