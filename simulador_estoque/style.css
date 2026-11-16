@@ -416,3 +416,6 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 .filtro-deposito{flex:1 1 300px}.filtro-deposito .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 .filtro-product{flex:1 1 300px}.filtro-product .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:700px){.filtros-grade{gap:14px}.filtro-bloco{flex:1 1 100%}.filtro-cidade .chips{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-deposito .chips,.filtro-product .chips{grid-template-columns:repeat(2,minmax(0,1fr))}.filtro-empresa .chips{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Politica acima da capacidade do tanque: so informativa (2026-11-16) */
+.politica-acima-cap{color:#FBBF24;font-size:.85em;font-weight:400}

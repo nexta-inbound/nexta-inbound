@@ -707,8 +707,11 @@ function chart(result,original,offsets){
  const lastro=Math.max(state.lastro??0,0);
  const movValores=movSeries.flatMap(([,,,f])=>offsets.map(f)).filter(v=>v!=null);
  // Sem linha de fechamento/cenario original (usuaria, 2026-10-09: "n precisa disso"): escala so' pelas barras e linhas.
+ // Politica acima da capacidade do tanque fica so' informativa (usuaria, 2026-11-16: "quando a capacidade for
+ // menor que os dados da politica de estoques, eu nao quero que o grafico desconfigure"): nao entra na escala
+ // nem vira linha; continua no popup do dia com a marca "acima da capacidade".
  const values=result.map(x=>x.opening).concat(offsets.map(i=>topoPilha(result,i)),
-  parameters.slice(1).map(([k])=>state[k]).filter(v=>v!==null),movValores,[0]);
+  parameters.slice(1).filter(([k])=>!politicaAcimaDaCapacidade(k)).map(([k])=>state[k]).filter(v=>v!==null),movValores,[0]);
  const hi=Math.max(...values),span=Math.max(hi,1);
  const y=v=>T+(hi+span*.1-Math.max(v,0))/(span*1.2)*(H-T-B);
  const today=simulationToday();
@@ -766,7 +769,7 @@ function chart(result,original,offsets){
  }
  // Linhas de politica (sem o lastro, que ja' e' a faixa laranja da barra).
  let politica='';
- for(const [k,cor,traco,nome] of [['min','#FF4D4D','3 4','Estoque mínimo'],['mid','#9CA3AF','3 4','Estoque médio'],['max','#4CAF1F','3 4','Estoque máximo'],['capacity','#38BDF8','','Capacidade']])if(state[k]!==null)politica+=`<path d="M${L} ${y(state[k])}H${fim}" stroke="${cor}" stroke-width="${k==='capacity'?2:1.5}" stroke-dasharray="${traco}"><title>${nome}: ${fmt(state[k])} m³</title></path>`;
+ for(const [k,cor,traco,nome] of [['min','#FF4D4D','3 4','Estoque mínimo'],['mid','#9CA3AF','3 4','Estoque médio'],['max','#4CAF1F','3 4','Estoque máximo'],['capacity','#38BDF8','','Capacidade']])if(state[k]!==null&&!politicaAcimaDaCapacidade(k))politica+=`<path d="M${L} ${y(state[k])}H${fim}" stroke="${cor}" stroke-width="${k==='capacity'?2:1.5}" stroke-dasharray="${traco}"><title>${nome}: ${fmt(state[k])} m³</title></path>`;
  // Linhas de venda/Disp. MIS por cima das barras.
  let linhas='';
  for(const [,nome,cor,valorEm] of movSeries.filter(m=>!ENTRADAS_BLOCO.includes(m[0]))){
@@ -799,7 +802,7 @@ function popupGrafico(i){
  const semanaHtml='';
  // Politica de estoque no popup (pedido da usuaria, 2026-10-16): mesmos valores das linhas tracejadas do grafico.
  const politicaPopup=[['Lastro mínimo','lastro'],['Estoque mínimo','min'],['Estoque médio','mid'],['Estoque máximo','max'],['Capacidade','capacity']].filter(([,k])=>state[k]!=null);
- const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³</dd></div>`).join('')}</dl>`:'';
+ const politicaHtml=politicaPopup.length?`<p><strong>Política de estoque</strong></p><dl class="valores">${politicaPopup.map(([n,k])=>`<div><dt>${esc(n)}</dt><dd>${fmt(state[k])} m³${politicaAcimaDaCapacidade(k)?' <span class="politica-acima-cap">(acima da capacidade · só informativo)</span>':''}</dd></div>`).join('')}</dl>`:'';
  const viagens=viagensDoDia(i).filter(v=>v.grupo!=='programado');
  // No botao LE as transferencias entram no MESMO bloco das viagens (usuaria, 2026-10-21: "unificar as
  // transferencias junto, no mesmo bloco, nao separe"); nos outros botoes continuam na secao propria.
@@ -872,6 +875,8 @@ $('reset-tabela').onclick=restaurarDaFonte;
 // Capacidade = planilha de tancagem (0 = fora da planilha, venda no bico); a politica so' entra se o
 // snapshot for antigo e nao trouxer capacidadeFisica.
 function capacidadeDoTanque(){return record?.capacidadeFisica??state?.capacity??null;}
+// Valor da politica (lastro/min/medio/max) maior que a capacidade do tanque: so' informativo no grafico.
+function politicaAcimaDaCapacidade(k){if(k==='capacity'||k==='opening')return false;const cap=capacidadeDoTanque(),v=state?.[k];return cap>0&&v!=null&&v>cap;}
 // Tres objetivos de cadencia (pedido da usuaria, 2026-10-15), todos em cargas de 60 m3, de amanha em diante
 // e sem nunca passar da capacidade do tanque:
 //  'tanque' = Encher o tanque: sugere quando o saldo fica abaixo de 70% do tanque, ate' voltar a 70%;
