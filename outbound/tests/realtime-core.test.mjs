@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { encodeKey, decodeKey, fromEnvelope, toEnvelope, recordPath } from '../assets/realtime-codec.mjs';
 import { createRealtimeWriter } from '../assets/realtime-writer.mjs';
 import { createCompatibilityApi } from '../assets/realtime-compat.mjs';
+import { openOutboundSession } from '../assets/outbound-session.mjs';
 import { applyQuery } from '../assets/realtime-query.mjs';
 import { createRealtimeReader } from '../assets/realtime-reader.mjs';
 
@@ -238,4 +239,31 @@ test('fachada preserva dados adicionados ao lote e rejeita reuso apos commit', a
   assert.equal(operations[0].data.hodometro, 100);
   await assert.rejects(batch.commit(), /encerrado/);
   assert.throws(() => batch.delete(api.doc(db, 'availability', 'b')), /encerrado/);
+});
+
+function sessionFixture() {
+  const calls = [], user = {uid: 'destino', getIdTokenResult: async () => ({claims: {central: true, centralUid: 'central'}})};
+  const central = {currentUser: async () => ({uid: 'central'}), registration: async () => ({ativo: true, acessos: {outbound: true}}),
+    call: async name => {calls.push(name); return {token: 'teste'};}};
+  const target = {currentUser: async () => null, signOut: async () => calls.push('signOut'), signIn: async () => user,
+    profile: async () => ({ativo: true, centralUid: 'central', perfil: 'administrador', idLegado: 'amanda.borges'})};
+  return {calls, user, central, target, pilotAllowed: () => true};
+}
+
+test('SSO troca sessao central por token Outbound e mantem ID legado do perfil', async () => {
+  const fixture = sessionFixture();
+  const session = await openOutboundSession(fixture);
+  assert.equal(session.profile.idLegado, 'amanda.borges');
+  assert.deepEqual(fixture.calls, ['signOut', 'entrarNoOutbound']);
+});
+
+test('SSO nao emite token sem acesso central nem reutiliza perfil de outra pessoa', async () => {
+  const fixture = sessionFixture();
+  fixture.central.registration = async () => ({ativo: true, acessos: {outbound: false}});
+  await assert.rejects(openOutboundSession(fixture), /provisionado/);
+  assert.deepEqual(fixture.calls, []);
+  fixture.central.registration = async () => ({ativo: true, acessos: {outbound: true}});
+  fixture.target.profile = async () => ({ativo: true, centralUid: 'outra', perfil: 'administrador', idLegado: 'outro'});
+  await assert.rejects(openOutboundSession(fixture), /Perfil/);
+  assert.equal(fixture.calls.at(-1), 'signOut');
 });

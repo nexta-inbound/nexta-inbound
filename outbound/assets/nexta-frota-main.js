@@ -50,17 +50,19 @@ import {
   getDocs, query, where, orderBy, limit, writeBatch, deleteDoc, onSnapshot
 } from "./firebase-realtime-adapter.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut,
+  getAuth, signInWithCustomToken, signOut,
   onAuthStateChanged, updatePassword, createUserWithEmailAndPassword,
   deleteUser as fbDeleteUser
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { firebaseConfig } from './firebase-outbound.config.js';
+import { iniciarSessaoOutbound, sairOutbound, trocarSenhaCentral } from './outbound-sso.js';
 const fbApp = initializeApp(firebaseConfig);
 const db    = getFirestore(fbApp);
 const auth  = getAuth(fbApp);
 // Auth secundário para criar usuários sem trocar a sessão do admin logado.
 const userCreateApp  = initializeApp(firebaseConfig, "nexta-frota-user-create");
 const userCreateAuth = getAuth(userCreateApp);
+const SESSAO_OUTBOUND = await iniciarSessaoOutbound(fbApp, auth, signInWithCustomToken);
 // UID Firebase Auth → dados de perfil (carregado após login)
 // Convenção de email: uid@nexta-frota.app
 function uidToEmail(uid){ return `${uid}@nexta-frota.app`; }
@@ -2558,62 +2560,14 @@ function openHelpModal(role){
 // LOGIN
 // ═══════════════════════════════════════════════════════════
 function renderLogin(){
-  const msgInicial = S.loginErrMsg || '';
-  S.loginErrMsg = null; // mostra uma vez só — não fica preso em renders futuros
-  return `
-    <div class="login-wrap">
-      <div class="login-card">
-        <div class="login-logo"><span class="wordmark">NEXTA</span></div>
-        <p class="login-title">Gestão de Frota</p>
-        <p class="login-sub">Acesse com seu usuário e senha</p>
-        <div class="field"><label>USUÁRIO</label><input type="text" id="user-input" placeholder="Digite seu usuário" onkeydown="if(event.key==='Enter')document.getElementById('pwd').focus()"></div>
-        <div class="field"><label>SENHA</label><input type="password" id="pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
-        <div class="login-err" id="login-err">${msgInicial ? esc(msgInicial) : ''}</div>
-        <button class="btn btn-lime btn-full" onclick="doLogin()">Entrar</button>
-      </div>
-    </div>`;
+  return `<div class="loading" style="min-height:60vh"><p>Entre pelo portal central para acessar o Outbound.</p><a href="/?entrar&voltar=%2Foutbound%2F">Ir para o login central</a></div>`;
 }
 async function doLogin(){
-  const uid=document.getElementById("user-input").value.trim().toLowerCase();
-  const pwd=document.getElementById("pwd").value;
-  const err=document.getElementById("login-err");
-  const btn=document.querySelector(".btn-lime.btn-full");
-  if(!uid){err.textContent="Informe o usuário.";return;}
-  if(!pwd){err.textContent="Informe a senha.";return;}
-  err.textContent="";
-  if(btn){btn.disabled=true;btn.textContent="Entrando...";}
-  // IMPORTANTE: não pré-checa mais "USERS_DB[uid] existe?" contra o
-  // Firestore antes de autenticar. Pra alguém que nunca logou naquele
-  // navegador, a regra de segurança do Firestore normalmente recusa ler
-  // "config/users" sem estar autenticado — então esse pré-check nunca
-  // conseguia confirmar usuários de verdade e sempre caía na lista padrão
-  // "de fábrica" (só 6 nomes fixos no código), acusando "não encontrado"
-  // pra qualquer usuário real que não fosse um desses 6, mesmo com
-  // cadastro e senha 100% corretos. A autenticação do Firebase já é,
-  // sozinha, a fonte de verdade sobre se o login/senha existem — não
-  // precisa (e não pode, de forma confiável) confirmar isso antes via
-  // Firestore. Ver onAuthStateChanged para a busca do perfil pós-login.
-  try {
-    await signInWithEmailAndPassword(auth, uidToEmail(uid), pwd);
-    // onAuthStateChanged cuida do resto (inclusive de buscar o perfil)
-  } catch(e) {
-    const code = e.code||"";
-    if(code==="auth/wrong-password"||code==="auth/invalid-credential"){
-      err.textContent="Senha incorreta.";
-    } else if(code==="auth/too-many-requests"){
-      err.textContent="Muitas tentativas. Aguarde alguns minutos.";
-    } else if(code==="auth/user-not-found"){
-      err.textContent="Usuário não encontrado.";
-    } else {
-      err.textContent="Erro ao entrar: "+code;
-    }
-    if(btn){btn.disabled=false;btn.textContent="Entrar";}
-  }
+  location.assign('/?entrar&voltar=%2Foutbound%2F');
 }
 async function logout(){
   S.user=null; S.notifOpen=false; clearSession();
-  try { await signOut(auth); } catch(e) {}
-  render();
+  await sairOutbound(auth);
 }
 // ═══════════════════════════════════════════════════════════
 // NOTIFICATIONS
@@ -6223,59 +6177,8 @@ async function saveEdit(){
 // ═══════════════════════════════════════════════════════════
 // ALTERAR SENHA (usuário logado)
 // ═══════════════════════════════════════════════════════════
-function openChangePwd(){
-  const existing=document.getElementById('change-pwd-modal');
-  if(existing) existing.remove();
-  const modal=document.createElement('div');
-  modal.id='change-pwd-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
-  modal.innerHTML=`
-    <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:400px">
-      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">🔑 Alterar senha</p>
-      <div class="form-grid" style="grid-template-columns:1fr">
-        <div class="form-field">
-          <label>NOVA SENHA</label>
-          <input id="cp-new" type="password" placeholder="Mín. 6 caracteres" autocomplete="new-password">
-        </div>
-        <div class="form-field">
-          <label>CONFIRMAR NOVA SENHA</label>
-          <input id="cp-confirm" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
-        </div>
-      </div>
-      <div id="cp-msg" style="font-size:12px;color:var(--red);min-height:18px;margin-bottom:.75rem"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-outline" onclick="document.getElementById('change-pwd-modal').remove()">Cancelar</button>
-        <button class="btn btn-lime" id="cp-btn" onclick="saveChangePwd()">💾 Salvar senha</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  setTimeout(()=>document.getElementById('cp-new')?.focus(), 80);
-}
-async function saveChangePwd(){
-  const newPwd=document.getElementById('cp-new')?.value||'';
-  const confirmPwd=document.getElementById('cp-confirm')?.value||'';
-  const msg=document.getElementById('cp-msg');
-  const btn=document.getElementById('cp-btn');
-  if(newPwd.length<6){ msg.textContent='A senha deve ter pelo menos 6 caracteres.'; return; }
-  if(newPwd!==confirmPwd){ msg.textContent='As senhas não coincidem.'; return; }
-  btn.disabled=true; btn.textContent='Salvando...';
-  try {
-    await updatePassword(auth.currentUser, newPwd);
-    document.getElementById('change-pwd-modal').remove();
-    showToast('Senha alterada com sucesso! ✓');
-  } catch(e){
-    const code=e.code||'';
-    if(code==='auth/requires-recent-login'){
-      msg.textContent='Por segurança, faça logout e login novamente antes de alterar a senha.';
-    } else {
-      msg.textContent='Erro: '+(code||e.message);
-    }
-    btn.disabled=false; btn.textContent='💾 Salvar senha';
-  }
-}
-// ═══════════════════════════════════════════════════════════
-// RESET DE SENHA PELO ADMIN
-// ═══════════════════════════════════════════════════════════
+function openChangePwd(){ trocarSenhaCentral(); }
+async function saveChangePwd(){ trocarSenhaCentral(); }
 function openResetPwd(uid){
   const u = USERS_DB[uid];
   if(!u){ showToast('Usuário não encontrado.', false); return; }
@@ -6667,7 +6570,7 @@ loadConfig().catch(e=>{ console.error(e); }).then(()=>{
     clearTimeout(authFallback);
     if(firebaseUser){
       // Extrai o uid da convenção email: uid@nexta-frota.app
-      const uid = firebaseUser.email.replace(/@nexta-frota\.app$/, "");
+      const uid = firebaseUser.uid === SESSAO_OUTBOUND.user.uid ? SESSAO_OUTBOUND.profile.idLegado : '';
       // Agora que a autenticação foi confirmada de verdade pelo Firebase, a
       // leitura de "config/users" no Firestore deve ser permitida (regras
       // que antes bloqueavam leitura sem login não se aplicam mais aqui).

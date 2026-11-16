@@ -51,6 +51,15 @@ Atualizacao: a nova credencial de nexta-outbound foi encontrada e validada. Leit
 - A transacao precisa ler e reenviar a colecao inteira. Medir tamanho, concorrencia e latencia no SDK real antes de liberar; nao e a estrategia definitiva para grandes volumes ou transportadores. O fluxo atual de correcao de hodometro usa lotes somente de availability e campos simples.
 - Dezenove testes locais passaram. Faltam SDK real, regras no emulador e SSO. ADAPTADOR_REALTIME_PRONTO permanece false e as escritas seguem desligadas. Nao houve carga, publicacao de regras ou alteracao de contas nesta etapa.
 
+## Ligacao SSO preparada; publicacao bloqueada
+
+- outbound-session.mjs testa a troca de login: exige acesso central, piloto autorizado, claims correspondentes e perfil ativo com centralUid e idLegado. Nao deduz identidade de email sintetico.
+- outbound-sso.js liga esse fluxo ao SDK e a funcao central entrarNoOutbound, observa troca de usuario e inatividade. A funcao esta implementada localmente em portal_hub/functions, mas nao foi publicada.
+- O app principal aguarda o SSO antes das leituras. Entrada manual e troca de senha direcionam ao portal central; saida encerra as duas sessoes.
+- Vinte e um testes locais passaram. A flag de inicializacao e as escritas continuam false. Nao confundir preparacao do codigo com integracao publicada.
+- Consulta administrativa confirmou conta Amanda ativa no Auth central. A publicacao esta bloqueada: a conta de servico central nao possui cloudfunctions.functions.list. No Outbound, o Auth responde CONFIGURATION_NOT_FOUND e a API Cloud Functions nao esta habilitada.
+- E necessario inicializar Authentication no Outbound e usar uma identidade de publicacao autorizada no central. Nenhuma permissao IAM foi ampliada automaticamente.
+
 Em 16/11/2026, a credencial nexta-frota disponivel retornou HTTP 401 ao consultar regras do Realtime Outbound e INSUFFICIENT_PERMISSION ao consultar contas Auth do destino. A URL foi confirmada pela Amanda; permissao administrativa nao foi obtida.
 
 A chave Outbound e a configuracao Web ja foram obtidas posteriormente. Para publicar o SSO, continua pendente a credencial administrativa do projeto central nexta-logistica. Nunca colar chave privada no chat.
