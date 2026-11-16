@@ -10,7 +10,9 @@ Repositorio de destino: https://github.com/nexta-inbound/nexta-inbound
 
 Antes de integrar na main:
 
-1. Preencher a configuracao Web real e validar o login central no Firebase Outbound, incluindo vinculos entre a conta central, a conta Auth de destino e config/users.
+Direcao confirmada em 16/11/2026: Realtime Database, como no Inbound, em projeto separado nexta-outbound. O consumidor atual ainda importa Firestore e permanece bloqueado mesmo ao preencher a configuracao Web, ate existir adaptador Realtime validado. A configuracao precisa incluir databaseURL real, sem adivinhar instancia ou regiao.
+
+1. Confirmar instancia Realtime, preencher configuracao Web real, adaptar consultas/gravacoes e validar o login central no Firebase Outbound, incluindo vinculos entre a conta central, a conta Auth de destino e os perfis migrados.
 2. Aplicar autorizacao exclusiva do piloto no backend/regras. A regra do cartao nao protege os dados.
 3. Reconciliar o delta de dados e executar testes das telas, regras e consultas.
 4. Definir onde executar api/ors-proxy.js: GitHub Pages nao executa funcoes Vercel. O cliente usa /api/ors-proxy na raiz, portanto copiar api/ para outbound/ nao publica a API.

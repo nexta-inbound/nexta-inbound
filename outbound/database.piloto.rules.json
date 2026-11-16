@@ -1,0 +1,80 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "liberacoesPiloto": {
+      ".read": false,
+      ".write": false
+    },
+    "perfis": {
+      "$uid": {
+        ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "disponibilidades": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/carrier",
+        "dados/plate",
+        "dados/dateStr"
+      ]
+    },
+    "bloqueiosDisponibilidade": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/carrier",
+        "dados/dateStr"
+      ]
+    },
+    "ciclos": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/carrier",
+        "dados/status"
+      ]
+    },
+    "programacaoDiaria": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/mes"
+      ]
+    },
+    "devolucoesReentregas": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/criadoEm"
+      ]
+    },
+    "simulacoesFrete": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/criadoEm"
+      ]
+    },
+    "eventosOtimizador": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/criadoEm"
+      ]
+    },
+    "arquivosHistoricos": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && (root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador' || root.child('perfis').child(auth.uid).child('perfil').val() === 'interno')",
+      ".write": false,
+      ".indexOn": [
+        "dados/key"
+      ]
+    },
+    "configuracoesLegadas": {
+      ".read": "auth != null && auth.token.central === true && auth.token.centralUid != null && root.child('liberacoesPiloto').child(auth.uid).val() === true && root.child('perfis').child(auth.uid).child('ativo').val() === true && root.child('perfis').child(auth.uid).child('centralUid').val() === auth.token.centralUid && root.child('perfis').child(auth.uid).child('perfil').val() === 'administrador'",
+      ".write": false
+    }
+  }
+}

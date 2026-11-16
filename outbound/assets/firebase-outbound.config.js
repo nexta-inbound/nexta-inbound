@@ -1,12 +1,13 @@
 // Preencher somente com a configuracao publica do App Web de nexta-outbound.
 // Sem fallback para nexta-frota. Chaves privadas nao pertencem ao frontend.
 export const firebaseConfig = Object.freeze({
-  apiKey: '',
-  authDomain: '',
+  apiKey: "AIzaSyC0wtw3uRIDesJs00eR2eUyNpTbvIuFZT8",
+  authDomain: "nexta-outbound.firebaseapp.com",
   projectId: 'nexta-outbound',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: ''
+  databaseURL: 'https://nexta-outbound-default-rtdb.firebaseio.com',
+  storageBucket: "nexta-outbound.firebasestorage.app",
+  messagingSenderId: "617366616028",
+  appId: "1:617366616028:web:ae058e558f542f2fac0119"
 });
 
 export function validarConfigOutbound(config) {
@@ -17,7 +18,10 @@ export function validarConfigOutbound(config) {
     );
 }
 
-if (!validarConfigOutbound(firebaseConfig)) {
+// A decisao de migrar para Realtime exige adaptar o acesso a dados antes de iniciar.
+// Preencher o SDK nao deve reativar por acidente o consumidor Firestore antigo.
+const ADAPTADOR_REALTIME_PRONTO = false;
+if (!ADAPTADOR_REALTIME_PRONTO || !validarConfigOutbound(firebaseConfig)) {
   const painel = document.createElement('main');
   painel.style.cssText = 'max-width:640px;margin:12vh auto;padding:24px;font-family:system-ui;color:#e2edf5';
   const titulo = document.createElement('h1');
@@ -31,5 +35,5 @@ if (!validarConfigOutbound(firebaseConfig)) {
   painel.append(titulo, aviso, voltar);
   document.body.replaceChildren(painel);
   document.body.style.background = '#0c1921';
-  throw new Error('Configuracao Web de nexta-outbound pendente; inicializacao Firebase interrompida.');
+  throw new Error('Migracao Realtime pendente: configuracao, adaptador e regras precisam ser validados.');
 }

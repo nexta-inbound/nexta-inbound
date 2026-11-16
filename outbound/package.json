@@ -6,6 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:realtime": "node --test tests/realtime-core.test.mjs",
     "version:build": "node scripts/build-version.js"
   },
   "devDependencies": {
