@@ -52,10 +52,27 @@ export function createCompatibilityApi({reader, writer, makeId}) {
     requireDoc(reference);
     return writer.deleteDoc(reference.collection, reference.id);
   };
-  function writeBatch() {
-    // Nunca substituir batch por varias gravacoes independentes.
-    const batch = {set() {return batch;}, update() {return batch;}, delete() {return batch;},
-      async commit() {throw new Error('Batch atomico multi-registro ainda nao habilitado no piloto Realtime.');}};
+  function writeBatch(db) {
+    const operations = [];
+    let committed = false;
+    const append = (type, reference, data, options) => {
+      if (committed) throw new Error('Lote ja encerrado.');
+      requireDoc(reference);
+      if (reference.db !== db) throw new Error('Referencia de outra conexao.');
+      operations.push({type, collection: reference.collection, id: reference.id,
+        ...(type === 'delete' ? {} : {data: structuredClone(data)}),
+        ...(options ? {options: structuredClone(options)} : {})});
+      return batch;
+    };
+    const batch = {set: (reference, data, options) => append('set', reference, data, options),
+      update: (reference, data) => append('update', reference, data),
+      delete: reference => append('delete', reference),
+      async commit() {
+        if (committed) throw new Error('Lote ja encerrado.');
+        committed = true;
+        if (!writer.commitBatch) throw new Error('Batch atomico nao configurado.');
+        return writer.commitBatch(operations);
+      }};
     return Object.freeze(batch);
   }
   return Object.freeze({collection, doc, query, getDoc, getDocs, onSnapshot, setDoc, deleteDoc, writeBatch,

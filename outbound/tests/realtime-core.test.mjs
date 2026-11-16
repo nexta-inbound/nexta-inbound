@@ -179,3 +179,63 @@ test('listener identifica adicao, alteracao e remocao usados nos alertas de ofer
   assert.deepEqual(received.map(changes => changes.map(c => c.type)), [['added'], ['modified'], ['removed']]);
   assert.equal(received[2][0].doc.data().n, 2);
 });
+
+function batchFixture() {
+  const state = {calls: 0, value: {a: toEnvelope({hodometro: 10, outro: 'preservar'}), b: toEnvelope({hodometro: 20})}};
+  const sdk = {ref: (_, path) => path, runTransaction: async (path, callback) => {
+    assert.equal(path, 'disponibilidades');
+    state.calls++;
+    callback(null); // Simula cache ainda nao carregado e retry do servidor.
+    state.value = callback(structuredClone(state.value));
+    return {committed: true};
+  }};
+  const writer = createRealtimeWriter({sdk, database: {}, writesEnabled: true,
+    authorize: async () => ({ativo: true, perfil: 'administrador'})});
+  return {state, writer};
+}
+
+test('lote de hodometros atualiza todos os registros em uma unica transacao', async () => {
+  const {state, writer} = batchFixture();
+  await writer.commitBatch([
+    {type: 'update', collection: 'availability', id: 'a', data: {hodometro: 100}},
+    {type: 'update', collection: 'availability', id: 'b', data: {hodometro: 200}}
+  ]);
+  assert.equal(state.calls, 1);
+  assert.deepEqual(fromEnvelope(state.value.a), {hodometro: 100, outro: 'preservar'});
+  assert.equal(fromEnvelope(state.value.b).hodometro, 200);
+});
+
+test('registro ausente cancela o lote inteiro sem alterar os demais', async () => {
+  const {state, writer} = batchFixture();
+  const before = structuredClone(state.value);
+  await assert.rejects(writer.commitBatch([
+    {type: 'update', collection: 'availability', id: 'a', data: {hodometro: 100}},
+    {type: 'update', collection: 'availability', id: 'inexistente', data: {hodometro: 200}}
+  ]), /registro ausente/);
+  assert.deepEqual(state.value, before);
+});
+
+test('lotes entre colecoes ou com registro repetido falham antes da transacao', async () => {
+  const {state, writer} = batchFixture();
+  await assert.rejects(writer.commitBatch([
+    {type: 'delete', collection: 'availability', id: 'a'},
+    {type: 'delete', collection: 'sob_ciclos', id: 'b'}
+  ]), /colecoes distintas/);
+  await assert.rejects(writer.commitBatch([
+    {type: 'delete', collection: 'availability', id: 'a'},
+    {type: 'delete', collection: 'availability', id: 'a'}
+  ]), /repetido/);
+  assert.equal(state.calls, 0);
+});
+
+test('fachada preserva dados adicionados ao lote e rejeita reuso apos commit', async () => {
+  let operations;
+  const api = createCompatibilityApi({reader: {}, writer: {commitBatch: async ops => {operations = ops;}}, makeId: () => 'id'});
+  const db = {}, batch = api.writeBatch(db), patch = {hodometro: 100};
+  batch.update(api.doc(db, 'availability', 'a'), patch);
+  patch.hodometro = 999;
+  await batch.commit();
+  assert.equal(operations[0].data.hodometro, 100);
+  await assert.rejects(batch.commit(), /encerrado/);
+  assert.throws(() => batch.delete(api.doc(db, 'availability', 'b')), /encerrado/);
+});
