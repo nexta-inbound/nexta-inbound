@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal Outbound · Nexta</title>
+  <style>
+    body { margin: 0; background: #0c1921; color: #e2edf5; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 640px; margin: 12vh auto; padding: 28px; }
+    section { background: #13242e; border: 1px solid #294452; border-radius: 12px; padding: 28px; }
+    h1 { margin: 0 0 12px; font-size: 26px; }
+    p { color: #b1cbdc; }
+    a { color: #56d5ca; }
+    [hidden] { display: none !important; }
+    .icone { font-size: 36px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section aria-live="polite">
+      <div class="icone" aria-hidden="true">🚚</div>
+      <h1>Portal Outbound</h1>
+      <p id="estado" role="status">Verificando seu acesso…</p>
+      <div id="piloto" hidden>
+        <p>Estamos preparando o Outbound neste portal. A abertura da aplicação será liberada após validar a conexão e o login.</p>
+      </div>
+      <a href="/?menu">Voltar aos sistemas</a>
+    </section>
+  </main>
+  <script type="module">
+    import { podeVerOutbound } from '/central/config.js';
+    import { usuarioAtual, meuCadastro, vigiarInatividade, sair, aoMudarLogin } from '/central/cliente.js';
+    const estado = document.getElementById('estado');
+    const piloto = document.getElementById('piloto');
+    const login = () => location.replace('/?entrar&voltar=%2Foutbound%2F');
+    try {
+      const usuario = await usuarioAtual();
+      if (!usuario) {
+        login();
+      } else if (vigiarInatividade(async () => { piloto.hidden = true; await sair(); login(); })) {
+        const cadastro = await meuCadastro();
+        if (podeVerOutbound(usuario, cadastro)) {
+          estado.textContent = 'Ambiente de validação exclusivo.';
+          piloto.hidden = false;
+          aoMudarLogin(atual => {
+            if (atual?.uid !== usuario.uid) { piloto.hidden = true; login(); }
+          });
+        } else {
+          estado.textContent = 'Este ambiente ainda não está liberado para sua conta.';
+        }
+      }
+    } catch {
+      piloto.hidden = true;
+      estado.textContent = 'Não foi possível verificar seu acesso. Volte ao menu e tente novamente.';
+    }
+  </script>
+</body>
+</html>

@@ -36,3 +36,12 @@ export const SISTEMAS = {
 };
 
 export const configPronta = () => !String(FIREBASE_CENTRAL.apiKey).startsWith('PREENCHER');
+
+// Piloto restrito ao email confirmado pela Amanda, obtido da sessao Firebase Auth central.
+// Esta regra controla apenas o menu e a pagina de preparacao, sem acesso aos dados Outbound.
+export const PILOTO_OUTBOUND = { habilitado: true, email: 'amanda.borges@nexta.com.br' };
+export function podeVerOutbound(usuario, cadastro) {
+  return PILOTO_OUTBOUND.habilitado === true && Boolean(usuario?.uid) &&
+    String(usuario.email || '').trim().toLowerCase() === PILOTO_OUTBOUND.email && Boolean(cadastro) &&
+    cadastro.ativo !== false && cadastro.trocarSenha !== true;
+}

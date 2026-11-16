@@ -44,6 +44,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
   }
+  .card[hidden] { display: none !important; }
   .card {
     --cor: var(--pet-green);
     position: relative;
@@ -194,6 +195,15 @@
     <p class="descricao" id="descricao">Escolha abaixo o sistema que você quer usar.</p>
 
     <div class="grade" id="grade-sistemas">
+      <a class="card" href="outbound/" data-sistema="outbound" style="--cor: var(--pet-teal)" hidden>
+        <span class="selo-ultimo">Último acesso</span>
+        <div class="card-icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 16V6h12v10M14 10h4l4 4v4h-3M5 18H2v-2M9 18h6"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        </div>
+        <div class="card-nome">Portal Outbound</div>
+        <div class="card-desc">Gestão de frota, disponibilidades e roteirização de entregas.</div>
+        <div class="card-rodape">Em validação · acesso restrito</div>
+      </a>
       <a class="card" href="inbound/" data-sistema="inbound" style="--cor: var(--pet-green)">
         <span class="selo-ultimo">Último acesso</span>
         <div class="card-icone">
@@ -299,7 +309,7 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script type="module">
-  import { SISTEMAS, LOGIN_OBRIGATORIO, HORAS_INATIVIDADE, configPronta } from './central/config.js';
+  import { SISTEMAS, LOGIN_OBRIGATORIO, HORAS_INATIVIDADE, configPronta, podeVerOutbound } from './central/config.js';
 
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
@@ -357,7 +367,7 @@
   // ── Modos da tela inicial ──
   function mostrarPublico() {
     $('sessao').hidden = true;
-    document.querySelectorAll('#grade-sistemas [data-sistema]').forEach(card => { card.hidden = false; });
+    document.querySelectorAll('#grade-sistemas [data-sistema]').forEach(card => { card.hidden = card.dataset.sistema === 'outbound'; });
     $('sem-sistemas').hidden = true;
     $('secao-tablet').hidden = false;
     $('titulo').textContent = 'Acesse um sistema';
@@ -366,7 +376,9 @@
     mostrar('inicio');
   }
 
-  const temSistema = s => cadastro?.acessos?.[s] === true;
+  const temSistema = s => s === 'outbound'
+    ? podeVerOutbound(cliente?.auth.currentUser, cadastro)
+    : cadastro?.acessos?.[s] === true;
   const administra = () => cadastro?.adminGeral === true || Object.values(cadastro?.keyUser || {}).includes(true);
   // Linha de baixo do nome no topo, como o perfil no topo dos sistemas
   function papel() {
@@ -442,7 +454,7 @@
     const sistemas = Object.keys(SISTEMAS).filter(temSistema);
     if (voltar) {
       const sistema = Object.keys(SISTEMAS).find(s => voltar.startsWith(SISTEMAS[s].caminho));
-      if ((sistema && temSistema(sistema)) || (voltar.startsWith('/usuarios/') && administra())) {
+      if ((sistema && temSistema(sistema)) || (voltar === '/outbound/' && temSistema('outbound')) || (voltar.startsWith('/usuarios/') && administra())) {
         location.replace(voltar);
         return true;
       }
