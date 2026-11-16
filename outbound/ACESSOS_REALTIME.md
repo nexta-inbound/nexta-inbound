@@ -45,7 +45,9 @@ Atualizacao: a nova credencial de nexta-outbound foi encontrada e validada. Leit
 - realtime-writer.mjs prepara gravacoes individuais por transacao, inclusive merge e exclusao. Exige administrador e writesEnabled=true explicito; fica desligado por padrao. Nao implementa batches multi-registro nem esta ligado a interface.
 - Para este piloto, getDocs le uma colecao inteira autorizada e aplica filtros em memoria. Nao liberar transportadores com esse mecanismo; eles precisam de acesso segregado no servidor.
 - Validacao cruzada: os 5.636 documentos convertidos em Python foram reconstruidos em JavaScript e comparados integralmente com o snapshot. Doze testes JavaScript cobrem codec, consultas, listeners e transacoes com SDK simulado.
-- Modulos ainda nao conectados ao app principal: faltam consultas no SDK real, batches atomicos, regras no emulador e SSO. ADAPTADOR_REALTIME_PRONTO permanece false. Nao houve carga, publicacao de regras ou alteracao de contas nesta etapa.
+- firebase-realtime-adapter.js liga a fachada realtime-compat.mjs ao SDK Realtime. O modulo principal passou a importar essa fachada em vez do SDK Firestore. O nome getFirestore permanece como alias temporario para reduzir mudancas nas telas; a conexao desse alias e Realtime.
+- A fachada traduz referencias, filtros, snapshots e eventos usados pelos alertas, mantendo IDs e referencias utilizaveis. Batches multi-registro falham explicitamente antes de qualquer escrita, ate existir implementacao atomica validada.
+- Quinze testes locais passaram. Faltam consultas no SDK real, batches atomicos, regras no emulador e SSO. ADAPTADOR_REALTIME_PRONTO permanece false e as escritas seguem desligadas. Nao houve carga, publicacao de regras ou alteracao de contas nesta etapa.
 
 Em 16/11/2026, a credencial nexta-frota disponivel retornou HTTP 401 ao consultar regras do Realtime Outbound e INSUFFICIENT_PERMISSION ao consultar contas Auth do destino. A URL foi confirmada pela Amanda; permissao administrativa nao foi obtida.
 

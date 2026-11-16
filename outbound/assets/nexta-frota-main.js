@@ -48,7 +48,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getFirestore, doc, getDoc, setDoc, collection,
   getDocs, query, where, orderBy, limit, writeBatch, deleteDoc, onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+} from "./firebase-realtime-adapter.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut,
   onAuthStateChanged, updatePassword, createUserWithEmailAndPassword,

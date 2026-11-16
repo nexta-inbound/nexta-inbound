@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeKey, decodeKey, fromEnvelope, toEnvelope, recordPath } from '../assets/realtime-codec.mjs';
 import { createRealtimeWriter } from '../assets/realtime-writer.mjs';
+import { createCompatibilityApi } from '../assets/realtime-compat.mjs';
 import { applyQuery } from '../assets/realtime-query.mjs';
 import { createRealtimeReader } from '../assets/realtime-reader.mjs';
 
@@ -139,4 +140,42 @@ test('merge transacional usa estado fresco sem apagar campos e permite substitui
   const writer = createRealtimeWriter({sdk, database: {}, authorize: async () => ({ativo: true, perfil: 'administrador'}), writesEnabled: true});
   await writer.setDoc('sob_ciclos', 'c', {marcos: {a: 'novo'}, vazio: {}}, {merge: true});
   assert.deepEqual(fromEnvelope(stored), {outro: 1, marcos: {a: 'novo', b: 'manter'}, vazio: {}});
+});
+
+test('fachada traduz referencias e consultas sem mudar IDs legados', async () => {
+  const calls = [];
+  const reader = {getDoc: async (...args) => { calls.push(args); return {id: args[1], data: () => ({})}; },
+    getDocs: async (...args) => { calls.push(args); return {docs: [], docChanges: () => []}; }};
+  const api = createCompatibilityApi({reader, writer: {}, makeId: () => 'novo-id'});
+  const db = {};
+  const reference = api.doc(db, 'availability', 'A__PLACA__2026-11-16');
+  await api.getDoc(reference);
+  const q = api.query(api.collection(db, 'availability'), api.where('carrier', '==', 'A'), api.orderBy('dateStr', 'desc'), api.limit(10));
+  await api.getDocs(q);
+  assert.deepEqual(calls[0], ['availability', 'A__PLACA__2026-11-16']);
+  assert.equal(calls[1][1][0].field, 'carrier');
+  assert.equal(api.doc(api.collection(db, 'sob_ciclos')).id, 'novo-id');
+});
+
+test('fachada recusa batch sem executar gravacoes parciais', async () => {
+  let writes = 0;
+  const api = createCompatibilityApi({reader: {}, writer: {setDoc: () => writes++}, makeId: () => 'id'});
+  const db = {}, batch = api.writeBatch(db);
+  batch.set(api.doc(db, 'availability', 'a'), {n: 1});
+  batch.update(api.doc(db, 'availability', 'b'), {n: 2});
+  await assert.rejects(batch.commit(), /Batch atomico/);
+  assert.equal(writes, 0);
+});
+
+test('listener identifica adicao, alteracao e remocao usados nos alertas de ofertas', async () => {
+  const {state, sdk} = listenerSDK();
+  const reader = createRealtimeReader({sdk, database: {}, authorize: async () => ({ativo: true, perfil: 'administrador'})});
+  const received = [];
+  reader.watchDocs('availability', [], snapshot => received.push(snapshot.docChanges()));
+  await flush();
+  state.emit({a: {existe: true, dados: {n: 1}}}); await flush();
+  state.emit({a: {existe: true, dados: {n: 2}}}); await flush();
+  state.emit({}); await flush();
+  assert.deepEqual(received.map(changes => changes.map(c => c.type)), [['added'], ['modified'], ['removed']]);
+  assert.equal(received[2][0].doc.data().n, 2);
 });

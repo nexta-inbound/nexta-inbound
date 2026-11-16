@@ -28,7 +28,7 @@ export function createRealtimeReader({sdk, database, authorize}) {
     const snapshot = await sdk.get(sdk.ref(database, COLLECTION_PATHS[collection]));
     return querySnapshot(collection, constraints, snapshot.val());
   }
-  function querySnapshot(collection, constraints, value) {
+  function querySnapshot(collection, constraints, value, previous = []) {
     const raw = value || {};
     const rows = Object.entries(raw).map(([id, envelope]) => ({id: decodeKey(id), data: fromEnvelope(envelope)}))
       .filter(row => row.data !== undefined);
@@ -36,7 +36,20 @@ export function createRealtimeReader({sdk, database, authorize}) {
     // Substituir por indices/escopos antes de habilitar transportadores ou ampliar volume.
     const docs = applyQuery(rows, constraints).map(row => Object.freeze({id: row.id,
       exists: () => true, data: () => structuredClone(row.data), ref: Object.freeze({collection, id: row.id})}));
-    return Object.freeze({docs, size: docs.length, empty: docs.length === 0,
+    const oldById = new Map(previous.map((doc, index) => [doc.id, {doc, index}]));
+    const newById = new Map(docs.map((doc, index) => [doc.id, {doc, index}]));
+    const changes = [];
+    for (const [id, old] of oldById) {
+      if (!newById.has(id)) changes.push({type: 'removed', doc: old.doc, oldIndex: old.index, newIndex: -1});
+    }
+    for (const [id, current] of newById) {
+      const old = oldById.get(id);
+      if (!old || JSON.stringify(old.doc.data()) !== JSON.stringify(current.doc.data())) {
+        changes.push({type: old ? 'modified' : 'added', doc: current.doc, oldIndex: old?.index ?? -1, newIndex: current.index});
+      }
+    }
+    return Object.freeze({docs: Object.freeze(docs), size: docs.length, empty: docs.length === 0,
+      docChanges: () => changes.map(change => ({...change})),
       forEach: callback => docs.forEach(callback)});
   }
   function watch(path, convert, next, onError = () => {}) {
@@ -69,7 +82,12 @@ export function createRealtimeReader({sdk, database, authorize}) {
     value => documentSnapshot(collection, id, value), next, onError);
   function watchDocs(collection, constraints, next, onError) {
     if (!COLLECTION_PATHS[collection]) throw new Error('Colecao nao mapeada.');
-    return watch(COLLECTION_PATHS[collection], value => querySnapshot(collection, constraints, value), next, onError);
+    let previous = [];
+    return watch(COLLECTION_PATHS[collection], value => {
+      const snapshot = querySnapshot(collection, constraints, value, previous);
+      previous = snapshot.docs;
+      return snapshot;
+    }, next, onError);
   }
   return Object.freeze({getDoc, getDocs, watchDoc, watchDocs});
 }
