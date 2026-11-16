@@ -26,7 +26,10 @@ export function createRealtimeReader({sdk, database, authorize}) {
     await check();
     if (!COLLECTION_PATHS[collection]) throw new Error('Colecao nao mapeada.');
     const snapshot = await sdk.get(sdk.ref(database, COLLECTION_PATHS[collection]));
-    const raw = snapshot.val() || {};
+    return querySnapshot(collection, constraints, snapshot.val());
+  }
+  function querySnapshot(collection, constraints, value) {
+    const raw = value || {};
     const rows = Object.entries(raw).map(([id, envelope]) => ({id: decodeKey(id), data: fromEnvelope(envelope)}))
       .filter(row => row.data !== undefined);
     // Piloto restrito: filtra colecao autorizada inteira em memoria.
@@ -36,5 +39,37 @@ export function createRealtimeReader({sdk, database, authorize}) {
     return Object.freeze({docs, size: docs.length, empty: docs.length === 0,
       forEach: callback => docs.forEach(callback)});
   }
-  return Object.freeze({getDoc, getDocs});
+  function watch(path, convert, next, onError = () => {}) {
+    if (typeof next !== 'function' || typeof onError !== 'function') throw new Error('Callbacks invalidos.');
+    if (typeof sdk.onValue !== 'function') throw new Error('SDK sem suporte a listeners.');
+    let closed = false;
+    let detach = () => {};
+    let events = Promise.resolve();
+    const stop = () => { if (closed) return; closed = true; detach(); };
+    const fail = error => {
+      if (closed) return;
+      stop();
+      onError(error);
+    };
+    Promise.resolve().then(check).then(() => {
+      if (closed) return;
+      detach = sdk.onValue(sdk.ref(database, path), snapshot => {
+        events = events.then(async () => {
+          if (closed) return;
+          // Revalida antes de entregar cada evento; as regras do banco continuam obrigatorias.
+          await check();
+          if (!closed) next(convert(snapshot.val()));
+        }).catch(fail);
+      }, fail);
+      if (closed) detach();
+    }).catch(fail);
+    return stop;
+  }
+  const watchDoc = (collection, id, next, onError) => watch(recordPath(collection, id),
+    value => documentSnapshot(collection, id, value), next, onError);
+  function watchDocs(collection, constraints, next, onError) {
+    if (!COLLECTION_PATHS[collection]) throw new Error('Colecao nao mapeada.');
+    return watch(COLLECTION_PATHS[collection], value => querySnapshot(collection, constraints, value), next, onError);
+  }
+  return Object.freeze({getDoc, getDocs, watchDoc, watchDocs});
 }

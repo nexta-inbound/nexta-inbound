@@ -15,6 +15,44 @@ export function decodeKey(value) {
 }
 
 const OMIT = Symbol('omit');
+export function toEnvelope(original) {
+  const formats = [], visited = new Set();
+  function normalize(value, path, depth) {
+    // Prefixo de colecao/registro, envelope/dados e campos: maximo 32 niveis.
+    if (depth + 3 > 32) throw new Error('Profundidade excede o limite Realtime.');
+    if (value === null) { formats.push([path, 'null']); return OMIT; }
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) throw new Error('Numero nao representavel com seguranca.');
+      return value;
+    }
+    if (['string', 'boolean'].includes(typeof value)) return value;
+    if (typeof value !== 'object' || visited.has(value)) throw new Error('Tipo nao suportado ou referencia circular.');
+    if (!Array.isArray(value) && ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error('Objeto exige conversao explicita.');
+    if (Object.getOwnPropertySymbols(value).length) throw new Error('Chaves simbolicas nao suportadas.');
+    visited.add(value);
+    let entries;
+    if (Array.isArray(value)) {
+      formats.push([path, 'array']);
+      entries = Array.from(value, (child, i) => ['i' + String(i).padStart(8, '0'), child]);
+    } else {
+      entries = Object.entries(value).map(([k, v]) => [encodeKey(k), v]);
+      if (!entries.length) formats.push([path, 'emptyMap']);
+    }
+    const result = [];
+    for (const [k, v] of entries) {
+      const child = normalize(v, path + '/' + k, depth + 1);
+      if (child !== OMIT) result.push([k, child]);
+    }
+    visited.delete(value);
+    return result.length ? Object.fromEntries(result) : OMIT;
+  }
+  const data = normalize(original, '', 0);
+  const envelope = {existe: true};
+  if (data !== OMIT) envelope.dados = data;
+  if (formats.length) envelope.formatos = Object.fromEntries(formats.map(([p, kind]) => [encodeKey('p' + p), kind]));
+  return envelope;
+}
+
 export function fromEnvelope(envelope) {
   if (!envelope || envelope.existe !== true) return undefined;
   const formats = Object.fromEntries(Object.entries(envelope.formatos || {}).map(([k, v]) => [decodeKey(k).slice(1), v]));

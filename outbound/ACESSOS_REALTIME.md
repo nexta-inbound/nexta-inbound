@@ -41,10 +41,11 @@ Atualizacao: a nova credencial de nexta-outbound foi encontrada e validada. Leit
 
 - realtime-codec.mjs reconstroi o contrato de envelopes `{existe, dados, formatos}` gerado no arquivo alternativo carga_piloto_envelopes.json. Nao misturar com o payload anterior sem envelopes.
 - realtime-query.mjs cobre filtros escalares ==, in, <, <=, > e >=, ordenacao e limite. Valores ausentes sao distinguidos de null.
-- realtime-reader.mjs recebe o SDK e uma verificacao de acesso, fornece snapshots e colecoes somente para perfis internos/administradores autorizados. Nao escreve nem registra listeners.
+- realtime-reader.mjs recebe o SDK e uma verificacao de acesso, fornece snapshots e colecoes somente para perfis internos/administradores autorizados. Registra listeners com cancelamento e revalidacao antes de entregar cada evento. Nao escreve.
+- realtime-writer.mjs prepara gravacoes individuais por transacao, inclusive merge e exclusao. Exige administrador e writesEnabled=true explicito; fica desligado por padrao. Nao implementa batches multi-registro nem esta ligado a interface.
 - Para este piloto, getDocs le uma colecao inteira autorizada e aplica filtros em memoria. Nao liberar transportadores com esse mecanismo; eles precisam de acesso segregado no servidor.
-- Validacao cruzada: os 5.636 documentos convertidos em Python foram reconstruidos em JavaScript e comparados integralmente com o snapshot. Seis testes JavaScript do nucleo passaram.
-- Modulos ainda nao conectados ao app principal: faltam consultas no SDK real, listeners, gravacoes, regras no emulador e SSO. ADAPTADOR_REALTIME_PRONTO permanece false.
+- Validacao cruzada: os 5.636 documentos convertidos em Python foram reconstruidos em JavaScript e comparados integralmente com o snapshot. Doze testes JavaScript cobrem codec, consultas, listeners e transacoes com SDK simulado.
+- Modulos ainda nao conectados ao app principal: faltam consultas no SDK real, batches atomicos, regras no emulador e SSO. ADAPTADOR_REALTIME_PRONTO permanece false. Nao houve carga, publicacao de regras ou alteracao de contas nesta etapa.
 
 Em 16/11/2026, a credencial nexta-frota disponivel retornou HTTP 401 ao consultar regras do Realtime Outbound e INSUFFICIENT_PERMISSION ao consultar contas Auth do destino. A URL foi confirmada pela Amanda; permissao administrativa nao foi obtida.
 
