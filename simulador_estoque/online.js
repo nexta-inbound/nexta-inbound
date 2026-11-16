@@ -16,7 +16,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '2041ee60a1';
+const VERSAO_SITE = 'b75fd05da2';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -181,6 +181,9 @@ async function aoMudarSessao(user) {
         return {...registro, numero};
       },
       async listDay(dia) { return (await get(ref(db, `cenariosDia/${dia}`))).val() || {}; },
+      // Aba "Log mínimo" (2026-11-16): gravado toda terca 12h por log_estoque_minimo.py; so' leitura.
+      async logEstoqueMinimoIndice() { return (await get(ref(db, 'logEstoqueMinimo/_indice'))).val() || {}; },
+      async logEstoqueMinimo(dia) { return (await get(ref(db, `logEstoqueMinimo/${dia}`))).val() || {}; },
       // Painel Duvidas (2026-11-10): guarda a pergunta e o trecho do manual mostrado, com o perfil e SEM nome/uid
       // (usuaria: "nao precisa guardar o nome"). Vai no mesmo update que duvidasRitmo/<uid>: as regras aceitam
       // 1 pergunta a cada 3 s por pessoa. So' quem gerencia usuarios le (relatorio_duvidas.py).
@@ -210,7 +213,7 @@ async function aoMudarSessao(user) {
         return Object.fromEntries(dias.map((dia, i) => [dia, arvores[i]]));
       },
     };
-    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js', 'usuarios.js', 'duvidas.js']) await script(name);
+    for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js', 'usuarios.js', 'duvidas.js', 'log_minimo.js']) await script(name);
     await concluirEntrada();
     el('auto-status').textContent = `Fontes de ${data.date}. A tela atualiza sozinha quando sai uma carga nova.`;
     const sync = el('sync-status');

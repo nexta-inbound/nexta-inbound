@@ -243,7 +243,9 @@ body[data-aba="alertas"] main>:not([data-aba~="alertas"]),
 body[data-aba="cenario"] main>:not([data-aba~="cenario"]),
 body[data-aba="historico"] main>:not([data-aba~="historico"]),
 body[data-aba="aberturas"] main>:not([data-aba~="aberturas"]),
-body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]){display:none!important}
+body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]),
+body[data-aba="logminimo"] main>:not([data-aba~="logminimo"]){display:none!important}
+body:not([data-aba="logminimo"]) #log-minimo-view{display:none}
 /* Ranking + quadro por produto lado a lado */
 .ranking-corpo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
 @media(max-width:1000px){.ranking-corpo{grid-template-columns:1fr}}
@@ -419,3 +421,18 @@ button.ranking-linha.selecionada{background:#EEFE7A1a;box-shadow:inset 0 0 0 1px
 
 /* Politica acima da capacidade do tanque: so informativa (2026-11-16) */
 .politica-acima-cap{color:#FBBF24;font-size:.85em;font-weight:400}
+
+/* Aba Log minimo (2026-11-16) */
+.logmin-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:8px 0}
+.logmin-resumo{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.logmin-chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 12px;font-size:.9em}
+.logmin-tabela{border-collapse:collapse;width:100%;font-size:.85em;white-space:nowrap}
+.logmin-tabela th,.logmin-tabela td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
+.logmin-tabela th{position:sticky;top:0;background:#14201a;font-weight:600}
+.logmin-tabela .num{text-align:right}
+.logmin-tabela td.logmin-sug{color:#86EFAC;font-weight:700}
+.logmin-tabela td.logmin-naocabe{background:rgba(239,68,68,.25);color:#FCA5A5;font-weight:700;text-align:center}
+.logmin-sit{border-radius:6px;padding:2px 8px;font-size:.9em;background:rgba(255,255,255,.08)}
+.logmin-sit-sugerido{background:rgba(34,197,94,.2);color:#86EFAC}
+.logmin-sit-nao-cabe{background:rgba(239,68,68,.2);color:#FCA5A5}
+#log-minimo-view .table-scroll{max-height:70vh;overflow:auto}
