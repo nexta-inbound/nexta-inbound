@@ -3425,7 +3425,11 @@ function documentosAutoatendimento(registro) {
     ...documento,
     rotulo: documento.rotulo || `DANFE ${documento.notaFiscal || documento.numero || i + 1}`,
   }));
-  return [...fixos, ...danfes].filter((documento) => documento?.storagePath);
+  const boletos = listaDadosAutoatendimento(documentos.boletosPdf).map((documento, i) => ({
+    ...documento,
+    rotulo: documento.rotulo || `Boleto ${documento.notaFiscal || documento.numero || i + 1}`,
+  }));
+  return [...fixos, ...danfes, ...boletos].filter((documento) => documento?.storagePath);
 }
 async function abrirDocumentoAutoatendimento(indice, botao) {
   const protocolo = STATE.historicoAutoatendimento;
