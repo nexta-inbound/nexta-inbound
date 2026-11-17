@@ -572,6 +572,10 @@
     // Sem o Backoffice: a Logística ajustou o MIS e enviou ao portal (logistica.misEm).
     concluido:          { label: "Concluído",               tone: "ok",   final: true },
     cancelado:          { label: "Cancelado pelo solicitante", tone: "wait", final: true },
+    // D0 aberto sem SLA que ficou em qualquer etapa aberta até o fim do dia do faturamento. Quem encerra, na virada
+    // do dia, é o robô dos avisos (nexta_bots/bots/whatsapp/bot_alerta_adicionais.py), só com a chave ligada em
+    // Configurações (config/encerramentoSemSla). encerramentoAuto = { em, deStatus: etapa em que o chamado parou }
+    expirado:           { label: "Encerrado sem atendimento", tone: "wait", final: true },
   };
   // Etapas em que quem abriu ainda pode cancelar (depois de concluído, não dá mais)
   const CANCELAVEL = ["fila_demanda", "fila_logistica", "aprovado", "fila_backoffice"];
@@ -617,7 +621,7 @@
     cadTab: "bases",
     resumoData: "",    // idem para a aba Resumo
     cadBusca: "",
-    config: {},        // config/ do banco (tela Configurações, só admin grava): { backoffice: { ativo, em, por, porNome } }
+    config: {},        // config/ do banco (tela Configurações, só admin grava): { backoffice | encerramentoSemSla: { ativo, em, por, porNome } }
     configCarregada: false,
   };
   // Etapa do Time Backoffice ligada? Sem o nó no banco (ou sem as regras novas publicadas), fica desligada: a Logística conclui
@@ -625,6 +629,11 @@
   // Fila do Backoffice aparece com a etapa ligada ou enquanto houver chamado nela (desligar a etapa não tira da fila
   // quem já tinha o MIS ajustado: o Backoffice termina esses)
   const temBackoffice = () => fluxoBackoffice() || S.chamados.some(c => c.status === "fila_backoffice");
+  // Encerramento automático do sem SLA ligado? Só muda os textos daqui; quem encerra é o robô (ver STATUS.expirado)
+  const encerraSemSla = () => S.config.encerramentoSemSla?.ativo === true;
+  const TXT_ENCERRA = "se não for atendido até o fim do dia do faturamento, é encerrado automaticamente";
+  // Sem SLA de dias anteriores ainda em aberto: o robô encerra na próxima varredura (virada do dia ou logo após ligar a chave)
+  const semSlaVencido = c => c.semSla === true && CANCELAVEL.includes(c.status) && (c.dataEntrega || "") < hojeStr();
 
   // ---------- Utilidades ----------
   function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -904,8 +913,8 @@
     render();
 
     carregarNotifs();
-    // Configurações do portal (tela Configurações, admin): por ora, liga/desliga a etapa do Backoffice. Se a leitura
-    // for recusada (regras sem o nó config/ publicadas), vale o padrão: etapa desligada.
+    // Configurações do portal (tela Configurações, admin): etapa do Backoffice e encerramento automático do sem SLA. Se a
+    // leitura for recusada (regras sem o nó config/ publicadas), vale o padrão: as duas chaves desligadas.
     parar.push(onValue(ref(db, "config"), snap => { S.config = snap.val() || {}; aoMudarConfig(); },
       err => { console.error(err); S.config = {}; aoMudarConfig(); }));
     parar.push(onValue(ref(db, "chamados"), snap => {
@@ -1013,7 +1022,7 @@
   const CHIP_LABEL = {
     recusa_auto: "Recusa auto", fila_demanda: "Ag. Demanda", recusado_demanda: "Recusado Demanda",
     fila_logistica: "Ag. Logística", recusado_logistica: "Recusado Logística", aprovado: "Ajustar MIS", fila_backoffice: "Ag. Backoffice",
-    recusado_backoffice: "Recusado Backoffice", concluido: "Concluído", cancelado: "Cancelado",
+    recusado_backoffice: "Recusado Backoffice", concluido: "Concluído", cancelado: "Cancelado", expirado: "Sem atendimento",
   };
   // Tudo menos os chips, na visão do cartão f (padrão: o ativo) — base dos KPIs e das contagens dos chips
   function antesDosChips(f = FILTROS.find(x => x.id === S.filtro) || FILTROS[0], base = chamadosFiltrados()) {
@@ -1089,7 +1098,7 @@
     const doStatus = pre.filter(c => marcasOn.every(m => m.test(c)));
     const doMarca = pre.filter(c => !statusOn.length || statusOn.includes(c.status));
     // Chips que só aparecem se houver chamado nesse status (os do Backoffice: sempre, com a etapa ativa)
-    const eventual = { recusa_auto: false, fila_backoffice: fluxoBackoffice(), recusado_backoffice: fluxoBackoffice() };
+    const eventual = { recusa_auto: false, fila_backoffice: fluxoBackoffice(), recusado_backoffice: fluxoBackoffice(), expirado: false };
     const ids = Object.keys(STATUS).filter(k => !(k in eventual) || eventual[k] || S.chamados.some(c => c.status === k));
     const limpar = el("button", { class: "linkbtn", type: "button", style: "margin-left:6px;font-size:13px", hidden: !S.fStatus.size,
       onclick: () => { S.fStatus.clear(); render(); } }, "Limpar status");
@@ -1173,7 +1182,7 @@
     // Regras
     const r = $("regras"); r.replaceChildren(
       el("span", {}, el("b", { text: "Com SLA: " }), `D+1 após o horário de corte · D0 até ${fmtHora(REGRAS.limiteD0)}`),
-      el("span", {}, el("b", { text: "Sem SLA: " }), `D0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento)`),
+      el("span", {}, el("b", { text: "Sem SLA: " }), `D0 aberto a partir de ${fmtHora(REGRAS.limiteD0)} (sem garantia de atendimento${encerraSemSla() ? `; ${TXT_ENCERRA}` : ""})`),
       el("span", {}, el("b", { text: "Retorno Demanda: " }), `até ${fmtHora(REGRAS.slaDemanda)} do dia do faturamento`),
       el("span", {}, el("b", { text: "Retorno Logística: " }), `até ${fmtHora(REGRAS.slaLogistica)} do dia do faturamento`),
       fluxoBackoffice() ? el("span", {}, el("b", { text: "Retorno Backoffice: " }), `até ${fmtHora(REGRAS.slaBackoffice)} do dia do faturamento`) : null,
@@ -1212,33 +1221,40 @@
       atrasado(c) ? el("span", { class: "pill t-crit", style: "margin-left:8px", text: "Fora do prazo" }) : null,
       c.semSla ? el("span", { class: "pill t-warn", style: "margin-left:8px", text: "Sem SLA" }) : null,
       (pr => pr ? el("span", { class: "pill t-" + pr.tone, style: "margin-left:8px", title: "Prioridade dada pela Demanda", text: `Prioridade ${pr.label.toLowerCase()}` }) : null)(prioridadeDe(c))));
-    if (c.semSla) body.append(el("div", { class: "hint t-warn", role: "note",
-      text: `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.` }));
+    if (c.status === "expirado") body.append(el("div", { class: "hint t-warn", role: "note" },
+      el("b", { text: `Encerrado automaticamente em ${fmtDataHora(c.encerramentoAuto?.em)}: ` }),
+      `D0 aberto após ${fmtHora(REGRAS.limiteD0)} (sem SLA) e não atendido até o fim do dia do faturamento.`,
+      c.logistica?.misEm ? ` A Logística já tinha ajustado o MIS e enviado ao portal em ${fmtDataHora(c.logistica.misEm)}: o portal não estorna, confira o MIS.` : ""));
+    else if (c.semSla) body.append(el("div", { class: "hint t-warn", role: "note",
+      text: `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento. Não tem SLA e as áreas não têm obrigação de atender.`
+        + (encerraSemSla() && !STATUS[c.status]?.final ? ` Se não for atendido até o fim do dia do faturamento, é encerrado automaticamente.` : "") }));
 
     // Etapas
     const etapa = (nome, estado, txt) => el("div", { class: "step " + estado }, el("b", { text: nome }), txt);
     const d = c.demanda, l = c.logistica, b = c.backoffice;
     const ateOuSemSla = iso => c.semSla ? "Sem SLA" : `Até ${fmtDataHora(iso)}`;
-    const cancelado = c.status === "cancelado";
-    // No cancelamento, a etapa que estava em aberto aparece como "Cancelado"; as seguintes ficam "—"
+    // No cancelamento (ou no encerramento automático do sem SLA), a etapa que estava em aberto aparece como
+    // "Cancelado" ("Sem atendimento"); as seguintes ficam "—"
+    const parou = c.status === "cancelado" || c.status === "expirado";
+    const rotParou = c.status === "cancelado" ? "Cancelado" : "Sem atendimento";
+    const deStatus = c.cancelamento?.deStatus || c.encerramentoAuto?.deStatus;
     const eDem = c.status === "recusa_auto" ? ["fail", "Não chegou"] :
       d ? [d.decisao === "aprovado" ? "done" : "fail", d.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
-      cancelado ? ["fail", "Cancelado"] : ["now", ateOuSemSla(c.prazoDemanda)];
+      parou ? ["fail", rotParou] : ["now", ateOuSemSla(c.prazoDemanda)];
     const eLog = l ? [l.decisao === "aprovado" ? "done" : "fail", l.decisao === "aprovado" ? "Aprovado" : "Recusado"] :
       c.status === "fila_logistica" ? ["now", ateOuSemSla(c.prazoLogistica)] :
-      cancelado && d?.decisao === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+      parou && d?.decisao === "aprovado" ? ["fail", rotParou] : ["", "—"];
     // A Logística ajusta o MIS e envia a disponibilidade ao portal nos dois fluxos (com ou sem o Backoffice)
     const eMis = l?.misEm ? ["done", "Ajustado e enviado"] :
       c.status === "aprovado" ? ["now", c.devolucaoBo ? "Devolvido (sem saldo)" : "Pendente (Logística)"] :
-      cancelado && c.cancelamento?.deStatus === "aprovado" ? ["fail", "Cancelado"] : ["", "—"];
+      parou && deStatus === "aprovado" ? ["fail", rotParou] : ["", "—"];
     // Etapa do Backoffice: chamados que passaram por ela, ou que ainda vão passar (etapa ativa e chamado em aberto)
-    const deStatus = c.cancelamento?.deStatus;
     const comBo = !!b || !!c.devolucaoBo || c.status === "fila_backoffice" || deStatus === "fila_backoffice"
       || (fluxoBackoffice() && !STATUS[c.status]?.final);
     const eBo = b ? (b.decisao === "inserido" ? ["done", pedidosDe(c).some(p => p.naoInserido) ? "Inserido parcial" : "Pedido inserido"] : ["fail", "Recusado"]) :
       c.status === "fila_backoffice" ? ["now", ateOuSemSla(prazoBackoffice(c))] :
       devolvido(c) ? ["", "Devolvido à Logística"] :
-      cancelado && deStatus === "fila_backoffice" ? ["fail", "Cancelado"] : ["", "—"];
+      parou && deStatus === "fila_backoffice" ? ["fail", rotParou] : ["", "—"];
     body.append(el("div", {}, el("p", { class: "section-t", text: "Etapas" }),
       el("div", { class: "steps" }, etapa("Demanda", ...eDem), etapa("Logística", ...eLog), etapa("MIS e portal", ...eMis),
         comBo ? etapa("Backoffice", ...eBo) : null)));
@@ -1323,7 +1339,8 @@
     for (const h of [...(c.historico || [])].reverse()) {
       hist.append(el("li", {}, el("span", { class: "dot" }),
         el("div", {}, el("div", {}, el("b", { text: h.acao })),
-          el("div", { class: "meta", text: `${fmtDataHora(h.em)} · ${PAPEIS[h.papel] || h.papel} · ${h.porNome || "—"}` }),
+          // papel "sistema": evento gravado pelo robô (encerramento automático do sem SLA)
+          el("div", { class: "meta", text: `${fmtDataHora(h.em)} · ${PAPEIS[h.papel] || (h.papel === "sistema" ? "Sistema" : h.papel)} · ${h.porNome || "—"}` }),
           h.nota ? el("div", { class: "note", text: h.nota }) : null)));
     }
     body.append(el("div", {}, el("p", { class: "section-t", text: "Histórico" }), hist));
@@ -1348,6 +1365,8 @@
   //   Time Backoffice → MIS ajustado pela Logística (entrou na fila do Backoffice; só com a etapa ativa)
   //   Quem abriu      → aprovado pela Logística, concluído (pelo Backoffice ou pela Logística) ou recusado por Demanda/Logística/Backoffice
   //   Cancelamento    → avisa o time que estava com o chamado
+  //   Encerrado sem atendimento (sem SLA, pelo robô) → quem abriu, o time que estava com o chamado e, se o MIS já
+  //                     tinha sido ajustado, também a Logística (o portal não estorna)
   // Ninguém é avisado da própria ação (ex.: solicitante que cancela o próprio chamado).
   const NOTIF = { chave: "", vistos: null, lista: [], primeira: true };
   const NOTIF_MAX = 50;
@@ -1394,6 +1413,13 @@
       if (time && ps.includes(time))
         out.push({ titulo: `Chamado ${c.codigo} cancelado pelo solicitante`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base}. Motivo: ${c.cancelamento?.motivo || "—"}` });
     }
+    if (c.status === "expirado" && c.criadoPor !== me) {
+      const de = c.encerramentoAuto?.deStatus || antes, mis = !!c.logistica?.misEm;
+      const time = { fila_demanda: "demanda", fila_logistica: "logistica", aprovado: "logistica", fila_backoffice: "backoffice" }[de];
+      if ((time && ps.includes(time)) || (mis && ps.includes("logistica")))
+        out.push({ titulo: `Chamado ${c.codigo} encerrado sem atendimento`, txt: `${c.criadoPorNome || "—"} · ${resumoClientes(c)} · ${c.base}. Sem SLA e não atendido até o fim do dia do faturamento.`
+          + (mis ? " O MIS já tinha sido ajustado: confira, o portal não estorna." : "") });
+    }
     if (c.criadoPor === me) {
       // Só na aprovação (a volta por devolução do Backoffice não repete o aviso)
       if (c.status === "aprovado" && !devolvido(c) && c.logistica?.por !== me) {
@@ -1416,6 +1442,8 @@
         out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pela Logística`, txt: c.logistica?.obs || "" });
       if (c.status === "recusado_backoffice" && c.backoffice?.por !== me)
         out.push({ titulo: `Seu chamado ${c.codigo} foi recusado pelo Backoffice`, txt: c.backoffice?.motivo || "" });
+      if (c.status === "expirado")
+        out.push({ titulo: `Seu chamado ${c.codigo} foi encerrado sem atendimento`, txt: `Aberto sem SLA (D0 após ${fmtHora(REGRAS.limiteD0)}) e não atendido até o fim do dia do faturamento.` });
     }
     return out.map(a => ({ ...a, id: c.id, status: c.status, em: c.atualizadoEm || new Date().toISOString(), lida: false }));
   }
@@ -2016,7 +2044,8 @@
       const dd = difDias(v);
       if (dd === 0 && passouDe(new Date(), REGRAS.limiteD0)) {
         aviso.className = "hint t-crit";
-        aviso.textContent = `Faturamento hoje (D0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`;
+        aviso.textContent = `Faturamento hoje (D0) após ${fmtHora(REGRAS.limiteD0)}: o chamado será aberto e seguirá o fluxo, mas SEM GARANTIA DE ATENDIMENTO — não tem SLA e as áreas não têm obrigação de atender.`
+          + (encerraSemSla() ? ` Se não for atendido até o fim do dia, é encerrado automaticamente.` : "");
       } else if (dd === 0) {
         aviso.className = "hint t-warn";
         aviso.textContent = `Faturamento hoje (D0). Retorno da Demanda até ${fmtHora(REGRAS.slaDemanda)}`
@@ -2127,7 +2156,8 @@
         };
         // "Chamado aberto…" no início: ultimoAtendente() não conta a abertura como resposta da Demanda
         evento(c, solic ? `Chamado aberto em nome de ${solic.nome}` : "Chamado aberto", v.motivo);
-        if (semSla) evento(c, "Aberto sem SLA", `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`);
+        if (semSla) evento(c, "Aberto sem SLA", `D0 aberto após ${fmtHora(REGRAS.limiteD0)}: sem garantia de atendimento, sem SLA e sem obrigação das áreas atenderem`
+          + (encerraSemSla() ? `; ${TXT_ENCERRA}` : ""));
         await store.salvar(c);
         toast((semSla ? "Chamado aberto sem SLA (D0 após o limite)" : "Chamado aberto") + (solic ? ` em nome de ${solic.nome}` : "") + " e enviado ao Time Demanda.");
         S.abertoId = id; S.abertoVer = null;
@@ -2191,6 +2221,47 @@
       el("p", { class: "sub", style: "margin:0", text: `Nenhum chamado é alterado ao trocar: a chave só decide para onde vai o chamado quando a Logística confirma o ajuste no MIS. `
         + `Agora: ${nAprov} aguardando o ajuste no MIS · ${nFila} na fila do Backoffice (continuam com o Backoffice mesmo se a etapa for desativada).` }),
       err, el("div", { class: "row" }, btn)));
+    body.append(configEncerramento());
+  }
+
+  // config/encerramentoSemSla = { ativo, em, por, porNome }. Quem encerra é o robô dos avisos de WhatsApp
+  // (bot_alerta_adicionais.py): na virada do dia (e logo depois de ligar a chave) ele fecha os sem SLA de dias
+  // anteriores que ainda estão em qualquer etapa aberta. Desligada, nenhum chamado é encerrado.
+  function configEncerramento() {
+    const cfg = S.config.encerramentoSemSla || {}, ativo = encerraSemSla();
+    const nVencidos = S.chamados.filter(semSlaVencido).length;
+    const nHoje = S.chamados.filter(c => c.semSla === true && CANCELAVEL.includes(c.status) && c.dataEntrega === hojeStr()).length;
+    const chk = el("input", { type: "checkbox", id: "cfg-exp" });
+    chk.checked = ativo;
+    const err = el("div", { class: "err", role: "alert" });
+    const btn = el("button", { class: "btn primary", type: "button", disabled: true }, "Salvar");
+    chk.addEventListener("change", () => (btn.disabled = chk.checked === ativo));
+    btn.addEventListener("click", async () => {
+      err.textContent = "";
+      const novo = chk.checked;
+      const efeito = novo
+        ? " A partir de agora, na virada do dia, o robô encerra os chamados sem SLA que ainda estiverem em qualquer etapa aberta (também os que aguardam o ajuste no MIS ou o Backoffice), e quem abriu recebe o aviso no WhatsApp."
+          + (nVencidos ? ` ${nVencidos === 1 ? "O chamado de dia anterior que ainda está aberto é encerrado" : `Os ${nVencidos} chamados de dias anteriores que ainda estão abertos são encerrados`} em poucos minutos.` : "")
+        : " Nenhum chamado sem SLA é encerrado automaticamente; os já encerrados continuam como estão.";
+      if (!await confirmar(`${novo ? "Ativar" : "Desativar"} o encerramento automático dos chamados sem SLA?${efeito}`, { ok: novo ? "Ativar" : "Desativar", cancelar: "Voltar" })) return;
+      btn.disabled = true;
+      try {
+        await set(ref(db, "config/encerramentoSemSla"), { ativo: novo, em: new Date().toISOString(), por: S.meuId, porNome: S.me.nome });
+        toast(novo ? "Encerramento automático do sem SLA ativado" : "Encerramento automático do sem SLA desativado");
+        abrirConfig();
+      } catch (e) { console.error(e); err.textContent = msgErro(e); btn.disabled = false; }
+    });
+    return el("div", { class: "action" },
+      el("p", { class: "section-t", text: "Encerramento automático do sem SLA", style: "margin:0" }),
+      el("div", {}, el("span", { class: "pill " + (ativo ? "t-ok" : "t-wait"), text: ativo ? "Ativo" : "Desativado" }),
+        cfg.em ? el("span", { class: "sub", style: "margin-left:8px", text: `Alterado por ${cfg.porNome || "—"} em ${fmtDataHora(cfg.em)}` }) : null),
+      el("p", { style: "margin:0", text: `D0 aberto após ${fmtHora(REGRAS.limiteD0)} fica sem SLA. Com a chave ativa, ${TXT_ENCERRA}: `
+        + `vai para "${STATUS.expirado.label}" na virada do dia, esteja em qualquer etapa (Demanda, Logística, ajuste no MIS ou Backoffice). `
+        + `Se o MIS já tinha sido ajustado, a Logística é avisada para conferir: o portal não estorna.` }),
+      el("label", { class: "check", for: "cfg-exp" }, chk, "Ativar o encerramento automático dos chamados sem SLA"),
+      el("p", { class: "sub", style: "margin:0", text: `Quem encerra é o robô dos avisos de WhatsApp (bot_alerta_adicionais), que precisa estar rodando. `
+        + `Agora: ${nHoje} sem SLA de hoje em aberto · ${nVencidos} de dias anteriores ainda em aberto${ativo && nVencidos ? " (o robô encerra na próxima varredura)" : ""}.` }),
+      err, el("div", { class: "row" }, btn));
   }
 
   // ---------- Resumo (volume por base × produto) ----------
@@ -2201,7 +2272,8 @@
   // Backoffice, o que a Logística aprovou e já ajustou no MIS.
   // Com a etapa do Backoffice desligada (fluxo antigo): Aprovado = aprovado pela Logística, com ou sem ajuste no MIS,
   // e a coluna Pendente Backoffice some (a não ser que ainda haja chamado na fila do Backoffice).
-  // Reprovado = recusas + cortes parciais (Demanda, Logística e clientes que o Backoffice não inseriu).
+  // Reprovado = recusas + encerrados sem atendimento (sem SLA) + cortes parciais (Demanda, Logística e clientes que o
+  // Backoffice não inseriu).
   // Pendentes trazem a quebra no prazo / atrasado / sem SLA (chaves <col>_ok, <col>_atr, <col>_sla).
   const COLS_RESUMO = [
     { k: "sol",  l: "Volume adicional solicitado" },
