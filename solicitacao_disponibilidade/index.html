@@ -292,6 +292,7 @@
   .novo-topo { display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px; align-items: end; }
   .cli-linha { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) 170px 150px 110px 28px; gap: 10px 12px; align-items: end; background: var(--surface); }
   .cli-num { display: block; }
+  .cli-aviso { margin: 8px 0 0; }
   .cli-remover { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 16px; padding: 0; height: 40px; }
   .cli-remover:hover { color: var(--crit); }
   @media (max-width: 760px) {
@@ -913,6 +914,8 @@
     render();
 
     carregarNotifs();
+    // Quem abre chamado já baixa a lista de clientes em segundo plano (só a meta, se a versão guardada for a atual)
+    if (S.me.admin || S.me.papeis.some(p => p === "comercial" || p === "demanda")) setTimeout(carregarClientes, 1500);
     // Configurações do portal (tela Configurações, admin): etapa do Backoffice e encerramento automático do sem SLA. Se a
     // leitura for recusada (regras sem o nó config/ publicadas), vale o padrão: as duas chaves desligadas.
     parar.push(onValue(ref(db, "config"), snap => { S.config = snap.val() || {}; aoMudarConfig(); },
@@ -1149,7 +1152,7 @@
         el("td", { text: c.produto }),
         el("td", {}, ...(cs => cs.length > 1
           ? [el("div", { text: resumoClientes(c) }), el("div", { class: "sub", text: `${cs.length} clientes` })]
-          : [el("div", { text: cs[0]?.nome || "—" }), el("div", { class: "sub", text: cs[0] ? `${cs[0].segmento} · ${cs[0].modal}` : "" })])(clientesDe(c))),
+          : [el("div", { text: cs[0]?.nome || "—" }), el("div", { class: "sub", text: cs[0] ? [cs[0].codigo, cs[0].segmento, cs[0].modal].filter(Boolean).join(" · ") : "" })])(clientesDe(c))),
         el("td", { class: "num mono" }, fmtVol(c.volume), ehParcial(c) ? el("div", { class: "sub", text: `aprovado ${fmtVol(volumeAprovado(c))}` }) : null),
         el("td", {}, el("span", { class: "pill t-" + st.tone, text: st.label })),
         el("td", {}, (pr => pr
@@ -1318,7 +1321,9 @@
           colLog ? el("th", { class: "num", text: "Aprovado Logística" }) : null,
           colOv ? el("th", { text: "Ordem de venda" }) : null)),
         el("tbody", { class: "plain" }, cs.map((x, i) => el("tr", {},
-          el("td", { text: x.nome }), el("td", { text: x.segmento || "—" }), el("td", { text: x.modal || "—" }),
+          // Código do SAP: chamados abertos antes do cadastro de clientes têm só o nome digitado
+          el("td", {}, x.nome, x.codigo ? el("div", { class: "sub", text: `Cód. ${x.codigo}` }) : null),
+          el("td", { text: x.segmento || "—" }), el("td", { text: x.modal || "—" }),
           el("td", { class: "num mono", text: fmtVol(x.volume) }),
           colDem ? colAprov("demanda", vDem, i, Number(x.volume) || 0) : null,
           colLog ? colAprov("logistica", vLog, i, vDem?.[i] ?? (Number(x.volume) || 0)) : null,
@@ -1883,12 +1888,13 @@
   // com o valor escolhido. Se a pessoa digita e sai sem escolher, o texto volta para a seleção real —
   // nunca fica um texto "solto" que não existe no cadastro.
   const semAcento = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  function combo({ id, name, itens, placeholder }) {
+  // vazio (opcional): texto quando a busca não acha nada (ex.: lista de clientes ainda carregando)
+  function combo({ id, name, itens, placeholder, vazio }) {
     const hidden = el("input", { type: "hidden", name });
     const inp = el("input", { id, type: "text", placeholder, autocomplete: "off", spellcheck: "false",
       role: "combobox", "aria-expanded": "false", "aria-autocomplete": "list", "aria-controls": id + "-lista" });
     const lista = el("div", { class: "combo-lista", id: id + "-lista", role: "listbox" });
-    let visiveis = [], ativo = -1;
+    let visiveis = [], ativo = -1, achados = 0;
 
     // `itens` pode ser uma funcao: le o cadastro na hora de buscar (2026-10-23: no celular com 4G lento o formulario
     // abria antes do cadastro chegar e ficava "Nenhum item cadastrado" ate' fechar e abrir de novo).
@@ -1897,7 +1903,8 @@
       const t = semAcento(termo.trim());
       // Todas as palavras digitadas precisam aparecer (em qualquer ordem): "betim rbz" acha "BETIM - NEXTA RBZ"
       const palavras = t.split(/\s+/).filter(Boolean);
-      visiveis = listaItens().filter(i => palavras.every(p => i.busca.includes(p))).slice(0, 100);
+      const todos = listaItens().filter(i => palavras.every(p => i.busca.includes(p)));
+      achados = todos.length; visiveis = todos.slice(0, 100);
       ativo = visiveis.length ? 0 : -1;
       desenhar();
       lista.classList.add("open"); inp.setAttribute("aria-expanded", "true");
@@ -1907,7 +1914,9 @@
         ? visiveis.map((i, n) => el("div", { class: "combo-item" + (n === ativo ? " ativo" : ""), role: "option", id: `${id}-op${n}`,
             "aria-selected": String(n === ativo), onmousedown: () => escolher(i), onmousemove: () => { if (ativo !== n) { ativo = n; marcar(); } } },
             el("div", { text: i.texto }), i.sub ? el("div", { class: "sub", text: i.sub }) : null))
-        : [el("div", { class: "combo-vazio", text: listaItens().length ? "Nada encontrado" : (S.cadCarregado ? "Nenhum item cadastrado" : "Carregando…") })]));
+        : [el("div", { class: "combo-vazio", text: vazio ? vazio() : listaItens().length ? "Nada encontrado" : (S.cadCarregado ? "Nenhum item cadastrado" : "Carregando…") })]),
+        // Lista grande (clientes): avisa que há mais do que o mostrado, senão parece que o cliente não existe
+        ...(achados > visiveis.length ? [el("div", { class: "combo-vazio", text: `Mostrando ${visiveis.length} de ${achados.toLocaleString("pt-BR")}. Continue digitando ou busque pelo código.` })] : []));
       marcar();
     }
     function marcar() {
@@ -1937,6 +1946,97 @@
       else if (e.key === "Tab" && aberta && inp.value.trim() && visiveis[ativo]) escolher(visiveis[ativo]);
     });
     return el("div", { class: "combo" }, inp, hidden, lista);
+  }
+
+  // ---------- Cadastro de clientes (SAP, via datalake) ----------
+  // O robô dos avisos (bot_alerta_adicionais.py) leva código e nome de BI_GLD_CLIENTE_ENDERECO para clientesSap/ nos
+  // horários de meta.horarios: lista = "código<TAB>nome" por linha (~2 MB, ~56 mil clientes). Fica guardada no
+  // navegador (IndexedDB) e só é baixada de novo quando meta.versao muda; a cada sessão só a meta (pequena) é lida.
+  const idb = {
+    abrir() {
+      return new Promise((ok, falha) => {
+        const r = indexedDB.open("adc-cache", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => ok(r.result); r.onerror = () => falha(r.error);
+      });
+    },
+    async get(k) {
+      try {
+        const base = await this.abrir();
+        return await new Promise((ok, falha) => { const r = base.transaction("kv").objectStore("kv").get(k); r.onsuccess = () => ok(r.result); r.onerror = () => falha(r.error); });
+      } catch { return null; } // navegador sem IndexedDB (aba anônima, bloqueado): baixa sempre
+    },
+    async set(k, v) {
+      try {
+        const base = await this.abrir();
+        await new Promise((ok, falha) => { const t = base.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = ok; t.onerror = () => falha(t.error); });
+      } catch {}
+    },
+  };
+  // estado: "nada" | "carregando" | "ok" | "vazio" (o robô ainda não publicou) | "erro"
+  const CLI = { itens: [], porCodigo: new Map(), meta: null, versao: null, estado: "nada", promessa: null, lidoEm: 0 };
+  function montarClientes(texto) {
+    CLI.itens = String(texto || "").split("\n").filter(Boolean).map(l => {
+      const i = l.indexOf("\t"), codigo = l.slice(0, i), nome = l.slice(i + 1);
+      return { valor: codigo, nome, texto: `${codigo} · ${nome}`, busca: semAcento(`${codigo} ${nome}`) };
+    });
+    CLI.porCodigo = new Map(CLI.itens.map(x => [x.valor, x]));
+  }
+  // Recarrega a meta se a lista tem mais de 30 min (portal aberto o dia todo pega as cargas seguintes)
+  function carregarClientes() {
+    if (CLI.promessa && !(CLI.estado === "ok" && Date.now() - CLI.lidoEm > 30 * 60000)) return CLI.promessa;
+    if (CLI.estado !== "ok") CLI.estado = "carregando";
+    atualizarAvisoClientes();
+    CLI.promessa = (async () => {
+      try {
+        const meta = (await get(ref(db, "clientesSap/meta"))).val();
+        CLI.meta = meta;
+        if (!meta?.versao) { CLI.estado = "vazio"; CLI.promessa = null; return; }
+        if (CLI.estado === "ok" && CLI.versao === meta.versao) { CLI.lidoEm = Date.now(); return; }
+        const cache = await idb.get("clientesSap");
+        let texto = cache?.versao === meta.versao && typeof cache.lista === "string" ? cache.lista : null;
+        if (texto == null) {
+          texto = (await get(ref(db, "clientesSap/lista"))).val() || "";
+          idb.set("clientesSap", { versao: meta.versao, lista: texto });
+        }
+        montarClientes(texto);
+        CLI.versao = meta.versao; CLI.estado = "ok"; CLI.lidoEm = Date.now();
+      } catch (e) {
+        console.error(e);
+        // Sem conexão ou sem permissão: vale a última lista guardada neste navegador
+        const cache = CLI.estado === "ok" ? null : await idb.get("clientesSap");
+        if (cache?.lista) { montarClientes(cache.lista); CLI.versao = cache.versao; CLI.estado = "ok"; CLI.lidoEm = Date.now(); }
+        else if (CLI.estado !== "ok") { CLI.estado = "erro"; CLI.promessa = null; }
+      } finally { atualizarAvisoClientes(); }
+    })();
+    return CLI.promessa;
+  }
+  // "06:00,11:00,15:00" → "6h, 11h e 15h"
+  function fmtHorarios(txt) {
+    const hs = String(txt || "").split(",").map(s => s.trim()).filter(Boolean)
+      .map(s => { const [h, m] = s.split(":").map(Number); return fmtHora({ h, m }); });
+    return hs.length > 1 ? `${hs.slice(0, -1).join(", ")} e ${hs.at(-1)}` : hs[0] || "";
+  }
+  const vazioClientes = () => CLI.estado === "carregando" || CLI.estado === "nada" ? "Carregando a lista de clientes…"
+    : CLI.estado === "ok" ? "Nenhum cliente encontrado. Busque pelo nome ou pelo código do SAP."
+    : "Lista de clientes indisponível no momento.";
+  function atualizarAvisoClientes() {
+    const aviso = $("n-aviso-cli");
+    if (!aviso) return;
+    const h = fmtHorarios(CLI.meta?.horarios);
+    aviso.replaceChildren();
+    if (CLI.estado === "ok") {
+      aviso.className = "sub cli-aviso";
+      aviso.textContent = `Busque pelo nome ou pelo código do cliente no SAP. Lista atualizada em ${fmtDataHora(CLI.meta?.verificadoEm)}`
+        + (h ? ` (atualiza às ${h}).` : ".") + " Cliente novo no SAP aparece depois da próxima atualização.";
+    } else if (CLI.estado === "erro" || CLI.estado === "vazio") {
+      aviso.className = "hint t-crit cli-aviso";
+      aviso.append(CLI.estado === "vazio" ? "A lista de clientes do SAP ainda não foi carregada no portal. " : "Não foi possível carregar a lista de clientes. ",
+        el("button", { class: "linkbtn", type: "button", onclick: () => carregarClientes() }, "Tentar de novo"));
+    } else {
+      aviso.className = "sub cli-aviso";
+      aviso.textContent = "Carregando a lista de clientes…";
+    }
   }
 
   // ---------- Novo chamado ----------
@@ -1984,9 +2084,8 @@
     const seg = (name, opts, padrao = opts[0]) => el("div", { class: "seg", role: "radiogroup" },
       opts.map((o, i) => el("label", {}, el("input", { type: "radio", name, value: o, id: `n-${name}-${i}`, checked: o === padrao }), el("span", { text: o }))));
 
-    // Clientes: texto livre (sugere nomes já usados em chamados anteriores), uma linha por cliente
-    const sugestoes = [...new Set(S.chamados.flatMap(c => clientesDe(c).map(x => x.nome)).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+    // Clientes: escolhidos do cadastro do SAP (busca por nome ou código, como a base), uma linha por cliente
+    carregarClientes();
     const boxClientes = el("div", { class: "clientes" });
     const totalEl = el("span", { class: "mono" });
     let seqLinha = 0;
@@ -2013,12 +2112,15 @@
     }
     function novaLinha() {
       const k = ++seqLinha;
-      const nome = el("input", { id: `n-cli-${k}`, list: "dl-clientes", placeholder: "Nome do cliente", autocomplete: "off", "data-nome": true });
+      // Hidden "cliente-<k>" = código do SAP; o campo de texto só filtra a lista (texto solto volta para a escolha)
+      const cCli = combo({ id: `n-cli-${k}`, name: `cliente-${k}`, placeholder: "Digite o nome ou o código do cliente…",
+        itens: () => CLI.itens, vazio: vazioClientes });
+      cCli.dataset.cliente = k;
       const vol = el("input", { type: "number", id: `n-vol-${k}`, min: "0.5", step: "0.5", inputmode: "decimal", placeholder: "Ex.: 15", "data-vol": true });
       vol.addEventListener("input", atualizarTotal);
-      // Uma linha só por cliente: nome | segmento | modal | volume | ✕
+      // Uma linha só por cliente: cliente | segmento | modal | volume | ✕
       const linha = el("div", { class: "cli-linha" },
-        el("label", { class: "f cli-nome", for: `n-cli-${k}` }, el("span", { class: "cli-num" }), nome),
+        el("div", { class: "campo cli-nome" }, el("label", { class: "cli-num", for: `n-cli-${k}` }), cCli),
         el("label", { class: "f", for: `n-seg-${k}` }, "Segmento",
           el("select", { id: `n-seg-${k}`, name: `segmento-${k}`, required: true },
             el("option", { value: "", text: "Selecione…", disabled: true, selected: true }),
@@ -2029,7 +2131,7 @@
           onclick: () => { linha.remove(); atualizarTotal(); } }, "✕"));
       boxClientes.append(linha);
       atualizarTotal();
-      return nome;
+      return cCli.querySelector("input[type=text]");
     }
     novaLinha();
 
@@ -2072,7 +2174,7 @@
         el("p", { class: "section-t", text: "Clientes" }),
         boxClientes,
         volAlerta,
-        el("datalist", { id: "dl-clientes" }, sugestoes.map(s => el("option", { value: s }))),
+        el("div", { id: "n-aviso-cli", role: "status" }),
         el("div", { class: "cli-rodape" },
           el("button", { class: "btn ghost sm", type: "button", onclick: () => novaLinha().focus() }, "+ Adicionar cliente"),
           el("span", {}, "Total: ", totalEl))),
@@ -2088,10 +2190,12 @@
       e.preventDefault(); err.textContent = "";
       const fd = new FormData(form);
       const clientes = linhasCli().map((ln, i) => {
-        const k = ln.querySelector("[data-nome]").id.split("-").pop();
+        const k = ln.querySelector("[data-cliente]").dataset.cliente;
+        const cad = CLI.porCodigo.get(String(fd.get(`cliente-${k}`) || ""));
         return {
           n: i + 1,
-          nome: normaliza(ln.querySelector("[data-nome]").value),
+          codigo: cad?.valor || "",
+          nome: cad?.nome || "",
           segmento: String(fd.get(`segmento-${k}`) || ""),
           modal: String(fd.get(`modal-${k}`) || "FOB"),
           volume: parseFloat(ln.querySelector("[data-vol]").value.replace(",", ".")),
@@ -2110,7 +2214,7 @@
       if (!v.produto) faltando.push("produto");
       if (!v.base) faltando.push("base");
       for (const x of clientes) {
-        if (!x.nome) faltando.push(`nome do cliente ${x.n}`);
+        if (!x.codigo) faltando.push(`cliente ${x.n} (escolha na lista)`);
         if (!x.segmento) faltando.push(`segmento do cliente ${x.n}`);
         if (!(x.volume > 0)) faltando.push(`volume do cliente ${x.n}`);
       }
@@ -2122,8 +2226,8 @@
         linhasCli()[alto.n - 1].querySelector("[data-vol]").focus();
         return;
       }
-      const nomes = clientes.map(x => x.nome.toLowerCase());
-      if (new Set(nomes).size < nomes.length) { err.textContent = "Há cliente repetido. Junte os volumes numa linha só."; return; }
+      const codigos = clientes.map(x => x.codigo);
+      if (new Set(codigos).size < codigos.length) { err.textContent = "Há cliente repetido. Junte os volumes numa linha só."; return; }
       v.clientes = clientes.map(({ n, ...x }) => x);
       v.volume = Math.round(clientes.reduce((s, x) => s + x.volume, 0) * 10) / 10;
       const dd = difDias(v.dataEntrega);
@@ -2175,6 +2279,7 @@
     body.append(avisoCad);
     body.append(form);
     atualizarAvisoCad();
+    atualizarAvisoClientes();
     atualizarAviso();
   }
 
@@ -2517,8 +2622,9 @@
   function exportar() {
     // Uma linha por cliente (o código do chamado se repete), para facilitar somar volumes por cliente/segmento no Excel
     // volumeAprovadoFinal = o que virou pedido no portal (só chamados concluídos); lancadoMis = quando a Logística ajustou
-    // o MIS e enviou ao portal (nome mantido para quem já usa o CSV); devolvidoBackoffice = última devolução por falta de saldo
-    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoLogistica", "ordemVenda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "slaBackoffice", "motivo", "tradeoff", "obsLogistica", "obsBackoffice", "lancadoMis", "devolvidoBackoffice"];
+    // o MIS e enviou ao portal (nome mantido para quem já usa o CSV); devolvidoBackoffice = última devolução por falta de saldo;
+    // codigoCliente = código do SAP (no fim, para não mudar a posição das colunas de quem já usa; vazio nos chamados antigos)
+    const cols = ["codigo", "criadoEm", "criadoPor", "registradoPor", "tipo", "dataFaturamento", "base", "produto", "cliente", "segmento", "modal", "volumeSolicitadoCliente", "volumeAprovadoDemanda", "volumeAprovadoLogistica", "ordemVenda", "volumeAprovadoFinal", "volumeTotalChamado", "status", "prioridadeDemanda", "sla", "slaDemanda", "slaLogistica", "slaBackoffice", "motivo", "tradeoff", "obsLogistica", "obsBackoffice", "lancadoMis", "devolvidoBackoffice", "codigoCliente"];
     const esc = v => { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const num = v => String(v ?? "").replace(".", ",");
     const linhas = visiveis().flatMap(c => {
@@ -2527,7 +2633,7 @@
       return clientesDe(c).map((x, i) => [c.codigo, fmtDataHora(c.criadoEm), c.criadoPorNome, c.abertoPorNome, tipoDe(c), fmtData(c.dataEntrega), c.base, c.produto,
         x.nome, x.segmento, x.modal, num(x.volume), num(vDem?.[i]), num(vLog?.[i]), ps[i]?.ov || (ps[i]?.naoInserido ? "Não inserido" : ""), num(vFin?.[i]), num(c.volume),
         statusDe(c).label, prioridadeDe(c)?.label, c.semSla ? "Sem SLA" : "Com SLA", slaCsv(c, "Demanda"), slaCsv(c, "Logística"), slaCsv(c, "Backoffice"),
-        c.motivo, c.demanda?.tradeoff, c.logistica?.obs, c.backoffice?.motivo, misEm ? fmtDataHora(misEm) : "", devEm ? fmtDataHora(devEm) : ""].map(esc).join(";"));
+        c.motivo, c.demanda?.tradeoff, c.logistica?.obs, c.backoffice?.motivo, misEm ? fmtDataHora(misEm) : "", devEm ? fmtDataHora(devEm) : "", x.codigo].map(esc).join(";"));
     });
     const csv = "﻿" + [cols.join(";"), ...linhas].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
