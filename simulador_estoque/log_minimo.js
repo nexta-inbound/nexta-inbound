@@ -28,7 +28,7 @@
   painel.innerHTML = `
 <div class="section-title"><div><h2>Log · Estoque mínimo</h2>
 <p>Toda terça às 12:00 o robô guarda a cadência que o simulador sugere para <strong>atingir o estoque mínimo</strong>,
-por cidade, depósito, empresa e produto (venda: VMD reprojetada · entrada: trânsito real · cargas de 60 m³).
+por cidade, depósito, empresa e produto (venda: VMD reprojetada · entrada: trânsito real + não programado · cargas de 60 m³).
 Cada terça fica guardada separada, para comparar e validar a cadência ideal.</p></div>
 <div class="actions"><button type="button" id="logmin-excel">⬇ Excel</button></div></div>
 <div class="dia-filtros logmin-filtros">
@@ -90,7 +90,7 @@ Cada terça fica guardada separada, para comparar e validar a cadência ideal.</
     const conta = s => itens.filter(i => i.situacao === s).length;
     const total = itens.reduce((s, i) => s + (i.totalSugerido || 0), 0);
     $('logmin-status').textContent = `Gerado em ${new Date(dados.geradoEm).toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'})} · `
-      + `dados de ${dataBR(dados.dataSnapshot)} · venda: ${dados.cenarioVenda || 'VMD reprojetada'} · objetivo: atingir o estoque mínimo · cargas de ${dados.carga || 60} m³`;
+      + `dados de ${dataBR(dados.dataSnapshot)} · venda: ${dados.cenarioVenda || 'VMD reprojetada'} · entrada: ${(dados.entrada || 'Transito real').replace('Transito','Trânsito').replace('Nao programado','não programado')} · objetivo: atingir o estoque mínimo · cargas de ${dados.carga || 60} m³`;
     $('logmin-resumo').innerHTML = [[itens.length, 'recortes'], [conta('sugerido'), 'com sugestão'], [conta('nao cabe'), 'não cabe'],
       [conta('sem estoque minimo na politica'), 'sem mínimo na política'], [fmt(total) + ' m³', 'sugeridos']]
       .map(([v, r]) => `<span class="logmin-chip"><strong>${typeof v === 'number' ? fmt(v) : v}</strong> ${r}</span>`).join('');
