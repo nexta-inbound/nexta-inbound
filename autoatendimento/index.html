@@ -837,7 +837,7 @@ const MAX_LACRES_POR_COMPARTIMENTO = 10;
 const CAPACIDADE_MAX_LITROS = 50000;
 const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
 const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
-const TEMPO_TELA_FIM = 120;          // tempo para abrir e imprimir os dois PDFs
+const TEMPO_TELA_FIM = 120;          // tempo para abrir e imprimir os PDFs (ordem, amostragem, DANFEs e laudos)
 const TEMPO_TELA_AVISO = 30;
 const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
 const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
@@ -1064,7 +1064,7 @@ function renderDocumentosFim(documentos) {
   for (const id of ['btn-ordem-carregamento', 'btn-formulario-amostragem']) {
     document.getElementById(id).disabled = false;
   }
-  acoes.querySelectorAll('.btn-danfe').forEach((botao) => botao.remove());
+  acoes.querySelectorAll('.btn-danfe, .btn-laudo').forEach((botao) => botao.remove());
   danfes.forEach((documento, indice) => {
     const botao = document.createElement('button');
     botao.type = 'button';
@@ -1075,12 +1075,86 @@ function renderDocumentosFim(documentos) {
   });
 }
 
-function documentosParaImpressao(documentos) {
+/* ── LAUDOS DE ANÁLISE ── enviados pela equipe no portal (aba Laudos Análise), um por terminal e produto geral.
+   Cada NF sai com os laudos dos produtos dela: o robô lê a ordem de venda no DANFE (ordensVenda) e os produtos
+   vêm das linhas do check-in (alocacoes: ordemVenda + descrição do produto de venda). */
+const PRODUTOS_LAUDO = [ // ordem de impressão; a primeira regra que bate vale ("GASOLINA C ... ETANOL" é Gasolina)
+  { id: 'S10', rotulo: 'S10', padrao: /\bS\s*-?\s*10\b/ },
+  { id: 'S500', rotulo: 'S500', padrao: /\bS\s*-?\s*500\b/ },
+  { id: 'GASOLINA', rotulo: 'Gasolina', padrao: /GASOLINA/ },
+  { id: 'ETANOL', rotulo: 'Etanol', padrao: /ETANOL|ALCOOL/ },
+];
+function produtoDoLaudo(descricao) {
+  const texto = String(descricao || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return PRODUTOS_LAUDO.find((p) => p.padrao.test(texto))?.id || null;
+}
+function ordemSemZeros(valor) { return String(valor ?? '').trim().replace(/^0+(?=\d)/, ''); }
+// Produtos gerais de uma NF; sem a ordem de venda (robô antigo, DANFE ilegível) ou sem linha dela no check-in,
+// vão os de todo o carregamento: sobra laudo, mas nenhuma NF sai sem
+function produtosLaudoDaNota(registro, nota) {
+  const linhas = Object.values(registro?.alocacoes || {});
+  const ordens = new Set(Object.values(nota?.ordensVenda || {}).map(ordemSemZeros));
+  const daNota = linhas.filter((l) => ordens.has(ordemSemZeros(l.ordemVenda)));
+  const ids = new Set((daNota.length ? daNota : linhas).map((l) => produtoDoLaudo(l.descricao)).filter(Boolean));
+  return PRODUTOS_LAUDO.filter((p) => ids.has(p.id));
+}
+// { porNota: Map(storagePath do DANFE → laudos), laudos: um por produto (botões), faltando: rótulos sem laudo }
+function laudosDoRegistro(registro, laudosBase) {
+  const notas = Object.values(registro?.documentos?.notasFiscaisPdf || {}).filter((n) => n?.storagePath);
+  const porNota = new Map(), laudos = new Map(), faltando = new Set();
+  for (const nota of notas) {
+    const daNota = [];
+    for (const p of produtosLaudoDaNota(registro, nota)) {
+      const laudo = laudosBase?.[p.id];
+      if (!laudo?.storagePath) { faltando.add(p.rotulo); continue; }
+      const documento = { ...laudo, produto: p.id, rotulo: `Laudo de análise ${p.rotulo}`,
+        chaveImpressao: `${laudo.storagePath}#${nota.storagePath}` }; // o mesmo laudo sai uma vez por NF
+      daNota.push(documento);
+      if (!laudos.has(p.id)) laudos.set(p.id, documento);
+    }
+    porNota.set(nota.storagePath, daNota);
+  }
+  return { porNota, laudos: PRODUTOS_LAUDO.map((p) => laudos.get(p.id)).filter(Boolean), faltando: PRODUTOS_LAUDO.map((p) => p.rotulo).filter((r) => faltando.has(r)) };
+}
+async function carregarLaudosDoRegistro(registro) {
+  const baseId = registro?.baseId || Q.terminal;
+  for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
+    try {
+      return { ...laudosDoRegistro(registro, await window._fb.carregarLaudos(baseId)), erro: false };
+    } catch (e) {
+      console.error(e);
+      if (tentativa < 3) await aguardar(2000);
+    }
+  }
+  return { ...laudosDoRegistro(registro, {}), faltando: [], erro: true };
+}
+function renderLaudosFim(laudos) {
+  const acoes = document.getElementById('fim-documentos-acoes');
+  acoes.querySelectorAll('.btn-laudo').forEach((botao) => botao.remove());
+  laudos.laudos.forEach((documento) => {
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.className = 'btn btn-secundario btn-laudo';
+    botao.textContent = `Abrir ${documento.rotulo.replace('Laudo de análise', 'laudo')}`;
+    botao.addEventListener('click', () => abrirDocumentoDados(documento, botao));
+    acoes.appendChild(botao);
+  });
+}
+function avisoLaudos(laudos) {
+  if (!laudos) return '';
+  if (laudos.erro) return ' Não foi possível consultar os laudos de análise: peça ao guichê.';
+  return laudos.faltando.length
+    ? ` Sem laudo de análise de ${laudos.faltando.join(', ')} neste terminal: peça ao guichê.`
+    : '';
+}
+
+// Ordem de impressão: ordem de carregamento, amostragem e cada DANFE seguido dos laudos dos produtos dele
+function documentosParaImpressao(documentos, laudos = null) {
   const danfes = Array.isArray(documentos?.notasFiscaisPdf) ? documentos.notasFiscaisPdf : [];
   return [
     documentos?.ordemCarregamento,
     documentos?.formularioAmostragem,
-    ...danfes,
+    ...danfes.flatMap((danfe) => [danfe, ...(laudos?.porNota.get(danfe?.storagePath) || [])]),
   ].filter((documento) => documento?.storagePath);
 }
 
@@ -1094,7 +1168,7 @@ function controleImpressoes() {
 }
 
 function chaveImpressao(protocolo, documento) {
-  return `${Q.terminal}|${protocolo}|${documento.storagePath}`;
+  return `${Q.terminal}|${protocolo}|${documento.chaveImpressao || documento.storagePath}`;
 }
 
 function documentoJaImpresso(protocolo, documento) {
@@ -1186,17 +1260,19 @@ async function carregarEImprimirDocumento(documento) {
 async function imprimirDocumentosAutomaticamente(registro) {
   const protocolo = String(registro?.protocolo || '');
   if (!protocolo || _impressoesProtocolosEmAndamento.has(protocolo)) return;
-  const todos = documentosParaImpressao(registro.documentos);
-  const pendentes = todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
-  const status = document.getElementById('fim-documentos-status');
-  if (!pendentes.length) {
-    if (todos.length) status.textContent = 'Documentos já enviados para a impressora desta estação.';
-    return;
-  }
-
   _impressoesProtocolosEmAndamento.add(protocolo);
+  const status = document.getElementById('fim-documentos-status');
   const falhas = [];
   try {
+    status.textContent = 'Consultando os laudos de análise…';
+    const laudos = await carregarLaudosDoRegistro(registro);
+    if (_registroProcessamento?.protocolo === protocolo) renderLaudosFim(laudos);
+    const todos = documentosParaImpressao(registro.documentos, laudos);
+    const pendentes = todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
+    if (!pendentes.length) {
+      status.textContent = todos.length ? 'Documentos já enviados para a impressora desta estação.' + avisoLaudos(laudos) : '';
+      return;
+    }
     for (let indice = 0; indice < pendentes.length; indice += 1) {
       const documento = pendentes[indice];
       status.textContent = `Enviando documento ${indice + 1} de ${pendentes.length} para a impressora…`;
@@ -1209,9 +1285,10 @@ async function imprimirDocumentosAutomaticamente(registro) {
       }
       await aguardar(1000);
     }
-    status.textContent = falhas.length
-      ? `Não foi possível imprimir automaticamente: ${falhas.join(', ')}. Use os botões acima para tentar novamente.`
-      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} automaticamente para a impressora desta estação.`;
+    status.textContent = (falhas.length
+      ? `Não foi possível imprimir automaticamente: ${[...new Set(falhas)].join(', ')}. Use os botões acima para tentar novamente.`
+      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} automaticamente para a impressora desta estação.`)
+      + avisoLaudos(laudos);
   } finally {
     _impressoesProtocolosEmAndamento.delete(protocolo);
   }
@@ -3336,6 +3413,8 @@ setTimeout(() => {
     acompanharCheckin: (protocolo, aoMudar, aoErro) =>
       onValue(ref(db, 'autoatendimento/' + protocolo), (snapshot) => aoMudar(snapshot.val()), aoErro),
     carregarDocumento: (storagePath) => getBlob(storageRef(storage, storagePath)),
+    // laudosAnalise/<base>/<produto>: laudo atual de cada produto geral do terminal (enviado pelo portal)
+    carregarLaudos: async (baseId) => (await ler('laudosAnalise/' + baseId)) || {},
   };
 
   onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
