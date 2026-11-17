@@ -182,7 +182,12 @@ button, input { font: inherit; color: inherit; }
 .campos-placas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 @media (max-width: 640px) { .campos-placas { grid-template-columns: minmax(0, 1fr); } }
 .novo-pedido { flex: 1; min-width: 0; }
-.btn-tirar { flex-shrink: 0; min-height: 48px; padding: 0 16px; font-size: 16px; }
+.btn-tirar { flex-shrink: 0; align-self: flex-start; min-height: 48px; padding: 0 16px; font-size: 16px; }
+/* Um produto por linha, cada um com o seu volume (pedido com mais de um produto) */
+.novo-itens { margin-top: 8px; }
+.novo-item { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 6px 0; border-top: 1px dashed var(--border); }
+.novo-item-nome { min-width: 0; font-size: 17px; overflow-wrap: anywhere; }
+.novo-item .produto-vol { font-size: 18px; }
 
 .tanque-grupo + .tanque-grupo { margin-top: 12px; }
 .tanque-placa { margin: 0 0 6px 2px; font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-dim); }
@@ -1737,9 +1742,13 @@ function htmlPedidosNovo(comTirar) {
       <div class="novo-pedido">
         <div class="produto-nome">Pedido ${esc(p.nrPedido)}</div>
         <div class="produto-meta">${htmlComCnpj([p.clienteNome, p.clienteCidade], p.clienteCnpj)}</div>
-        <div class="produto-meta">${esc(itensDe(p).map((i) => i.descricao).filter(Boolean).join(' · '))}</div>
+        <div class="novo-itens">${itensDe(p).map((i) => `
+          <div class="novo-item">
+            <div class="novo-item-nome">${esc(i.descricao || `Produto ${i.codigo || ''}`.trim())}</div>
+            <div class="produto-vol">${formatVolume(Number(i.volume) || 0)}</div>
+          </div>`).join('')}
+        </div>
       </div>
-      <div class="produto-vol">${formatVolume(volumeDoPedido(p))}</div>
       ${comTirar ? `<button class="btn btn-secundario btn-tirar" type="button" onclick="tirarPedidoNovo(${jsArg(p.nrPedido)})">Tirar</button>` : ''}
     </div>`).join('');
 }
