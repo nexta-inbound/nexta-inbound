@@ -1108,10 +1108,17 @@ function avisoLaudos(laudos) {
 // Ordem de impressão: ordem de carregamento, amostragem e cada DANFE seguido dos laudos dos produtos dele
 function documentosParaImpressao(documentos, laudos = null) {
   const danfes = Array.isArray(documentos?.notasFiscaisPdf) ? documentos.notasFiscaisPdf : [];
+  const boletos = Array.isArray(documentos?.boletosPdf) ? documentos.boletosPdf : [];
+  const notasComDanfe = new Set(danfes.map((danfe) => String(danfe?.notaFiscal || '')));
   return [
     documentos?.ordemCarregamento,
     documentos?.formularioAmostragem,
-    ...danfes.flatMap((danfe) => [danfe, ...(laudos?.porNota.get(danfe?.storagePath) || [])]),
+    ...danfes.flatMap((danfe) => [
+      danfe,
+      ...(laudos?.porNota.get(danfe?.storagePath) || []),
+      ...boletos.filter((boleto) => String(boleto?.notaFiscal || '') === String(danfe?.notaFiscal || '')),
+    ]),
+    ...boletos.filter((boleto) => !notasComDanfe.has(String(boleto?.notaFiscal || ''))),
   ].filter((documento) => documento?.storagePath);
 }
 
