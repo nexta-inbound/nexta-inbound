@@ -394,11 +394,9 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .resultado .acoes .btn-primario { margin-left: 0; }
 .contagem { font-size: 15px; color: var(--text-muted); margin-top: 16px; min-height: 22px; }
 .documentos-impressao { max-width: 720px; margin: 24px auto 0; text-align: left; }
-.documentos-impressao .sub { max-width: none; margin: 4px 0 16px; font-size: 16px; }
-.documentos-acoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.documentos-acoes .btn { width: 100%; min-height: 68px; white-space: normal; }
-.documentos-status { min-height: 22px; margin-top: 12px; color: var(--text-dim); font-size: 15px; text-align: center; }
-@media (max-width: 700px) { .documentos-acoes { grid-template-columns: 1fr; } }
+.documentos-impressao .sub { max-width: none; margin: 8px 0 16px; font-size: 16px; }
+.documentos-status { min-height: 24px; font-size: 18px; font-weight: 600; }
+.btn-reimprimir { width: 100%; min-height: 64px; }
 
 /* ── PROCESSAMENTO DO FATURAMENTO ── */
 .processamento { max-width: 720px; margin: 0 auto; }
@@ -716,16 +714,11 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
     <div class="resultado">
       <div class="selo ok"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
       <div class="titulo">Faturamento concluído!</div>
-      <div class="protocolo-grande" id="fim-protocolo"></div>
-      <div class="sub" id="fim-texto">Aguarde ser chamado para o carregamento.</div>
+      <!-- A impressão começa sozinha; o botão só reenvia tudo se a impressora não começar -->
       <div class="cartao documentos-impressao hidden" id="fim-documentos">
-        <div class="cartao-titulo">Documentos para impressão</div>
-        <div class="sub">Os documentos serão enviados automaticamente para a impressora desta estação.</div>
-        <div class="documentos-acoes" id="fim-documentos-acoes">
-          <button class="btn btn-secundario" id="btn-ordem-carregamento" type="button" onclick="abrirDocumentoImpressao('ordemCarregamento')">Abrir Ordem de Carregamento</button>
-          <button class="btn btn-secundario" id="btn-formulario-amostragem" type="button" onclick="abrirDocumentoImpressao('formularioAmostragem')">Abrir Formulário de Amostragem</button>
-        </div>
         <div class="documentos-status" id="fim-documentos-status" aria-live="polite"></div>
+        <div class="sub">Aguarde a impressão dos documentos. Se em 1 minuto ela não começar, toque em <b>Imprimir novamente</b>.</div>
+        <button class="btn btn-secundario btn-reimprimir" id="btn-imprimir-novamente" type="button" onclick="imprimirNovamente()" disabled>Imprimir novamente</button>
       </div>
       <div class="acoes"><button class="btn btn-primario" type="button" onclick="reiniciar()">Concluir</button></div>
       <div class="contagem" id="fim-contagem"></div>
@@ -837,7 +830,7 @@ const MAX_LACRES_POR_COMPARTIMENTO = 10;
 const CAPACIDADE_MAX_LITROS = 50000;
 const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
 const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
-const TEMPO_TELA_FIM = 120;          // tempo para abrir e imprimir os PDFs (ordem, amostragem, DANFEs e laudos)
+const TEMPO_TELA_FIM = 120;          // tempo para imprimir os PDFs (ordem, amostragem, DANFEs e laudos); reinicia em Imprimir novamente
 const TEMPO_TELA_AVISO = 30;
 const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
 const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
@@ -880,7 +873,6 @@ let _registroProcessamento = null;
 // Barra do faturamento: fase atual, quando ela começou (relógio do tablet), pausa (correção de lacre) e o maior
 // percentual já mostrado (a barra nunca volta)
 let _progresso = null;
-let _urlsDocumentos = [];
 const _impressoesProtocolosEmAndamento = new Set();
 
 /* ── UTILITÁRIOS (mesmos do portal de agendamento) ── */
@@ -1034,8 +1026,6 @@ function reiniciar() {
   limparNovoAgendamento();
   _registroProcessamento = null;
   pararProgresso();
-  _urlsDocumentos.forEach((url) => URL.revokeObjectURL(url));
-  _urlsDocumentos = [];
   Q.falhasBusca = 0;
   for (const id of ['in-protocolo', 'in-cpf', 'in-placa']) document.getElementById(id).value = '';
   digitarProtocolo(document.getElementById('in-protocolo'));
@@ -1051,28 +1041,9 @@ function reiniciar() {
 }
 
 function renderDocumentosFim(documentos) {
-  const caixa = document.getElementById('fim-documentos');
-  const acoes = document.getElementById('fim-documentos-acoes');
-  const ordem = documentos?.ordemCarregamento;
-  const amostragem = documentos?.formularioAmostragem;
-  const danfes = Array.isArray(documentos?.notasFiscaisPdf)
-    ? documentos.notasFiscaisPdf.filter((item) => item?.storagePath)
-    : [];
-  const disponiveis = Boolean(ordem?.storagePath && amostragem?.storagePath);
-  caixa.classList.toggle('hidden', !disponiveis);
+  document.getElementById('fim-documentos').classList.toggle('hidden', !documentosParaImpressao(documentos).length);
   document.getElementById('fim-documentos-status').textContent = '';
-  for (const id of ['btn-ordem-carregamento', 'btn-formulario-amostragem']) {
-    document.getElementById(id).disabled = false;
-  }
-  acoes.querySelectorAll('.btn-danfe, .btn-laudo').forEach((botao) => botao.remove());
-  danfes.forEach((documento, indice) => {
-    const botao = document.createElement('button');
-    botao.type = 'button';
-    botao.className = 'btn btn-secundario btn-danfe';
-    botao.textContent = `Abrir DANFE ${documento.notaFiscal || documento.numero || indice + 1}`;
-    botao.addEventListener('click', () => abrirDanfeImpressao(indice, botao));
-    acoes.appendChild(botao);
-  });
+  document.getElementById('btn-imprimir-novamente').disabled = true; // libera quando o envio automático terminar
 }
 
 /* ── LAUDOS DE ANÁLISE ── enviados pela equipe no portal (aba Laudos Análise), um por terminal e produto geral.
@@ -1098,23 +1069,21 @@ function produtosLaudoDaNota(registro, nota) {
   const ids = new Set((daNota.length ? daNota : linhas).map((l) => produtoDoLaudo(l.descricao)).filter(Boolean));
   return PRODUTOS_LAUDO.filter((p) => ids.has(p.id));
 }
-// { porNota: Map(storagePath do DANFE → laudos), laudos: um por produto (botões), faltando: rótulos sem laudo }
+// { porNota: Map(storagePath do DANFE → laudos), faltando: rótulos sem laudo }
 function laudosDoRegistro(registro, laudosBase) {
   const notas = Object.values(registro?.documentos?.notasFiscaisPdf || {}).filter((n) => n?.storagePath);
-  const porNota = new Map(), laudos = new Map(), faltando = new Set();
+  const porNota = new Map(), faltando = new Set();
   for (const nota of notas) {
     const daNota = [];
     for (const p of produtosLaudoDaNota(registro, nota)) {
       const laudo = laudosBase?.[p.id];
       if (!laudo?.storagePath) { faltando.add(p.rotulo); continue; }
-      const documento = { ...laudo, produto: p.id, rotulo: `Laudo de análise ${p.rotulo}`,
-        chaveImpressao: `${laudo.storagePath}#${nota.storagePath}` }; // o mesmo laudo sai uma vez por NF
-      daNota.push(documento);
-      if (!laudos.has(p.id)) laudos.set(p.id, documento);
+      daNota.push({ ...laudo, produto: p.id, rotulo: `Laudo de análise ${p.rotulo}`,
+        chaveImpressao: `${laudo.storagePath}#${nota.storagePath}` }); // o mesmo laudo sai uma vez por NF
     }
     porNota.set(nota.storagePath, daNota);
   }
-  return { porNota, laudos: PRODUTOS_LAUDO.map((p) => laudos.get(p.id)).filter(Boolean), faltando: PRODUTOS_LAUDO.map((p) => p.rotulo).filter((r) => faltando.has(r)) };
+  return { porNota, faltando: PRODUTOS_LAUDO.map((p) => p.rotulo).filter((r) => faltando.has(r)) };
 }
 async function carregarLaudosDoRegistro(registro) {
   const baseId = registro?.baseId || Q.terminal;
@@ -1127,18 +1096,6 @@ async function carregarLaudosDoRegistro(registro) {
     }
   }
   return { ...laudosDoRegistro(registro, {}), faltando: [], erro: true };
-}
-function renderLaudosFim(laudos) {
-  const acoes = document.getElementById('fim-documentos-acoes');
-  acoes.querySelectorAll('.btn-laudo').forEach((botao) => botao.remove());
-  laudos.laudos.forEach((documento) => {
-    const botao = document.createElement('button');
-    botao.type = 'button';
-    botao.className = 'btn btn-secundario btn-laudo';
-    botao.textContent = `Abrir ${documento.rotulo.replace('Laudo de análise', 'laudo')}`;
-    botao.addEventListener('click', () => abrirDocumentoDados(documento, botao));
-    acoes.appendChild(botao);
-  });
 }
 function avisoLaudos(laudos) {
   if (!laudos) return '';
@@ -1257,25 +1214,31 @@ async function carregarEImprimirDocumento(documento) {
   throw ultimoErro;
 }
 
-async function imprimirDocumentosAutomaticamente(registro) {
+// Envia à impressora da estação a ordem, a amostragem e cada DANFE com os laudos dela. Na primeira vez pula o que
+// já saiu (quiosque recarregado); com novamente = true (botão Imprimir novamente) reenvia tudo.
+async function imprimirDocumentos(registro, { novamente = false } = {}) {
   const protocolo = String(registro?.protocolo || '');
   if (!protocolo || _impressoesProtocolosEmAndamento.has(protocolo)) return;
   _impressoesProtocolosEmAndamento.add(protocolo);
+  // A tela pode ter voltado ao início (e outro motorista chegado ao fim) antes de o envio terminar
+  const naTela = () => Q.tela === 'fim' && _registroProcessamento?.protocolo === protocolo;
   const status = document.getElementById('fim-documentos-status');
+  const botao = document.getElementById('btn-imprimir-novamente');
+  const mostrar = (texto) => { if (naTela()) status.textContent = texto; };
   const falhas = [];
+  botao.disabled = true;
   try {
-    status.textContent = 'Consultando os laudos de análise…';
+    mostrar('Preparando a impressão…');
     const laudos = await carregarLaudosDoRegistro(registro);
-    if (_registroProcessamento?.protocolo === protocolo) renderLaudosFim(laudos);
     const todos = documentosParaImpressao(registro.documentos, laudos);
-    const pendentes = todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
+    const pendentes = novamente ? todos : todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
     if (!pendentes.length) {
-      status.textContent = todos.length ? 'Documentos já enviados para a impressora desta estação.' + avisoLaudos(laudos) : '';
+      mostrar(todos.length ? 'Documentos já enviados para a impressora.' + avisoLaudos(laudos) : '');
       return;
     }
     for (let indice = 0; indice < pendentes.length; indice += 1) {
       const documento = pendentes[indice];
-      status.textContent = `Enviando documento ${indice + 1} de ${pendentes.length} para a impressora…`;
+      mostrar(`Enviando documento ${indice + 1} de ${pendentes.length} para a impressora…`);
       try {
         await carregarEImprimirDocumento(documento);
         registrarDocumentoImpresso(protocolo, documento);
@@ -1285,60 +1248,21 @@ async function imprimirDocumentosAutomaticamente(registro) {
       }
       await aguardar(1000);
     }
-    status.textContent = (falhas.length
-      ? `Não foi possível imprimir automaticamente: ${[...new Set(falhas)].join(', ')}. Use os botões acima para tentar novamente.`
-      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} automaticamente para a impressora desta estação.`)
-      + avisoLaudos(laudos);
+    mostrar((falhas.length
+      ? `Não foi possível imprimir: ${[...new Set(falhas)].join(', ')}. Toque em Imprimir novamente.`
+      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} para a impressora.`)
+      + avisoLaudos(laudos));
   } finally {
     _impressoesProtocolosEmAndamento.delete(protocolo);
+    if (naTela()) botao.disabled = false;
   }
 }
 
-async function abrirDocumentoImpressao(chave) {
-  const documento = _registroProcessamento?.documentos?.[chave];
-  const botaoId = chave === 'ordemCarregamento'
-    ? 'btn-ordem-carregamento'
-    : 'btn-formulario-amostragem';
-  const botao = document.getElementById(botaoId);
-  await abrirDocumentoDados(documento, botao);
-}
-
-async function abrirDanfeImpressao(indice, botao) {
-  const danfes = _registroProcessamento?.documentos?.notasFiscaisPdf;
-  const documento = Array.isArray(danfes) ? danfes[indice] : null;
-  await abrirDocumentoDados(documento, botao);
-}
-
-async function abrirDocumentoDados(documento, botao) {
-  const status = document.getElementById('fim-documentos-status');
-  if (!documento?.storagePath || !botao || botao.disabled) return;
-
-  // A aba e criada ainda dentro do clique para nao ser bloqueada pelo navegador.
-  const janela = window.open('', '_blank');
-  if (!janela) {
-    status.textContent = 'O navegador bloqueou a abertura. Libere pop-ups e tente novamente.';
-    return;
-  }
-  janela.document.title = documento.rotulo || 'Documento para impressão';
-  janela.document.body.textContent = 'Carregando documento…';
-  botao.disabled = true;
-  status.textContent = `Carregando ${documento.rotulo || 'documento'}…`;
-  try {
-    const blob = await window._fb.carregarDocumento(documento.storagePath);
-    if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
-    const url = URL.createObjectURL(blob);
-    _urlsDocumentos.push(url);
-    janela.location.replace(url);
-    status.textContent = 'Documento aberto. Use o ícone de impressão da nova aba.';
-  } catch (e) {
-    console.error(e);
-    janela.close();
-    status.textContent = ehErroPermissao(e)
-      ? 'Este quiosque não tem permissão para abrir o PDF. Chame a equipe Nexta.'
-      : 'Não foi possível carregar o PDF. Verifique a conexão e tente novamente.';
-  } finally {
-    botao.disabled = false;
-  }
+function imprimirNovamente() {
+  const registro = _registroProcessamento;
+  if (Q.tela !== 'fim' || !registro?.protocolo) return;
+  iniciarContagem('fim-contagem', TEMPO_TELA_FIM); // não volta ao início no meio da reimpressão
+  void imprimirDocumentos(registro, { novamente: true });
 }
 function mostrarAlerta(id, html) {
   const el = document.getElementById(id);
@@ -3029,14 +2953,9 @@ function atualizarProcessamento(registro) {
 
   if (status === 'concluido') {
     if (_cancelarAcompanhamento) { _cancelarAcompanhamento(); _cancelarAcompanhamento = null; }
-    const ordem = registro.resultado?.ordemFrete || '';
-    document.getElementById('fim-protocolo').textContent = ordem ? `OF ${ordem}` : registro.protocolo;
-    document.getElementById('fim-texto').textContent = ordem
-      ? `Protocolo ${registro.protocolo}. A ordem de frete foi processada; aguarde ser chamado para o carregamento.`
-      : `Protocolo ${registro.protocolo}. Aguarde ser chamado para o carregamento.`;
     renderDocumentosFim(registro.documentos);
     mostrarTela('fim');
-    void imprimirDocumentosAutomaticamente(registro);
+    void imprimirDocumentos(registro);
     iniciarContagem('fim-contagem', TEMPO_TELA_FIM);
   } else if (status === 'erro' || status === 'revisao_manual') {
     // Código e motivo técnico ficam no histórico do portal de agendamento; o motorista só precisa do caminho
