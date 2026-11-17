@@ -1886,11 +1886,13 @@ function renderPedidosDisponiveisNovo() {
     el.innerHTML = `<div class="chip-empty">Nenhum pedido disponível ${primeiro ? 'que possa ir junto com os deste carregamento' : 'com esses filtros'}.</div>`;
     return;
   }
-  // Mesmas conferências de capacidade e de clientes do adicionarPedido, para mostrar o motivo antes do clique
+  // Mesmas conferências de capacidade, compartimentos e clientes do adicionarPedido, para mostrar o motivo antes do clique
   const capacidade = veiculoDasPlacas()?.volume;
   const sobra = capacidade ? capacidade - volumeDoCarregamento() : Infinity;
   const clientes = new Set(STATE.novo.pedidos.map((p) => p.clienteCodigo));
+  const agendados = volumesAgendados();
   const motivo = (s) => s.volume > sobra ? `Não cabe: sobra ${formatVolume(Math.max(sobra, 0))} no veículo.`
+    : erroCompartimentosComPedido(s.p, agendados) ? 'Não fecha com os compartimentos do veículo (cada um vai cheio ou vazio).'
     : !clientes.has(s.p.clienteCodigo) && clientes.size >= MAX_CLIENTES_CARRETA ? `O carregamento já tem ${MAX_CLIENTES_CARRETA} clientes.` : '';
   const botao = (s, m, extra = '') => `<button type="button" class="btn btn-primary btn-sm" ${extra} ${m ? 'disabled' : ''} onclick="adicionarPedidoDaLista(${jsArg(s.p.nrPedido)}, this)">Adicionar</button>`
     + (m ? `<div class="nd-motivo">${esc(m)}</div>` : '');
@@ -2007,6 +2009,9 @@ async function adicionarPedido(nrDaLista) {
       + 'O pedido vai inteiro, com todos os produtos.', 'erro');
     return;
   }
+  // Com os compartimentos do veículo já consultados: junto com os que já estão aqui, o pedido precisa fechar com eles
+  const naoFecha = erroCompartimentosComPedido(pedido, agendados);
+  if (naoFecha) { mostrarStatusPedido(`${naoFecha} O pedido ${nr} não entra neste carregamento.`, 'erro'); return; }
 
   STATE.novo.pedidos.push(pedido);
   if (!nrDaLista) campo.value = '';
@@ -2021,6 +2026,12 @@ async function adicionarPedido(nrDaLista) {
   atualizarBaseDosPedidos(); // sobrescreve a mensagem se a base não estiver cadastrada
 }
 
+// O pedido da carteira entrando neste carregamento: '' se fecha com os compartimentos do veículo junto com os que já
+// estão aqui (ou se não há compartimentos consultados para conferir; a saída da etapa Pedidos confere de novo)
+function erroCompartimentosComPedido(pedido, agendados) {
+  const t = veiculoDasPlacas()?.origem === 'sap' ? tanqueNovo() : null;
+  return t?.comps ? erroCompartimentos(t.comps.map((c) => c.capacidade), [...t.linhas, ...linhasDoSaldo([pedido], agendados)]) : '';
+}
 function removerPedido(nr) {
   STATE.novo.pedidos = STATE.novo.pedidos.filter((p) => p.nrPedido !== nr);
   if (!STATE.novo.pedidos.length) mostrarStatusPedido('');
@@ -2048,6 +2059,9 @@ function msgBaseIndisponivel(pedido, base) {
 }
 
 function renderPedidosAgendamento() {
+  // Veículo do SAP: os perfis de compartimento das placas (uma vez por veículo); ao chegar, renderiza de novo
+  const veiculo = veiculoDasPlacas();
+  if (veiculo?.origem === 'sap' && STATE.novo.compart?.chave !== veiculo.chave) carregarCompartimentosNovo();
   renderPedidosDisponiveisNovo(); // a lista acompanha a carreta (base, data, sobra do veículo) e os agendamentos
   if (etapaWizard === ETAPA.compartimentos) renderAlocacaoNovo(); // a alocação depende dos pedidos (saldo)
   const el = document.getElementById('pedidoResumo');
@@ -2088,7 +2102,11 @@ function renderPedidosAgendamento() {
       }).join('')}
     </div>`).join('');
   const total = volumeDoCarregamento();
-  const capacidade = veiculoDasPlacas()?.volume;
+  const capacidade = veiculo?.volume;
+  // Compartimentos do veículo (SAP): os pedidos precisam fechar com eles, cada um cheio ou vazio
+  const t = veiculo?.origem === 'sap' ? tanqueNovo() : null;
+  const compartimentos = t?.comps ? `<div class="form-hint" style="text-align:right">Compartimentos do veículo: ${esc(textoCapacidades(t.comps.map((c) => c.capacidade)))}. Os pedidos fecham com eles (cada compartimento vai cheio ou vazio).</div>`
+    : t?.naoFecha ? `<div class="form-hint texto-perigo">${esc(t.motivo)} Tire pedido ou volte à etapa Veículo e troque o veículo.</div>` : '';
   el.innerHTML = `
     <div class="resumo-base">Base: ${baseTxt}</div>
     <table class="tabela-itens pedidos-tabela">
@@ -2096,7 +2114,8 @@ function renderPedidosAgendamento() {
       <tbody>${linhas}</tbody>
     </table>
     <div class="pedidos-cards">${cartoes}</div>
-    <div class="resumo-total">Volume do carregamento: <strong class="${capacidade && total > capacidade ? 'texto-perigo' : ''}">${formatVolume(total)}</strong>${capacidade ? ` de ${formatVolume(capacidade)} (capacidade do veículo)` : ''}</div>`;
+    <div class="resumo-total">Volume do carregamento: <strong class="${capacidade && total > capacidade ? 'texto-perigo' : ''}">${formatVolume(total)}</strong>${capacidade ? ` de ${formatVolume(capacidade)} (capacidade do veículo)` : ''}</div>
+    ${compartimentos}`;
   el.classList.remove('hidden');
   // Outro agendamento do mesmo pedido muda o saldo: o resumo da última etapa acompanha
   if (etapaWizard === ETAPAS_WIZARD.length) renderRevisaoAgendamento();
@@ -2183,8 +2202,9 @@ let etapaWizard = 1;
 /* ── ALOCAÇÃO NOS COMPARTIMENTOS (opcional, no agendamento) ── */
 // Quem agenda pode adiantar a alocação que o motorista faz no check-in do quiosque: a etapa Alocação pergunta
 // "Deseja realizar a alocação nos compartimentos agora?" e, marcada, abre a tabela dos compartimentos. Mesmas regras do quiosque: cada
-// compartimento leva uma linha (pedido + produto) só, cada linha vai inteira e enche os seus compartimentos em ordem, e
-// nenhum compartimento sobra. Compartimentos só do cadastro: perfil SAP de cada placa do tanque (perfisCompartimento).
+// compartimento leva uma linha (pedido + produto) só e vai cheio ou vazio, e cada linha vai inteira em compartimentos
+// que somam o volume dela (COMPARTIMENTO CHEIO OU VAZIO, abaixo). Compartimentos só do cadastro: perfil SAP de cada
+// placa do tanque (perfisCompartimento). A etapa Pedidos já não deixa seguir com pedidos que não fecham com eles.
 // Veículo provisório ou placa sem perfil deixa a alocação para o check-in (a liberação manual da equipe só vem depois).
 // Gravada em agendamentos/<id>/alocacaoCompartimentos: no check-in o quiosque abre o resumo já preenchido e o motorista
 // confere com o veículo (troca o produto de um compartimento ou refaz). Trocar o veículo ou os pedidos no portal apaga a
@@ -2207,7 +2227,8 @@ function carregarCompartimentosNovo() {
     return perfil ? window._fb.carregarPerfilCompartimento(perfil.chave).then((cfg) => ({ placa, perfil: perfil.perfil, cfg }))
       : { placa, perfil: '', cfg: null };
   })).then((lista) => { c.placas = lista; }, (e) => { console.warn('Perfis de compartimento não consultados', e); c.placas = null; c.erro = true; })
-    .then(() => { if (STATE.novo.compart === c && etapaWizard === ETAPA.compartimentos) renderAlocacaoNovo(); });
+    // A etapa Pedidos confere os pedidos com os compartimentos; a Alocação abre a tabela deles
+    .then(() => { if (STATE.novo.compart === c && [ETAPA.pedidos, ETAPA.compartimentos].includes(etapaWizard)) renderPedidosAgendamento(); });
   STATE.novo.compart = c;
   return c.busca;
 }
@@ -2222,7 +2243,8 @@ function linhasAlocacaoNovo() {
 }
 function htmlPedidoDaLinha(l) { return htmlPedidoCliente(l.ordemVenda, { nome: l.clienteNome, cidade: l.clienteCidade, cnpj: l.clienteCnpj }); }
 // Compartimentos do tanque, na ordem do quiosque (placas do tanque, CT 1, 2… em cada uma): { comps: [{ placa,
-// indicePlaca, capacidade }], linhas } quando dá para alocar; { carregando } ou { motivo } quando não
+// indicePlaca, capacidade }], linhas } quando dá para alocar; { carregando } ou { motivo } quando não.
+// naoFecha: os pedidos não fecham com os compartimentos (a etapa Pedidos não deixa seguir)
 function tanqueNovo() {
   const veiculo = veiculoDasPlacas();
   if (!veiculo) return { carregando: true };
@@ -2236,13 +2258,18 @@ function tanqueNovo() {
   if (comps.length > MAX_COMPARTIMENTOS) return { motivo: `O veículo tem ${comps.length} compartimentos e o autoatendimento aceita até ${MAX_COMPARTIMENTOS}.` };
   const variasPlacas = c.placas.length > 1; // com uma placa só, o compartimento é só "CT 01"
   const linhas = linhasAlocacaoNovo();
-  const caps = comps.map((x) => x.capacidade), vols = linhas.map((l) => l.volume);
-  const totalCaps = caps.reduce((s, v) => s + v, 0), totalPedidos = vols.reduce((s, v) => s + v, 0);
-  if (totalPedidos > totalCaps) return { motivo: `Os pedidos somam ${formatVolume(totalPedidos)} e os compartimentos do veículo, ${formatVolume(totalCaps)}.` };
-  if (linhas.length && !planejarAlocacao(caps, vols)) {
-    return { motivo: `Os pedidos não cabem inteiros nos ${comps.length} compartimentos do veículo (cada compartimento leva um produto só). No check-in, o quiosque registra a inconsistência para o faturamento.` };
-  }
+  const naoFecha = erroCompartimentos(comps.map((x) => x.capacidade), linhas);
+  if (naoFecha) return { motivo: naoFecha, naoFecha: true };
   return { comps, linhas, variasPlacas };
+}
+// Etapa Pedidos: veículo do SAP com os compartimentos no cadastro só leva pedidos que fecham com eles ('' = fecham, ou
+// não há compartimentos para conferir: veículo provisório ou placa sem perfil, que o quiosque manda ao guichê)
+function erroCompartimentosNovo() {
+  if (veiculoDasPlacas()?.origem !== 'sap' || !STATE.novo.pedidos.length) return '';
+  const t = tanqueNovo();
+  if (t.carregando) return 'Consultando os compartimentos do veículo. Tente de novo em instantes.';
+  if (t.erro) return 'Não foi possível consultar os compartimentos do veículo. Verifique a conexão e tente de novo.';
+  return t.naoFecha ? `${t.motivo} Tire pedido ou volte à etapa Veículo e troque o veículo.` : '';
 }
 // Linha escolhida em cada compartimento, só com as linhas que ainda estão no carregamento ('' = vazio)
 function alocacaoNovoAtual(t) {
@@ -2250,70 +2277,135 @@ function alocacaoNovoAtual(t) {
   STATE.novo.alocacao = t.comps.map((_, i) => (chaves.has(STATE.novo.alocacao[i]) ? STATE.novo.alocacao[i] : ''));
   return STATE.novo.alocacao;
 }
-// Divisão em que cada linha cabe inteira, cada compartimento leva uma linha só e nenhum compartimento sobra (a mesma
-// do quiosque). Aqui só diz se há divisão possível: a escolha dos compartimentos é de quem agenda.
-// Programação dinâmica sobre os subconjuntos de compartimentos (até 12 = 4096). Devolve os índices por linha, ou null.
+/* ── COMPARTIMENTO CHEIO OU VAZIO ── */
+// Regra pedida pelo usuário em 17/11/2026: o compartimento vai cheio ou vazio (nada de compartimento parcial). Cada linha
+// (pedido + produto) vai inteira em compartimentos cheios que somam exatamente o volume dela, e cada compartimento leva
+// uma linha só. O pedido que não fecha com os compartimentos do veículo não agenda: assistente (etapa Pedidos), Alterar
+// pedidos, Alterar veículo, importação da roteirização e liberação dos compartimentos; no quiosque, o Criar agendamento
+// e o check-in (inconsistência). Sem os compartimentos no cadastro (veículo provisório, placa sem perfil SAP) não há o
+// que conferir: o quiosque manda o motorista ao guichê. A mesma conta está no quiosque (planejarAlocacao).
+
+// Divisão em que cada linha ocupa compartimentos cheios que somam o volume dela, um produto por compartimento. Busca com
+// memória sobre os subconjuntos de compartimentos (até 12 = 4096), começando pela linha com menos opções; entre as
+// divisões, prefere menos compartimentos por linha e os primeiros do tanque. Devolve, por linha, os índices (0…) dos
+// compartimentos, ou null se não há divisão. Litros arredondados (o volume do roteirizador vem de m³).
 function planejarAlocacao(caps, vols) {
   const n = caps.length, todos = (1 << n) - 1;
-  const soma = new Array(todos + 1).fill(0), menor = new Array(todos + 1).fill(Infinity), qtd = new Array(todos + 1).fill(0);
+  const soma = new Array(todos + 1).fill(0);
+  const porSoma = new Map(); // litros → subconjuntos de compartimentos que somam exatamente isso
   for (let m = 1; m <= todos; m++) {
-    const bit = 31 - Math.clz32(m & -m), resto = m & (m - 1);
-    soma[m] = soma[resto] + caps[bit];
-    menor[m] = Math.min(menor[resto], caps[bit]);
-    qtd[m] = qtd[resto] + 1;
+    soma[m] = soma[m & (m - 1)] + Math.round(caps[31 - Math.clz32(m & -m)]);
+    if (!porSoma.has(soma[m])) porSoma.set(soma[m], []);
+    porSoma.get(soma[m]).push(m);
   }
-  const ordem = vols.map((_, j) => j).sort((a, b) => vols[b] - vols[a]); // maiores primeiro: corta mais cedo
-  const memo = new Map();
-  const melhor = (p, livres) => {
-    if (p === ordem.length) return { folga: 0, usados: 0, masks: [] };
+  const qtd = (m) => { let c = 0; for (; m; m &= m - 1) c++; return c; };
+  for (const lista of porSoma.values()) lista.sort((a, b) => qtd(a) - qtd(b) || a - b);
+  const alvo = vols.map((v) => Math.round(v));
+  if (alvo.some((v) => !porSoma.has(v))) return null;
+  const ordem = alvo.map((_, j) => j).sort((a, b) => porSoma.get(alvo[a]).length - porSoma.get(alvo[b]).length || alvo[b] - alvo[a]);
+  const semSaida = new Set(), escolha = [];
+  const buscar = (p, livres) => {
+    if (p === ordem.length) return true;
     const chave = p * (todos + 1) + livres;
-    if (memo.has(chave)) return memo.get(chave);
-    const v = vols[ordem[p]];
-    let best = null;
-    for (let s = livres; s > 0; s = (s - 1) & livres) {
-      if (soma[s] < v || soma[s] - menor[s] >= v) continue; // não cabe, ou tem compartimento sobrando
-      const resto = melhor(p + 1, livres & ~s);
-      if (!resto) continue;
-      const folga = soma[s] - v + resto.folga, usados = qtd[s] + resto.usados;
-      if (!best || folga < best.folga || (folga === best.folga && (usados < best.usados || (usados === best.usados && s < best.masks[0])))) {
-        best = { folga, usados, masks: [s, ...resto.masks] };
-      }
+    if (semSaida.has(chave)) return false;
+    for (const s of porSoma.get(alvo[ordem[p]])) {
+      if ((s & livres) !== s) continue;
+      escolha[p] = s;
+      if (buscar(p + 1, livres & ~s)) return true;
     }
-    memo.set(chave, best);
-    return best;
+    semSaida.add(chave);
+    return false;
   };
-  const r = melhor(0, todos);
-  if (!r) return null;
-  const plano = vols.map(() => []);
-  r.masks.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
+  if (!buscar(0, todos)) return null;
+  const plano = alvo.map(() => []);
+  escolha.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
   return plano;
 }
+// Volumes que fecham com compartimentos cheios (as somas possíveis das capacidades), do menor para o maior
+function volumesQueFecham(caps) {
+  let somas = new Set([0]);
+  for (const c of caps) somas = new Set([...somas, ...[...somas].map((s) => s + Math.round(c))]);
+  somas.delete(0);
+  return [...somas].sort((a, b) => a - b);
+}
+function textoCapacidades(caps) { return caps.map((c) => Number(c).toLocaleString('pt-BR')).join(' + ') + ' L'; }
+// Por que os pedidos não fecham com os compartimentos ('' = fecham). caps = capacidades na ordem do tanque;
+// linhas = [{ ordemVenda, descricao, volume }]. Quem chama completa com o que fazer (tirar pedido, trocar o veículo…)
+function erroCompartimentos(caps, linhas) {
+  if (!linhas.length || planejarAlocacao(caps, linhas.map((l) => l.volume))) return '';
+  const doVeiculo = `os compartimentos do veículo (${textoCapacidades(caps)})`;
+  const totalPedidos = linhas.reduce((s, l) => s + l.volume, 0), totalCaps = caps.reduce((s, c) => s + c, 0);
+  if (totalPedidos > totalCaps) return `Os pedidos somam ${formatVolume(totalPedidos)} e ${doVeiculo} somam ${formatVolume(totalCaps)}.`;
+  // Produto que nem sozinho fecha: diz os volumes mais perto que fechariam
+  const fecham = volumesQueFecham(caps);
+  const soltas = linhas.filter((l) => !fecham.includes(Math.round(l.volume)));
+  if (soltas.length) {
+    const l = soltas[0];
+    const perto = [fecham.filter((v) => v < l.volume).pop(), fecham.find((v) => v > l.volume)].filter(Boolean).map(formatVolume);
+    return `${l.descricao} do pedido ${l.ordemVenda} (${formatVolume(l.volume)}) não fecha com ${doVeiculo}: cada compartimento vai cheio ou vazio`
+      + (perto.length ? `, e ${perto.length > 1 ? `os volumes mais perto que fecham são ${perto.join(' e ')}` : `o volume mais perto que fecha é ${perto[0]}`}` : '') + '.'
+      + (soltas.length > 1 ? ` O mesmo acontece com mais ${soltas.length - 1} ${soltas.length === 2 ? 'produto' : 'produtos'}.` : '');
+  }
+  return `Os pedidos não fecham juntos com ${doVeiculo}: cada compartimento vai cheio ou vazio e leva um produto só.`;
+}
+// Linhas (pedido + produto) de pedidos com o volume do carregamento em itens/<produto>/volume (os de um agendamento)
+function linhasDoAgendamento(pedidos) {
+  return pedidos.flatMap((p) => itensDe(p).filter((i) => Number(i.volume) > 0)
+    .map((i) => ({ ordemVenda: String(p.nrPedido), descricao: i.descricao || `Produto ${i.codigo}`, volume: Number(i.volume) })));
+}
+// Linhas de pedidos da carteira que entram agora, com todo o saldo
+function linhasDoSaldo(pedidos, agendados) {
+  return pedidos.flatMap((p) => itensDe(p).map((i) => ({ ordemVenda: String(p.nrPedido), descricao: i.descricao || `Produto ${i.codigo}`, volume: saldoItem(p, i, agendados) })))
+    .filter((l) => l.volume > 0);
+}
+// Capacidades dos compartimentos do cadastro, na ordem do quiosque (placas do tanque, CT 1, 2… em cada uma): o perfil SAP
+// de cada placa ou, na falta dele, a liberação da equipe no agendamento (manual(placa)). null = alguma placa sem
+// compartimentos ou mais de 12 (o quiosque manda ao guichê: não há o que conferir). Rejeita se a leitura falhar.
+async function capacidadesDoRecurso(recurso, placasTanque, manual = () => null) {
+  const cfgs = await Promise.all(placasTanque.map(async (placa) => {
+    const perfil = perfilDaPlaca(recurso, placa, placasTanque.length);
+    const cfg = perfil ? await window._fb.carregarPerfilCompartimento(perfil.chave) : null;
+    return [cfg, manual(placa)].find(configCompartimentosValida) || null;
+  }));
+  const caps = cfgs.every(Boolean) ? cfgs.flatMap((c) => c.capacidadesLitros) : [];
+  return caps.length && caps.length <= MAX_COMPARTIMENTOS ? caps : null;
+}
+// Os que o quiosque vai usar no check-in do agendamento: o recurso atual e a liberação da equipe, se houver
+async function capacidadesDoAgendamento(a) {
+  const recurso = a.recursoChave ? await window._fb.carregarRecurso(a.recursoChave) : null;
+  return capacidadesDoRecurso(recurso, placasTanqueDaLiberacao(a), (placa) => configLiberadaDaPlaca(a, placa));
+}
+
 function refCompartimento(t, i) { const c = t.comps[i]; return `${t.variasPlacas ? c.placa + ' · ' : ''}CT ${pad2(c.indicePlaca)}`; }
-// Situação de cada linha (mesma conta do quiosque): a linha enche os seus compartimentos em ordem; o que vem depois
-// de ela já caber está sobrando. previstos[i] = volume que vai no compartimento i
+// Situação de cada linha (mesma conta do quiosque): a linha enche os seus compartimentos em ordem. Cada compartimento
+// vai cheio ou vazio: parcial = o primeiro que ficaria com menos que a capacidade (ou sem nada), -1 se nenhum.
+// previstos[i] = volume que vai no compartimento i
 function situacaoAlocacaoNovo(t, aloc) {
   const previstos = t.comps.map(() => 0);
   const linhas = t.linhas.map((l) => {
     const idx = t.comps.map((_, i) => i).filter((i) => aloc[i] === l.chave);
-    let acumulado = 0, sobrando = -1, resta = l.volume;
+    let resta = l.volume, parcial = -1;
     for (const i of idx) {
-      if (acumulado >= l.volume && sobrando < 0) sobrando = i;
-      acumulado += t.comps[i].capacidade;
       previstos[i] = Math.max(Math.min(t.comps[i].capacidade, resta), 0);
       resta -= previstos[i];
+      if (parcial < 0 && previstos[i] < t.comps[i].capacidade) parcial = i;
     }
-    return { l, idx, cap: acumulado, falta: Math.max(l.volume - acumulado, 0), sobrando };
+    const cap = idx.reduce((s, i) => s + t.comps[i].capacidade, 0);
+    return { l, idx, cap, falta: Math.max(l.volume - cap, 0), parcial };
   });
   return { linhas, previstos };
 }
 function nomeLinhaAlocacao(l) { return `${l.descricao} (pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''})`; }
 // O que impede de seguir ('' = tudo certo), em frases curtas
 function problemasAlocacaoNovo(t, aloc) {
-  return situacaoAlocacaoNovo(t, aloc).linhas.flatMap((s) => {
+  const { linhas, previstos } = situacaoAlocacaoNovo(t, aloc);
+  return linhas.flatMap((s) => {
     if (!s.idx.length) return [`Escolha o compartimento de ${nomeLinhaAlocacao(s.l)}.`];
     if (s.falta) return [`Falta lugar para ${nomeLinhaAlocacao(s.l)}: faltam ${formatVolume(s.falta)}.`];
-    if (s.sobrando >= 0) return [`${refCompartimento(t, s.sobrando)} ficou sem produto (${nomeLinhaAlocacao(s.l)} já coube antes): deixe vazio.`];
-    return [];
+    if (s.parcial < 0) return [];
+    const ref = refCompartimento(t, s.parcial), prev = previstos[s.parcial];
+    return [prev ? `${ref} ficaria com ${formatVolume(prev)} de ${formatVolume(t.comps[s.parcial].capacidade)}: cada compartimento vai cheio ou vazio. Escolha para ${nomeLinhaAlocacao(s.l)} compartimentos que somem ${formatVolume(s.l.volume)}.`
+      : `${ref} ficou sem produto (${nomeLinhaAlocacao(s.l)} já coube antes): deixe vazio.`];
   });
 }
 
@@ -2325,8 +2417,8 @@ function marcarAlocarAgora(marcado) {
 }
 
 // Etapa Alocação: a pergunta e, marcada, uma tabela por placa do tanque (CT recomeça em cada uma) com o produto de cada
-// compartimento e a situação de cada produto (cabe inteiro, falta lugar, compartimento sobrando). Quando não dá para
-// alocar (veículo provisório, placa sem perfil, pedidos que não cabem), a pergunta fica desmarcada e travada, com o motivo
+// compartimento e a situação de cada produto (cabe inteiro, falta lugar, compartimento que não enche). Quando não dá para
+// alocar (veículo provisório, placa sem perfil, pedidos que não fecham), a pergunta fica desmarcada e travada, com o motivo
 function renderAlocacaoNovo() {
   const el = document.getElementById('alocacaoNovo');
   const check = document.getElementById('f-alocar');
@@ -2344,17 +2436,19 @@ function renderAlocacaoNovo() {
   txt.textContent = indisponivel ? `${t.motivo} O motorista faz a alocação no check-in do quiosque.`
     : t.erro && alocar ? t.motivo
     : t.carregando ? 'Consultando os compartimentos do veículo…'
-    : alocar ? 'Escolha o produto de cada compartimento: cada um leva um produto só, e cada produto vai inteiro. No check-in, o motorista confere com o veículo e pode ajustar.'
+    : alocar ? 'Escolha o produto de cada compartimento (ou use "Preencher automaticamente"): cada compartimento vai cheio ou vazio, com um produto só, e cada produto vai inteiro. No check-in, o motorista confere com o veículo e pode ajustar.'
     : 'Opcional. Sem marcar, o motorista faz a alocação no check-in do quiosque.';
   if (!alocar || t.carregando || t.motivo) { el.innerHTML = ''; return; }
   const aloc = alocacaoNovoAtual(t);
   const { linhas: situacao, previstos } = situacaoAlocacaoNovo(t, aloc);
   // Saldo de cada produto sem contar o compartimento i (como a pergunta do quiosque): quanto ainda falta alocar.
-  // O que já coube inteiro nos outros compartimentos fica desabilitado. A opção já escolhida mostra o que vai no
-  // compartimento (o volume do pedido inteiro confundia, a pedido do usuário em 11/11/2026)
+  // Fica desabilitado o que já coube inteiro nos outros compartimentos e o que não enche este (o compartimento vai
+  // cheio ou vazio). A opção já escolhida mostra o que vai no compartimento (o volume do pedido inteiro confundia, a
+  // pedido do usuário em 11/11/2026)
   const faltaSem = (i, l) => l.volume - t.comps.reduce((s, c, j) => s + (j !== i && aloc[j] === l.chave ? c.capacidade : 0), 0);
   const volumeDaOpcao = (i, l, falta) => (aloc[i] === l.chave ? (previstos[i] ? formatVolume(previstos[i]) : 'sem produto')
-    : falta <= 0 ? 'já coube' : falta < l.volume ? `faltam ${formatVolume(falta)} de ${formatVolume(l.volume)}` : formatVolume(l.volume));
+    : falta <= 0 ? 'já coube' : falta < t.comps[i].capacidade ? `faltam ${formatVolume(falta)}: não enche`
+    : falta < l.volume ? `faltam ${formatVolume(falta)} de ${formatVolume(l.volume)}` : formatVolume(l.volume));
   // A opção traz só produto e volume (o que decide a escolha). Pedido, cliente, cidade e CNPJ ficam no título do grupo
   // da lista aberta (separa pedidos com o mesmo produto) e, depois da escolha, na linha cinza embaixo do select
   const rotuloPedido = (l) => [`Pedido ${l.ordemVenda}`, l.clienteNome, l.clienteCidade, rotuloCnpj(l.clienteCnpj)].filter(Boolean).join(' · ');
@@ -2363,7 +2457,7 @@ function renderAlocacaoNovo() {
   const opcao = (i, l) => {
     const escolhido = aloc[i] === l.chave;
     const falta = escolhido ? l.volume : faltaSem(i, l);
-    return `<option value="${esc(l.chave)}" ${escolhido ? 'selected' : falta <= 0 ? 'disabled' : ''}>${esc(`${l.descricao} · ${volumeDaOpcao(i, l, falta)}`)}</option>`;
+    return `<option value="${esc(l.chave)}" ${escolhido ? 'selected' : falta < t.comps[i].capacidade ? 'disabled' : ''}>${esc(`${l.descricao} · ${volumeDaOpcao(i, l, falta)}`)}</option>`;
   };
   const opcoes = (i) => linhasPorPedido.map((ls) => `<optgroup label="${esc(rotuloPedido(ls[0]))}">${ls.map((l) => opcao(i, l)).join('')}</optgroup>`).join('');
   const placas = [...new Set(t.comps.map((c) => c.placa))];
@@ -2381,7 +2475,8 @@ function renderAlocacaoNovo() {
             <option value="">Vazio</option>
             ${opcoes(i)}
           </select>${aloc[i] ? `<div class="aloc-pedido">${htmlPedidoDaLinha(linhaDaChave[aloc[i]])}</div>` : ''}</td>
-          <td class="num${aloc[i] && !previstos[i] ? ' texto-aviso' : ''}">${!aloc[i] ? '—' : previstos[i] ? formatVolume(previstos[i]) : 'sem produto'}</td>
+          <td class="num${aloc[i] && previstos[i] < t.comps[i].capacidade ? ' texto-aviso' : ''}">${!aloc[i] ? '—' : !previstos[i] ? 'sem produto'
+            : previstos[i] < t.comps[i].capacidade ? `${formatVolume(previstos[i])} de ${formatVolume(t.comps[i].capacidade)}` : formatVolume(previstos[i])}</td>
         </tr>`).join('')}</tbody>
       </table></div>
     </div>`;
@@ -2390,14 +2485,28 @@ function renderAlocacaoNovo() {
     const onde = s.idx.map((i) => refCompartimento(t, i)).join(', ');
     const [cls, texto] = !s.idx.length ? ['falta', 'Sem compartimento']
       : s.falta ? ['falta', `Faltam ${formatVolume(s.falta)}`]
-      : s.sobrando >= 0 ? ['sobra', `${refCompartimento(t, s.sobrando)} ficaria sem produto: deixe vazio`]
-      : ['ok', 'Cabe inteiro' + (s.cap > s.l.volume ? ` · livre ${formatVolume(s.cap - s.l.volume)}` : '')];
+      : s.parcial >= 0 && !previstos[s.parcial] ? ['sobra', `${refCompartimento(t, s.parcial)} ficaria sem produto: deixe vazio`]
+      : s.parcial >= 0 ? ['sobra', `${refCompartimento(t, s.parcial)} não enche (${formatVolume(previstos[s.parcial])} de ${formatVolume(t.comps[s.parcial].capacidade)})`]
+      : ['ok', 'Cabe inteiro'];
     return `<div class="aloc-linha"><div>${esc(s.l.descricao)} <strong>${formatVolume(s.l.volume)}</strong><small>${htmlPedidoDaLinha(s.l)}${onde ? ' · ' + esc(onde) : ''}</small></div>
       <div class="sit ${cls}">${esc(texto)}</div></div>`;
   };
   el.innerHTML = `${tabelas}
     <div class="aloc-situacao"><div class="card-title" style="margin-bottom:4px">Produtos do carregamento</div>${situacao.map(linhaSituacao).join('')}</div>
-    ${aloc.some(Boolean) ? '<button type="button" class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="limparAlocacaoNovo()">Deixar todos vazios</button>' : ''}`;
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="preencherAlocacaoNovo()" title="Escolhe compartimentos cheios que somam o volume de cada produto">Preencher automaticamente</button>
+      ${aloc.some(Boolean) ? '<button type="button" class="btn btn-secondary btn-sm" onclick="limparAlocacaoNovo()">Deixar todos vazios</button>' : ''}
+    </div>`;
+}
+// Uma divisão que fecha (a etapa Pedidos já garantiu que existe): menos compartimentos por produto, os primeiros do tanque
+function preencherAlocacaoNovo() {
+  const t = tanqueNovo();
+  const plano = t.comps && planejarAlocacao(t.comps.map((c) => c.capacidade), t.linhas.map((l) => l.volume));
+  if (!plano) return;
+  STATE.novo.alocacao = t.comps.map(() => '');
+  plano.forEach((idx, j) => idx.forEach((i) => { STATE.novo.alocacao[i] = t.linhas[j].chave; }));
+  mostrarErroWizard('');
+  renderAlocacaoNovo();
 }
 function escolherCompartimentoNovo(i, chave) {
   STATE.novo.alocacao[i] = chave;
@@ -2819,11 +2928,11 @@ function erroDaEtapa(n) {
     if (jaAgendados.length) {
       return `Pedido ${jaAgendados.map((p) => p.nrPedido).join(', ')} acabou de entrar em outro agendamento (${[...new Set(jaAgendados.flatMap((p) => protocolosDoPedido(p.nrPedido)))].join(', ')}). Tire do agendamento.`;
     }
-    // Única conferência de volume: o total dos pedidos cabe no veículo
+    // Volume: o total dos pedidos cabe no veículo e, com os compartimentos no cadastro, fecha com eles (cheio ou vazio)
     const veiculo = veiculoDasPlacas();
     const total = volumeDoCarregamento();
     if (veiculo?.volume && total > veiculo.volume) return `O volume dos pedidos (${formatVolume(total)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). Tire pedido ou volte à etapa Veículo e troque o veículo.`;
-    return '';
+    return erroCompartimentosNovo();
   }
   if (n === ETAPA.compartimentos) {
     if (!STATE.novo.alocar) return '';
@@ -2864,8 +2973,8 @@ async function irParaEtapa(n) {
   // Sair das etapas Veículo e Motorista exige as consultas de cadastro (placas e CPF) terminadas
   if (n > ETAPA.veiculo) await buscarRecursoDasPlacas();
   if (n > ETAPA.motorista) await buscarMotorista();
-  // Sair da etapa Alocação (marcada) exige a consulta dos perfis terminada
-  if (n > ETAPA.compartimentos && STATE.novo.alocar) await carregarCompartimentosNovo();
+  // Sair da etapa Pedidos exige a consulta dos perfis de compartimento terminada (veículo do SAP)
+  if (n > ETAPA.pedidos) await carregarCompartimentosNovo();
   for (let k = 1; k < n; k++) {
     const msg = erroDaEtapa(k);
     if (msg) { mostrarEtapa(k, msg); return false; }
@@ -2957,7 +3066,7 @@ async function confirmarAgendamento() {
   // Cadastro e capacidade do veículo precisam da consulta das placas atuais terminada
   btn.disabled = true;
   await buscarRecursoDasPlacas();
-  if (STATE.novo.alocar) await carregarCompartimentosNovo();
+  await carregarCompartimentosNovo();
   btn.disabled = false;
   // Revalida tudo: o horário pode ter sido reservado por outro usuário enquanto preenchia
   for (let k = 1; k <= ETAPAS_WIZARD.length; k++) {
@@ -3475,6 +3584,11 @@ function liberacaoRecursoValida(a) {
   const r = a?.liberacaoCadastro?.recurso;
   return r && r.chave === chaveDoAgendamento(a) && String(r.id || '').trim() ? r : null;
 }
+// Compartimentos que a equipe informou para a placa na liberação (os mesmos que o quiosque usa sem o perfil SAP)
+function configLiberadaDaPlaca(a, placa) {
+  const alvo = placaMercosul(normalizarPlaca(placa));
+  return Object.values(liberacaoRecursoValida(a)?.configuracoes || {}).find((cfg) => placaMercosul(normalizarPlaca(cfg?.placa)) === alvo) || null;
+}
 function textoLiberacaoCadastro(a) {
   const l = a?.liberacaoCadastro;
   const cadMotorista = STATE.cadastroMotoristas[a?.motoristaCpf];
@@ -3685,6 +3799,9 @@ async function abrirLiberacaoCadastro(id) {
       }).filter(Boolean),
       capacidadePerfis: configsPerfis.filter(configCompartimentosValida)
         .reduce((s, cfg) => s + cfg.capacidadesLitros.reduce((t, c) => t + c, 0), 0),
+      // Placas do tanque, na ordem do quiosque, e as capacidades das que têm perfil SAP (conferência cheio ou vazio)
+      placasTanque,
+      capsPerfis: Object.fromEntries(placasTanque.map((placa, i) => [placa, configCompartimentosValida(configsPerfis[i]) ? configsPerfis[i].capacidadesLitros : null])),
       erro: '',
     };
     renderLiberacaoCadastro();
@@ -3777,8 +3894,15 @@ function erroDaLiberacao(l) {
   }
   // Placas com perfil SAP entram na conta com as capacidades do perfil
   const capacidade = l.capacidadePerfis + l.configuracoes.flatMap((cfg) => cfg.itens).reduce((s, item) => s + Number(item.capacidade), 0);
-  return capacidade < Number(l.a.volumeTotal || 0)
-    ? `A capacidade do veículo com os compartimentos informados (${formatVolume(capacidade)}) é menor que o volume do agendamento (${formatVolume(l.a.volumeTotal)}).` : '';
+  if (capacidade < Number(l.a.volumeTotal || 0)) {
+    return `A capacidade do veículo com os compartimentos informados (${formatVolume(capacidade)}) é menor que o volume do agendamento (${formatVolume(l.a.volumeTotal)}).`;
+  }
+  // Cada compartimento vai cheio ou vazio: os pedidos precisam fechar com os compartimentos do tanque inteiro (os do
+  // perfil SAP e os informados aqui). Acima de 12 o quiosque manda ao guichê: não há o que conferir
+  const caps = l.placasTanque.flatMap((placa) => l.capsPerfis[placa]
+    || (l.configuracoes.find((cfg) => cfg.placa === placa)?.itens || []).map((item) => Number(item.capacidade)));
+  const naoFecha = caps.length <= MAX_COMPARTIMENTOS ? erroCompartimentos(caps, linhasDoAgendamento(Object.values(l.a.pedidos || {}))) : '';
+  return naoFecha ? `${naoFecha} Confira os compartimentos informados; se estiverem certos, altere os pedidos ou o veículo do agendamento antes de liberar.` : '';
 }
 async function salvarLiberacaoCadastro() {
   const l = STATE.liberacao;
@@ -3908,6 +4032,23 @@ function resultadoTroca(t, a) {
   const total = ficam.reduce((s, p) => s + volumeNoAgendamento(p), 0) + novos.reduce((s, p) => s + saldoDoPedido(p, agendados), 0);
   return { agendados, ficam, novos, foraDaCarteira, total };
 }
+// Compartimentos do veículo do agendamento, os mesmos do check-in (perfil SAP ou liberação da equipe), lidos ao abrir a
+// janela. t.caps: undefined = consultando ou a leitura falhou (t.erroCaps); null = sem compartimentos no cadastro (não
+// há o que conferir: o quiosque manda ao guichê). Nunca rejeita.
+function carregarCompartimentosTroca(t, a) {
+  t.erroCaps = false;
+  t.buscaCaps = capacidadesDoAgendamento(a).then((caps) => { t.caps = caps; },
+    (e) => { console.warn('Compartimentos do veículo não consultados', e); t.erroCaps = true; })
+    .then(() => { if (STATE.troca === t) renderTrocaPedidos(); });
+  return t.buscaCaps;
+}
+// Os pedidos que ficam + os que entram (+ extra, o candidato da lista) fecham com os compartimentos? ('' = fecham)
+function erroCompartimentosTroca(t, extra = []) {
+  const atual = trocaAtual();
+  if (!atual || !Array.isArray(t.caps)) return '';
+  const { agendados, ficam, novos } = resultadoTroca(t, atual.a);
+  return erroCompartimentos(t.caps, [...linhasDoAgendamento(ficam), ...linhasDoSaldo([...novos, ...extra], agendados)]);
+}
 // Pedidos vigentes dos clientes do agendamento, na mesma base, que ainda não estão nele: os que podem entrar e os que
 // não (com o motivo). Os de outras bases só são contados.
 function candidatosTroca(t, a) {
@@ -3916,10 +4057,13 @@ function candidatosTroca(t, a) {
   const doCliente = objList(STATE.pedidosCarteira).filter((p) => a.clientes?.[p.clienteCodigo] && !a.pedidos?.[p.nrPedido]
     && !t.novos.includes(p.nrPedido) && saldoDoPedido(p, agendados) > 0);
   const mesmaBase = doCliente.filter((p) => baseTemLocal(STATE.bases[a.baseId], p.centro, p.depositoCodigo));
+  // Os pedidos que ficam já não fecham com os compartimentos: nenhum que entre resolve (o aviso fica na lista de cima)
+  const fechaHoje = !erroCompartimentosTroca(t);
   const lista = mesmaBase.map((p) => {
     const volume = saldoDoPedido(p, agendados);
     const motivo = erroPedidoNaTroca(t, a, p)
-      || (volume > sobra ? `O pedido ${p.nrPedido} (${formatVolume(volume)}) não cabe: sobra ${formatVolume(Math.max(sobra, 0))} no veículo.` : '');
+      || (volume > sobra ? `O pedido ${p.nrPedido} (${formatVolume(volume)}) não cabe: sobra ${formatVolume(Math.max(sobra, 0))} no veículo.` : '')
+      || (fechaHoje && erroCompartimentosTroca(t, [p]) ? `O pedido ${p.nrPedido} (${formatVolume(volume)}) não fecha com os compartimentos do veículo (cada um vai cheio ou vazio).` : '');
     return { p, volume, motivo };
   }).sort((x, y) => String(x.p.dataEntrega).localeCompare(String(y.p.dataEntrega)) || String(x.p.nrPedido).localeCompare(String(y.p.nrPedido)));
   return { entram: lista.filter((c) => !c.motivo), naoEntram: lista.filter((c) => c.motivo), outrasBases: doCliente.length - mesmaBase.length };
@@ -3932,6 +4076,7 @@ function abrirTrocaPedidos(id) {
   // Começa tirando os pedidos cancelados; o bloqueado fica (pode ser liberado, e a importação agenda bloqueado de propósito).
   // Quem troca pode manter ou tirar qualquer um.
   STATE.troca = { id, saem: new Set(pedidosParaRevisar(a).filter((nr) => a.situacaoPedidos[nr] === 'CANCELADO')), novos: [] };
+  carregarCompartimentosTroca(STATE.troca, a);
   document.getElementById('trocaPedidosConteudo').innerHTML = `
     <div class="modal-title">Alterar pedidos · ${esc(a.protocolo)}</div>
     <div class="modal-sub">${esc([a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`, a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`,
@@ -3993,12 +4138,17 @@ function renderTrocaPedidos() {
     ...foraDaCarteira.map((nr) => `<tr><td><strong>${esc(nr)}</strong></td><td colspan="5" class="texto-perigo">Saiu da carteira (faturado ou cancelado): tire e escolha outro.</td><td>${desistir(nr)}</td></tr>`),
   ];
   const capacidade = a.capacidadeVeiculo;
+  const naoFecha = erroCompartimentosTroca(t);
+  const compartimentos = naoFecha ? `<div class="form-hint texto-perigo">${esc(naoFecha)} Tire ou troque pedido.</div>`
+    : Array.isArray(t.caps) ? `<div class="form-hint" style="text-align:right">Compartimentos do veículo: ${esc(textoCapacidades(t.caps))}. Os pedidos fecham com eles (cada compartimento vai cheio ou vazio).</div>`
+    : t.erroCaps ? '<div class="form-hint aviso">Não foi possível consultar os compartimentos do veículo: a conferência é feita de novo ao salvar.</div>' : '';
   document.getElementById('trocaLista').innerHTML = `
     <div class="tabela-scroll"><table class="tabela-itens">
       <thead><tr><th>Pedido</th><th>Cliente</th><th>Frete</th><th>Situação SAP</th><th class="num">Volume</th><th>Troca</th><th></th></tr></thead>
       <tbody>${[...atuais, ...entram].join('')}</tbody>
     </table></div>
-    <div class="resumo-total">Volume do carregamento: <strong class="${capacidade && total > capacidade ? 'texto-perigo' : ''}">${formatVolume(total)}</strong>${capacidade ? ` de ${formatVolume(capacidade)} (capacidade do veículo)` : ''}</div>`;
+    <div class="resumo-total">Volume do carregamento: <strong class="${capacidade && total > capacidade ? 'texto-perigo' : ''}">${formatVolume(total)}</strong>${capacidade ? ` de ${formatVolume(capacidade)} (capacidade do veículo)` : ''}</div>
+    ${compartimentos}`;
 
   const el = document.getElementById('trocaCandidatos');
   const clientes = Object.entries(a.clientes || {});
@@ -4107,6 +4257,12 @@ async function salvarTrocaPedidos() {
   btn.textContent = 'Salvando…';
   mostrarErroTroca('');
   try {
+    // Compartimentos do veículo: a consulta da abertura precisa ter terminado (a que falhou, tenta de novo)
+    await (t.erroCaps ? carregarCompartimentosTroca(t, a) : t.buscaCaps);
+    if (STATE.troca !== t) return;
+    if (t.erroCaps) return mostrarErroTroca('Não foi possível consultar os compartimentos do veículo. Verifique a conexão e tente de novo.');
+    const naoFecha = erroCompartimentosTroca(t);
+    if (naoFecha) return mostrarErroTroca(`${naoFecha} Tire ou troque pedido.`);
     // Depois do check-in no quiosque o faturamento já usa os pedidos do agendamento: aí a troca é no guichê
     const checkin = await window._fb.carregarCheckin(a.protocolo);
     if (checkin && checkin.status !== 'inconsistente') return mostrarErroTroca('O motorista já fez o check-in deste agendamento no quiosque: a alteração dos pedidos agora é no guichê.');
@@ -4205,7 +4361,7 @@ function abrirAlteracao(id) {
   document.getElementById('alt-titulo').textContent = `Alterar veículo e motorista · ${a.protocolo}`;
   document.getElementById('alt-sub').textContent = [a.baseNome, `carregamento em ${formatDataBR(a.dataCarregamento)}`,
     a.baseTipo === 'agendamento' ? `slot ${a.slotHorario}` : `turno ${labelTurno(a.turno)}`].filter(Boolean).join(' · ');
-  document.getElementById('alt-volumeTxt').textContent = `O veículo precisa levar o volume deste carregamento: ${formatVolume(a.volumeTotal)}.`
+  document.getElementById('alt-volumeTxt').textContent = `O veículo precisa levar o volume deste carregamento (${formatVolume(a.volumeTotal)}), com os pedidos fechando com os compartimentos dele: cada compartimento vai cheio ou vazio.`
     + (compartimentosAlocados(a).length ? ' Trocar as placas apaga a alocação nos compartimentos feita no agendamento: o motorista aloca no check-in.' : '');
   mostrarErroAlteracao('');
   renderStatusVeiculo(f);
@@ -4275,6 +4431,22 @@ async function salvarAlteracao() {
   if (veiculo?.volume && a.volumeTotal > veiculo.volume) {
     return mostrarErroAlteracao(`O volume deste carregamento (${formatVolume(a.volumeTotal)}) passa da capacidade do veículo (${formatVolume(veiculo.volume)}). `
       + `Informe outro veículo${podeTrocarPedidos(a) ? ' ou tire pedido em Alterar pedidos' : ''}.`);
+  }
+  // Veículo novo do SAP: os pedidos precisam fechar com os compartimentos dele (cada um cheio ou vazio)
+  if (veiculo?.origem === 'sap') {
+    let caps;
+    btn.disabled = true;
+    try {
+      caps = await capacidadesDoRecurso(alt.recurso.dados, placasTanqueDaLiberacao({ placaCavalo: m.placas[0], placaCarreta: m.placas[1], placaCarreta2: m.placas[2] }));
+    } catch (e) {
+      console.warn('Compartimentos do veículo não consultados', e);
+      return mostrarErroAlteracao('Não foi possível consultar os compartimentos do veículo. Verifique a conexão e tente de novo.');
+    } finally {
+      btn.disabled = false;
+    }
+    if (STATE.alteracao !== alt) return;
+    const naoFecha = caps ? erroCompartimentos(caps, linhasDoAgendamento(Object.values(a.pedidos || {}))) : '';
+    if (naoFecha) return mostrarErroAlteracao(`${naoFecha} Informe outro veículo${podeTrocarPedidos(a) ? ' ou altere os pedidos em Alterar pedidos' : ''}.`);
   }
   const cadMotorista = m.motorista ? motoristaDoCadastro(f) : null;
   btn.disabled = true;
@@ -4484,7 +4656,8 @@ async function lerArquivoRoteirizacao(input) {
       estado: '', bloqueios: [], ajustes: [], avisos: [], pedidos: [], erroEnvio: '', protocolo: '',
     })),
     // Consultas ao banco (cada chave uma vez): pedidos/<nr>, recursos/<chave>, motoristas/<cpf>, baseSlots/<base>, ocupados/<base|data>
-    pedidos: {}, recursos: {}, motoristas: {}, baseSlots: {}, ocupados: {}, consultas: {},
+    // e as capacidades dos compartimentos do recurso do SAP (compartimentos/<placas na ordem do arquivo>)
+    pedidos: {}, recursos: {}, motoristas: {}, baseSlots: {}, ocupados: {}, compartimentos: {}, consultas: {},
     carregando: true, erroCarga: '', enviando: false, ajuste: null,
   };
   indexarViagens(imp);
@@ -4602,6 +4775,13 @@ async function carregarDadosViagem(imp, v) {
     placasDaViagemValidas(v) ? consultarRecursoImportacao(imp, chaveRecurso(v.placas)) : null,
     cpfValido(v.cpf) ? consultarMotoristaImportacao(imp, v.cpf) : null,
   ]);
+  // Recurso do SAP: os compartimentos das placas do tanque (a carreta é a 2ª placa do arquivo em diante)
+  const r = placasDaViagemValidas(v) ? imp.recursos[chaveRecurso(v.placas)] : null;
+  if (r?.origem === 'sap') {
+    const [placaCavalo, placaCarreta, placaCarreta2] = v.placas;
+    await consultarImportacao(imp, 'compartimentos', v.placas.join('/'),
+      () => capacidadesDoRecurso(r.dados, placasTanqueDaLiberacao({ placaCavalo, placaCarreta, placaCarreta2 })));
+  }
   const base = baseDaViagem(imp, v);
   if (base?.tipo === 'agendamento' && v.data) await carregarHorariosImportacao(imp, base.id, v.data);
 }
@@ -4731,6 +4911,15 @@ function avaliarViagem(imp, v, agendados, porPetId) {
   if (v.veiculo?.volume && (v.volumeViagem || v.volumeTotal) > v.veiculo.volume) {
     bloqueios.push(`O volume da viagem (${formatVolume(v.volumeViagem || v.volumeTotal)}${v.partes > 1 ? `, somando os ${v.partes} carregamentos` : ''}) passa da capacidade do veículo (${formatVolume(v.veiculo.volume)}).`);
   }
+  // Cada compartimento vai cheio ou vazio: os pedidos da viagem (de todos os carregamentos) fecham com os compartimentos
+  // do recurso do SAP. Sem os compartimentos no cadastro não há o que conferir (o quiosque manda ao guichê)
+  const caps = v.veiculo?.origem === 'sap' ? imp.compartimentos[v.placas.join('/')] : null;
+  if (caps) {
+    const itens = v.partes > 1 ? imp.viagens.filter((o) => o.viagem === v.viagem).flatMap((o) => o.itens) : v.itens;
+    const naoFecha = erroCompartimentos(caps, itens.filter((i) => i.volume > 0)
+      .map((i) => ({ ordemVenda: i.nr, descricao: i.descricao || `Produto ${i.codigo}`, volume: i.volume })));
+    if (naoFecha) bloqueios.push(`${naoFecha}${v.partes > 1 ? ` A conta junta os ${v.partes} carregamentos da viagem.` : ''} Revise a roteirização.`);
+  }
 
   // Motorista: pelo CPF (do arquivo, achado pelo nome ou da janela de ajuste); sem cadastro, entra como provisório
   // com o nome do arquivo (ou da janela de ajuste)
@@ -4831,7 +5020,7 @@ function renderImportacao() {
     <div class="form-hint" style="margin:0 0 12px">Cada viagem vira um agendamento; a que carrega em mais de uma base vira um por base, cada um com o seu horário.
       Falta data, horário ou motorista: clique em Ajustar.
       O pedido vai inteiro numa viagem só, com todos os produtos: o SAP fatura o pedido todo ou nada.
-      Pedido com volume parcial, faltando produto, em mais de uma viagem ou fora da carteira: corrija no roteirizador, salve e importe o arquivo de novo (o que já foi agendado não é agendado outra vez).</div>
+      Pedido com volume parcial, faltando produto, em mais de uma viagem, fora da carteira ou que não fecha com os compartimentos do veículo (cada compartimento vai cheio ou vazio): corrija no roteirizador, salve e importe o arquivo de novo (o que já foi agendado não é agendado outra vez).</div>
     <div class="tabela-scroll">
       <table class="tabela-itens" id="impTabela">
         <thead><tr><th>Viagem</th><th>Veículo</th><th>Motorista</th><th>Pedidos</th><th>Base</th><th>Data</th><th>Horário</th><th class="num">Volume</th><th>Situação</th><th></th></tr></thead>
