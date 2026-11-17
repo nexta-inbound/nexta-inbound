@@ -2878,8 +2878,10 @@
     <div class="upload-icon">📂</div>
     <div class="upload-text">Arraste o Excel aqui ou clique para selecionar</div>
     <div class="upload-hint">Suporta .xlsx exportado do sistema · Colunas: Id, Data de Carregamento, Data de Descarga, Produto, Origem, Base de Atendimento, CNPJ Origem, Destino, CNPJ Destino, Planejado</div>
-    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
   </div>
+  <!-- Fora do #uploadZone: aplicarImportacaoCadencias reescreve o innerHTML da zona e levava o
+       input junto — depois do 1º upload, clicar na zona / "Trocar arquivo" dava erro (null.click()). -->
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
 
   <div class="table-wrap cad-indicador" id="cadIndicadorWrap">
     <div class="table-toolbar">
@@ -6683,6 +6685,9 @@ let sortDir = 'asc';
 let idsExcluidosExport = new Set();
 let activeTab = 0;
 let editingIdx = null;
+// idViagem da viagem aberta no modal — editingIdx é só a posição dela em viagensAtivo(), que
+// anda quando uma viagem sai da lista (ver reposicionarModalAberto).
+let editingIdViagem = null;
 let _editingDiasDsr = new Set([0]); // dias do DSR selecionados no modal aberto (0=domingo...6=sábado) — ver toggleDiaDsr
 let autosaveTimer = null;
 let selectedViagens = new Set();
@@ -14771,6 +14776,7 @@ function openModal(idx) {
   // desabilitados e o salvar grava só Motorista/CPF/Observação (ver
   // ajustarModalParaTipoUsuario/salvarViagemCamposLiberadosPedagio).
   editingIdx = idx;
+  editingIdViagem = v.idViagem;
   document.getElementById('modal-id-label').textContent = v.idViagem + ' · ' + v.cadenciaOrigem;
   const vinculoLabel = document.getElementById('modal-vinculo-label');
   const vinculoTexto = v.viagemOrigemId ? `↩ Retorno de ${v.viagemOrigemId}`
@@ -14921,7 +14927,30 @@ function closeModal() {
   }
   document.getElementById('modalOverlay').classList.remove('open');
   editingIdx = null;
+  editingIdViagem = null;
   _revisaoFreteModal = null; // 🔄 marcado e não salvo é descartado
+}
+
+// Reencontra pelo ID a posição da viagem aberta no modal depois que a lista mudou (uma viagem
+// que sai da lista desloca as seguintes). Se ela própria saiu, fecha o modal — sem deixar o
+// closeModal mexer na viagem que passou a ocupar a posição antiga.
+function reposicionarModalAberto() {
+  if (editingIdx === null) return;
+  const i = editingIdViagem ? viagensAtivo().findIndex(v => v.idViagem === editingIdViagem) : -1;
+  if (i >= 0) { editingIdx = i; return; }
+  editingIdx = null;
+  closeModal();
+}
+
+// Refresh dos listeners em tempo real: fecha o modal só se a viagem aberta mudou ou saiu da
+// lista nesta rajada de eventos. Antes fechava em qualquer mudança de qualquer viagem,
+// cadência ou config (2026-11-17, Logística: "as janelas fecham do nada") — com os bots e
+// várias pessoas gravando, o modal fechava o tempo todo, inclusive pelo eco do autosave da
+// viagem que a própria pessoa tinha acabado de salvar. Continua fechando quando a viagem
+// aberta muda, pra o Salvar não gravar o formulário antigo por cima do que chegou.
+function fecharModalSeViagemAbertaMudou(idsAlterados) {
+  reposicionarModalAberto();
+  if (editingIdx !== null && idsAlterados.has(editingIdViagem)) closeModal();
 }
 
 function _aplicarAceiteViagem(v) {
@@ -17110,10 +17139,11 @@ async function liberarPedagioPelaTabela(realIdx) {
   const modalAberto = () => document.getElementById('modalOverlay').classList.contains('open');
   if (modalAberto()) return;
   editingIdx = realIdx;
+  editingIdViagem = viagensAtivo()[realIdx]?.idViagem ?? null;
   try {
     await informarEstornoPedagio();
   } finally {
-    if (!modalAberto()) editingIdx = null;
+    if (!modalAberto()) { editingIdx = null; editingIdViagem = null; }
   }
 }
 
@@ -17970,6 +18000,19 @@ function processarArquivo(file) {
       const idxPlanejado    = col('Planejado');
       const idxModal        = col('Tipo de Frete');
 
+      // Coluna obrigatória com nome diferente (ex.: "Data de Ca" / "Data de De" truncados, caso
+      // MIDAS CIF MG RJ, nov/2026) virava índice -1 → todas as datas '-' → no "Somar" a chave
+      // id+datas colapsava todas as linhas do mesmo pedido numa só (13 linhas viraram 3, sem data).
+      const obrigatorias = ['Data de Carregamento', 'Data de Descarga', 'Produto', 'Origem', 'Destino', 'Planejado'];
+      const faltando = obrigatorias.filter(nome => col(nome) === -1);
+      if (faltando.length) {
+        alert(`A planilha não tem a(s) coluna(s) obrigatória(s):\n• ${faltando.join('\n• ')}\n\n` +
+          `Colunas encontradas na linha de cabeçalho:\n${headers.filter(Boolean).join(' | ')}\n\n` +
+          `Corrija o nome no cabeçalho (tem que ser exatamente igual) e suba de novo.`);
+        document.getElementById('fileInput').value = '';
+        return;
+      }
+
       const linhasArquivo = [];
       for (let i = headerIdx + 1; i < rows.length; i++) {
         const r = rows[i];
@@ -18394,6 +18437,19 @@ function validarCadastroImportacao(linhasArquivo) {
   return { validas, invalidas, corrigidas };
 }
 
+// Fecha o popup no clique fora da caixa — só quando o clique também COMEÇOU fora. Com o
+// `e.target === overlay` puro, selecionar o texto de um campo arrastando o mouse e soltar fora
+// da caixa fechava o popup (o navegador entrega esse clique ao fundo, ancestral comum de onde
+// apertou e de onde soltou) — 2026-11-17, Logística: popups da cadência "fechando do nada".
+function fecharAoClicarFora(overlay, fechar) {
+  let comecouNoFundo = false;
+  overlay.addEventListener('pointerdown', e => { comecouNoFundo = e.target === overlay; });
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay && comecouNoFundo) fechar();
+    comecouNoFundo = false;
+  });
+}
+
 // Mostra as linhas cuja Origem/Destino não bate com o cadastro de Fornecedores/Bases
 // antes de qualquer dado entrar na planilha — evita subir cadência com fornecedor/base "fantasma".
 function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas = []) {
@@ -18473,7 +18529,7 @@ function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas 
   window._linhasValidasImportCad = validas;
   window._fileImportCad = file;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupErrosCadastroImportacao(); });
+  fecharAoClicarFora(overlay, fecharPopupErrosCadastroImportacao);
 }
 
 function fecharPopupErrosCadastroImportacao() {
@@ -18524,7 +18580,7 @@ function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file) {
   window._linhasValidasImportCad = validas;
   window._fileImportCad = file;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupCorrecoesCadastroImportacao(); });
+  fecharAoClicarFora(overlay, fecharPopupCorrecoesCadastroImportacao);
 }
 
 function fecharPopupCorrecoesCadastroImportacao() {
@@ -18562,7 +18618,7 @@ function abrirPopupModoImportacaoCadencia(linhasArquivo, file) {
   window._linhasImportCad = linhasArquivo;
   window._fileImportCad = file;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) fecharPopupModoImportacaoCadencia(); });
+  fecharAoClicarFora(overlay, fecharPopupModoImportacaoCadencia);
 }
 
 function fecharPopupModoImportacaoCadencia() {
@@ -18584,11 +18640,24 @@ function aplicarImportacaoCadencias(linhasArquivo, file, substituirTudo) {
     // recorrente ao longo da semana). Casar só por id fazia a 2ª linha em diante do mesmo
     // pedido sobrescrever a anterior (mesmo dentro do mesmo arquivo), perdendo as janelas
     // intermediárias — por isso o id+dtCarreg+dtDesc juntos identificam a linha de fato.
-    linhasArquivo.forEach(nova => {
-      const idx = cadencias.findIndex(c => c.id === nova.id && c.dtCarreg === nova.dtCarreg && c.dtDesc === nova.dtDesc);
-      if (idx !== -1) { cadencias[idx] = nova; atualizadas++; }
-      else { cadencias.push(nova); novas++; }
+    // Mesmo assim, a linha do arquivo só casa com linha que JÁ existia antes deste upload, e cada
+    // existente casa no máximo uma vez: o mesmo pedido com as mesmas datas repetido na planilha é
+    // mais um caminhão (agruparCadencias soma o volume), não uma atualização — antes a 2ª linha
+    // sobrescrevia a 1ª e a viagem sumia (MIDAS 45.219292.10.9, 19→23/11, 2×60 m³ virava 1×60).
+    const chaveLinha = c => [c.id, c.dtCarreg, c.dtDesc].join('||');
+    const existentesPorChave = new Map();
+    cadencias.forEach((c, idx) => {
+      const k = chaveLinha(c);
+      if (!existentesPorChave.has(k)) existentesPorChave.set(k, []);
+      existentesPorChave.get(k).push(idx);
     });
+    const linhasNovas = [];
+    linhasArquivo.forEach(nova => {
+      const idx = existentesPorChave.get(chaveLinha(nova))?.shift();
+      if (idx !== undefined) { cadencias[idx] = nova; atualizadas++; }
+      else { linhasNovas.push(nova); novas++; }
+    });
+    cadencias.push(...linhasNovas);
   }
 
   renderPreview();
@@ -18810,9 +18879,11 @@ function configurarListenerSemana(key) {
   let refreshTimer = null;
   let precisaToast = false;
   let idsParaSincronizar = new Set();
-  function agendarRefresh(mostrarToast, idAlterado) {
+  let idsRemovidos = new Set(); // só pro modal (ver fecharModalSeViagemAbertaMudou)
+  function agendarRefresh(mostrarToast, idAlterado, idRemovido) {
     if (mostrarToast) precisaToast = true;
     if (idAlterado) idsParaSincronizar.add(idAlterado);
+    if (idRemovido) idsRemovidos.add(idRemovido);
     clearTimeout(refreshTimer);
     // Pequeno atraso pra agrupar uma rajada de eventos (ex.: ação em lote em várias
     // viagens) num único refresh, em vez de um re-render por registro.
@@ -18821,9 +18892,11 @@ function configurarListenerSemana(key) {
       // — sincronizarStatusHerrlog() já roda sozinho a cada ciclo do monitoramentoHerrlog
       // (ver configurarListenerMonitoramentoHerrlog); aqui é só rede de segurança contra uma
       // edição concorrente sobrescrever por acidente o status de UMA viagem específica.
+      const idsMudaram = new Set([...idsParaSincronizar, ...idsRemovidos]);
       if (idsParaSincronizar.size) sincronizarStatusHerrlog([...idsParaSincronizar]);
       idsParaSincronizar = new Set();
-      if (editingIdx !== null) closeModal();
+      idsRemovidos = new Set();
+      fecharModalSeViagemAbertaMudou(idsMudaram);
       if (activeTab === 0) {
         renderPainelCadenciado();
         if (cadencias.length > 0) renderPreview();
@@ -18847,6 +18920,7 @@ function configurarListenerSemana(key) {
   const removerViagemLocal = (id) => {
     const idx = viagens.findIndex(v => v.idViagem === id);
     if (idx >= 0) viagens.splice(idx, 1);
+    reposicionarModalAberto(); // a remoção desloca as posições — não espera o refresh
   };
   const handlersViagens = {
     onAdded: (id, dados) => {
@@ -18856,7 +18930,7 @@ function configurarListenerSemana(key) {
       agendarRefresh(!conhecida, id);
     },
     onChanged: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true, id); },
-    onRemoved: (id) => { removerViagemLocal(id); agendarRefresh(true); },
+    onRemoved: (id) => { removerViagemLocal(id); agendarRefresh(true, null, id); },
   };
   const unsubViagens = isTransportador()
     ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), handlersViagens)
@@ -18996,12 +19070,17 @@ let _unsubsCadenciasPorSemana = new Map(); // semana de origem -> unsub (deriva 
 let _modoSelecaoAtual = { tipo: 'ativas' }; // ou { tipo: 'periodo', inicioISO, fimISO } — pro botão 🔄 saber o que refazer
 
 let _refreshCarregamentoTimer = null;
-function _agendarRefreshCarregamento() {
+let _idsAlteradosCarregamento = new Set(); // viagens que mudaram/saíram na rajada (só pro modal)
+// idViagem: a viagem que mudou ou saiu da lista; sem ele (cadências) o modal não fecha.
+function _agendarRefreshCarregamento(idViagem) {
+  if (idViagem) _idsAlteradosCarregamento.add(idViagem);
   clearTimeout(_refreshCarregamentoTimer);
   // Pequeno atraso pra agrupar uma rajada de eventos (ex.: várias viagens abrindo listener
   // ao mesmo tempo na largada) num único refresh — mesmo padrão de configurarListenerSemana.
   _refreshCarregamentoTimer = setTimeout(() => {
-    if (editingIdx !== null) closeModal();
+    const idsMudaram = _idsAlteradosCarregamento;
+    _idsAlteradosCarregamento = new Set();
+    fecharModalSeViagemAbertaMudou(idsMudaram);
     updatePipeline(viagensAtivo());
     renderizarAbaAtual();
   }, 200);
@@ -19076,7 +19155,7 @@ async function _garantirViagemCarregada(id, entrada) {
   const cacheado = _viagensCacheMemoria[id];
   if (cacheado && cacheado._atualizadoEmCache === entrada.atualizadoEm) {
     _aplicarViagemCarregada(id, entrada.semana, cacheado.dados);
-    _agendarRefreshCarregamento();
+    _agendarRefreshCarregamento(id);
     return;
   }
   const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
@@ -19084,7 +19163,7 @@ async function _garantirViagemCarregada(id, entrada) {
   _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
   window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
   _aplicarViagemCarregada(id, entrada.semana, registro);
-  _agendarRefreshCarregamento();
+  _agendarRefreshCarregamento(id);
 }
 
 // Índice apontando pra um registro que não existe mais (entrada órfã): descarta a cópia
@@ -19100,8 +19179,9 @@ function _removerViagemCarregada(idViagem) {
   const idx = viagensMultiSemana.findIndex(v => v.idViagem === idViagem);
   const semana = idx >= 0 ? viagensMultiSemana[idx]._semanaOrigem : null;
   if (idx >= 0) viagensMultiSemana.splice(idx, 1);
+  reposicionarModalAberto(); // a remoção desloca as posições — não espera o refresh
   if (semana) _pararCadenciaSeSemanaVazia(semana);
-  _agendarRefreshCarregamento();
+  _agendarRefreshCarregamento(idViagem);
 }
 
 function desativarCarregamentoPorIndice() {
@@ -19544,7 +19624,7 @@ function novaSemana() {
       </div>
     </div>`;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if(e.target===overlay) document.getElementById('novaSemanaOverlay')?.remove(); });
+  fecharAoClicarFora(overlay, () => document.getElementById('novaSemanaOverlay')?.remove());
 }
 
 function confirmarNovaSemana() {
