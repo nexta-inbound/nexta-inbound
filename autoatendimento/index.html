@@ -803,7 +803,7 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
    não digita compartimentos: vêm do perfil SAP da placa (perfisCompartimento/<perfilChave>, sincronizado do
    datalake) ou da liberação temporária da equipe Nexta no agendamento (liberacaoCadastro.recurso); sem nenhum
    dos dois, o motorista é mandado ao guichê para a equipe liberar o cadastro. Depois aloca os pedidos (cada
-   pedido inteiro; se não cabe, registra inconsistência para o faturamento). Se quem agendou já fez a alocação no portal
+   pedido inteiro e cada compartimento cheio ou vazio; se não fecha, registra inconsistência para o faturamento). Se quem agendou já fez a alocação no portal
    (agendamentos/<id>/alocacaoCompartimentos) e ela ainda bate com o veículo e os pedidos, a alocação abre no resumo
    já preenchida: o motorista confere e, se precisar, troca o produto de um compartimento ou refaz. Por fim, informa os lacres do perfil e o envelope de amostra
    de cada compartimento carregado. O check-in vai para autoatendimento/<protocolo> (ex.: AG-000019)
@@ -1800,6 +1800,20 @@ async function conferirMotoristaVeiculo() {
       mostrarAlerta('alerta-novo-veiculo', `A placa ${semPerfil.join(' e ')} está sem compartimentos no cadastro. Confira se o cavalo e a carreta estão nos campos certos; se estiverem, procure o guichê.`);
       return;
     }
+    // Cada compartimento vai cheio ou vazio: os pedidos precisam fechar com os compartimentos do perfil. Perfil que não
+    // está no catálogo fica para o check-in (lá o motorista vai ao guichê, para a equipe liberar os compartimentos)
+    const configs = await Promise.all(tanque.map((p) => window._fb.carregarPerfilCompartimento(perfilDaPlaca(recurso, p, tanque.length).chave)));
+    if (novo !== atual) return;
+    if (configs.every(configValida)) {
+      const caps = configs.flatMap((c) => c.capacidadesLitros);
+      const linhas = novo.pedidos.flatMap((p) => itensDe(p).filter((i) => Number(i.volume) > 0)
+        .map((i) => ({ ordemVenda: String(p.nrPedido), descricao: i.descricao || `Produto ${i.codigo}`, volume: Number(i.volume) })));
+      const naoFecha = caps.length <= MAX_COMPARTIMENTOS ? erroCompartimentos(caps, linhas) : '';
+      if (naoFecha) {
+        mostrarAlerta('alerta-novo-veiculo', esc(`${naoFecha} Volte e tire um pedido ou procure o guichê.`));
+        return;
+      }
+    }
     novo.motorista ={ nome: motorista.nome, cpf, bp: motorista.bp };
     novo.veiculo = { placas, chave, id: recurso.id, volume: capacidade };
     renderConfirmacaoNovo();
@@ -1955,15 +1969,9 @@ function capacidades() { return atd.caps.slice(); }
 // Os compartimentos vêm do cadastro: confirmada a conferência, vai direto para a alocação
 function irParaAlocacao() {
   const caps = capacidades();
-  // O pedido vai inteiro: se nenhuma divisão cabe, é inconsistência (o faturamento resolve)
-  const vols = atd.linhas.map((l) => l.volume);
-  const totalPedidos = somar(vols), totalCaps = somar(caps);
-  let motivo = '';
-  if (totalCaps < totalPedidos) {
-    motivo = `Os pedidos somam ${formatVolume(totalPedidos)}, mas os ${caps.length} compartimentos do veículo somam ${formatVolume(totalCaps)}.`;
-  } else if (!planejarAlocacao(caps, vols)) {
-    motivo = `Os pedidos somam ${formatVolume(totalPedidos)} e não há como dividi-los inteiros nos ${caps.length} compartimentos do veículo (cada compartimento leva um só produto).`;
-  }
+  // O pedido vai inteiro e cada compartimento vai cheio ou vazio: se nenhuma divisão fecha, é inconsistência (o
+  // faturamento resolve). Agendamento de antes da regra (17/11/2026) pode cair aqui
+  const motivo = erroCompartimentos(caps, atd.linhas);
   if (motivo) { registrarInconsistencia(motivo, caps); return; }
   if (document.activeElement) document.activeElement.blur();
   const pendentes = semResposta();
@@ -2005,45 +2013,74 @@ function alocacaoPreviaAjustada() {
 }
 
 /* ── ETAPA 3: ALOCAÇÃO DOS PEDIDOS — um compartimento por vez, depois o resumo ── */
-// Divisão em que cada linha (pedido + produto) cabe inteira, cada compartimento leva uma linha só e nenhum
-// compartimento sobra (tirar qualquer um deixaria a linha sem caber). Entre as possíveis, a de menos espaço
-// vazio e, empatado, menos compartimentos. Programação dinâmica sobre os subconjuntos de compartimentos
-// (até 12 = 4096). Devolve, por linha, os índices (0…) dos compartimentos, ou null se não há divisão.
-// Usada antes da alocação para saber se os pedidos cabem (senão, inconsistência)
+// Regra pedida pelo usuário em 17/11/2026: o compartimento vai cheio ou vazio (nada de compartimento parcial). Cada
+// linha (pedido + produto) vai inteira em compartimentos cheios que somam exatamente o volume dela, e cada
+// compartimento leva uma linha só. O portal de agendamento faz a mesma conta (planejarAlocacao) e não deixa agendar
+// pedido que não fecha com os compartimentos do veículo; aqui o check-in registra inconsistência e o Criar agendamento
+// manda voltar.
+
+// Divisão em que cada linha ocupa compartimentos cheios que somam o volume dela, um produto por compartimento. Busca com
+// memória sobre os subconjuntos de compartimentos (até 12 = 4096), começando pela linha com menos opções; entre as
+// divisões, prefere menos compartimentos por linha e os primeiros do tanque. Devolve, por linha, os índices (0…) dos
+// compartimentos, ou null se não há divisão
 function planejarAlocacao(caps, vols) {
   const n = caps.length, todos = (1 << n) - 1;
-  const soma = new Array(todos + 1).fill(0), menor = new Array(todos + 1).fill(Infinity), qtd = new Array(todos + 1).fill(0);
+  const soma = new Array(todos + 1).fill(0);
+  const porSoma = new Map(); // litros → subconjuntos de compartimentos que somam exatamente isso
   for (let m = 1; m <= todos; m++) {
-    const bit = 31 - Math.clz32(m & -m), resto = m & (m - 1);
-    soma[m] = soma[resto] + caps[bit];
-    menor[m] = Math.min(menor[resto], caps[bit]);
-    qtd[m] = qtd[resto] + 1;
+    soma[m] = soma[m & (m - 1)] + Math.round(caps[31 - Math.clz32(m & -m)]);
+    if (!porSoma.has(soma[m])) porSoma.set(soma[m], []);
+    porSoma.get(soma[m]).push(m);
   }
-  const ordem = vols.map((_, j) => j).sort((a, b) => vols[b] - vols[a]); // maiores primeiro: corta mais cedo
-  const memo = new Map();
-  const melhor = (p, livres) => {
-    if (p === ordem.length) return { folga: 0, usados: 0, masks: [] };
+  const qtd = (m) => { let c = 0; for (; m; m &= m - 1) c++; return c; };
+  for (const lista of porSoma.values()) lista.sort((a, b) => qtd(a) - qtd(b) || a - b);
+  const alvo = vols.map((v) => Math.round(v));
+  if (alvo.some((v) => !porSoma.has(v))) return null;
+  const ordem = alvo.map((_, j) => j).sort((a, b) => porSoma.get(alvo[a]).length - porSoma.get(alvo[b]).length || alvo[b] - alvo[a]);
+  const semSaida = new Set(), escolha = [];
+  const buscar = (p, livres) => {
+    if (p === ordem.length) return true;
     const chave = p * (todos + 1) + livres;
-    if (memo.has(chave)) return memo.get(chave);
-    const v = vols[ordem[p]];
-    let best = null;
-    for (let s = livres; s > 0; s = (s - 1) & livres) {
-      if (soma[s] < v || soma[s] - menor[s] >= v) continue; // não cabe, ou tem compartimento sobrando
-      const resto = melhor(p + 1, livres & ~s);
-      if (!resto) continue;
-      const folga = soma[s] - v + resto.folga, usados = qtd[s] + resto.usados;
-      if (!best || folga < best.folga || (folga === best.folga && (usados < best.usados || (usados === best.usados && s < best.masks[0])))) {
-        best = { folga, usados, masks: [s, ...resto.masks] };
-      }
+    if (semSaida.has(chave)) return false;
+    for (const s of porSoma.get(alvo[ordem[p]])) {
+      if ((s & livres) !== s) continue;
+      escolha[p] = s;
+      if (buscar(p + 1, livres & ~s)) return true;
     }
-    memo.set(chave, best);
-    return best;
+    semSaida.add(chave);
+    return false;
   };
-  const r = melhor(0, todos);
-  if (!r) return null;
-  const plano = vols.map(() => []);
-  r.masks.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
+  if (!buscar(0, todos)) return null;
+  const plano = alvo.map(() => []);
+  escolha.forEach((s, p) => { for (let i = 0; i < n; i++) if (s & (1 << i)) plano[ordem[p]].push(i); });
   return plano;
+}
+// Volumes que fecham com compartimentos cheios (as somas possíveis das capacidades), do menor para o maior
+function volumesQueFecham(caps) {
+  let somas = new Set([0]);
+  for (const c of caps) somas = new Set([...somas, ...[...somas].map((s) => s + Math.round(c))]);
+  somas.delete(0);
+  return [...somas].sort((a, b) => a - b);
+}
+function textoCapacidades(caps) { return caps.map((c) => Number(c).toLocaleString('pt-BR')).join(' + ') + ' L'; }
+// Por que os pedidos não fecham com os compartimentos ('' = fecham), com o mesmo texto do portal.
+// linhas = [{ ordemVenda, descricao, volume }]
+function erroCompartimentos(caps, linhas) {
+  if (!linhas.length || planejarAlocacao(caps, linhas.map((l) => l.volume))) return '';
+  const doVeiculo = `os compartimentos do veículo (${textoCapacidades(caps)})`;
+  const totalPedidos = somar(linhas.map((l) => l.volume)), totalCaps = somar(caps);
+  if (totalPedidos > totalCaps) return `Os pedidos somam ${formatVolume(totalPedidos)} e ${doVeiculo} somam ${formatVolume(totalCaps)}.`;
+  // Produto que nem sozinho fecha: diz os volumes mais perto que fechariam
+  const fecham = volumesQueFecham(caps);
+  const soltas = linhas.filter((l) => !fecham.includes(Math.round(l.volume)));
+  if (soltas.length) {
+    const l = soltas[0];
+    const perto = [fecham.filter((v) => v < l.volume).pop(), fecham.find((v) => v > l.volume)].filter(Boolean).map(formatVolume);
+    return `${l.descricao} do pedido ${l.ordemVenda} (${formatVolume(l.volume)}) não fecha com ${doVeiculo}: cada compartimento vai cheio ou vazio`
+      + (perto.length ? `, e ${perto.length > 1 ? `os volumes mais perto que fecham são ${perto.join(' e ')}` : `o volume mais perto que fecha é ${perto[0]}`}` : '') + '.'
+      + (soltas.length > 1 ? ` O mesmo acontece com mais ${soltas.length - 1} ${soltas.length === 2 ? 'produto' : 'produtos'}.` : '');
+  }
+  return `Os pedidos não fecham juntos com ${doVeiculo}: cada compartimento vai cheio ou vazio e leva um produto só.`;
 }
 function linhaDaChave(chave) { return atd.linhas.find((l) => l.chave === chave); }
 // indiceGlobal é apenas a chave estável na ordem configurada no check-in.
@@ -2066,28 +2103,30 @@ function semResposta() {
   for (let i = 0; i < atd.qtd; i++) if (atd.comps[i].linha === null) pendentes.push(i);
   return pendentes;
 }
-// O produto enche os compartimentos dele em ordem (1, 2, 3…): o último pode ficar com espaço; compartimento
-// que já não recebe nada (o pedido coube nos anteriores) está sobrando
+// O produto enche os compartimentos dele em ordem (1, 2, 3…). Cada compartimento vai cheio ou vazio: parcial = o
+// primeiro que ficaria com menos que a capacidade (ou sem nada, quando o pedido já coube nos anteriores), -1 se nenhum
 function situacaoDasLinhas() {
   const caps = capacidades();
   return atd.linhas.map((l) => {
     const idx = [];
     for (let i = 0; i < atd.qtd; i++) if (atd.comps[i].linha === l.chave) idx.push(i);
-    let acumulado = 0, sobrando = -1;
+    let resta = l.volume, parcial = -1, previsto = 0;
     for (const i of idx) {
-      if (acumulado >= l.volume) { sobrando = i; break; }
-      acumulado += caps[i];
+      const vai = Math.max(Math.min(caps[i], resta), 0);
+      resta -= vai;
+      if (parcial < 0 && vai < caps[i]) { parcial = i; previsto = vai; }
     }
     const cap = somar(idx.map((i) => caps[i]));
-    return { l, idx, cap, falta: Math.max(l.volume - cap, 0), sobrando };
+    return { l, idx, cap, falta: Math.max(l.volume - cap, 0), parcial, previsto };
   });
 }
 function textoSituacao(s) {
   if (!s.idx.length) return { cls: 'falta', txt: 'Sem compartimento', det: '' };
   const det = `${s.idx.map(referenciaCompartimento).join(', ')} · ${formatVolume(s.cap)}`;
   if (s.falta) return { cls: 'falta', txt: `Faltam ${formatVolume(s.falta)}`, det };
-  if (s.sobrando >= 0) return { cls: 'sobra', txt: `${referenciaCompartimento(s.sobrando)} ficaria sem produto: deixe vazio`, det };
-  return { cls: 'ok', txt: 'Cabe inteiro', det: det + (s.cap > s.l.volume ? ` · livre ${formatVolume(s.cap - s.l.volume)}` : '') };
+  if (s.parcial >= 0 && !s.previsto) return { cls: 'sobra', txt: `${referenciaCompartimento(s.parcial)} ficaria sem produto: deixe vazio`, det };
+  if (s.parcial >= 0) return { cls: 'sobra', txt: `${referenciaCompartimento(s.parcial)} não enche (${formatVolume(s.previsto)} de ${formatVolume(capacidades()[s.parcial])})`, det };
+  return { cls: 'ok', txt: 'Cabe inteiro', det };
 }
 // Volume previsto em cada compartimento: a linha enche os seus em ordem até acabar
 function volumesPrevistos() {
@@ -2104,6 +2143,26 @@ function faltaPorLinha(exceto = -1) {
   const falta = Object.fromEntries(atd.linhas.map((l) => [l.chave, l.volume]));
   for (let i = 0; i < atd.qtd; i++) if (i !== exceto && atd.comps[i].linha) falta[atd.comps[i].linha] -= caps[i];
   return falta;
+}
+// Escolher `chave` ('' = vazio) para o compartimento i ainda deixa os compartimentos sem resposta fecharem o que falta
+// de cada produto (cada um cheio ou vazio, um produto por compartimento)?
+function escolhaFecha(i, chave) {
+  const caps = capacidades(), livres = [];
+  const falta = Object.fromEntries(atd.linhas.map((l) => [l.chave, l.volume]));
+  for (let k = 0; k < atd.qtd; k++) {
+    const linha = k === i ? chave : atd.comps[k].linha;
+    if (linha === null) livres.push(caps[k]);
+    else if (linha) falta[linha] -= caps[k];
+  }
+  const restam = Object.values(falta);
+  return restam.every((v) => v >= 0) && !!planejarAlocacao(livres, restam.filter((v) => v > 0));
+}
+// Guia a pergunta do compartimento i (trava o que não fecha) enquanto há compartimento sem resposta (ele mesmo ou
+// outro) e alguma escolha ainda fecha. Trocando a partir do resumo (todos respondidos), trocar um compartimento só fecha
+// trocando outro: não trava. Respostas anteriores que já não fecham (nada fecha): não trava, e o resumo mostra o problema
+function guiarAlocacao(i) {
+  if (!semResposta().length) return false;
+  return ['', ...atd.linhas.map((l) => l.chave)].some((chave) => escolhaFecha(i, chave));
 }
 // "Pedido 920124 · Cliente": com clientes diferentes no caminhão, o nome ajuda a separar os pedidos
 function textoPedido(l) { return `Pedido ${l.ordemVenda}${l.clienteNome ? ' · ' + l.clienteNome : ''}`; }
@@ -2123,8 +2182,10 @@ function nomeLinha(l) {
 function problemasAlocacao() {
   return situacaoDasLinhas().flatMap((s) => {
     if (s.falta) return [`Falta lugar para ${nomeLinha(s.l)}: faltam ${formatVolume(s.falta)}.`];
-    if (s.sobrando >= 0) return [`${referenciaCompartimento(s.sobrando)} ficou sem produto (${nomeLinha(s.l)} já coube antes).`];
-    return [];
+    if (s.parcial < 0) return [];
+    const ref = referenciaCompartimento(s.parcial);
+    return [s.previsto ? `${ref} ficaria com ${formatVolume(s.previsto)} de ${formatVolume(capacidades()[s.parcial])}: cada compartimento vai cheio ou vazio. Escolha para ${nomeLinha(s.l)} compartimentos que somem ${formatVolume(s.l.volume)}.`
+      : `${ref} ficou sem produto (${nomeLinha(s.l)} já coube antes).`];
   });
 }
 
@@ -2184,13 +2245,23 @@ function htmlPerguntaAlocacao() {
   const i = atd.alocAtual, caps = capacidades(), atual = atd.comps[i].linha;
   const falta = faltaPorLinha(i);
   // Nome do produto e quanto falta dele na 1ª linha; pedido, cliente, cidade e CNPJ embaixo (`detalhe` já escapado)
-  const opcao = (chave, titulo, detalhe, resto = '') => `
-    <button type="button" class="opcao-grande${atual === chave ? ' sel' : ''}${chave ? ' ' + corDaLinha(chave) : ' opcao-vazio'}" aria-pressed="${atual === chave}" onclick="escolherProduto(${i}, ${jsArg(chave)}, this)">
+  const opcao = (chave, titulo, detalhe, resto = '', bloqueada = false) => `
+    <button type="button" class="opcao-grande${atual === chave ? ' sel' : ''}${chave ? ' ' + corDaLinha(chave) : ' opcao-vazio'}" aria-pressed="${atual === chave}" ${bloqueada ? 'disabled' : ''} onclick="escolherProduto(${i}, ${jsArg(chave)}, this)">
       <span class="opcao-texto"><span class="opcao-titulo"><span>${chave ? '<span class="marca"></span>' : ''}${esc(titulo)}</span>${resto ? `<span class="opcao-falta">${esc(resto)}</span>` : ''}</span><small>${detalhe}</small></span>
     </button>`;
-  // Só os produtos que ainda faltam: o que já coube inteiro nos outros compartimentos sai da lista
+  // Só os produtos que ainda faltam: o que já coube inteiro nos outros compartimentos sai da lista. Fica travado o que
+  // falta menos que a capacidade deste compartimento (ele vai cheio ou vazio) e, com compartimentos ainda sem resposta,
+  // a escolha que não deixa os outros fecharem os produtos (escolhaFecha). A resposta atual nunca trava
+  const guiar = guiarAlocacao(i);
+  const motivoTrava = (chave) => (chave === atual ? ''
+    : chave && falta[chave] < caps[i] ? 'não enche este'
+    : guiar && !escolhaFecha(i, chave) ? (chave ? 'não fecha com os outros' : 'os outros não fecham sem este') : '');
   const opcoes = atd.linhas.filter((l) => falta[l.chave] > 0)
-    .map((l) => opcao(l.chave, l.descricao, htmlPedidoCompleto(l), `faltam ${formatVolume(falta[l.chave])}`));
+    .map((l) => {
+      const trava = motivoTrava(l.chave);
+      return opcao(l.chave, l.descricao, htmlPedidoCompleto(l), `faltam ${formatVolume(falta[l.chave])}${trava ? ': ' + trava : ''}`, !!trava);
+    });
+  const travaVazio = motivoTrava('');
   const algumaResposta = atd.comps.slice(0, atd.qtd).some((c) => c.linha !== null);
   const descartada = atd.alocPrevia?.descartada && !algumaResposta
     ? '<div class="nota-sugestao">A alocação feita no agendamento não vale mais: o veículo ou os pedidos mudaram depois. Faça a alocação aqui.</div>' : '';
@@ -2203,7 +2274,7 @@ function htmlPerguntaAlocacao() {
         <div class="pergunta-cap">${formatVolume(caps[i])}</div>
       </div>
       <div class="pergunta-q">Qual produto vai neste compartimento?</div>
-      <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', esc('Não vai carregar'))}</div>
+      <div class="opcoes-lista">${opcoes.join('')}${opcao('', 'Vazio', esc(travaVazio ? `Não dá: ${travaVazio}` : 'Não vai carregar'), '', !!travaVazio)}</div>
     </div>
     <div class="acoes">
       <button class="btn btn-secundario" type="button" onclick="voltarAlocacao()">Voltar</button>
