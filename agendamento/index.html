@@ -80,7 +80,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ── CONTEÚDO ── */
 .main { width: 100%; max-width: 1680px; margin: 0 auto; padding: 0 24px 48px; }
-#tab-slots, #tab-cadastros { max-width: 1180px; } /* formulários não esticam na tela larga */
+#tab-slots, #tab-cadastros, #tab-laudos { max-width: 1180px; } /* formulários não esticam na tela larga */
 #tab-pedidos > .stats-row, #tab-lista > .stats-row { margin: 16px 0; } /* sem título na aba: o mesmo respiro de baixo entre as abas e os cartões */
 .tab-content { display: none; }
 .tab-content.active { display: block; }
@@ -259,6 +259,15 @@ tbody tr:hover td { background: var(--panel-soft); }
 .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .subtab-content { display: none; }
 .subtab-content.active { display: block; }
+
+/* ── LAUDOS DE ANÁLISE ── um cartão por produto do terminal escolhido */
+.laudos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.laudo-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 0; }
+.laudo-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.laudo-produto { font-size: 18px; font-weight: 600; }
+.laudo-arquivo { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.laudo-meta { font-size: 13px; color: var(--text-muted); }
+.laudo-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
 
 .list-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 8px; flex-wrap: wrap; }
 .list-item strong { font-size: 14px; font-weight: 600; }
@@ -882,6 +891,7 @@ tbody tr:hover td { background: var(--panel-soft); }
   <div class="tab active" data-tab="lista" onclick="switchTab('lista')">Agendamentos</div>
   <div class="tab admin-only hidden" data-tab="slots" onclick="switchTab('slots')">Slots</div>
   <div class="tab admin-only hidden" data-tab="cadastros" onclick="switchTab('cadastros')">Cadastros</div>
+  <div class="tab auto-interno hidden" data-tab="laudos" onclick="switchTab('laudos')">Laudos Análise</div>
 </div>
 
 <div class="main main-larga">
@@ -1133,6 +1143,25 @@ tbody tr:hover td { background: var(--panel-soft); }
     </div>
   </div>
 
+  <!-- TAB: LAUDOS DE ANÁLISE (equipe interna): um PDF por terminal e produto geral; o quiosque imprime com cada NF -->
+  <div class="tab-content" id="tab-laudos">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Laudos de análise</div>
+        <div class="section-sub">Um laudo por produto em cada terminal. No autoatendimento, cada nota fiscal sai com os laudos dos produtos dela.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="form-field" style="max-width:360px">
+        <label for="laudosBase">Terminal</label>
+        <select id="laudosBase" onchange="STATE.laudosBase = this.value; renderLaudos()"></select>
+      </div>
+    </div>
+    <div class="laudos-grid" id="laudosGrid"></div>
+    <div class="form-hint">O produto de venda do pedido escolhe o laudo pela descrição: com S10 → S10, com S500 → S500, com GASOLINA → Gasolina, com ETANOL ou ÁLCOOL → Etanol. Enviar um laudo novo substitui o atual nas próximas notas; os anteriores ficam guardados.</div>
+    <input type="file" id="laudoArquivo" class="hidden" accept="application/pdf,.pdf" onchange="enviarLaudoEscolhido(this)">
+  </div>
+
 </div>
 
 <div id="toastContainer"></div>
@@ -1188,6 +1217,9 @@ const STATE = {
   troca: null,              // trocar pedidos: { id do agendamento, saem: Set(nr), novos: [pedidosSap] }
   alteracao: null,          // alterar veículo e motorista: { id do agendamento, recurso, motoristaCad } (consultas como em STATE.novo)
   liberacao: null,          // liberação temporária de cadastro enquanto o datalake ainda não refletiu o SAP
+  laudos: null,             // laudosAnalise/<base>/<produto>: laudo atual (null até o 1º retorno do Firebase)
+  laudosBase: '',           // terminal escolhido na aba Laudos Análise
+  laudoEnvio: null,         // { baseId, produto } do laudo cujo PDF está sendo escolhido ou enviado
 };
 
 function esc(s) {
@@ -1325,6 +1357,7 @@ function switchTab(nome) {
   if (nome === 'lista') renderListaAgendamentos();
   if (nome === 'pedidos') abrirAbaPedidos();
   if (nome === 'cadastros') abrirSubBases(); // Bases é a subaba que abre primeiro
+  if (nome === 'laudos') renderLaudos();
 }
 function switchSubtab(nome) {
   document.querySelectorAll('.subtab').forEach((el) => el.classList.toggle('active', el.dataset.sub === nome));
@@ -1352,7 +1385,15 @@ function iniciarApp() {
     if (STATE.pedidosDepositos) renderDepositosSemBase();
     atualizarBaseDosPedidos(); // pedidos já adicionados podem ganhar (ou perder) a base
     if (STATE.pedidosCarteira) renderPedidosCarteira();
+    if (usuario.tipo === 'interno') renderLaudos();
   }, erroListener('as bases'));
+  // Laudos de análise: só a equipe interna (aba Laudos Análise); o quiosque lê os do próprio terminal
+  if (usuario.tipo === 'interno') {
+    window._fb.ouvirLaudos((laudos) => {
+      STATE.laudos = laudos;
+      renderLaudos();
+    }, erroListener('os laudos de análise'));
+  }
   // Clientes: só o admin usa (Cadastros → Clientes); no agendamento o cliente vem do pedido
   if (usuario.admin) {
     window._fb.ouvirClientes((clientes) => {
@@ -6591,6 +6632,117 @@ async function adminRemoverUsuario(uid) {
     if (document.getElementById('admin-new-uid').value === uid) limparFormUsuario();
   } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
+
+/* ── LAUDOS DE ANÁLISE ── equipe interna envia um PDF por terminal (base) e produto geral; o quiosque do terminal
+   imprime, junto de cada DANFE, os laudos dos produtos da nota (descrição do produto de venda → produto geral) */
+const PRODUTOS_LAUDO = [
+  { id: 'S10', rotulo: 'S10' },
+  { id: 'S500', rotulo: 'S500' },
+  { id: 'GASOLINA', rotulo: 'Gasolina' },
+  { id: 'ETANOL', rotulo: 'Etanol' },
+];
+const LAUDO_TAMANHO_MAX = 10 * 1024 * 1024; // mesmo limite da regra do Storage
+function renderLaudos() {
+  if (STATE.usuario?.tipo !== 'interno') return;
+  const select = document.getElementById('laudosBase');
+  const bases = Object.entries(STATE.bases || {}).sort(([, a], [, b]) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  if (!bases.some(([id]) => id === STATE.laudosBase)) STATE.laudosBase = bases[0]?.[0] || '';
+  select.innerHTML = bases.length
+    ? bases.map(([id, b]) => `<option value="${esc(id)}"${id === STATE.laudosBase ? ' selected' : ''}>${esc(b.nome)}</option>`).join('')
+    : '<option value="">Nenhuma base cadastrada</option>';
+  const grade = document.getElementById('laudosGrid');
+  if (!STATE.laudosBase) { grade.innerHTML = '<div class="chip-empty">Cadastre uma base para enviar laudos.</div>'; return; }
+  if (!STATE.laudos) { grade.innerHTML = '<div class="chip-empty">Carregando laudos…</div>'; return; }
+  const doTerminal = STATE.laudos[STATE.laudosBase] || {};
+  const envio = STATE.laudoEnvio;
+  grade.innerHTML = PRODUTOS_LAUDO.map((p) => {
+    const l = doTerminal[p.id];
+    const enviando = envio?.enviando && envio.baseId === STATE.laudosBase && envio.produto === p.id;
+    const args = `${jsArg(STATE.laudosBase)}, ${jsArg(p.id)}`;
+    return `<div class="card laudo-card">
+      <div class="laudo-topo">
+        <div class="laudo-produto">${esc(p.rotulo)}</div>
+        ${l ? '<span class="badge badge-success">Enviado</span>' : '<span class="badge badge-warn">Sem laudo</span>'}
+      </div>
+      ${l ? `<div class="laudo-arquivo">${esc(l.nomeArquivo)}</div>
+        <div class="laudo-meta">${esc(dataHoraBR(l.enviadoEm))} · ${esc(l.enviadoPorNome || 'equipe interna')}</div>`
+        : '<div class="laudo-meta">As notas com este produto saem sem laudo e o quiosque avisa o motorista.</div>'}
+      <div class="laudo-acoes">
+        ${l ? `<button class="btn btn-secondary btn-sm" type="button" onclick="abrirLaudo(${args}, this)">Abrir</button>` : ''}
+        <button class="btn btn-primary btn-sm" type="button" onclick="escolherLaudo(${args})"${envio?.enviando ? ' disabled' : ''}>${enviando ? 'Enviando…' : l ? 'Enviar novo' : 'Enviar laudo'}</button>
+        ${l ? `<button class="btn btn-secondary btn-sm" type="button" onclick="removerLaudo(${args})"${envio?.enviando ? ' disabled' : ''}>Remover</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function escolherLaudo(baseId, produto) {
+  if (STATE.laudoEnvio?.enviando) return;
+  STATE.laudoEnvio = { baseId, produto, enviando: false };
+  const campo = document.getElementById('laudoArquivo');
+  campo.value = '';
+  campo.click();
+}
+async function enviarLaudoEscolhido(campo) {
+  const arquivo = campo.files?.[0];
+  const alvo = STATE.laudoEnvio;
+  campo.value = '';
+  if (!arquivo || !alvo || alvo.enviando) return;
+  const produto = PRODUTOS_LAUDO.find((p) => p.id === alvo.produto);
+  const base = STATE.bases[alvo.baseId];
+  if (!produto || !base) return;
+  if (arquivo.size > LAUDO_TAMANHO_MAX) { toast('O laudo passa de 10 MB. Envie um PDF menor.', 'error'); return; }
+  // Confere o conteúdo, não só o nome: o quiosque só imprime PDF
+  const inicio = await arquivo.slice(0, 5).text().catch(() => '');
+  if (!inicio.startsWith('%PDF-')) { toast(`"${arquivo.name}" não é um PDF. Envie o laudo em PDF.`, 'error'); return; }
+  STATE.laudoEnvio = { ...alvo, enviando: true };
+  renderLaudos();
+  try {
+    await window._fb.enviarLaudo(alvo.baseId, alvo.produto, arquivo, {
+      nomeArquivo: arquivo.name.slice(0, 200),
+      enviadoPorUid: STATE.usuario.uid,
+      enviadoPorNome: STATE.usuario.nome || STATE.usuario.email || '',
+    });
+    toast(`Laudo de ${produto.rotulo} de ${base.nome} enviado. As próximas notas já saem com ele.`, 'success');
+  } catch (e) {
+    console.error(e);
+    toast(ehErroPermissao(e) || e?.code === 'storage/unauthorized'
+      ? 'Seu usuário não tem permissão para enviar laudos. Entre pelo login do site ou peça a um admin.'
+      : 'Não foi possível enviar o laudo. Verifique a conexão e tente de novo.', 'error');
+  } finally {
+    STATE.laudoEnvio = null;
+    renderLaudos();
+  }
+}
+async function removerLaudo(baseId, produto) {
+  const p = PRODUTOS_LAUDO.find((x) => x.id === produto), base = STATE.bases[baseId];
+  if (!p || !base || !confirm(`Remover o laudo de ${p.rotulo} de ${base.nome}?\n\nAs notas com ${p.rotulo} deste terminal passam a sair sem laudo até alguém enviar outro.`)) return;
+  try {
+    await window._fb.removerLaudo(baseId, produto);
+    toast(`Laudo de ${p.rotulo} removido de ${base.nome}.`, 'success');
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+async function abrirLaudo(baseId, produto, botao) {
+  const laudo = STATE.laudos?.[baseId]?.[produto];
+  if (!laudo?.storagePath || botao.disabled) return;
+  // Cria a aba dentro do clique para o navegador não tratá-la como pop-up assíncrono
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('O navegador bloqueou a abertura. Libere pop-ups e tente novamente.', 'error'); return; }
+  janela.document.title = laudo.nomeArquivo || 'Laudo de análise';
+  janela.document.body.textContent = 'Carregando PDF…';
+  botao.disabled = true;
+  try {
+    const blob = await window._fb.carregarDocumento(laudo.storagePath);
+    const url = URL.createObjectURL(blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' }));
+    janela.location.replace(url);
+    setTimeout(() => URL.revokeObjectURL(url), 300000);
+  } catch (e) {
+    console.error(e);
+    janela.close();
+    toast('Não foi possível abrir o laudo. Verifique a conexão e tente novamente.', 'error');
+  } finally {
+    botao.disabled = false;
+  }
+}
 </script>
 
 <script type="module">
@@ -6602,7 +6754,7 @@ async function adminRemoverUsuario(uid) {
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   // Login pela tela inicial do site (portal central): mesma origem, então a sessão de lá vale aqui
   import { entrarPeloCentral, sairDeTudo, irParaLogin, irParaTrocarSenha, saindo } from "/central/sso.js";
-  import { getStorage, ref as storageRef, getBlob }
+  import { getStorage, ref as storageRef, getBlob, uploadBytes }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // Config pública (não é segredo): o acesso aos dados é protegido pelas regras em firebase_database.rules.json
@@ -6648,6 +6800,20 @@ async function adminRemoverUsuario(uid) {
 
     /* Cadastros */
     ouvirBases: (cb, onErro) => ouvir('bases', cb, onErro),
+    // Laudos de análise: cada envio é um PDF novo no Storage (a regra não deixa substituir; os antigos ficam de
+    // histórico) e laudosAnalise/<base>/<produto> passa a apontar para ele
+    ouvirLaudos: (cb, onErro) => ouvir('laudosAnalise', cb, onErro),
+    enviarLaudo: async (baseId, produto, arquivo, dados) => {
+      const storagePath = `laudos-analise/${baseId}/${produto}/${Date.now()}.pdf`;
+      const enviado = await uploadBytes(storageRef(storage, storagePath), arquivo, {
+        contentType: 'application/pdf',
+        customMetadata: { nomeArquivo: dados.nomeArquivo, enviadoPorUid: dados.enviadoPorUid, enviadoPorNome: dados.enviadoPorNome },
+      });
+      const registro = { storagePath, tamanhoBytes: Number(enviado.metadata?.size) || arquivo.size, enviadoEm: new Date().toISOString(), ...dados };
+      await set(ref(db, `laudosAnalise/${baseId}/${produto}`), registro);
+      return registro;
+    },
+    removerLaudo: (baseId, produto) => set(ref(db, `laudosAnalise/${baseId}/${produto}`), null),
     criarBase: async (dados) => (await push(ref(db, 'bases'), dados)).key,
     salvarBase: (id, dados) => update(ref(db, 'bases/' + id), dados),
     // Antes de excluir: algum agendamento da base (qualquer status) e os logins de quiosque presos a ela, lidos na hora
