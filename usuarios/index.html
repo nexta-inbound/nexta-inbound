@@ -259,6 +259,22 @@
           </div>
         </section>
 
+        <section class="bloco-sistema" data-sistema="outbound" hidden>
+          <label class="bloco-topo marcacao"><input type="checkbox" class="acesso"> <strong></strong></label>
+          <div class="bloco-campos">
+            <label class="campo"><span>Perfil</span>
+              <select id="out-perfil">
+                <option value="">Escolha o perfil…</option>
+                <option value="administrador">Administrador (vê e faz tudo no Outbound)</option>
+                <option value="interno">Interno (operacional)</option>
+                <option value="transportador">Transportador (vê só a própria transportadora)</option>
+              </select></label>
+            <label class="campo" data-se="transportador"><span>Transportadora</span>
+              <select id="out-transportadora"><option value="">Escolha a transportadora…</option></select></label>
+            <p class="mensagem alerta" data-aviso hidden></p>
+          </div>
+        </section>
+
         <section id="bloco-admin" hidden>
           <h3 class="ficha-secao">Administração do portal</h3>
           <div class="campo" style="margin-top:10px"><span>Key user de</span><div class="opcoes-linha" id="key-user"></div></div>
@@ -322,6 +338,7 @@
     agendamento: { tipo: 'interno', clientes: [], admin: false },
     solicitacoes: { papeis: [], admin: false, telefone: '' },
     simulador: { perfil: '', regiao: '', bases: [], editaAberturas: false },
+    outbound: { perfil: '', transportadorNome: '' },
   };
   // eu: quem está usando a tela; ficha: pessoa aberta; sujos: sistemas mexidos (só eles vão para o servidor)
   const E = { eu: null, usuarios: [], opcoes: {}, ficha: null, sujos: new Set(), papeisSujos: false, alterado: false };
@@ -425,6 +442,16 @@
     if (sistema === 'simulador') {
       listaTerminais.definirItens((opcoes.terminais || []).map(t => ({ id: t.empDep, nome: t.nome, detalhe: [t.empDep, t.cidade].filter(Boolean).join(' · ') })));
     }
+    if (sistema === 'outbound') preencherTransportadorasOutbound($('out-transportadora').value);
+  }
+  // Transportadoras do Outbound: a lista vem do próprio Outbound (cadastro de transportadoras do app)
+  function preencherTransportadorasOutbound(atual) {
+    const select = $('out-transportadora');
+    const nomes = E.opcoes.outbound?.transportadoras || [];
+    select.replaceChildren(el('option', { value: '', text: 'Escolha a transportadora…' }),
+      ...nomes.map(n => el('option', { value: n, text: n })));
+    if (atual && !nomes.includes(atual)) select.append(el('option', { value: atual, text: `${atual} (não cadastrada)` }));
+    select.value = atual || '';
   }
   function preencherTransportadores(atual) {
     const select = $('inb-transportador');
@@ -539,6 +566,8 @@
       const perfil = $('sim-perfil').value;
       mostrarSe('regional', perfil === 'regional');
       mostrarSe('base', perfil === 'base');
+    } else if (sistema === 'outbound') {
+      mostrarSe('transportador', $('out-perfil').value === 'transportador');
     }
   }
 
@@ -572,6 +601,9 @@
       $('sim-regiao').value = p.regiao || '';
       listaTerminais.definir(p.bases);
       $('sim-edita').checked = p.editaAberturas;
+    } else if (sistema === 'outbound') {
+      $('out-perfil').value = p.perfil || '';
+      preencherTransportadorasOutbound(p.transportadorNome);
     }
   }
 
@@ -590,6 +622,7 @@
       return { papeis: [...$('sol-papeis').querySelectorAll('input:checked')].map(c => c.value),
         admin: $('sol-admin').checked, telefone: $('sol-telefone').value };
     }
+    if (sistema === 'outbound') return { perfil: $('out-perfil').value, transportadorNome: $('out-transportadora').value };
     return { perfil: $('sim-perfil').value, regiao: $('sim-regiao').value, bases: listaTerminais.valores(), editaAberturas: $('sim-edita').checked };
   }
 

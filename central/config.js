@@ -33,15 +33,14 @@ export const SISTEMAS = {
   agendamento: { nome: 'Portal Agendamento', curto: 'Agendamento', caminho: '/agendamento/' },
   solicitacoes: { nome: 'Portal Solicitações de Adicionais Disp.', curto: 'Solicitações', caminho: '/solicitacao_disponibilidade/' },
   simulador: { nome: 'Portal Nextoques', curto: 'Nextoques', caminho: '/simulador_estoque/' },
+  outbound: { nome: 'Portal Programação Outbound', curto: 'Outbound', caminho: '/outbound/' },
 };
 
 export const configPronta = () => !String(FIREBASE_CENTRAL.apiKey).startsWith('PREENCHER');
 
-// Piloto restrito ao email confirmado pela Amanda, obtido da sessao Firebase Auth central.
-// Esta regra controla apenas o menu e a pagina de preparacao, sem acesso aos dados Outbound.
-export const PILOTO_OUTBOUND = { habilitado: true, email: 'amanda.borges@nexta.com.br' };
+// Outbound (18/11/2026): saiu do piloto "só Amanda" e passou a ser liberado como os outros sistemas, pela
+// tela de Usuários (acessos.outbound). Mantido com o mesmo nome porque o app do Outbound importa esta função.
 export function podeVerOutbound(usuario, cadastro) {
-  return PILOTO_OUTBOUND.habilitado === true && Boolean(usuario?.uid) &&
-    String(usuario.email || '').trim().toLowerCase() === PILOTO_OUTBOUND.email && Boolean(cadastro) &&
-    cadastro.ativo !== false && cadastro.trocarSenha !== true;
+  return Boolean(usuario?.uid) && Boolean(cadastro) && cadastro.ativo !== false && cadastro.trocarSenha !== true &&
+    cadastro.acessos?.outbound === true;
 }

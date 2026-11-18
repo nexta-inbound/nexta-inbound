@@ -309,7 +309,7 @@
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script type="module">
-  import { SISTEMAS, LOGIN_OBRIGATORIO, HORAS_INATIVIDADE, configPronta, podeVerOutbound } from './central/config.js';
+  import { SISTEMAS, LOGIN_OBRIGATORIO, HORAS_INATIVIDADE, configPronta } from './central/config.js';
 
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
@@ -376,9 +376,8 @@
     mostrar('inicio');
   }
 
-  const temSistema = s => s === 'outbound'
-    ? podeVerOutbound(cliente?.auth.currentUser, cadastro)
-    : cadastro?.acessos?.[s] === true;
+  // Outbound igual aos outros (18/11/2026): aparece para quem tem o acesso marcado na tela de Usuários
+  const temSistema = s => cadastro?.acessos?.[s] === true;
   const administra = () => cadastro?.adminGeral === true || Object.values(cadastro?.keyUser || {}).includes(true);
   // Linha de baixo do nome no topo, como o perfil no topo dos sistemas
   function papel() {
