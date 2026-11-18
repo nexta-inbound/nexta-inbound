@@ -534,6 +534,9 @@
   .badge-warn { background: var(--accent2-dim); color: var(--accent2); }
   .badge-success { background: var(--success-dim); color: var(--success); }
   .badge-danger { background: var(--danger-dim); color: var(--danger); }
+  /* Histórico de Ofertas: recusa/cancelamento perto da descarga programada */
+  #hoEventosBody tr.ho-critico td { background: var(--danger-dim); }
+  #hoEventosBody tr.ho-alerta td { background: var(--accent2-dim); }
 
   table { width: 100%; border-collapse: collapse; }
   #previewTable th { font-size: 13px; }
@@ -2533,6 +2536,22 @@
     salvarVeiculosDedicados: async (lista) => {
       await set(ref(db, 'veiculosDedicados'), lista);
     },
+    // Grava só as mudanças (por id) em cima da versão MAIS NOVA do Firebase, numa transação
+    // (2026-11-17: placas cadastradas "não salvavam" — quem estava com a aba aberta desde antes
+    // regravava a lista inteira e apagava os cadastros feitos por outra pessoa nesse meio-tempo).
+    // `mudancas` = {upserts: [registro...], removidos: [id...]}. Devolve a lista final gravada.
+    mesclarVeiculosDedicados: async (mudancas) => {
+      const removidos = new Set(mudancas.removidos || []);
+      const resultado = await runTransaction(ref(db, 'veiculosDedicados'), atual => {
+        const lista = atual ? (Array.isArray(atual) ? atual : Object.values(atual)).filter(Boolean) : [];
+        const porId = new Map(lista.map(v => [v.id, v]));
+        for (const id of removidos) porId.delete(id);
+        for (const reg of mudancas.upserts || []) porId.set(reg.id, reg);
+        return [...porId.values()];
+      });
+      const val = resultado.snapshot.val();
+      return val ? (Array.isArray(val) ? val : Object.values(val)).filter(Boolean) : [];
+    },
     // Metas de share (BID) por transportadora × regional — aba Performance. Lista (não
     // mapa chaveado), mesmo motivo de leadtimes/veiculosDedicados: nome de transportadora
     // pode ter caractere inválido como chave do RTDB.
@@ -2855,6 +2874,7 @@
   <div class="tab" id="tabBtn8" onclick="switchTab(8)">⑨ Leadtime</div>
   <div class="tab" id="tabBtn9" onclick="switchTab(9)">⑩ Performance</div>
   <div class="tab" id="tabBtn10" onclick="switchTab(10)">⑪ Tabela de Frete</div>
+  <div class="tab" id="tabBtn11" onclick="switchTab(11)">⑫ Histórico de Recusas</div>
 </div>
 
 <div class="main">
@@ -4220,6 +4240,68 @@
   </div>
 </div>
 
+<!-- ⑫ HISTÓRICO DE OFERTAS (2026-11-18): ofertas, aceites, recusas e cancelamentos de cada viagem (campo
+     historico), de novembro em diante. Só equipe interna (transportador só vê a aba ②). -->
+<div class="tab-content" id="tab-11">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Histórico de Recusas</div>
+      <div class="section-sub">Recusas de viagens de outubro em diante: quem recusou (a transportadora ou alguém da equipe) e pra quem a viagem foi reofertada.
+        <span class="badge badge-danger">vermelho</span> = recusa a menos de 2 dias da descarga programada ·
+        <span class="badge badge-warn">amarelo</span> = de 2 a 4 dias</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm leitura-ok" onclick="renderHistoricoOfertas(true)" title="Busca de novo as semanas no servidor">🔄 Atualizar</button>
+      <button class="btn btn-secondary btn-sm leitura-ok" onclick="exportarHistoricoOfertas()" title="Baixa o que está filtrado (eventos + resumo por transportadora)">⬇ Excel</button>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-row">
+      <select class="filter-input" id="hoSemana" onchange="renderHistoricoOfertas()" style="width:190px"><option value="">Todas as semanas</option></select>
+      <input type="text" class="filter-input" id="hoTransp" placeholder="🚚 Transportadora..." style="width:170px" oninput="renderHistoricoOfertas()">
+      <input type="text" class="filter-input" id="hoBusca" placeholder="🔎 Viagem, destino ou produto..." style="width:210px" oninput="renderHistoricoOfertas()">
+      <select class="filter-input" id="hoQuem" onchange="renderHistoricoOfertas()" style="width:190px">
+        <option value="">Quem recusou: todos</option><option value="Transportadora">A própria transportadora</option><option value="Interno">Alguém da equipe (interno)</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="hoSoCritico" onchange="renderHistoricoOfertas()"> Só em cima da hora (&lt; 2 dias)</label>
+    </div>
+  </div>
+
+  <div id="hoStatus" class="section-sub" style="margin:6px 0 10px">Abra a aba para carregar o histórico.</div>
+
+  <div class="stats-row" style="grid-template-columns:repeat(3, 1fr)">
+    <div class="stat-card"><div class="stat-label">↩ Recusas</div><div class="stat-val" id="ho-recusas">0</div></div>
+    <div class="stat-card"><div class="stat-label">⏰ Em cima da hora (&lt; 2 dias)</div><div class="stat-val" id="ho-critico">0</div></div>
+    <div class="stat-card"><div class="stat-label">🚚 Transportadoras que recusaram</div><div class="stat-val" id="ho-transps">0</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-toolbar"><span class="table-title">Quem recusou</span><span class="section-sub">&nbsp;· a transportadora pelo portal, ou alguém da equipe registrando por ela</span></div>
+    <table>
+      <thead><tr><th>Quem recusou</th><th>Recusas</th><th>Em cima da hora</th><th>Transportadoras envolvidas</th></tr></thead>
+      <tbody id="hoQuemBody"></tbody>
+    </table>
+  </div>
+
+  <div class="table-wrap" style="margin-top:20px">
+    <div class="table-toolbar"><span class="table-title">Por transportadora</span></div>
+    <table>
+      <thead><tr><th>Transportadora</th><th>Ofertas recebidas</th><th>Recusas</th><th>% recusa</th><th>Em cima da hora</th></tr></thead>
+      <tbody id="hoResumoBody"></tbody>
+    </table>
+  </div>
+
+  <div class="table-wrap" style="margin-top:20px">
+    <div class="table-toolbar"><span class="table-title">Recusas</span><span class="section-sub" id="hoContagem"></span></div>
+    <table>
+      <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. prog.</th><th>Descarga prog.</th>
+        <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Motivo</th><th>Depois</th></tr></thead>
+      <tbody id="hoEventosBody"></tbody>
+    </table>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- MODAL: Nova Cadência -->
@@ -5386,7 +5468,7 @@ function nomeTransportadorLogado() {
 // Cadência ainda não têm esse modo — o central só oferece "Acesso completo" para elas.
 // É restrição de tela: as regras do banco seguem liberando por tipo (staff), não por aba.
 const ABAS_PORTAL = ['cadencia', 'viagens', 'exportar', 'monitoramento', 'transportadores', 'bases',
-  'fornecedores', 'veiculos', 'leadtime', 'performance', 'frete']; // índice = número da aba (switchTab)
+  'fornecedores', 'veiculos', 'leadtime', 'performance', 'frete', 'historico']; // índice = número da aba (switchTab)
 const NIVEIS_ABA = ['completo', 'leitura'];
 
 // null = sem restrição (todas); objeto = só as abas listadas (pode vir vazio se nada válido foi gravado).
@@ -6966,6 +7048,7 @@ function switchTab(i) {
   if (i === 8) { renderLeadtimeTable(); renderLeadtimesPendentes(); }
   if (i === 9) renderPerformance();
   if (i === 10) { garantirListenerTabelaFrete(); renderTabelaFrete(); }
+  if (i === 11) renderHistoricoOfertas();
 }
 
 // ── SUB-MODO "STATUS FROTA" DENTRO DA ABA VEÍCULOS DEDICADOS ──
@@ -12805,13 +12888,38 @@ async function carregarVeiculosDedicadosFirebase() {
   if (!window._fb?.carregarVeiculosDedicados) return;
   try {
     const raw = await window._fb.carregarVeiculosDedicados();
-    veiculosDedicados = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+    veiculosDedicados = raw ? (Array.isArray(raw) ? raw : Object.values(raw)).filter(Boolean) : [];
+    _veiculosDedicadosBase = JSON.parse(JSON.stringify(veiculosDedicados));
     if (migrarStatusVeiculoAntigo(veiculosDedicados)) await persistirVeiculosDedicados();
   } catch (e) { console.error('Erro ao carregar veículos dedicados:', e); }
 }
 
+// Ultima versao lida/gravada do Firebase: a diferenca entre ela e `veiculosDedicados` e' o que
+// ESTE usuario mudou. So' isso vai pro Firebase (mesclarVeiculosDedicados), nunca a lista inteira.
+let _veiculosDedicadosBase = [];
 async function persistirVeiculosDedicados() {
-  await persistirEmFirebase('salvarVeiculosDedicados', veiculosDedicados, 'veículos dedicados');
+  if (!window._fb?.mesclarVeiculosDedicados) {
+    await persistirEmFirebase('salvarVeiculosDedicados', veiculosDedicados, 'veículos dedicados');
+    return;
+  }
+  if (!podeEditarAba(ABA_DO_CADASTRO.salvarVeiculosDedicados)) {
+    console.warn('veículos dedicados: não gravado — acesso só de visualização');
+    return;
+  }
+  const base = new Map(_veiculosDedicadosBase.map(v => [v.id, JSON.stringify(v)]));
+  const atuais = new Set(veiculosDedicados.map(v => v.id));
+  const upserts = veiculosDedicados.filter(v => base.get(v.id) !== JSON.stringify(v));
+  const removidos = [...base.keys()].filter(id => !atuais.has(id));
+  if (!upserts.length && !removidos.length) return;
+  try {
+    const final = await window._fb.mesclarVeiculosDedicados({upserts, removidos});
+    veiculosDedicados = final;
+    _veiculosDedicadosBase = JSON.parse(JSON.stringify(final));
+    if (typeof renderVeiculosTable === 'function') renderVeiculosTable();
+  } catch (e) {
+    console.error('Erro ao salvar veículos dedicados:', e);
+    alert('Não foi possível salvar o cadastro de veículos dedicados no servidor. Recarregue a página (F5) e tente de novo.\n\nDetalhe: ' + (e?.message || e));
+  }
 }
 
 function gerarIdVeiculoDedicado() {
@@ -20939,6 +21047,236 @@ function renderPerformanceKpis(lista) {
   document.getElementById('sv-perf-resposta').textContent = todosTempos.length
     ? formatarHoras(todosTempos.reduce((s, h) => s + h, 0) / todosTempos.length)
     : '—';
+}
+
+// ── ⑫ HISTÓRICO DE OFERTAS (pedido da usuaria, 2026-11-18) ──
+// Lê o campo `historico` (registrarHistoricoOferta) das viagens de todas as semanas de novembro em diante e
+// lista cada evento. Antecedência = dias entre o evento e a DESCARGA programada (dtDescProg): recusa ou
+// cancelamento com menos de 2 dias = vermelho; 2 a 4 dias = amarelo. "Depois" = pra quem a mesma viagem foi
+// reofertada, ou (cancelada) a viagem nova com a mesma cadência de origem, mesmo destino e produto.
+const HO_DESDE = '2026-10-01';  // de outubro em diante (usuaria, 2026-11-18)
+const HO_NEGATIVOS = new Set(['Recusado', 'Cancelado']);
+const _ho = { semanas: new Map(), carregando: null, linhas: [], filtradas: [] };
+
+function _hoDataBR(s) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(s || ''));
+  return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null;
+}
+function _hoLista(x) { return Array.isArray(x) ? x.filter(Boolean) : Object.values(x || {}).filter(Boolean); }
+function _hoFmtData(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso || '') : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+async function _hoCarregar(forcar) {
+  if (_ho.carregando) return _ho.carregando;
+  _ho.carregando = (async () => {
+    // Perfis do Inbound: dizem se quem fez a acao e' transportador ou equipe (a equipe le perfis; ver regras)
+    try {
+      const perfis = await window._fb.listarPerfis();
+      _ho.tipoPorNome = new Map(Object.values(perfis || {}).filter(p => p && p.nome)
+        .map(p => [_hoNorm(p.nome), p.tipo === 'transportador' ? 'Transportadora' : 'Interno']));
+    } catch (e) { console.warn('Historico de recusas: perfis nao lidos', e); _ho.tipoPorNome = new Map(); }
+    const semanas = (await window._fb.listarSemanas()).filter(k => (String(k).split('_')[1] || k) >= HO_DESDE);
+    for (const k of semanas) {
+      if (!forcar && _ho.semanas.has(k)) continue;
+      document.getElementById('hoStatus').textContent = `Carregando a semana ${k.replace('_', ' a ')}…`;
+      _ho.semanas.set(k, _hoLista(await window._fb.carregarViagensSemana(k)));
+    }
+    _ho.linhas = _hoMontarLinhas();
+  })().finally(() => { _ho.carregando = null; });
+  return _ho.carregando;
+}
+
+function _hoNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+// Quem recusou: pelo PERFIL de quem fez a acao no Inbound (tipo transportador = a propria transportadora; senao
+// equipe). Corrigido em 2026-11-18: so' pelo nome, o Alexei Galli (usuario da RODOBELO) saia como "Interno".
+// Sem perfil (conta apagada): nome igual ao da transportadora = transportadora; senao "Nao identificado".
+function _hoQuem(h) {
+  const u = _hoNorm(h.usuario), tr = _hoNorm(h.transportador);
+  if (!u) return { tipo: 'Não identificado', nome: '' };
+  const peloPerfil = _ho.tipoPorNome?.get(u);
+  if (peloPerfil) return { tipo: peloPerfil, nome: h.usuario };
+  const nomesTransp = new Set((Array.isArray(transportadores) ? transportadores : [])
+    .flatMap(x => [x?.nomeFantasia, x?.razaoSocial]).map(_hoNorm).filter(Boolean));
+  const ehTransp = (tr && (u === tr || u.includes(tr) || tr.includes(u))) || nomesTransp.has(u);
+  return { tipo: ehTransp ? 'Transportadora' : 'Não identificado', nome: h.usuario };
+}
+
+function _hoMontarLinhas() {
+  const todas = [];
+  const porCadencia = new Map();
+  for (const [semana, viagens] of _ho.semanas) {
+    for (const v of viagens) {
+      if (!v?.idViagem) continue;
+      todas.push({ semana, v });
+      const cad = String(v.cadenciaOrigem || '').split('-')[0];
+      if (cad) { if (!porCadencia.has(cad)) porCadencia.set(cad, []); porCadencia.get(cad).push(v); }
+    }
+  }
+  const primeiraData = v => _hoLista(v.historico).map(h => h.data).filter(Boolean).sort()[0] || '';
+  const linhas = [];
+  for (const { semana, v } of todas) {
+    const hist = _hoLista(v.historico).filter(h => h.evento).sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    const descarga = _hoDataBR(v.dtDescProg || v.dtDesc);
+    hist.forEach((h, idx) => {
+      const quando = new Date(h.data);
+      let antecedencia = null;
+      if (descarga && !isNaN(quando)) {
+        const dia = new Date(quando.getFullYear(), quando.getMonth(), quando.getDate(), 12);
+        antecedencia = Math.round((descarga - dia) / 86400000);
+      }
+      let depois = '';
+      if (HO_NEGATIVOS.has(h.evento)) {
+        const prox = hist.slice(idx + 1).find(x => ['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(x.evento)
+          && x.transportador && x.transportador !== h.transportador);
+        if (prox) depois = `Reofertada → ${prox.transportador}`;
+        else if (h.evento === 'Cancelado') {
+          const cad = String(v.cadenciaOrigem || '').split('-')[0];
+          const subst = (porCadencia.get(cad) || [])
+            .filter(o => o.idViagem !== v.idViagem && o.status !== 'Cancelado' && o.destino === v.destino && o.produto === v.produto
+              && primeiraData(o) > String(h.data))
+            .sort((a, b) => primeiraData(a).localeCompare(primeiraData(b)))[0];
+          if (subst) depois = `Substituída por ${subst.idViagem}${subst.transportador ? ' (' + subst.transportador + ')' : ''} · mesma cadência`;
+        }
+      }
+      const negativo = HO_NEGATIVOS.has(h.evento);
+      const quem = _hoQuem(h);
+      linhas.push({
+        quemTipo: quem.tipo, quemNome: quem.nome,
+        data: h.data || '', semana, idViagem: v.idViagem, destino: v.destino || '', produto: v.produto || '',
+        volume: v.volume || '', carregamento: v.dtCarregProg || v.dtCarreg || '', descarga: v.dtDescProg || v.dtDesc || '',
+        evento: h.evento, transportador: h.transportador || '', usuario: h.usuario || '', motivo: h.motivo || '',
+        statusAtual: v.status || '', antecedencia, depois,
+        nivel: negativo && antecedencia !== null ? (antecedencia < 2 ? 'critico' : antecedencia <= 4 ? 'alerta' : '') : '',
+      });
+    });
+  }
+  return linhas.sort((a, b) => String(b.data).localeCompare(String(a.data)));
+}
+
+function _hoFiltrar() {
+  const semana = document.getElementById('hoSemana').value;
+  const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const transp = norm(document.getElementById('hoTransp').value);
+  const busca = document.getElementById('hoBusca').value.trim().toLowerCase();
+  // Todos os eventos que passam nos filtros (as ofertas entram só pra calcular o % de recusa da transportadora)
+  return _ho.linhas.filter(l => (!semana || l.semana === semana)
+    && (!transp || norm(l.transportador).includes(transp))
+    && (!busca || [l.idViagem, l.destino, l.produto].some(x => String(x).toLowerCase().includes(busca))));
+}
+// So' as recusas (o que a aba mostra), com o filtro "so' em cima da hora"
+function _hoRecusas(base) {
+  const soCrit = document.getElementById('hoSoCritico').checked;
+  const quem = document.getElementById('hoQuem').value;
+  return base.filter(l => l.evento === 'Recusado' && (!soCrit || l.nivel === 'critico') && (!quem || l.quemTipo === quem));
+}
+
+function _hoResumo(linhas) {
+  const porT = new Map();
+  for (const l of linhas) {
+    const t = l.transportador || '(sem transportadora)';
+    if (!porT.has(t)) porT.set(t, { t, Ofertado: 0, Aceito: 0, Recusado: 0, Cancelado: 0, critico: 0 });
+    const r = porT.get(t);
+    if (l.evento in r) r[l.evento]++;
+    if (l.nivel === 'critico') r.critico++;
+  }
+  return [...porT.values()].sort((a, b) => (b.Recusado + b.Cancelado) - (a.Recusado + a.Cancelado) || b.Ofertado - a.Ofertado);
+}
+
+// Status de hoje da viagem, com a cor do portal: andando/entregue = verde, cancelada/recusada = vermelho.
+function _hoBadgeStatus(s) {
+  if (!s) return '—';
+  const cls = ['Aceito', 'Placa Enviada', 'Em Andamento', 'Viagem Finalizada', 'Frota Dedicada'].includes(s) ? 'badge-success'
+    : ['Cancelado', 'Recusado'].includes(s) ? 'badge-danger' : 'badge-accent';
+  return `<span class="badge ${cls}">${esc(s)}</span>`;
+}
+
+// Agrupa as recusas por quem recusou: a transportadora (uma linha so') ou cada pessoa da equipe.
+function _hoPorQuem(linhas) {
+  const g = new Map();
+  for (const l of linhas) {
+    const chave = l.quemTipo === 'Transportadora' ? 'Transportadora' : `${l.quemTipo}|${l.quemNome}`;
+    if (!g.has(chave)) g.set(chave, { tipo: l.quemTipo, nome: l.quemTipo === 'Transportadora' ? '' : l.quemNome, recusas: 0, critico: 0, transps: new Set() });
+    const r = g.get(chave);
+    r.recusas++; if (l.nivel === 'critico') r.critico++; if (l.transportador) r.transps.add(l.transportador);
+  }
+  return [...g.values()].map(r => ({ ...r, transps: [...r.transps].sort().join(', ') }))
+    .sort((a, b) => (a.tipo === 'Transportadora' ? -1 : 0) - (b.tipo === 'Transportadora' ? -1 : 0) || b.recusas - a.recusas);
+}
+
+async function renderHistoricoOfertas(forcar) {
+  const status = document.getElementById('hoStatus');
+  try {
+    if (forcar || !_ho.semanas.size) await _hoCarregar(!!forcar);
+  } catch (e) {
+    status.textContent = 'Não foi possível carregar o histórico: ' + (e?.message || e);
+    return;
+  }
+  const sel = document.getElementById('hoSemana'), atual = sel.value;
+  const semanas = [..._ho.semanas.keys()].sort().reverse();
+  sel.replaceChildren(new Option('Todas as semanas', ''), ...semanas.map(k => new Option(k.split('_').map(d => d.split('-').reverse().join('/')).join(' a '), k)));
+  sel.value = semanas.includes(atual) ? atual : '';
+
+  const base = _hoFiltrar();
+  const linhas = _hoRecusas(base);
+  _ho.filtradas = linhas;
+  _ho.resumo = _hoResumo(base).filter(r => r.Recusado > 0);
+  document.getElementById('ho-recusas').textContent = linhas.length;
+  document.getElementById('ho-critico').textContent = linhas.filter(l => l.nivel === 'critico').length;
+  document.getElementById('ho-transps').textContent = new Set(linhas.map(l => l.transportador).filter(Boolean)).size;
+  status.textContent = `${_ho.linhas.filter(l => l.evento === 'Recusado').length} recusas em ${_ho.semanas.size} semana(s) desde 01/10.`;
+
+  _ho.quem = _hoPorQuem(linhas);
+  document.getElementById('hoQuemBody').innerHTML = _ho.quem.map(q =>
+    `<tr><td>${q.tipo === 'Transportadora' ? '<span class="badge badge-warn">A própria transportadora</span>'
+      : q.tipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(q.nome) : '<span class="badge">Não identificado</span> ' + esc(q.nome)}</td>`
+    + `<td>${q.recusas}</td><td>${q.critico ? `<span class="badge badge-danger">${q.critico}</span>` : '0'}</td><td>${esc(q.transps)}</td></tr>`
+  ).join('') || '<tr><td colspan="4" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+
+  document.getElementById('hoResumoBody').innerHTML = _ho.resumo.map(r => {
+    const pct = r.Ofertado ? Math.round(100 * r.Recusado / r.Ofertado) + '%' : '—';
+    return `<tr><td>${esc(r.t)}</td><td>${r.Ofertado}</td><td>${r.Recusado}</td><td>${pct}</td>`
+      + `<td>${r.critico ? `<span class="badge badge-danger">${r.critico}</span>` : '0'}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+
+  const LIMITE = 1500;
+  document.getElementById('hoContagem').textContent = linhas.length > LIMITE
+    ? ` · mostrando ${LIMITE} de ${linhas.length} (o Excel leva todas)` : ` · ${linhas.length} recusa(s)`;
+  document.getElementById('hoEventosBody').innerHTML = linhas.slice(0, LIMITE).map(l => {
+    const ant = l.antecedencia === null ? '—' : `${l.antecedencia} dia(s)`;
+    return `<tr class="${l.nivel ? 'ho-' + l.nivel : ''}"><td>${esc(_hoFmtData(l.data))}</td><td>${esc(l.idViagem)}</td><td>${esc(l.destino)}</td>`
+      + `<td>${esc(l.produto)}</td><td>${esc(l.carregamento)}</td><td>${esc(l.descarga)}</td>`
+      + `<td>${esc(l.transportador)}</td><td>${l.quemTipo === 'Transportadora' ? '<span class="badge badge-warn">Transportadora</span> ' + esc(l.quemNome)
+          : l.quemTipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(l.quemNome) : '<span class="badge">Não identificado</span> ' + esc(l.quemNome)}</td>`
+      + `<td><span class="badge badge-danger">RECUSADA</span></td><td>${_hoBadgeStatus(l.statusAtual)}</td>`
+      + `<td>${ant}</td><td>${esc(l.motivo)}</td><td>${esc(l.depois)}</td></tr>`;
+  }).join('') || '<tr><td colspan="13" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+}
+
+function exportarHistoricoOfertas() {
+  if (typeof XLSX === 'undefined') { alert('A biblioteca do Excel ainda está carregando. Tente de novo em alguns segundos.'); return; }
+  const linhas = _ho.filtradas || [];
+  if (!linhas.length) { alert('Nada para exportar com os filtros atuais.'); return; }
+  const eventos = linhas.map(l => ({
+    'Data/hora da recusa': _hoFmtData(l.data), 'Semana': l.semana.replace('_', ' a '), 'Viagem': l.idViagem, 'Destino': l.destino,
+    'Produto': l.produto, 'Volume (m³)': l.volume, 'Carregamento prog.': l.carregamento, 'Descarga prog.': l.descarga,
+    'Transportadora': l.transportador, 'Quem recusou': l.quemTipo === 'Interno' ? 'Interno' : l.quemTipo,
+    'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual, 'Motivo': l.motivo,
+    'Antecedência até a descarga (dias)': l.antecedencia,
+    'Em cima da hora (< 2 dias)': l.nivel === 'critico' ? 'Sim' : '', 'Depois': l.depois,
+  }));
+  const resumo = (_ho.resumo || []).map(r => ({
+    'Transportadora': r.t, 'Ofertas recebidas': r.Ofertado, 'Recusas': r.Recusado,
+    '% recusa': r.Ofertado ? Math.round(1000 * r.Recusado / r.Ofertado) / 10 : null, 'Em cima da hora (< 2 dias)': r.critico,
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eventos), 'Recusas');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((_ho.quem || []).map(q => ({
+    'Quem recusou': q.tipo === 'Transportadora' ? 'A própria transportadora' : 'Interno', 'Nome': q.nome,
+    'Recusas': q.recusas, 'Em cima da hora (< 2 dias)': q.critico, 'Transportadoras envolvidas': q.transps }))), 'Quem recusou');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), 'Por transportadora');
+  XLSX.writeFile(wb, `historico_recusas_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function renderPerformance() {
