@@ -5486,10 +5486,8 @@ async function renderUsers(body, subTabs=''){
       <td style="font-size:11px;color:var(--muted)">${ops?esc(ops.join(', ')):'Todas'}</td>
       <td style="white-space:nowrap;vertical-align:middle">
         <div style="display:inline-flex;gap:5px;align-items:center">
-          <button class="btn-edit" onclick="openEditUser('${attr(jsArg(uid))}')" title="Editar">✏️</button>
-          ${uid!==S.user?`<button class="btn-reset-pwd" onclick="openResetPwd('${attr(jsArg(uid))}')" title="Resetar senha">🔑</button>`:''}
-          ${uid!=='admin'&&uid!==S.user?`<button class="btn-edit" onclick="toggleUserAtivo('${attr(jsArg(uid))}')" title="${inativo?'Reativar acesso':'Inativar acesso'}">${inativo?'🔓':'🔒'}</button>`:''}
-          ${uid!=='admin'?`<button class="btn-danger" onclick="deleteUser('${attr(jsArg(uid))}')" title="Remover">🗑</button>`:''}
+          <button class="btn-edit" onclick="openEditUser('${attr(jsArg(uid))}')" title="Editar e-mails de aviso e operações visíveis">✏️</button>
+          <!-- senha, inativar e remover: tela Usuarios do portal (login central) -->
         </div>
       </td>
     </tr>`;
@@ -5515,33 +5513,15 @@ async function renderUsers(body, subTabs=''){
         <tbody>${carrierRows||'<tr><td colspan="2" style="color:var(--muted);font-size:13px">Nenhum transportador</td></tr>'}</tbody>
       </table>
     </div>
-    <!-- NEW USER -->
-    <div class="card" style="margin-bottom:1.5rem">
-      <p class="reg-heading">+ Novo usuário</p>
-      <div class="form-grid">
-        <div class="form-field"><label>LOGIN (usuário)</label><input id="new-uid" type="text" placeholder="Ex: souza"></div>
-        <div class="form-field"><label>NOME DE EXIBIÇÃO</label><input id="new-uname" type="text" placeholder="Ex: Souza Transportes"></div>
-        <div class="form-field"><label>SENHA</label><input id="new-upwd" type="text" placeholder="Mín. 6 caracteres"></div>
-        <div class="form-field"><label>E-MAIL <span style="font-weight:400;color:var(--muted)">(p/ avisos de disponibilidade — separe vários por vírgula)</span></label><input id="new-uemail" type="email" multiple placeholder="Ex: contato@transportadora.com, financeiro@transportadora.com"></div>
-        <div class="form-field"><label>PERFIL</label>
-          <select id="new-urole" onchange="toggleCarrierField()">
-            <option value="carrier">Transportador</option>
-            <option value="operacional">Operacional</option>
-            <option value="admin">Administrador</option>
-          </select>
-        </div>
-        <div class="form-field" id="new-carrier-field"><label>TRANSPORTADOR</label>
-          <select id="new-ucarrier" onchange="renderOpCheckboxes('new-op-checks','new-ucarrier')">${CARRIERS.map(c=>optHtml(c)).join('')}</select>
-        </div>
-        <div class="form-field" id="new-op-field" style="display:none;grid-column:1/-1">
-          <label>OPERACOES VISÍVEIS <span style="font-weight:400;color:var(--muted)">(deixe vazio para ver todas)</span></label>
-          <div id="new-op-checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
-        </div>
-      </div>
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-lime" onclick="addUser()">+ Criar usuário</button>
-        <span id="user-msg" style="font-size:12px"></span>
-      </div>
+    <!-- LOGIN CENTRAL (2026-11-19): pessoas, perfis, senhas e ativar/desativar sao feitos na tela Usuarios do portal -->
+    <div class="card" style="margin-bottom:1.5rem;border-color:var(--lime)">
+      <p class="reg-heading">👥 Cadastro de pessoas agora é no portal Nexta</p>
+      <p style="font-size:13px;color:var(--dim);line-height:1.6;margin:.25rem 0 .9rem">
+        Criar login, definir perfil (Administrador, Interno ou Transportador), redefinir senha e desativar acesso
+        são feitos na tela <b>Usuários</b> do portal — o mesmo login vale para o Outbound e para o Inbound.<br>
+        Aqui embaixo fica só o que é do Outbound: <b>e-mails do aviso de disponibilidade</b> e <b>operações visíveis</b> (botão ✏️).
+      </p>
+      <a class="btn btn-lime" href="/usuarios/" target="_blank" rel="noopener">Abrir Usuários do portal ↗</a>
     </div>
     <!-- USERS LIST -->
     <p class="sec-title" style="margin-bottom:.75rem">Usuários cadastrados</p>
@@ -5678,15 +5658,16 @@ function openEditUser(uid){
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
   modal.innerHTML=`
     <div style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;width:100%;max-width:480px">
-      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Editar usuário — ${esc(uid)}</p>
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:1.25rem">✏️ Avisos e operações — ${esc(uid)}</p>
       <div class="form-grid">
-        <div class="form-field"><label>NOME DE EXIBIÇÃO</label><input id="eu-name" type="text" value="${attr(u.name)}"></div>
-        <div class="form-field"><label>NOVA SENHA <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><input id="eu-pwd" type="password" placeholder="Deixe em branco para manter"></div>
+        <div class="form-field" style="grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.5">Nome, senha, perfil e transportadora são alterados na tela <a href="/usuarios/" target="_blank" rel="noopener" style="color:var(--lime)">Usuários do portal ↗</a>.</div>
+        <div class="form-field"><label>NOME DE EXIBIÇÃO</label><input id="eu-name" type="text" value="${attr(u.name)}" disabled></div>
+        <input id="eu-pwd" type="hidden" value="">
         <div class="form-field"><label>E-MAIL <span style="font-weight:400;color:var(--muted)">(p/ avisos de disponibilidade — separe vários por vírgula)</span></label><input id="eu-email" type="email" multiple value="${attr(u.email||'')}" placeholder="Ex: contato@transportadora.com, financeiro@transportadora.com"></div>
-        ${isAdmin?'':`<div class="form-field"><label>PERFIL</label><select id="eu-role" onchange="onEditRoleChange()">${roleOpts}</select></div>`}
+        ${isAdmin?'':`<div class="form-field"><label>PERFIL</label><select id="eu-role" onchange="onEditRoleChange()" disabled>${roleOpts}</select></div>`}
         <div class="form-field" id="eu-carrier-field" style="display:${u.role==='carrier'?'block':'none'}">
           <label>TRANSPORTADOR</label>
-          <select id="eu-carrier">${carrierOpts}</select>
+          <select id="eu-carrier" disabled>${carrierOpts}</select>
         </div>
         <div class="form-field" id="eu-op-field" style="display:${u.role==='carrier'?'block':'none'};grid-column:1/-1">
           <label>OPERACOES VISÍVEIS <span style="font-weight:400;color:var(--muted)">(deixe vazio para ver todas)</span></label>

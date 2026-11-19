@@ -139,3 +139,11 @@ h1, h2, h3, .page-title, .section-title, .card-title {
 :is(#roteirizador-shell, .modal-card) [style*="background:#dbeafe" i] { background: var(--blue-bg) !important; }
 :is(#roteirizador-shell, .modal-card) [style*="color:#1e40af" i] { color: var(--blue-text) !important; }
 :is(#roteirizador-shell, .modal-card) [style*="solid #d97706" i] { border-color: var(--amber-border) !important; }
+
+/* Botoes ".btn" sem cor propria (ex.: Excel, PDF, Siglas, Ofertar na Operacao sob demanda) ficavam com o cinza
+   claro padrao do navegador. :where() = prioridade zero: qualquer cor ja definida (btn-lime, btn-outline, style="")
+   continua valendo; so' pega quem nao tinha cor nenhuma. */
+:where(.btn) { background: var(--card2); color: var(--text); border: 1px solid var(--border2); }
+:where(.btn):hover { border-color: var(--lime); }
+/* Campos travados (ex.: nome/perfil/transportadora na janela ✏️, que agora sao da tela Usuarios do portal) */
+input:disabled, select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
