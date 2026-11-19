@@ -1490,6 +1490,37 @@ function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
 function placaMercosul(p) { return /^[A-Z]{3}[0-9]{4}$/.test(p) ? p.slice(0, 4) + 'ABCDEFGHIJ'[p[4]] + p.slice(5) : p; }
 // Chave de recursos/<chave>: placas na forma Mercosul, em ordem alfabética (a ordem em que foram digitadas não importa)
 function chaveRecurso(placas) { return placas.map(placaMercosul).sort().join('+'); }
+// Placas do ID de um recurso do SAP ("UVQ5C34+UWC7F61+UWC7F60"; aceita "/" e placas coladas, como a carga do datalake),
+// na forma Mercosul e na ordem do SAP (cavalo, carreta 1, carreta 2). null se o ID não for só de placas
+function placasDoIdRecurso(id) {
+  const placas = String(id || '').split(/[+/]/).map(normalizarPlaca).filter(Boolean)
+    .flatMap((p) => (p.length > 7 && p.length % 7 === 0 ? p.match(/.{7}/g) : [p]));
+  return placas.length && placas.every(placaValida) ? placas.map(placaMercosul) : null;
+}
+// A chave de recursos/ ignora a ordem das placas, mas o recurso do SAP tem ordem: cavalo, carreta 1, carreta 2. As
+// mesmas placas em outra ordem não são esse recurso (só se o SAP tiver outro com essa ordem, em outrosIds).
+// Ordens do recurso: [{ id, placas }], a do recurso escolhido pela carga primeiro (placas null = ID fora do padrão)
+function ordensDoRecurso(recurso) {
+  const principal = Array.isArray(recurso?.placas) && recurso.placas.length
+    ? recurso.placas.map((p) => placaMercosul(normalizarPlaca(p))) : placasDoIdRecurso(recurso?.id);
+  return [{ id: String(recurso?.id || ''), placas: principal },
+    ...Object.values(recurso?.outrosIds || {}).map((id) => ({ id: String(id), placas: placasDoIdRecurso(id) })).filter((o) => o.placas)];
+}
+// ID do SAP do recurso com as placas na ordem digitada, ou null se o SAP só tem essas placas em outra ordem
+function idRecursoNaOrdem(recurso, placas) {
+  const alvo = placas.filter(Boolean).map((p) => placaMercosul(normalizarPlaca(p))).join('+');
+  const ordens = ordensDoRecurso(recurso);
+  if (!ordens[0].placas) return ordens[0].id; // ID fora do padrão: não dá para conferir a ordem
+  return ordens.find((o) => o.placas.join('+') === alvo)?.id ?? null;
+}
+// Placas digitadas fora da ordem do recurso do SAP: a mensagem mostra a(s) ordem(ns) cadastrada(s)
+function msgRecursoOutraOrdem(recurso, placas) {
+  const digitadas = placas.filter(Boolean);
+  const posicoes = digitadas.length === 2 ? 'cavalo e carreta' : 'cavalo, carreta 1 e carreta 2';
+  const ordens = [...new Set(ordensDoRecurso(recurso).filter((o) => o.placas).map((o) => o.placas.join(' + ')))];
+  return `Não há veículo cadastrado com as placas nesta ordem (${digitadas.join(' + ')}). No SAP, o conjunto está como `
+    + `${ordens.join(' ou ')} (${posicoes}). Confira a ordem das placas no veículo.`;
+}
 function soDigitos(v) { return String(v || '').replace(/\D/g, ''); }
 function cpfValido(cpf) {
   if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
@@ -2629,11 +2660,16 @@ function capacidadeProvisoriaDigitada(form = FORM_NOVO) {
 }
 // Veículo das placas digitadas, já consultado: { chave, origem, id, volume }. origem 'sap' | 'provisorio' |
 // 'novo' (sem cadastro, com a capacidade informada agora: vira cadastro provisório ao confirmar).
-// volume null = recurso do SAP sem volume máximo. Devolve null se não consultou, se a consulta falhou ou sem capacidade.
+// volume null = recurso do SAP sem volume máximo. Devolve null se não consultou, se a consulta falhou, sem capacidade
+// ou com as placas do SAP digitadas em outra ordem (erroVeiculo explica).
 function veiculoDasPlacas(form = FORM_NOVO) {
   const r = form.estado().recurso;
   if (!r || r.dados === undefined || r.erro || r.chave !== chaveDasPlacas(form)) return null;
-  if (r.dados) return { chave: r.chave, origem: r.origem, id: r.dados.id || null, volume: r.dados.volumeMax >= CAPACIDADE_MINIMA_VALIDA ? r.dados.volumeMax : null };
+  if (r.dados) {
+    const id = r.origem === 'sap' ? idRecursoNaOrdem(r.dados, lerPlacas(form)) : r.dados.id;
+    if (id === null) return null;
+    return { chave: r.chave, origem: r.origem, id: id || null, volume: r.dados.volumeMax >= CAPACIDADE_MINIMA_VALIDA ? r.dados.volumeMax : null };
+  }
   const volume = capacidadeProvisoriaDigitada(form);
   return volume ? { chave: r.chave, origem: 'novo', id: null, volume } : null;
 }
@@ -2680,10 +2716,14 @@ function renderStatusVeiculo(form = FORM_NOVO) {
   const atual = r && r.chave === chaveDasPlacas(form) ? r : null; // placas mudaram: a consulta anterior não vale
   const status = elForm(form, 'veiculoStatus');
   let texto = '', cls = '';
+  const idNaOrdem = atual?.origem === 'sap' ? idRecursoNaOrdem(atual.dados, lerPlacas(form)) : null;
   if (atual && atual.dados === undefined) texto = 'Consultando o cadastro de veículos…';
-  else if (atual?.origem === 'sap') {
+  else if (atual?.origem === 'sap' && idNaOrdem === null) {
+    texto = msgRecursoOutraOrdem(atual.dados, lerPlacas(form));
+    cls = 'erro';
+  } else if (atual?.origem === 'sap') {
     const v = atual.dados.volumeMax;
-    texto = `Veículo cadastrado: recurso ${atual.dados.id} do SAP` + (v >= CAPACIDADE_MINIMA_VALIDA ? ` · capacidade ${formatVolume(v)}` : ' (sem volume máximo no SAP: confira se faltou a placa da carreta)');
+    texto = `Veículo cadastrado: recurso ${idNaOrdem} do SAP` + (v >= CAPACIDADE_MINIMA_VALIDA ? ` · capacidade ${formatVolume(v)}` : ' (sem volume máximo no SAP: confira se faltou a placa da carreta)');
     cls = v >= CAPACIDADE_MINIMA_VALIDA ? 'ok' : 'aviso';
   } else if (atual?.origem === 'provisorio') {
     texto = `Veículo com cadastro provisório, aguardando validação da Nexta · capacidade ${formatVolume(atual.dados.volumeMax)}. `
@@ -2927,6 +2967,8 @@ function erroVeiculo(form = FORM_NOVO) {
   const r = form.estado().recurso;
   if (!r || r.chave !== chaveDasPlacas(form) || r.dados === undefined) return 'Consultando o cadastro de veículos. Tente de novo em instantes.';
   if (r.erro) return 'Não foi possível consultar o cadastro de veículos. Verifique a conexão e tente de novo.';
+  // Mesmas placas do SAP em outra ordem: não é o recurso cadastrado (nem dá cadastro provisório, que teria a mesma chave)
+  if (r.origem === 'sap' && idRecursoNaOrdem(r.dados, lerPlacas(form)) === null) return msgRecursoOutraOrdem(r.dados, lerPlacas(form));
   if (!r.dados) {
     if (!elForm(form, 'f-capacidade-prov').value) return 'Veículo sem cadastro: confira as placas ou informe a capacidade para o cadastro provisório.';
     if (!capacidadeProvisoriaDigitada(form)) return `Capacidade do veículo: informe o total em litros, entre ${formatVolume(CAPACIDADE_MINIMA_VALIDA)} e ${formatVolume(CAPACIDADE_MAXIMA_PROVISORIA)}.`;
@@ -3608,7 +3650,7 @@ function renderListaAgendamentos() {
 // Cor da placa na lista: cadastro ATUAL do veículo (provisório que já entrou no SAP muda de cor), não o do dia
 // do agendamento. Verde = recurso no SAP sem pendência; amarelo = recurso no SAP com pendência; vermelho = sem
 // recurso no SAP (provisório ou nada). Uma consulta por veículo (recursos + recursosPendentes), guardada até recarregar.
-// STATE.cadastroVeiculos[chave] = undefined (consultando) | { origem: 'sap' | 'provisorio' | null, id, pendencias } | { erro: true }
+// STATE.cadastroVeiculos[chave] = undefined (consultando) | { origem: 'sap' | 'provisorio' | null, id, pendencias, ordem } | { erro: true }
 // Pendências do recurso no SAP: todo recurso precisa de proprietário e volume máximo; truck (TRK) e toco (TOC)
 // também do perfil de compartimento. Volume abaixo de 1.000 L (0, 1, 22,5…) conta como não preenchido
 function pendenciasRecurso(r) {
@@ -3659,7 +3701,8 @@ function consultarCadastrosDaLista(agendamentos) {
   for (const chave of new Set(agendamentos.map(chaveDoAgendamento))) {
     if (!chave || chave in STATE.cadastroVeiculos) continue;
     consultar(STATE.cadastroVeiculos, chave, (k) => Promise.all([window._fb.carregarRecurso(k), window._fb.carregarRecursoPendente(k)]),
-      ([sap, provisorio]) => ({ origem: sap ? 'sap' : provisorio ? 'provisorio' : null, id: sap?.id || null, pendencias: sap ? pendenciasRecurso(sap) : [] }), 'veículo');
+      ([sap, provisorio]) => ({ origem: sap ? 'sap' : provisorio ? 'provisorio' : null, id: sap?.id || null, pendencias: sap ? pendenciasRecurso(sap) : [],
+        ordem: sap ? { id: sap.id, placas: sap.placas, outrosIds: sap.outrosIds } : null }), 'veículo'); // ordem: placas do agendamento x SAP
   }
   for (const cpf of new Set(agendamentos.map((a) => a.motoristaCpf))) {
     if (!cpf || cpf in STATE.cadastroMotoristas) continue;
@@ -3690,11 +3733,14 @@ function placaComCadastro(a) {
   const manual = liberacaoRecursoValida(a);
   if ((!c || c.erro) && !manual) return `<span class="placa">${esc(a.placaCavalo)}</span>`; // consultando ou sem resposta: sem cor
   const placas = [a.placaCavalo, a.placaCarreta, a.placaCarreta2].filter(Boolean).join(' + ');
-  const pendente = c?.origem === 'sap' && c.pendencias.length > 0;
+  // Agendamento de antes da conferência da ordem das placas: as mesmas placas do recurso, em outra ordem
+  const foraDeOrdem = c?.origem === 'sap' && !!c.ordem && idRecursoNaOrdem(c.ordem, [a.placaCavalo, a.placaCarreta, a.placaCarreta2]) === null;
+  const pendente = c?.origem === 'sap' && (c.pendencias.length > 0 || foraDeOrdem);
   const sapLiberado = c?.origem === 'sap' && !pendente;
+  const pendenciasTxt = c?.origem === 'sap' ? [...c.pendencias, ...(foraDeOrdem ? [`placas em outra ordem no SAP (${ordensDoRecurso(c.ordem)[0].placas.join(' + ')})`] : [])].join(', ') : '';
   const titulo = sapLiberado ? `${placas}: recurso ${c.id} do SAP`
-    : manual ? `${placas}: recurso ${manual.id} liberado temporariamente pela equipe Nexta; aguardando datalake${pendente ? ` (o datalake ainda mostra: ${c.pendencias.join(', ')})` : ''}`
-    : c?.origem === 'sap' ? `${placas}: recurso ${c.id} do SAP, com pendência: ${c.pendencias.join(', ')}`
+    : manual ? `${placas}: recurso ${manual.id} liberado temporariamente pela equipe Nexta; aguardando datalake${pendente ? ` (o datalake ainda mostra: ${pendenciasTxt})` : ''}`
+    : c?.origem === 'sap' ? `${placas}: recurso ${c.id} do SAP, com pendência: ${pendenciasTxt}`
     : c.origem === 'provisorio' ? `${placas}: cadastro provisório, aguardando validação da Nexta` : `${placas}: sem cadastro no SAP`;
   const cor = sapLiberado || manual ? 'ok' : c?.origem === 'sap' ? 'pendente' : 'sem';
   return `<span class="placa-cad ${cor}" title="${esc(titulo)}">${esc(a.placaCavalo)}</span>`;
