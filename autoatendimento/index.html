@@ -1591,7 +1591,10 @@ async function prepararAtendimento(id, a) {
   if (!new RegExp(`^\\d{1,${LIMITES.motorista}}$`).test(motoristaBp)) {
     return guiche('Cadastro do motorista em validação', 'Seu cadastro de motorista ainda não foi liberado no sistema. Procure o guichê.');
   }
-  const recursoSap = String(a.recursoSap || recurso?.id || liberacaoRecursoValida(a)?.id || '');
+  // Provisório (sem recursoSap): o recurso do SAP só vale com as placas do agendamento na ordem dele. As mesmas placas
+  // em outra ordem não são esse recurso: até o SAP ter o conjunto nesta ordem (ou a equipe liberar), vai ao guichê
+  const recursoNaOrdem = recurso ? idRecursoNaOrdem(recurso, placasDe(a)) : null;
+  const recursoSap = String(a.recursoSap || recursoNaOrdem || liberacaoRecursoValida(a)?.id || '');
   if (!recursoSap) return guiche('Cadastro do veículo em validação', 'O cadastro deste veículo ainda não foi liberado no sistema. Procure o guichê.');
 
   // Uma linha por pedido + produto: é a "Ordem original" + "Produto" que o cockpit aloca nos compartimentos.
