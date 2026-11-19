@@ -34,6 +34,11 @@ function simulationToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Ame
 // Viagens que sao transferencia entre bases nossas (2026-10-15): ficam so' na linha/popup "Transferencia ·
 // entrada", fora do Trânsito FOB/CIF e do "nao programado", pra nao aparecerem duas vezes.
 function idsTransfEntrada(r){const s=new Set();for(const d of Object.values(r?.bi?.days||{}))for(const t of d?.transferenciasEntrada||[])if(t.viagem)s.add(t.viagem);return s;}
+// Tem placa de verdade (usuaria, 2026-11-19: "azul SOMENTE SE TIVER SEM PLACA"): nao basta o status (havia Backlog e
+// Aceito ja' com placa contando como "sem placa").
+function temPlaca(v){const p=String(v?.placa??'').trim();return Boolean(p)&&!['-','—','–'].includes(p);}
+// So' a parte SEM PLACA do FOB nao programado (cor azul do grafico); a conta do estoque segue em fobNaoProgramado.
+function fobSemPlaca(r,iso){const ids=idsTransfEntrada(r);const vs=(D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[iso]?.viagens||[]).filter(v=>v.modal==='fob'&&v.grupo==='programado'&&!ids.has(v.idViagem)&&!temPlaca(v));return vs.reduce((s,v)=>s+(v.volume||0),0);}
 function fobNaoProgramado(r,iso){const ids=idsTransfEntrada(r);const vs=(D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material]?.[iso]?.viagens||[]).filter(v=>v.modal==='fob'&&v.grupo==='programado'&&!ids.has(v.idViagem));return vs.length?vs.reduce((s,v)=>s+(v.volume||0),0):null;}
 // entradaForcada: a Visao do dia sempre usa as fontes automaticas, qualquer que seja a origem de
 // entrada escolhida na tela do simulador.
@@ -41,10 +46,10 @@ function fobNaoProgramado(r,iso){const ids=idsTransfEntrada(r);const vs=(D.trans
 // Com o transito ao vivo, o dia e a linha vem dele (achando a viagem pelo numero); sem ele, da carga de 30 min.
 function entradasTransfPorDia(r){
  const vivo=D.transitoAoVivo?.[r.bi?.emp_dep]?.[r.bi?.material],noVivo={},porDia={};
- if(vivo)for(const [iso,d] of Object.entries(vivo))for(const v of d?.viagens||[])if(v.idViagem)noVivo[v.idViagem]={iso,conta:v.grupo==='programado'?'naoprog':v.modal,statusViagem:v.statusViagem||null};
+ if(vivo)for(const [iso,d] of Object.entries(vivo))for(const v of d?.viagens||[])if(v.idViagem)noVivo[v.idViagem]={iso,conta:v.grupo==='programado'?'naoprog':v.modal,statusViagem:v.statusViagem||null,placa:temPlaca(v)};
  for(const [iso,d] of Object.entries(r.bi?.days||{}))for(const t of d?.transferenciasEntrada||[]){
   const vivoT=t.viagem?noVivo[t.viagem]:null;
-  (porDia[vivoT?vivoT.iso:iso]??=[]).push({...t,conta:vivoT?vivoT.conta:(vivo?null:t.conta),statusViagem:vivoT?.statusViagem??t.statusViagem??null});
+  (porDia[vivoT?vivoT.iso:iso]??=[]).push({...t,conta:vivoT?vivoT.conta:(vivo?null:t.conta),statusViagem:vivoT?.statusViagem??t.statusViagem??null,placa:vivoT?vivoT.placa:temPlaca(t)});
  }
  return porDia;
 }
@@ -500,13 +505,15 @@ function fobNaoProgramadoDia(i){
  if(filtroStatusAtivo()&&!filtroStatusViagem.has('backlog'))return 0;
  return registrosReais().reduce((s,r)=>s+(fobNaoProgramado(r,day(i))||0),0);
 }
-// Transferencia de entrada SEM PLACA que esta' na conta do dia (usuaria, 2026-11-19: "azul sem placa - independente
-// se e' compra ou transferencia; cinza com placa"): Backlog no portal ('naoprog') ou so' na cadencia, sem status de viagem.
-function transfNaoProgramadaDia(i){
+// Cor azul do grafico = SEM PLACA, compra ou transferencia (usuaria, 2026-11-19: "azul sem placa - independente se e'
+// compra ou transferencia; cinza com placa" / "azul SOMENTE SE TIVER SEM PLACA"). So' muda a cor: a conta do estoque
+// segue igual (viagem com placa e status Backlog/Aceito continua contando, so' que em cinza).
+function semPlacaDia(i){
  if(i<0||!incluiNaoProg(entradaNoDia($('entrada')?.value||'auto',day(i))))return 0;
  if(filtroStatusAtivo()&&!filtroStatusViagem.has('backlog'))return 0;
- return registrosReais().reduce((s,r)=>s+(entradasTransfPorDia(r)[day(i)]||[])
-  .filter(t=>t.conta==='naoprog'||(!t.conta&&!emViagemTransf(t))).reduce((a,t)=>a+(t.volume||0),0),0);
+ const iso=day(i);
+ return registrosReais().reduce((s,r)=>s+fobSemPlaca(r,iso)+(entradasTransfPorDia(r)[iso]||[])
+  .filter(t=>!t.placa&&(t.conta==='naoprog'||(!t.conta&&!emViagemTransf(t)))).reduce((a,t)=>a+(t.volume||0),0),0);
 }
 function fobAposCorte(i){return somaOuNula(viagensDoDia(i,'fob').filter(v=>v.aposCorte&&v.grupo!=='programado').map(v=>v.volume||0));}
 function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaReal?'chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?'ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
@@ -749,8 +756,8 @@ function chart(result,original,offsets){
    const misFob=0;
    // Nao programado (viagens do portal sem placa) em azul claro, separado do FOB com placa (usuaria, 2026-10-21:
    // "na visao LE / programado e nao programado, coloca essa outra cor + azul pra falar que nao ta programado").
-   // Desde 2026-11-19 o azul inclui a transferencia sem placa (antes ficava no cinza): azul = sem placa, cinza = com placa.
-   const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),fobNaoProgramadoDia(i)+transfNaoProgramadaDia(i)):0;
+   // Desde 2026-11-19: azul = SEM PLACA (compra ou transferencia), cinza = com placa (ver semPlacaDia).
+   const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),semPlacaDia(i)):0;
    pedacos.push([nome,v-d1-misFob-npFob,cor,true,k.startsWith('transferIn'),false]);
    if(npFob>0)pedacos.push(['Trânsito FOB · não programado (sem placa)',npFob,COR_NAO_PROG,true,false,false]);
    if(misFob>0)pedacos.push(['Trânsito FOB · cadência MIS (planejamento)',misFob,cor,true,false,true]);
