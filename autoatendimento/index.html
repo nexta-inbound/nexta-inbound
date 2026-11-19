@@ -898,6 +898,37 @@ function placaValida(p) { return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p); }
 function placaMercosul(p) { return /^[A-Z]{3}[0-9]{4}$/.test(p) ? p.slice(0, 4) + 'ABCDEFGHIJ'[p[4]] + p.slice(5) : p; }
 // Chave de recursos/<chave>: placas na forma Mercosul, em ordem alfabética (a ordem em que foram digitadas não importa)
 function chaveRecurso(placas) { return placas.map(placaMercosul).sort().join('+'); }
+// Placas do ID de um recurso do SAP ("UVQ5C34+UWC7F61+UWC7F60"; aceita "/" e placas coladas, como a carga do datalake),
+// na forma Mercosul e na ordem do SAP (cavalo, carreta 1, carreta 2). null se o ID não for só de placas
+function placasDoIdRecurso(id) {
+  const placas = String(id || '').split(/[+/]/).map(normalizarPlaca).filter(Boolean)
+    .flatMap((p) => (p.length > 7 && p.length % 7 === 0 ? p.match(/.{7}/g) : [p]));
+  return placas.length && placas.every(placaValida) ? placas.map(placaMercosul) : null;
+}
+// A chave de recursos/ ignora a ordem das placas, mas o recurso do SAP tem ordem: cavalo, carreta 1, carreta 2. As
+// mesmas placas em outra ordem não são esse recurso (só se o SAP tiver outro com essa ordem, em outrosIds).
+// Ordens do recurso: [{ id, placas }], a do recurso escolhido pela carga primeiro (placas null = ID fora do padrão)
+function ordensDoRecurso(recurso) {
+  const principal = Array.isArray(recurso?.placas) && recurso.placas.length
+    ? recurso.placas.map((p) => placaMercosul(normalizarPlaca(p))) : placasDoIdRecurso(recurso?.id);
+  return [{ id: String(recurso?.id || ''), placas: principal },
+    ...Object.values(recurso?.outrosIds || {}).map((id) => ({ id: String(id), placas: placasDoIdRecurso(id) })).filter((o) => o.placas)];
+}
+// ID do SAP do recurso com as placas na ordem digitada, ou null se o SAP só tem essas placas em outra ordem
+function idRecursoNaOrdem(recurso, placas) {
+  const alvo = placas.filter(Boolean).map((p) => placaMercosul(normalizarPlaca(p))).join('+');
+  const ordens = ordensDoRecurso(recurso);
+  if (!ordens[0].placas) return ordens[0].id; // ID fora do padrão: não dá para conferir a ordem
+  return ordens.find((o) => o.placas.join('+') === alvo)?.id ?? null;
+}
+// Placas digitadas fora da ordem do recurso: a mensagem mostra a(s) ordem(ns) cadastrada(s)
+function msgRecursoOutraOrdem(recurso, placas) {
+  const digitadas = placas.filter(Boolean);
+  const posicoes = digitadas.length === 2 ? 'cavalo e carreta' : 'cavalo, carreta 1 e carreta 2';
+  const ordens = [...new Set(ordensDoRecurso(recurso).filter((o) => o.placas).map((o) => o.placas.join(' + ')))];
+  return `Não há veículo liberado no sistema com as placas nesta ordem (${digitadas.join(' + ')}). No cadastro, o conjunto está como `
+    + `${ordens.join(' ou ')} (${posicoes}). Confira a ordem das placas no veículo; se estiverem certas, procure o guichê.`;
+}
 function digitarPlaca(el) { el.value = el.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); }
 function chavePerfilCompartimento(perfil) {
   const bytes = new TextEncoder().encode(String(perfil || '').trim().toUpperCase());
@@ -1804,6 +1835,12 @@ async function conferirMotoristaVeiculo() {
       mostrarAlerta('alerta-novo-veiculo', `Não há veículo liberado no sistema com as placas ${placas.filter(Boolean).join(' + ')}. Confira todas as placas do conjunto; se estiverem certas, procure o guichê.`);
       return;
     }
+    // As mesmas placas em outra ordem (carretas trocadas, cavalo no lugar da carreta) não são o recurso cadastrado
+    const recursoId = idRecursoNaOrdem(recurso, placas);
+    if (recursoId === null) {
+      mostrarAlerta('alerta-novo-veiculo', esc(msgRecursoOutraOrdem(recurso, placas)));
+      return;
+    }
     const capacidade = recurso.volumeMax >= CAPACIDADE_MINIMA_VALIDA ? recurso.volumeMax : null;
     const total = somar(novo.pedidos.map(volumeDoPedido));
     if (capacidade && total > capacidade) {
@@ -1832,7 +1869,7 @@ async function conferirMotoristaVeiculo() {
       }
     }
     novo.motorista ={ nome: motorista.nome, cpf, bp: motorista.bp };
-    novo.veiculo = { placas, chave, id: recurso.id, volume: capacidade };
+    novo.veiculo = { placas, chave, id: recursoId || recurso.id, volume: capacidade };
     renderConfirmacaoNovo();
     if (document.activeElement) document.activeElement.blur();
     mostrarTela('novo-confirmar');
