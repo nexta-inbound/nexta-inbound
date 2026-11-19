@@ -1,0 +1,119 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   TEMA NEXTOQUES no Outbound (usuaria, 2026-11-19: "quero um padrao", "essa tela em branco me irrita").
+   Carregado DEPOIS dos outros CSS (index.html). So' visual: nao muda nenhuma regra das telas.
+   Para voltar ao visual antigo: tirar o <link> deste arquivo do index.html.
+   Paleta e fontes = simulador_estoque/style.css (Nextoques).
+   ════════════════════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap');
+
+/* ── App principal (nexta-frota-main.css usa estas variaveis) ── */
+:root {
+  --dark: #111B15; --mid: #1A2A20; --card: #1A2A20; --card2: #223528;
+  --lime: #8DC830; --lime2: #7AB324;
+  --lime-bg: rgba(141, 200, 48, .08); --lime-bg2: rgba(141, 200, 48, .15);
+  --border: #314A32; --border2: #3E5C3F;
+  --text: #F4F8EE; --muted: #7FA069; --dim: #BFD4A8;
+  --green: #8DC830; --red: #FF6B5F; --amber: #FACC15; --blue: #60A5FA; --purple: #C4B5FD;
+  --green-bg: rgba(141, 200, 48, .12); --red-bg: rgba(255, 107, 95, .12);
+  --amber-bg: rgba(250, 204, 21, .10); --blue-bg: rgba(96, 165, 250, .12);
+  --radius: 10px; --radius-lg: 18px;
+  --nexta-amarelo: #EEFE7A;
+}
+html, body {
+  background: radial-gradient(ellipse at 60% 0%, #8dc83019, transparent 58%), var(--dark) !important;
+  font-family: 'Barlow', Arial, sans-serif !important;
+}
+input, select, button, textarea { font-family: 'Barlow', Arial, sans-serif !important; }
+/* Barra de rolagem sempre presente: a largura da tela nao muda quando o conteudo cresce (evita o pisca-pisca). */
+html { overflow-y: scroll; }
+input, select, textarea { color-scheme: dark; }
+
+/* Cabecalho igual ao do Nextoques: degrade verde + faixa amarela + marca NEXTA amarela */
+.topbar {
+  height: 64px !important;
+  background: linear-gradient(135deg, #111A0A, #1C2E10 55%, #243A16) !important;
+  border-bottom: 3px solid var(--nexta-amarelo) !important;
+}
+.wordmark { color: var(--nexta-amarelo) !important; font: 700 28px 'Barlow Condensed', sans-serif !important; letter-spacing: .06em !important; }
+.topbar-sub { color: var(--dim) !important; }
+h1, h2, h3, .page-title, .section-title, .card-title {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif !important; letter-spacing: .01em;
+}
+.btn-lime { color: #111A0A !important; }
+
+/* ── Roteirizador (bloco proprio #roteirizador-shell, antes tema claro roxo) ── */
+#roteirizador-shell {
+  --bg: #111B15; --surface: #1A2A20; --border: #314A32; --border-dk: #3E5C3F;
+  --text: #F4F8EE; --text-2: #D7E5C6; --text-3: #BFD4A8; --text-4: #7FA069;
+  --accent: #8DC830; --accent-dk: #7AB324; --accent-bg: rgba(141, 200, 48, .14);
+  --accent-text: #CDEB8B; --accent-border: rgba(141, 200, 48, .40);
+  --green: #8DC830; --green-bg: rgba(141, 200, 48, .12); --green-border: rgba(141, 200, 48, .35); --green-text: #CDEB8B;
+  --amber: #FACC15; --amber-bg: rgba(250, 204, 21, .10); --amber-border: rgba(250, 204, 21, .35); --amber-text: #FDE68A;
+  --red: #FF6B5F; --red-bg: rgba(255, 107, 95, .12); --red-border: rgba(255, 107, 95, .35); --red-text: #FFB4AC;
+  --blue: #60A5FA; --blue-bg: rgba(96, 165, 250, .12); --blue-border: rgba(96, 165, 250, .35); --blue-text: #BFDBFE;
+  --purple: #C4B5FD; --purple-bg: rgba(196, 181, 253, .12); --purple-border: rgba(196, 181, 253, .35); --purple-text: #DDD6FE;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .35); --shadow-md: 0 4px 16px rgba(0, 0, 0, .40); --shadow-lg: 0 10px 40px rgba(0, 0, 0, .50);
+  --radius: 10px; --radius-sm: 8px; --radius-lg: 18px;
+  --font: 'Barlow', Arial, sans-serif; --font-cond: 'Barlow Condensed', 'Barlow', sans-serif;
+  --bg-2: #17251B;  /* usado no codigo como var(--bg-2, #F4F6F1): sem definir, caia no cinza claro */
+  background: var(--bg) !important; color: var(--text) !important;
+}
+#roteirizador-shell [style*="background:#fef9c3" i], #roteirizador-shell [style*="background:#fef3e2" i] { background: var(--amber-bg) !important; }
+#roteirizador-shell [style*="background:#f0fff4" i], #roteirizador-shell [style*="background:#f0f9eb" i],
+#roteirizador-shell [style*="background:#dcfce7" i] { background: var(--green-bg) !important; }
+#roteirizador-shell input, #roteirizador-shell select, #roteirizador-shell textarea {
+  background: #17251B !important; color: var(--text) !important; border-color: var(--border) !important;
+}
+#roteirizador-shell input::placeholder, #roteirizador-shell textarea::placeholder { color: var(--text-4) !important; }
+
+/* Cores fixas no codigo do roteirizador (style="..."): fundos claros viram superficie escura.
+   A ordem importa: o generico (#fff) vem antes dos tons especificos (#fff7ed, #fffbeb...), que o sobrescrevem. */
+#roteirizador-shell [style*="background:#fff" i], #roteirizador-shell [style*="background: #fff" i],
+#roteirizador-shell [style*="background:#f9fafb" i], #roteirizador-shell [style*="background: #f9fafb" i],
+#roteirizador-shell [style*="background:#f3f4f6" i], #roteirizador-shell [style*="background: #f3f4f6" i],
+#roteirizador-shell [style*="background:white" i], #roteirizador-shell [style*="background-color:#fff" i] {
+  background: var(--surface) !important;
+}
+#roteirizador-shell [style*="background:#fef3c7" i], #roteirizador-shell [style*="background:#fffbeb" i],
+#roteirizador-shell [style*="background:#fff7ed" i], #roteirizador-shell [style*="background:#fffdf0" i],
+#roteirizador-shell [style*="background:#fffbf2" i], #roteirizador-shell [style*="background: #fef3c7" i],
+#roteirizador-shell [style*="background: #fffbeb" i], #roteirizador-shell [style*="background: #fff7ed" i] {
+  background: var(--amber-bg) !important;
+}
+#roteirizador-shell [style*="background:#fee2e2" i], #roteirizador-shell [style*="background:#fef2f2" i],
+#roteirizador-shell [style*="background:#fff5f5" i], #roteirizador-shell [style*="background:#fff1f2" i],
+#roteirizador-shell [style*="background: #fee2e2" i], #roteirizador-shell [style*="background: #fef2f2" i] {
+  background: var(--red-bg) !important;
+}
+#roteirizador-shell [style*="background:#eff6ff" i], #roteirizador-shell [style*="background:#eef3ff" i],
+#roteirizador-shell [style*="background:#eef2ff" i], #roteirizador-shell [style*="background: #eff6ff" i],
+#roteirizador-shell [style*="background: #eef2ff" i] {
+  background: var(--blue-bg) !important;
+}
+#roteirizador-shell [style*="background:#f0fdf4" i], #roteirizador-shell [style*="background:#d1fae5" i],
+#roteirizador-shell [style*="background: #f0fdf4" i] {
+  background: var(--green-bg) !important;
+}
+#roteirizador-shell [style*="background:#4f46e5" i], #roteirizador-shell [style*="background: #4f46e5" i] {
+  background: var(--accent) !important; color: #111A0A !important;
+}
+/* Textos fixos: cinzas escuros/medios e tons de alerta pensados para fundo branco */
+#roteirizador-shell [style*="color:#111827" i], #roteirizador-shell [style*="color:#1f2937" i],
+#roteirizador-shell [style*="color:#374151" i], #roteirizador-shell [style*="color: #111827" i],
+#roteirizador-shell [style*="color: #374151" i] { color: var(--text) !important; }
+#roteirizador-shell [style*="color:#4b5563" i], #roteirizador-shell [style*="color:#6b7280" i],
+#roteirizador-shell [style*="color: #6b7280" i], #roteirizador-shell [style*="color:#4a6535" i] { color: var(--text-3) !important; }
+#roteirizador-shell [style*="color:#9ca3af" i], #roteirizador-shell [style*="color: #9ca3af" i] { color: var(--text-4) !important; }
+#roteirizador-shell [style*="color:#92400e" i], #roteirizador-shell [style*="color:#b45309" i],
+#roteirizador-shell [style*="color:#78350f" i] { color: var(--amber-text) !important; }
+#roteirizador-shell [style*="color:#b91c1c" i], #roteirizador-shell [style*="color:#dc2626" i],
+#roteirizador-shell [style*="color:#7f1d1d" i] { color: var(--red-text) !important; }
+#roteirizador-shell [style*="color:#1d4ed8" i], #roteirizador-shell [style*="color:#3730a3" i],
+#roteirizador-shell [style*="color:#1e3a8a" i] { color: var(--blue-text) !important; }
+#roteirizador-shell [style*="color:#4f46e5" i] { color: var(--accent) !important; }
+/* Bordas claras */
+#roteirizador-shell [style*="solid #d1d5db" i], #roteirizador-shell [style*="solid #e5e7eb" i],
+#roteirizador-shell [style*="solid #f3f4f6" i] { border-color: var(--border) !important; }
+#roteirizador-shell [style*="solid #fde68a" i], #roteirizador-shell [style*="solid #fcd34d" i] { border-color: var(--amber-border) !important; }
+#roteirizador-shell [style*="solid #fecaca" i] { border-color: var(--red-border) !important; }
+#roteirizador-shell [style*="solid #93c5fd" i], #roteirizador-shell [style*="solid #bfdbfe" i] { border-color: var(--blue-border) !important; }
