@@ -2348,7 +2348,7 @@ async function render(){
         ${helpRole?`<button class="help-btn" onclick="openHelpModal('${helpRole}')" title="${helpTitle}">❓ ${helpLabel}</button>`:""}
         <div class="avatar ${u.role==="admin"||u.role==="operacional"?"admin":""}">${esc(u.initials)}</div>
         <span class="user-name">${u.role==="admin"?"Administrador":u.role==="operacional"?esc(u.name):esc(u.carrier)}</span>
-        <button class="btn-logout" onclick="openChangePwd()" title="Alterar minha senha">🔑 Senha</button>
+        <button class="btn-logout" onclick="openChangePwd()" title="Trocar senha do login Nexta (vale para todos os portais)">🔑 Trocar senha</button>
         <button class="btn-logout" onclick="logout()">↩ Sair</button>
       </div>
     </div>
@@ -2419,15 +2419,15 @@ const MANUAL_TRANSPORTADOR_HTML = `
   <div class="hm-section-title">6. Navegação por datas</div>
   <p>Use as setas <b>‹</b> e <b>›</b> para navegar entre os dias. É possível preencher a disponibilidade de amanhã com antecedência — recomendamos preencher sempre o dia atual e o seguinte.</p>
   <div class="hm-section-title">7. Alterando sua senha</div>
-  <p>Você pode alterar sua própria senha a qualquer momento diretamente pelo sistema:</p>
+  <p>A senha é a do <b>login Nexta</b> (a mesma tela de entrada do portal) e vale para todos os sistemas que você usa — Outbound e, se tiver, Inbound.</p>
   <div class="hm-steps">
-    <div class="hm-step"><span class="hm-step-n">1</span><div>Clique no botão <b>🔑 Senha</b> na barra superior, ao lado do botão "Sair".</div></div>
-    <div class="hm-step"><span class="hm-step-n">2</span><div>Digite a <b>nova senha</b> (mínimo 6 caracteres) e confirme.</div></div>
-    <div class="hm-step"><span class="hm-step-n">3</span><div>Clique em <b>💾 Salvar senha</b>. A mudança entra em vigor imediatamente.</div></div>
+    <div class="hm-step"><span class="hm-step-n">1</span><div>Clique no botão <b>🔑 Trocar senha</b> na barra superior, ao lado do botão "Sair".</div></div>
+    <div class="hm-step"><span class="hm-step-n">2</span><div>Você vai para a tela de senha do portal Nexta: digite a <b>senha atual</b> e a <b>nova senha</b> (mínimo 6 caracteres).</div></div>
+    <div class="hm-step"><span class="hm-step-n">3</span><div>Ao salvar, você volta automaticamente para o Outbound.</div></div>
   </div>
-  <div class="hm-callout">🔒 Sua senha é protegida pelo Firebase Authentication. O administrador <b>não consegue ver</b> sua senha — apenas redefini-la caso necessário.</div>
+  <div class="hm-callout">🔒 Se o seu login é usado por mais de uma pessoa da transportadora, <b>combine com elas antes de trocar</b> — a senha nova vale para todos.</div>
   <div class="hm-section-title">8. Esqueci minha senha</div>
-  <p>Se você esquecer a senha, <b>entre em contato com o administrador</b>. Ele pode definir uma senha temporária para você acessar o sistema. Após entrar, vá em <b>🔑 Senha</b> na barra superior e defina uma nova senha de sua preferência.</p>
+  <p>Se você esquecer a senha, <b>entre em contato com o administrador</b>. Ele define uma senha provisória e, no primeiro acesso, o portal pede para você criar a sua.</p>
   <div class="hm-section-title">9. Perguntas frequentes</div>
   <table class="hm-table">
     <thead><tr><th>Dúvida</th><th>Resposta</th></tr></thead>
@@ -2458,7 +2458,7 @@ const MANUAL_OPERACIONAL_HTML = `
   <ul>
     <li>O login é feito com usuário e senha fornecidos pelo administrador.</li>
     <li>A sessão é mantida automaticamente pelo Firebase Authentication — não é necessário logar novamente ao reabrir o navegador.</li>
-    <li>Para alterar sua senha, clique em <b>🔑 Senha</b> na barra superior a qualquer momento.</li>
+    <li>Para alterar sua senha, clique em <b>🔑 Trocar senha</b> na barra superior: a troca é feita no login Nexta e vale para todos os portais.</li>
     <li>Se esquecer a senha, solicite ao administrador que redefina uma senha temporária para você.</li>
   </ul>
   <div class="hm-section-title">3. Daily Briefing</div>
@@ -2545,7 +2545,7 @@ const MANUAL_OPERACIONAL_HTML = `
       <tr><td>Desbloquear lançamentos</td><td>❌ Exclusivo do admin</td></tr>
       <tr><td>Resetar senha de outros usuários</td><td>❌ Exclusivo do admin</td></tr>
       <tr><td>Dashboard, painel, histórico, exportação</td><td>✅ Disponível</td></tr>
-      <tr><td>Alterar a própria senha (botão 🔑 Senha)</td><td>✅ Disponível</td></tr>
+      <tr><td>Alterar a própria senha (botão 🔑 Trocar senha)</td><td>✅ Disponível</td></tr>
     </tbody>
   </table>
 </div>`;

@@ -58,62 +58,84 @@ h1, h2, h3, .page-title, .section-title, .card-title {
   --bg-2: #17251B;  /* usado no codigo como var(--bg-2, #F4F6F1): sem definir, caia no cinza claro */
   background: var(--bg) !important; color: var(--text) !important;
 }
-#roteirizador-shell [style*="background:#fef9c3" i], #roteirizador-shell [style*="background:#fef3e2" i] { background: var(--amber-bg) !important; }
-#roteirizador-shell [style*="background:#f0fff4" i], #roteirizador-shell [style*="background:#f0f9eb" i],
-#roteirizador-shell [style*="background:#dcfce7" i] { background: var(--green-bg) !important; }
-#roteirizador-shell input, #roteirizador-shell select, #roteirizador-shell textarea {
+:is(#roteirizador-shell, .modal-card) [style*="background:#fef9c3" i], :is(#roteirizador-shell, .modal-card) [style*="background:#fef3e2" i] { background: var(--amber-bg) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="background:#f0fff4" i], :is(#roteirizador-shell, .modal-card) [style*="background:#f0f9eb" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#dcfce7" i] { background: var(--green-bg) !important; }
+:is(#roteirizador-shell, .modal-card) input, :is(#roteirizador-shell, .modal-card) select, :is(#roteirizador-shell, .modal-card) textarea {
   background: #17251B !important; color: var(--text) !important; border-color: var(--border) !important;
 }
-#roteirizador-shell input::placeholder, #roteirizador-shell textarea::placeholder { color: var(--text-4) !important; }
+:is(#roteirizador-shell, .modal-card) input::placeholder, :is(#roteirizador-shell, .modal-card) textarea::placeholder { color: var(--text-4) !important; }
 
 /* Cores fixas no codigo do roteirizador (style="..."): fundos claros viram superficie escura.
    A ordem importa: o generico (#fff) vem antes dos tons especificos (#fff7ed, #fffbeb...), que o sobrescrevem. */
-#roteirizador-shell [style*="background:#fff" i], #roteirizador-shell [style*="background: #fff" i],
-#roteirizador-shell [style*="background:#f9fafb" i], #roteirizador-shell [style*="background: #f9fafb" i],
-#roteirizador-shell [style*="background:#f3f4f6" i], #roteirizador-shell [style*="background: #f3f4f6" i],
-#roteirizador-shell [style*="background:white" i], #roteirizador-shell [style*="background-color:#fff" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#fff" i], :is(#roteirizador-shell, .modal-card) [style*="background: #fff" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#f9fafb" i], :is(#roteirizador-shell, .modal-card) [style*="background: #f9fafb" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#f3f4f6" i], :is(#roteirizador-shell, .modal-card) [style*="background: #f3f4f6" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:white" i], :is(#roteirizador-shell, .modal-card) [style*="background-color:#fff" i] {
   background: var(--surface) !important;
 }
-#roteirizador-shell [style*="background:#fef3c7" i], #roteirizador-shell [style*="background:#fffbeb" i],
-#roteirizador-shell [style*="background:#fff7ed" i], #roteirizador-shell [style*="background:#fffdf0" i],
-#roteirizador-shell [style*="background:#fffbf2" i], #roteirizador-shell [style*="background: #fef3c7" i],
-#roteirizador-shell [style*="background: #fffbeb" i], #roteirizador-shell [style*="background: #fff7ed" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#fef3c7" i], :is(#roteirizador-shell, .modal-card) [style*="background:#fffbeb" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#fff7ed" i], :is(#roteirizador-shell, .modal-card) [style*="background:#fffdf0" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#fffbf2" i], :is(#roteirizador-shell, .modal-card) [style*="background: #fef3c7" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #fffbeb" i], :is(#roteirizador-shell, .modal-card) [style*="background: #fff7ed" i] {
   background: var(--amber-bg) !important;
 }
-#roteirizador-shell [style*="background:#fee2e2" i], #roteirizador-shell [style*="background:#fef2f2" i],
-#roteirizador-shell [style*="background:#fff5f5" i], #roteirizador-shell [style*="background:#fff1f2" i],
-#roteirizador-shell [style*="background: #fee2e2" i], #roteirizador-shell [style*="background: #fef2f2" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#fee2e2" i], :is(#roteirizador-shell, .modal-card) [style*="background:#fef2f2" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#fff5f5" i], :is(#roteirizador-shell, .modal-card) [style*="background:#fff1f2" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #fee2e2" i], :is(#roteirizador-shell, .modal-card) [style*="background: #fef2f2" i] {
   background: var(--red-bg) !important;
 }
-#roteirizador-shell [style*="background:#eff6ff" i], #roteirizador-shell [style*="background:#eef3ff" i],
-#roteirizador-shell [style*="background:#eef2ff" i], #roteirizador-shell [style*="background: #eff6ff" i],
-#roteirizador-shell [style*="background: #eef2ff" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#eff6ff" i], :is(#roteirizador-shell, .modal-card) [style*="background:#eef3ff" i],
+:is(#roteirizador-shell, .modal-card) [style*="background:#eef2ff" i], :is(#roteirizador-shell, .modal-card) [style*="background: #eff6ff" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #eef2ff" i] {
   background: var(--blue-bg) !important;
 }
-#roteirizador-shell [style*="background:#f0fdf4" i], #roteirizador-shell [style*="background:#d1fae5" i],
-#roteirizador-shell [style*="background: #f0fdf4" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#f0fdf4" i], :is(#roteirizador-shell, .modal-card) [style*="background:#d1fae5" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #f0fdf4" i] {
   background: var(--green-bg) !important;
 }
-#roteirizador-shell [style*="background:#4f46e5" i], #roteirizador-shell [style*="background: #4f46e5" i] {
+:is(#roteirizador-shell, .modal-card) [style*="background:#4f46e5" i], :is(#roteirizador-shell, .modal-card) [style*="background: #4f46e5" i] {
   background: var(--accent) !important; color: #111A0A !important;
 }
 /* Textos fixos: cinzas escuros/medios e tons de alerta pensados para fundo branco */
-#roteirizador-shell [style*="color:#111827" i], #roteirizador-shell [style*="color:#1f2937" i],
-#roteirizador-shell [style*="color:#374151" i], #roteirizador-shell [style*="color: #111827" i],
-#roteirizador-shell [style*="color: #374151" i] { color: var(--text) !important; }
-#roteirizador-shell [style*="color:#4b5563" i], #roteirizador-shell [style*="color:#6b7280" i],
-#roteirizador-shell [style*="color: #6b7280" i], #roteirizador-shell [style*="color:#4a6535" i] { color: var(--text-3) !important; }
-#roteirizador-shell [style*="color:#9ca3af" i], #roteirizador-shell [style*="color: #9ca3af" i] { color: var(--text-4) !important; }
-#roteirizador-shell [style*="color:#92400e" i], #roteirizador-shell [style*="color:#b45309" i],
-#roteirizador-shell [style*="color:#78350f" i] { color: var(--amber-text) !important; }
-#roteirizador-shell [style*="color:#b91c1c" i], #roteirizador-shell [style*="color:#dc2626" i],
-#roteirizador-shell [style*="color:#7f1d1d" i] { color: var(--red-text) !important; }
-#roteirizador-shell [style*="color:#1d4ed8" i], #roteirizador-shell [style*="color:#3730a3" i],
-#roteirizador-shell [style*="color:#1e3a8a" i] { color: var(--blue-text) !important; }
-#roteirizador-shell [style*="color:#4f46e5" i] { color: var(--accent) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#111827" i], :is(#roteirizador-shell, .modal-card) [style*="color:#1f2937" i],
+:is(#roteirizador-shell, .modal-card) [style*="color:#374151" i], :is(#roteirizador-shell, .modal-card) [style*="color: #111827" i],
+:is(#roteirizador-shell, .modal-card) [style*="color: #374151" i] { color: var(--text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#4b5563" i], :is(#roteirizador-shell, .modal-card) [style*="color:#6b7280" i],
+:is(#roteirizador-shell, .modal-card) [style*="color: #6b7280" i], :is(#roteirizador-shell, .modal-card) [style*="color:#4a6535" i] { color: var(--text-3) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#9ca3af" i], :is(#roteirizador-shell, .modal-card) [style*="color: #9ca3af" i] { color: var(--text-4) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#92400e" i], :is(#roteirizador-shell, .modal-card) [style*="color:#b45309" i],
+:is(#roteirizador-shell, .modal-card) [style*="color:#78350f" i] { color: var(--amber-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#b91c1c" i], :is(#roteirizador-shell, .modal-card) [style*="color:#dc2626" i],
+:is(#roteirizador-shell, .modal-card) [style*="color:#7f1d1d" i] { color: var(--red-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#1d4ed8" i], :is(#roteirizador-shell, .modal-card) [style*="color:#3730a3" i],
+:is(#roteirizador-shell, .modal-card) [style*="color:#1e3a8a" i] { color: var(--blue-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#4f46e5" i] { color: var(--accent) !important; }
 /* Bordas claras */
-#roteirizador-shell [style*="solid #d1d5db" i], #roteirizador-shell [style*="solid #e5e7eb" i],
-#roteirizador-shell [style*="solid #f3f4f6" i] { border-color: var(--border) !important; }
-#roteirizador-shell [style*="solid #fde68a" i], #roteirizador-shell [style*="solid #fcd34d" i] { border-color: var(--amber-border) !important; }
-#roteirizador-shell [style*="solid #fecaca" i] { border-color: var(--red-border) !important; }
-#roteirizador-shell [style*="solid #93c5fd" i], #roteirizador-shell [style*="solid #bfdbfe" i] { border-color: var(--blue-border) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #d1d5db" i], :is(#roteirizador-shell, .modal-card) [style*="solid #e5e7eb" i],
+:is(#roteirizador-shell, .modal-card) [style*="solid #f3f4f6" i] { border-color: var(--border) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #fde68a" i], :is(#roteirizador-shell, .modal-card) [style*="solid #fcd34d" i] { border-color: var(--amber-border) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #fecaca" i] { border-color: var(--red-border) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #93c5fd" i], :is(#roteirizador-shell, .modal-card) [style*="solid #bfdbfe" i] { border-color: var(--blue-border) !important; }
+
+/* ── Janelas (modais) do roteirizador: ficam FORA do #roteirizador-shell (ex.: mapa da viagem, quadro de custo
+   #mv-custo, alerta de pedagio). Mesmas variaveis escuras; o fundo do proprio cartao continua o do app. ── */
+.modal-card {
+  --surface: #1A2A20; --bg-2: #17251B; --text-2: #D7E5C6; --text-3: #BFD4A8; --text-4: #7FA069;
+  --accent: #8DC830; --accent-bg: rgba(141, 200, 48, .14); --accent-border: rgba(141, 200, 48, .40);
+  --amber-text: #FDE68A; --amber-bg: rgba(250, 204, 21, .10); --amber-border: rgba(250, 204, 21, .35);
+  --red-text: #FFB4AC; --red-bg: rgba(255, 107, 95, .12); --red-border: rgba(255, 107, 95, .35);
+  --blue-text: #BFDBFE; --blue-bg: rgba(96, 165, 250, .12); --blue-border: rgba(96, 165, 250, .35);
+  --green-text: #CDEB8B; --green-bg: rgba(141, 200, 48, .12);
+}
+/* Tons que so' aparecem no quadro de custo / alerta de pedagio */
+:is(#roteirizador-shell, .modal-card) [style*="background:#f8fafc" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #f8fafc" i] { background: var(--surface) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="background:#fef9f3" i],
+:is(#roteirizador-shell, .modal-card) [style*="background: #fef9f3" i] { background: var(--amber-bg) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#15803d" i], :is(#roteirizador-shell, .modal-card) [style*="color:#166534" i] { color: var(--green-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #fed7aa" i], :is(#roteirizador-shell, .modal-card) [style*="solid #fdba74" i] { border-color: var(--amber-border) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#9a3412" i], :is(#roteirizador-shell, .modal-card) [style*="color:#c2410c" i] { color: var(--amber-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="background:#dbeafe" i] { background: var(--blue-bg) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="color:#1e40af" i] { color: var(--blue-text) !important; }
+:is(#roteirizador-shell, .modal-card) [style*="solid #d97706" i] { border-color: var(--amber-border) !important; }
