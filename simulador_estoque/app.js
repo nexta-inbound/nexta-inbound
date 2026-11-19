@@ -500,6 +500,14 @@ function fobNaoProgramadoDia(i){
  if(filtroStatusAtivo()&&!filtroStatusViagem.has('backlog'))return 0;
  return registrosReais().reduce((s,r)=>s+(fobNaoProgramado(r,day(i))||0),0);
 }
+// Transferencia de entrada SEM PLACA que esta' na conta do dia (usuaria, 2026-11-19: "azul sem placa - independente
+// se e' compra ou transferencia; cinza com placa"): Backlog no portal ('naoprog') ou so' na cadencia, sem status de viagem.
+function transfNaoProgramadaDia(i){
+ if(i<0||!incluiNaoProg(entradaNoDia($('entrada')?.value||'auto',day(i))))return 0;
+ if(filtroStatusAtivo()&&!filtroStatusViagem.has('backlog'))return 0;
+ return registrosReais().reduce((s,r)=>s+(entradasTransfPorDia(r)[day(i)]||[])
+  .filter(t=>t.conta==='naoprog'||(!t.conta&&!emViagemTransf(t))).reduce((a,t)=>a+(t.volume||0),0),0);
+}
 function fobAposCorte(i){return somaOuNula(viagensDoDia(i,'fob').filter(v=>v.aposCorte&&v.grupo!=='programado').map(v=>v.volume||0));}
 function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaReal?'chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?'ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
  return `<div style="color:${prog?'#F97316':v.aposCorte?COR_FOB_D1:'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
@@ -741,7 +749,8 @@ function chart(result,original,offsets){
    const misFob=0;
    // Nao programado (viagens do portal sem placa) em azul claro, separado do FOB com placa (usuaria, 2026-10-21:
    // "na visao LE / programado e nao programado, coloca essa outra cor + azul pra falar que nao ta programado").
-   const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),fobNaoProgramadoDia(i)):0;
+   // Desde 2026-11-19 o azul inclui a transferencia sem placa (antes ficava no cinza): azul = sem placa, cinza = com placa.
+   const npFob=k==='fob'?Math.min(Math.max(v-d1-misFob,0),fobNaoProgramadoDia(i)+transfNaoProgramadaDia(i)):0;
    pedacos.push([nome,v-d1-misFob-npFob,cor,true,k.startsWith('transferIn'),false]);
    if(npFob>0)pedacos.push(['Trânsito FOB · não programado (sem placa)',npFob,COR_NAO_PROG,true,false,false]);
    if(misFob>0)pedacos.push(['Trânsito FOB · cadência MIS (planejamento)',misFob,cor,true,false,true]);
