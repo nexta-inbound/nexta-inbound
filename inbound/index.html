@@ -4294,6 +4294,13 @@
 
   <div class="table-wrap" style="margin-top:20px">
     <div class="table-toolbar"><span class="table-title">Recusas</span><span class="section-sub" id="hoContagem"></span></div>
+    <!-- Legenda das cores das linhas (19/11/2026: a linha âmbar parecia "marrom" sem explicação) -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--text-dim);padding:0 14px 10px">
+      <span>Antecedência até a descarga:</span>
+      <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--danger-dim);border:1px solid var(--danger);vertical-align:-2px;margin-right:5px"></span>menos de 2 dias (em cima da hora)</span>
+      <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--accent2-dim);border:1px solid var(--accent2);vertical-align:-2px;margin-right:5px"></span>2 a 4 dias</span>
+      <span>sem cor: 5 dias ou mais</span>
+    </div>
     <table>
       <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. prog.</th><th>Descarga prog.</th>
         <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Motivo</th><th>Depois</th></tr></thead>
@@ -5668,7 +5675,7 @@ function formatarHistoricoItem(h) {
   const dataFmt = isNaN(dt.getTime())
     ? ''
     : dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', 'Em Andamento': '🛣️', 'Viagem Finalizada': '🏁', Cancelado: '✕', Reaberto: '↩️', 'Frete revisado': '💲' }[h.evento] || '•';
+  const icone = { Ofertado: '📤', Aceito: '✅', Recusado: '❌', 'Placa Enviada': '🚚', 'Frota Dedicada': '🚛', 'Em Andamento': '🛣️', 'Viagem Finalizada': '🏁', Cancelado: '✕', Reaberto: '↩️', 'Frete revisado': '💲', 'Transportadora trocada': '🔁' }[h.evento] || '•';
   // "quem" combina autor (usuário logado ou "Herrlog (automático)") + transportador/CNPJ
   // quando relevante (ex.: Frota Dedicada mostra para qual transportador foi atribuída).
   const partesQuem = [];
@@ -6439,6 +6446,7 @@ async function aplicarEmLote() {
       return;
     }
     const statusAnterior = v.status;
+    const transpAnteriorLote = v.transportador || '';
     const agendamentoAnterior = v.statusAgendamento || 'Não Agendado';
     if (removerAlocacao) {
       v.transportador = '';
@@ -6455,8 +6463,12 @@ async function aplicarEmLote() {
       // assinaturasProgramadores (node próprio) pelo nome, na hora de gerar o PDF.
     }
     if (status) v.status = status;
+    if (status) limparPlacaAoVoltar(v, statusAnterior);
     if (status && status !== statusAnterior && ['Ofertado','Recusado','Aceito','Placa Enviada','Cancelado'].includes(status)) {
       registrarHistoricoOferta(v, status, undefined, status === 'Cancelado' ? motivoCancelamento : undefined);
+    } else if (v.transportador && v.transportador !== transpAnteriorLote) {
+      // Troca de transportadora em lote sem mudar o status (ver o mesmo caso no modal, NXT-007495).
+      registrarHistoricoOferta(v, 'Transportadora trocada', undefined, transpAnteriorLote ? `antes: ${transpAnteriorLote}` : undefined);
     }
     if (agendamento && agendamento !== agendamentoAnterior) {
       v.statusAgendamento = agendamento;
@@ -15066,6 +15078,24 @@ function _aplicarAceiteViagem(v) {
   registrarHistoricoOferta(v, 'Aceito');
 }
 
+// Viagem que VOLTA pra Backlog ou e' (re)ofertada perde placa, carretas e motorista (usuaria, 2026-11-19: "a ideia
+// e' que limpe"): sao do transporte anterior; o proximo transportador manda os dele. Antes ficavam (ex.: NXT-007090
+// voltou de Frota Dedicada pra Backlog com a placa; NXT-006780 reofertada e aceita com a placa da frota dedicada) e
+// o simulador mostrava a viagem como "com placa". Registra no historico o que foi retirado.
+function limparPlacaAoVoltar(v, statusAnterior) {
+  if (!['Backlog', 'Ofertado'].includes(v.status) || statusAnterior === v.status) return;
+  const tinha = [v.placa, v.placaCarreta1, v.placaCarreta2].filter(Boolean).join(' / ');
+  if (!tinha && !v.nomeMotorista && !v.cpfMotorista) return;
+  v.placa = ''; v.placaCarreta1 = ''; v.placaCarreta2 = ''; v.nomeMotorista = ''; v.cpfMotorista = '';
+  v.veiculoDedicadoId = '';
+  if (!Array.isArray(v.historicoProgramacao)) v.historicoProgramacao = [];
+  v.historicoProgramacao.push({
+    data: new Date().toISOString(),
+    usuario: _authUsuarioAtual?.nome || '',
+    evento: `Placa${tinha ? ' ' + tinha : ''} e motorista retirados: viagem voltou para ${v.status}`,
+  });
+}
+
 function _aplicarRecusaViagem(v) {
   registrarHistoricoOferta(v, 'Recusado');
   v.status = 'Recusado';
@@ -15750,8 +15780,10 @@ async function salvarStatusInline(realIdx, novoStatus) {
     motivoCancelamento = await pedirMotivoCancelamento();
     if (!motivoCancelamento) { renderViagensTable(); return; } // mantém o select no status anterior
   }
+  const statusAntesDaTroca = v.status;
   v.status = novoStatus;
   v.veiculoDedicadoId = '';
+  limparPlacaAoVoltar(v, statusAntesDaTroca);
   if (v.placa && v.status === 'Aceito') {
     v.status = 'Placa Enviada';
   }
@@ -16022,6 +16054,7 @@ async function salvarViagem() {
       return;
     }
   }
+  const transpAnterior = v.transportador || '';
   v.transportador     = novoTransportador;
   v.transportadorCnpj = novoTransportador ? novoCnpj : '';
   v.status         = novoStatus;
@@ -16063,6 +16096,9 @@ async function salvarViagem() {
   if (v.status !== statusAnterior
     && ['Ofertado','Recusado','Aceito','Placa Enviada','Frota Dedicada','Cancelado'].includes(v.status)) {
     registrarHistoricoOferta(v, v.status, undefined, motivoCancelamento);
+  } else if (novoTransportador && novoTransportador !== transpAnterior) {
+    // Troca de transportadora sem mudar o status (ex.: segue "Ofertado") não deixava rastro (NXT-007495, 19/11/2026).
+    registrarHistoricoOferta(v, 'Transportadora trocada', undefined, transpAnterior ? `antes: ${transpAnterior}` : undefined);
   }
   // 🔄 do campo Frete (marcarRevisaoFreteModal) — só se a viagem continua em oferta com o mesmo
   // transportador; uma oferta nova neste mesmo Salvar já gravou o valor atual (gravarFreteOferta).
@@ -17356,6 +17392,7 @@ async function reabrirViagemCancelada(v, novoStatus) {
   registrarHistoricoOferta(v, 'Reaberto', undefined, motivo);
   v.status = (novoStatus === 'Aceito' && v.placa) ? 'Placa Enviada' : novoStatus;
   v.veiculoDedicadoId = '';
+  limparPlacaAoVoltar(v, 'Cancelado');
   if (['Ofertado', 'Recusado', 'Aceito', 'Placa Enviada'].includes(v.status)) {
     registrarHistoricoOferta(v, v.status);
   }
@@ -21128,9 +21165,18 @@ function _hoMontarLinhas() {
       }
       let depois = '';
       if (HO_NEGATIVOS.has(h.evento)) {
-        const prox = hist.slice(idx + 1).find(x => ['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada'].includes(x.evento)
-          && x.transportador && x.transportador !== h.transportador);
-        if (prox) depois = `Reofertada → ${prox.transportador}`;
+        // Caminho completo até quem ficou com a viagem (19/11/2026, caso NXT-007495: recusa da Morada →
+        // ofertada à SADI → trocada pra KMT sem evento). Antes mostrava só o 1º destino, e parecia que a SADI
+        // tinha feito a viagem. A transportadora atual da viagem fecha o caminho mesmo quando a troca não
+        // ficou registrada no histórico (trocas antigas, antes do evento "Transportadora trocada").
+        const caminho = [];
+        hist.slice(idx + 1).forEach(x => {
+          if (['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Transportadora trocada'].includes(x.evento)
+            && x.transportador && x.transportador !== caminho.at(-1)) caminho.push(x.transportador);
+        });
+        if (v.transportador && caminho.length && v.transportador !== caminho.at(-1)) caminho.push(v.transportador);
+        while (caminho[0] === h.transportador) caminho.shift();
+        if (caminho.length) depois = `Reofertada → ${caminho.join(' → ')}`;
         else if (h.evento === 'Cancelado') {
           const cad = String(v.cadenciaOrigem || '').split('-')[0];
           const subst = (porCadencia.get(cad) || [])
