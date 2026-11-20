@@ -5071,12 +5071,13 @@ async function addPlate(){
       btn.disabled=false;btn.textContent="+ Cadastrar placa";return;
     }
     await dbAddAudit("plate_add", { carrier, placa, operacao, tipo, contrato });
-    document.getElementById("r-placa").value="";
-    document.getElementById("r-cap").value="";
-    msg.textContent=`Placa ${placa} cadastrada!`;msg.style.color="var(--green)";
+    // A placa ja' esta' salva. No banco novo (Realtime, 19/11/2026) a tela se redesenha sozinha com a placa nova
+    // e o formulario pode ja' ter sido trocado: sem os "?." isso dava "Erro ao cadastrar placa" depois do sucesso.
+    const campoPlaca=document.getElementById("r-placa"); if(campoPlaca) campoPlaca.value="";
+    const campoCap=document.getElementById("r-cap"); if(campoCap) campoCap.value="";
+    if(msg?.isConnected){ msg.textContent=`Placa ${placa} cadastrada!`;msg.style.color="var(--green)"; setTimeout(()=>{msg.textContent="";},3000); }
     showToast(`Placa ${placa} cadastrada!`);
-    setTimeout(()=>{msg.textContent="";},3000);
-    btn.disabled=false;btn.textContent="+ Cadastrar placa";
+    if(btn?.isConnected){ btn.disabled=false;btn.textContent="+ Cadastrar placa"; }
     await renderTabBody();
   } catch(e) {
     console.error("Erro ao cadastrar placa:", e);
@@ -5561,7 +5562,7 @@ async function addCarrier(){
   if(CARRIERS.includes(name)){msg.textContent='Transportador já existe.';msg.style.color='var(--red)';return;}
   CARRIERS.push(name);
   await dbSaveCarriers(CARRIERS);
-  document.getElementById('new-carrier-name').value='';
+  {const c=document.getElementById('new-carrier-name'); if(c) c.value='';} // tela pode ter se redesenhado (Realtime)
   msg.textContent=`${name} adicionado!`;msg.style.color='var(--green)';
   showToast(`Transportador ${name} cadastrado!`);
   setTimeout(()=>{msg.textContent='';},3000);
@@ -5877,7 +5878,7 @@ async function addDriver(){
   if(dup){msg.textContent='Motorista já cadastrado com esse turno e operação.';msg.style.color='var(--red)';return;}
   allDrivers[carrier].push({nome,operacao:op,turno,ativo:true});
   await dbSaveDrivers(allDrivers);
-  document.getElementById('drv-nome').value='';
+  {const c=document.getElementById('drv-nome'); if(c) c.value='';} // tela pode ter se redesenhado (Realtime)
   msg.textContent=`${nome} cadastrado!`;msg.style.color='var(--green)';
   showToast(`Motorista ${nome} cadastrado!`);
   setTimeout(()=>{msg.textContent='';},3000);
@@ -5991,7 +5992,7 @@ async function addOp(){
   if(OPERACOES.includes(name)){msg.textContent='Operação já existe.';msg.style.color='var(--red)';return;}
   OPERACOES.push(name);
   await dbSaveOperacoes(OPERACOES);
-  document.getElementById('new-op-name').value='';
+  {const c=document.getElementById('new-op-name'); if(c) c.value='';} // tela pode ter se redesenhado (Realtime)
   msg.textContent=`"${name}" cadastrada!`;msg.style.color='var(--green)';
   showToast(`Operação "${name}" cadastrada!`);
   setTimeout(()=>{msg.textContent='';},3000);

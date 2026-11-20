@@ -34,7 +34,11 @@ export function getFirestore(app) {
   const sdk = {ref, get, onValue, runTransaction, set, remove, query: consultaRealtime, orderByChild, equalTo};
   const reader = createRealtimeReader({sdk, database, authorize});
   // Gravacoes: ligadas so' na homologacao. Em producao seguem desligadas ate' a virada (decisao da usuaria).
-  const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao});
+  // Teste de gravacao no banco real (19/11/2026, autorizado pela usuaria): SO' no localhost (servidor_local) e
+  // so' com ?gravar na URL. O site publicado (nexta-logistica.com.br) nunca entra aqui. As regras do banco
+  // continuam valendo (transportador so' grava o que e' dele).
+  const testeLocal = ['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('gravar');
+  const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao || testeLocal});
   contexts.set(context, createCompatibilityApi({reader, writer,
     makeId: collection => push(ref(database, COLLECTION_PATHS[collection])).key}));
   return context;
