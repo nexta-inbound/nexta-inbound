@@ -6,6 +6,30 @@ import { createRealtimeWriter } from './realtime-writer.mjs';
 import { createCompatibilityApi } from './realtime-compat.mjs';
 
 const contexts = new WeakMap();
+
+// Pasta do Histórico de Roteirizações (SharePoint "Historico Roteirizações", sincronizada no PC de cada um).
+// Gravar arquivo na pasta não passa pelo banco, então o writesEnabled não protege: até a virada o Outbound novo
+// (inclusive homologação e localhost ?gravar, que usam dados de teste) só LÊ a pasta — pedido da usuária 23/11/2026:
+// "só abrir e ver as roteirizações que já estão na pasta, sem salvar nada". Na virada: true, junto com as gravações.
+const PASTA_HISTORICO_LIBERADA = false;
+const AVISO_PASTA = 'Outbound novo em teste: a pasta do Histórico é só para consulta. Nada foi salvo nela.';
+function travarPastaHistoricoSoLeitura() {
+  if (window.__pastaHistoricoTravada) return;
+  window.__pastaHistoricoTravada = true;
+  const negar = () => Promise.reject(new DOMException(AVISO_PASTA, 'NotAllowedError'));
+  const F = window.FileSystemFileHandle?.prototype, D = window.FileSystemDirectoryHandle?.prototype;
+  if (F) F.createWritable = negar;                 // salvar / reescrever arquivo
+  if (D) {
+    D.removeEntry = negar;                         // excluir roteirização
+    const original = D.getFileHandle, originalDir = D.getDirectoryHandle;
+    D.getFileHandle = function (nome, opcoes) {    // criar arquivo novo
+      return opcoes?.create ? negar() : original.call(this, nome, opcoes);
+    };
+    D.getDirectoryHandle = function (nome, opcoes) {
+      return opcoes?.create ? negar() : originalDir.call(this, nome, opcoes);
+    };
+  }
+}
 // Nome legado mantido apenas para limitar mudancas nas telas. A conexao e Realtime.
 export function getFirestore(app) {
   // Producao (nexta-outbound) ou homologacao (testes com contas ficticias, 17/11/2026).
@@ -39,6 +63,7 @@ export function getFirestore(app) {
   // continuam valendo (transportador so' grava o que e' dele).
   const testeLocal = ['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('gravar');
   const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao || testeLocal});
+  if (!PASTA_HISTORICO_LIBERADA) travarPastaHistoricoSoLeitura();
   contexts.set(context, createCompatibilityApi({reader, writer,
     makeId: collection => push(ref(database, COLLECTION_PATHS[collection])).key}));
   return context;
