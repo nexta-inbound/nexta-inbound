@@ -4303,7 +4303,7 @@
     </div>
     <table>
       <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. prog.</th><th>Descarga prog.</th>
-        <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Motivo</th><th>Depois</th></tr></thead>
+        <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Motivo</th><th>Depois</th><th>Histórico da viagem</th></tr></thead>
       <tbody id="hoEventosBody"></tbody>
     </table>
   </div>
@@ -21100,6 +21100,13 @@ function _hoDataBR(s) {
   return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null;
 }
 function _hoLista(x) { return Array.isArray(x) ? x.filter(Boolean) : Object.values(x || {}).filter(Boolean); }
+// Uma linha do histórico de ofertas da viagem, igual à janela da viagem (coluna "Histórico da viagem", 23/11/2026)
+function _hoHistTexto(x) {
+  const d = new Date(x.data);
+  const quando = isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const quem = [x.usuario, [x.transportador, x.cnpj].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  return `${quando} ${x.evento}${x.motivo ? ` (${x.motivo})` : ''}${quem ? ' — ' + quem : ''}`.trim();
+}
 function _hoFmtData(iso) {
   const d = new Date(iso);
   return isNaN(d) ? String(iso || '') : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -21193,7 +21200,7 @@ function _hoMontarLinhas() {
         data: h.data || '', semana, idViagem: v.idViagem, destino: v.destino || '', produto: v.produto || '',
         volume: v.volume || '', carregamento: v.dtCarregProg || v.dtCarreg || '', descarga: v.dtDescProg || v.dtDesc || '',
         evento: h.evento, transportador: h.transportador || '', usuario: h.usuario || '', motivo: h.motivo || '',
-        statusAtual: v.status || '', antecedencia, depois,
+        statusAtual: v.status || '', antecedencia, depois, hist, idxHist: idx,
         nivel: negativo && antecedencia !== null ? (antecedencia < 2 ? 'critico' : antecedencia <= 4 ? 'alerta' : '') : '',
       });
     });
@@ -21314,8 +21321,11 @@ async function renderHistoricoOfertas(forcar) {
       + `<td>${esc(l.transportador)}</td><td>${l.quemTipo === 'Transportadora' ? '<span class="badge badge-warn">Transportadora</span> ' + esc(l.quemNome)
           : l.quemTipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(l.quemNome) : '<span class="badge">Não identificado</span> ' + esc(l.quemNome)}</td>`
       + `<td><span class="badge badge-danger">RECUSADA</span></td><td>${_hoBadgeStatus(l.statusAtual)}</td>`
-      + `<td>${ant}</td><td>${esc(l.motivo)}</td><td>${esc(l.depois)}</td></tr>`;
-  }).join('') || '<tr><td colspan="13" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+      + `<td>${ant}</td><td>${esc(l.motivo)}</td><td>${esc(l.depois)}</td>`
+      // Histórico completo da viagem (igual à janela da viagem); a recusa desta linha fica em destaque
+      + `<td><div style="max-height:92px;overflow-y:auto;min-width:340px;font-size:11px;line-height:1.5">${(l.hist || []).map((x, i) =>
+          `<div style="white-space:nowrap${i === l.idxHist ? ';font-weight:700;color:var(--danger)' : ''}">${esc(_hoHistTexto(x))}</div>`).join('')}</div></td></tr>`;
+  }).join('') || '<tr><td colspan="14" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
 }
 
 function exportarHistoricoOfertas() {
@@ -21329,6 +21339,8 @@ function exportarHistoricoOfertas() {
     'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual, 'Motivo': l.motivo,
     'Antecedência até a descarga (dias)': l.antecedencia,
     'Em cima da hora (< 2 dias)': l.nivel === 'critico' ? 'Sim' : '', 'Depois': l.depois,
+    // Um evento por linha dentro da célula (no Excel: Quebrar Texto Automaticamente pra ver em linhas)
+    'Histórico da viagem': (l.hist || []).map(_hoHistTexto).join('\n'),
   }));
   const resumo = (_ho.resumo || []).map(r => ({
     'Transportadora': r.t, 'Ofertas recebidas': r.Ofertado, 'Recusas': r.Recusado,
