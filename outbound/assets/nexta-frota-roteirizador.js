@@ -5973,6 +5973,145 @@ function _pmapaDisponivelAsLabel(v) {
   }
   return isNaN(jMin) ? 'Disponível às —' : `Disponível às ${hhmm(jMin)} (jornada)`;
 }
+// ── Situação de cada placa no dia (mapa de pedidos) ─────────────────────────
+// 🟢 livre no dia · 🟡 já tem viagem e ainda cabe esta carga na jornada ·
+// 🔴 já rodou e a jornada que sobra não cabe esta carga (foi longe / muitas
+// viagens). Considera a programação aberta + outras programações VIGENTES do
+// mesmo dia salvas no Histórico (sem contar em dobro: dedup pelo nº da viagem).
+let _pmapaDiaHist = { chave: null, em: 0, porPlaca: new Map(), carregando: null };
+let _pmapaVeicEscolhido = null;
+const _pmapaNormPlaca = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function _pmapaDataOpBr() {
+  const iso = document.getElementById('rot-data-operacao')?.value || '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+function _pmapaViagensDoVeiculo(v, viagens, desloc, origem, petIgnorar) {
+  const out = [];
+  const reais = (viagens || []).filter(vi => vi && !vi._vazio && (vi.paradas || []).length);
+  reais.forEach((vi, idx) => {
+    if (petIgnorar && vi.petId && petIgnorar.has(vi.petId)) return;
+    let ini = NaN; try { ini = _histInicioCargaAbs(v, reais, idx); } catch (e) {}
+    const dur = _histDuracaoParedeMin(vi);
+    out.push({ petId: vi.petId || '', inicio: isNaN(ini) ? null : ini + desloc, fim: isNaN(ini) ? null : ini + desloc + dur, dur,
+      destinos: [...new Set(vi.paradas.map(p => p.pedido?.cidade).filter(Boolean))], origem });
+  });
+  return out;
+}
+async function _pmapaCarregarDiaHist(dataBr) {
+  const chave = dataBr + '|' + (arquivoHistoricoAberto || '');
+  if (_pmapaDiaHist.chave === chave && Date.now() - _pmapaDiaHist.em < 120000) return _pmapaDiaHist.porPlaca;
+  if (_pmapaDiaHist.carregando) return _pmapaDiaHist.carregando;
+  _pmapaDiaHist.carregando = (async () => {
+    const porPlaca = new Map();
+    try {
+      if (dirHandleHistorico && dataBr && (await dirHandleHistorico.queryPermission({ mode: 'read' })) === 'granted') {
+        const [d, m, y] = dataBr.split('/'); const diaRef = new Date(+y, +m - 1, +d);
+        for await (const [name, handle] of dirHandleHistorico.entries()) {
+          if (handle.kind !== 'file' || !name.endsWith('.json') || name === arquivoHistoricoAberto) continue;
+          let data; try { data = JSON.parse(await (await handle.getFile()).text()); } catch (e) { continue; }
+          if (!data?.resultado || data.substituidoPor) continue;
+          if (arquivoHistoricoAberto && data.revisaoDe === arquivoHistoricoAberto) continue;
+          const temData = (data.datasEntrega || []).includes(dataBr) || (data.pedidos || []).some(p => p?.dataEntregaLogistica === dataBr);
+          if (!temData) continue;
+          (data.veiculos || []).forEach(v => {
+            const viagens = data.resultado[v.id];
+            if (!Array.isArray(viagens)) return;
+            const base = _histBaseDate(data, viagens.find(x => x && (x.paradas || []).length));
+            const desloc = Math.round((base.getTime() - diaRef.getTime()) / 60000);
+            const k = _pmapaNormPlaca(v.placa);
+            if (!porPlaca.has(k)) porPlaca.set(k, []);
+            porPlaca.get(k).push(..._pmapaViagensDoVeiculo(v, viagens, desloc, name));
+          });
+        }
+      }
+    } catch (e) { console.warn('[mapa] viagens do dia no Histórico', e); }
+    _pmapaDiaHist = { chave, em: Date.now(), porPlaca, carregando: null };
+    return porPlaca;
+  })();
+  return _pmapaDiaHist.carregando;
+}
+// Tempo aproximado que a carga selecionada precisa (ida + volta + carga/descarga).
+function _pmapaNecessidadeMin(selecionados, terminalNome) {
+  const t = _terminalPorNomeFlex?.(terminalNome) || terminaisCad.find(x => x.nome === terminalNome);
+  let maxKm = 0;
+  selecionados.forEach(p => {
+    const c = latLonEfetivo(p);
+    if (t?.lat && t?.lon && c?.lat && c?.lon) maxKm = Math.max(maxKm, haversine(t.lat, t.lon, c.lat, c.lon) * 1.3);
+  });
+  if (!maxKm) return 240; // sem coordenada: considera ~4h
+  return Math.round((maxKm * 2) / 50 * 60 + 60 + 40 * selecionados.length);
+}
+// Mesmo cálculo de tempo da montagem da viagem (velocidades do veículo,
+// carga, descarga e retorno), na ordem selecionada.
+function _pmapaNecessidadeVeicMin(v, selecionados, terminalNome) {
+  try {
+    const viagem = { paradas: [], terminalOrigem: terminalNome };
+    let tot = 0;
+    selecionados.forEach(p => {
+      const d = dadosIncrementoParada(viagem, v, p, p.terminal || terminalNome);
+      tot += d.incrementoMin || 0;
+      viagem.paradas.push({ pedido: p, deslocVazioMin: d.deslocVazioMin || 0 });
+    });
+    if (tot > 0) return Math.round(tot);
+  } catch (e) {}
+  return _pmapaNecessidadeMin(selecionados, terminalNome);
+}
+function _pmapaSituacaoVeiculo(v, histPorPlaca, necessidadeMin) {
+  const hhmm = m => `${String(Math.floor(((m % 1440) + 1440) % 1440 / 60)).padStart(2, '0')}:${String(((Math.round(m) % 60) + 60) % 60).padStart(2, '0')}`;
+  const durTxt = m => `${Math.floor(Math.max(0, m) / 60)}h${String(Math.round(Math.max(0, m) % 60)).padStart(2, '0')}`;
+  const atuais = _pmapaViagensDoVeiculo(v, ultimoResultado?.[v.id] || [], 0, 'esta programação');
+  const pets = new Set(atuais.map(x => x.petId).filter(Boolean));
+  const outras = (histPorPlaca.get(_pmapaNormPlaca(v.placa)) || []).filter(x => !x.petId || !pets.has(x.petId));
+  const todas = [...outras, ...atuais].sort((a, b) => (a.inicio ?? 0) - (b.inicio ?? 0));
+  let jIni = parseHoraMin(v.jornadaInicio || '06:00'); if (isNaN(jIni)) jIni = 360;
+  const dMin = parseHoraMin(v._horarioDisponivelAPartirDe || ''); if (!isNaN(dMin) && dMin > jIni) jIni = dMin;
+  let jFim = parseHoraMin(v.jornadaFim || '18:00'); if (isNaN(jFim)) jFim = jIni + 720;
+  if (jFim <= jIni) jFim += 1440;
+  if (doisTurnos(v)) jFim = Math.max(jFim, jIni + 1440 - 60);
+  if (!todas.length) return { nivel: 0, cor: '#16A34A', fundo: '#F0FDF4', borda: '#86EFAC', titulo: 'Livre no dia', detalhe: _pmapaDisponivelAsLabel(v), todas };
+  const fims = todas.map(x => x.fim).filter(x => x != null);
+  const livreDesde = Math.max(jIni, fims.length ? Math.max(...fims) : jIni + todas.reduce((s, x) => s + x.dur, 0));
+  const sobra = jFim - livreDesde;
+  const viagTxt = todas.map(x => `${x.petId || 'viagem'}${x.destinos.length ? ' → ' + x.destinos.slice(0, 2).join(', ') : ''}${x.origem !== 'esta programação' ? ' (outra programação)' : ''}`).join(' · ');
+  const base = `${todas.length} viagem(ns) no dia · volta ~${hhmm(livreDesde)} · sobra ${durTxt(sobra)} de jornada`;
+  if (sobra >= necessidadeMin) return { nivel: 1, cor: '#CA8A04', fundo: '#FEFCE8', borda: '#FDE047', titulo: 'Já rodou — jornada OK', detalhe: base, extra: viagTxt, sobra, todas };
+  return { nivel: 2, cor: '#DC2626', fundo: '#FEF2F2', borda: '#FCA5A5', titulo: 'Jornada apertada', detalhe: `${base} · esta carga precisa ~${durTxt(necessidadeMin)}`, extra: viagTxt, sobra, todas };
+}
+function pmapaEscolherVeiculo(id) {
+  _pmapaVeicEscolhido = id;
+  const inp = document.getElementById('pmapa-veiculo'); if (inp) inp.value = id;
+  document.querySelectorAll('#pmapa-veic-lista [data-veic]').forEach(el => {
+    const sel = String(el.dataset.veic) === String(id);
+    el.style.outline = sel ? '2px solid var(--pet-green, #16A34A)' : 'none';
+    el.querySelector('input[type=radio]').checked = sel;
+  });
+}
+window.pmapaEscolherVeiculo = pmapaEscolherVeiculo;
+function _pmapaListaVeiculosHtml(veicsOk, selecionados, terminalNome, histPorPlaca, carregandoHist) {
+  if (!veicsOk.length) return `<input type="hidden" id="pmapa-veiculo" value=""><div style="font-size:12px;color:var(--text-3);margin:4px 0 10px;">Nenhum veículo compatível com o(s) terminal(is)/restrições</div>`;
+  const itens = veicsOk.map(v => ({ v, s: _pmapaSituacaoVeiculo(v, histPorPlaca, _pmapaNecessidadeVeicMin(v, selecionados, terminalNome)) }))
+    .sort((a, b) => a.s.nivel - b.s.nivel || (b.s.sobra || 0) - (a.s.sobra || 0));
+  if (!itens.some(x => x.v.id === _pmapaVeicEscolhido)) _pmapaVeicEscolhido = itens[0].v.id;
+  const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  return `<input type="hidden" id="pmapa-veiculo" value="${_pmapaVeicEscolhido}">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text-3);margin:4px 0 6px;">
+      <span><span style="color:#16A34A;">●</span> livre</span><span><span style="color:#CA8A04;">●</span> já rodou, cabe</span><span><span style="color:#DC2626;">●</span> jornada apertada</span>
+      ${carregandoHist ? '<span style="font-style:italic;">· conferindo o Histórico do dia…</span>' : ''}
+    </div>
+    <div id="pmapa-veic-lista" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
+      ${itens.map(({ v, s }) => `<label data-veic="${v.id}" onclick="pmapaEscolherVeiculo(${v.id})" title="${esc(s.extra || s.detalhe)}"
+          style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;border:1px solid ${s.borda};border-left:4px solid ${s.cor};background:${s.fundo};border-radius:6px;padding:6px 8px;${v.id === _pmapaVeicEscolhido ? 'outline:2px solid var(--pet-green, #16A34A);' : ''}">
+        <input type="radio" name="pmapa-veic-radio" ${v.id === _pmapaVeicEscolhido ? 'checked' : ''} style="margin-top:2px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:12px;font-weight:700;color:#111827;"><span style="color:${s.cor};">●</span> ${esc(v.placa)} <span style="font-weight:500;color:#4B5563;">· ${esc(v.tipo || '')} · ${esc(v.capacidade)}m³</span></div>
+          <div style="font-size:10.5px;font-weight:700;color:${s.cor};">${esc(s.titulo)}</div>
+          <div style="font-size:10.5px;color:#4B5563;line-height:1.35;">${esc(s.detalhe)}</div>
+          ${s.extra ? `<div style="font-size:10px;color:#6B7280;line-height:1.3;margin-top:1px;">${esc(s.extra)}</div>` : ''}
+        </div>
+      </label>`).join('')}
+    </div>`;
+}
 function pmapaAtualizarPainel() {
   const box = document.getElementById('pmapa-painel');
   if (!box) return;
@@ -5998,6 +6137,7 @@ function pmapaAtualizarPainel() {
   }
   const totalVol = selecionados.reduce((s, p) => s + _pmapaVolumePendente(p), 0);
   const veicsOk  = _pmapaVeiculosCompativeis(selecionados, terminaisDistintos);
+  const _pmapaHistPronto = _pmapaDiaHist.chave === (_pmapaDataOpBr() + '|' + (arquivoHistoricoAberto || '')) && !_pmapaDiaHist.carregando && (Date.now() - _pmapaDiaHist.em < 120000);
   const listaHtml = selecionados.map(p => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;">
       <div style="min-width:0;">
@@ -6014,13 +6154,14 @@ function pmapaAtualizarPainel() {
     <div style="max-height:220px;overflow-y:auto;margin-bottom:8px;">${listaHtml}</div>
     <div style="font-size:12px;font-weight:700;color:var(--pet-green);margin-bottom:10px;">Total pendente: ${totalVol.toFixed(1)} m³</div>
     <label style="font-size:11px;font-weight:700;color:var(--text-3);">Veículo</label>
-    <select id="pmapa-veiculo" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;margin:4px 0 10px;">
-      ${veicsOk.length
-        ? veicsOk.map(v => `<option value="${v.id}">${v.placa} · ${v.tipo} · ${v.capacidade}m³ · ${_pmapaDisponivelAsLabel(v)}</option>`).join('')
-        : '<option value="">Nenhum veículo compatível com o(s) terminal(is)/restrições</option>'}
-    </select>
+    ${_pmapaListaVeiculosHtml(veicsOk, selecionados, terminaisDistintos[0], _pmapaHistPronto ? _pmapaDiaHist.porPlaca : new Map(), !_pmapaHistPronto)}
     <button class="btn btn-green btn-sm" style="width:100%;" ${veicsOk.length ? '' : 'disabled'} onclick="pmapaFecharCarga()">🚚 Fechar Carga</button>
   `;
+  // Viagens de outras programações do dia (Histórico): carrega em segundo plano e redesenha.
+  if (!_pmapaHistPronto && veicsOk.length) {
+    const dataBr = _pmapaDataOpBr();
+    _pmapaCarregarDiaHist(dataBr).then(() => { if (document.getElementById('pmapa-veic-lista')) pmapaAtualizarPainel(); }).catch(() => {});
+  }
 }
 // ── Constrói a viagem de verdade (mesma engine da roteirização automática) ──
 function _pmapaGarantirEstruturaResultado() {
@@ -11566,6 +11707,7 @@ async function _histGarantirPermissao() {
   if (!dirHandleHistorico) return false;
   let perm = await dirHandleHistorico.queryPermission({ mode: 'readwrite' });
   if (perm !== 'granted') perm = await dirHandleHistorico.requestPermission({ mode: 'readwrite' });
+  if (perm === 'granted' && window._histPrecisaReautorizar) _histMostrarPasta(dirHandleHistorico.name, false);
   return perm === 'granted';
 }
 async function recuperarHandleHistorico() {
@@ -11574,16 +11716,50 @@ async function recuperarHandleHistorico() {
     if (!handle) return;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     dirHandleHistorico = handle;
-    const el = document.getElementById('hist-pasta-path');
     if (perm === 'granted') {
-      el.textContent = handle.name;
+      _histMostrarPasta(handle.name, false);
       popularDropdownRoteirizacoes();
       popularSeletorResumoDia().catch(()=>{});
     } else {
-      el.textContent = handle.name + '  (clique em "Atualizar lista" para reautorizar)';
+      // A pasta é lembrada (IndexedDB); o Chrome é que pede a permissão de
+      // novo a cada sessão. Um clique reautoriza — sem procurar no OneDrive.
+      _histMostrarPasta(handle.name, true);
     }
-  } catch(e) { /* IDB indisponível ou handle inválido */ }
+  } catch(e) { console.warn('[Histórico] não consegui recuperar a pasta salva', e); }
 }
+// Mostra só o nome da pasta lembrada. Se o Chrome não tiver guardado a
+// permissão, ela é pedida SOZINHA no primeiro clique em qualquer lugar do
+// sistema (o navegador só deixa pedir junto de um clique) — sem botão, sem
+// precisar procurar a pasta no OneDrive. Escolhendo "Permitir em todas as
+// visitas" uma vez, o Chrome não pergunta mais.
+let _histAutoPedidoArmado = false;
+function _histMostrarPasta(nome, precisaAutorizar) {
+  const el = document.getElementById('hist-pasta-path');
+  window._histPrecisaReautorizar = !!precisaAutorizar;
+  if (el) el.textContent = nome;
+  if (precisaAutorizar && !_histAutoPedidoArmado) {
+    _histAutoPedidoArmado = true;
+    const pedir = async () => {
+      document.removeEventListener('pointerdown', pedir, true);
+      _histAutoPedidoArmado = false;
+      if (!dirHandleHistorico || !window._histPrecisaReautorizar) return;
+      let perm = 'denied';
+      try { perm = await dirHandleHistorico.requestPermission({ mode: 'readwrite' }); } catch (e) {}
+      if (perm !== 'granted') return; // recusou: pede de novo quando o Histórico for usado
+      window._histPrecisaReautorizar = false;
+      try { await carregarListaHistorico(); } catch (e) {}
+      try { await popularDropdownRoteirizacoes(); } catch (e) {}
+      popularSeletorResumoDia().catch(() => {});
+      if (typeof window.dashRecarregarAposPasta === 'function') { try { window.dashRecarregarAposPasta(); } catch (e) {} }
+    };
+    document.addEventListener('pointerdown', pedir, true);
+  }
+}
+async function reautorizarPastaHistorico() {
+  if (!dirHandleHistorico) { await selecionarPastaHistorico(); return; }
+  if (await _histGarantirPermissao()) { try { await carregarListaHistorico(); } catch (e) {} }
+}
+window.reautorizarPastaHistorico = reautorizarPastaHistorico;
 async function selecionarPastaHistorico() {
   if (!window.showDirectoryPicker) {
     alert('Seu navegador não suporta File System Access API.\nUse Chrome ou Edge via HTTPS.');
@@ -12374,6 +12550,11 @@ async function abrirDetalheHistorico(filename) {
                      ? `<div onclick="renumerarViagemHistorico('${v.id}', '${String(petId).replace(/'/g, "\\'")}')" title="Este nº também está em: ${outros.join(', ')} — clique para dar um nº novo a ESTA viagem" style="cursor:pointer;margin:3px 0;display:inline-block;font-size:10px;font-weight:700;color:#B91C1C;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:4px;padding:1px 6px;font-family:var(--font);letter-spacing:0;">⚠ nº repetido · 🔢 dar nº novo</div>`
                      : '';
                  })()}
+                 ${(() => {
+                   // Transportadora: do veículo gravado na programação; se faltar, do cadastro atual da placa.
+                   const tr = v.transportadora || (veiculos || []).find(x => x.placa && x.placa === v.placa)?.transportadora || '';
+                   return tr ? `<div style="font-weight:700;color:var(--text-2);font-family:var(--font);font-size:11px;letter-spacing:0;white-space:normal;max-width:150px;margin:1px 0;">${String(tr).replace(/</g, '&lt;')}</div>` : '';
+                 })()}
                  <span style="font-weight:500;color:var(--text-3);font-family:var(--font);font-size:11px;letter-spacing:0;">${v.placa || '—'}${(() => {
                    // Eixos: do veículo gravado na programação; se o arquivo for
                    // antigo e não tiver, usa o cadastro atual da mesma placa.
@@ -12381,6 +12562,7 @@ async function abrirDetalheHistorico(filename) {
                    return ex ? ` · <b style="color:var(--text-2);">${ex} eixos</b>` : '';
                  })()}</span>
                  <div style="margin:5px 0;white-space:normal;max-width:150px;font-weight:500;color:var(--text-2);font-family:var(--font);font-size:11px;letter-spacing:0;user-select:text;">${baseCarregamento}</div>
+                 <div style="margin:0 0 4px;font-weight:800;color:var(--text-3);font-family:var(--font);font-size:10px;letter-spacing:.08em;">OUTBOUND</div>
                  <span style="font-weight:700;font-family:var(--font);font-size:11.5px;letter-spacing:0;">${volViagem.toFixed(1)} m³</span>
                  ${(() => {
                    // Horário de carregamento (mesma conta da OR/Herrlog) — e
@@ -13155,6 +13337,495 @@ async function cruzarHerrlogComPedidos(input) {
   }
 }
 window.cruzarHerrlogComPedidos = cruzarHerrlogComPedidos;
+// ══════════════════════════════════════════════════════════════════════════
+// OTIF (On Time) — Histórico × Herrlog × tabela de prazos por posto
+// • Entregas = paradas das programações VIGENTES do Histórico (carregamento no período).
+// • Chegada real = export da Herrlog (coluna "Dt" = nº da viagem + ClienteNome).
+// • Prazo = data do carregamento (D0) + D+N da tabela (posto; se não achar, cidade).
+//   Chegou até o fim desse dia = no prazo.
+// • Programação após 18h = 1ª vez que a entrega foi salva no Histórico depois
+//   das 18h em dia útil (sábado, domingo e feriado ficam fora dessa conta).
+// Tabela de prazos e feriados ficam em config/otif_prazos (sobe uma vez).
+// ══════════════════════════════════════════════════════════════════════════
+const _OTIF_FERIADOS_NAC = ['2026-01-01','2026-04-03','2026-04-21','2026-05-01','2026-09-07','2026-10-12','2026-11-02','2026-11-15','2026-11-20','2026-12-25',
+  '2027-01-01','2027-03-26','2027-04-21','2027-05-01','2027-09-07','2027-10-12','2027-11-02','2027-11-15','2027-11-20','2027-12-25'];
+let _otif = { prazos: null, feriadosExtra: '', herr: null, herrNome: '', res: null };
+const _otifIso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const _otifBr = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '';
+const _otifSomaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return _otifIso(d); };
+const _otifDifDias = (a, b) => Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 86400000);
+function _otifFeriados() {
+  const ex = String(_otif.feriadosExtra || '').split(/[,;\s]+/).map(t => { const m = /^(\d{2})\/(\d{2})(?:\/(\d{4}))?$/.exec(t.trim()); return m ? `${m[3] || new Date().getFullYear()}-${m[2]}-${m[1]}` : null; }).filter(Boolean);
+  return new Set([..._OTIF_FERIADOS_NAC, ...ex]);
+}
+function _otifDiaUtil(iso, fer) { const dw = new Date(iso + 'T12:00:00').getDay(); return dw !== 0 && dw !== 6 && !fer.has(iso); }
+function _otifSemana(iso) { const d = new Date(iso + 'T12:00:00'); const dw = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dw); const f = new Date(d); f.setDate(d.getDate() + 6); return `${_otifIso(d)}|${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}–${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}`; }
+
+// ── Tabela de prazos ─────────────────────────────────────────────────────────
+function _otifLerPrazosWb(wb) {
+  const nomeAba = wb.SheetNames.find(n => /postos/i.test(n)) || wb.SheetNames[0];
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, defval: '' });
+  const iCab = aoa.findIndex(r => r.some(c => /origem/i.test(String(c))) && r.some(c => /prazo/i.test(String(c))));
+  if (iCab < 0) throw new Error('Não achei as colunas "Local de Origem" e "Prazo" na planilha de prazos.');
+  const cab = aoa[iCab].map(c => String(c).trim().toLowerCase());
+  const ci = re => cab.findIndex(c => re.test(c));
+  const cO = ci(/origem/), cP = ci(/posto|cliente/), cC = ci(/cidade/), cU = ci(/uf destino/), cZ = ci(/prazo/);
+  const linhas = [];
+  aoa.slice(iCab + 1).forEach(r => {
+    const pz = /D\s*\+\s*(\d+)/i.exec(String(r[cZ] || '')) || /^(\d+)$/.exec(String(r[cZ] || '').trim());
+    if (!r[cO] || !pz) return;
+    linhas.push({ origem: String(r[cO]).trim(), posto: String(r[cP] || '').trim(), cidade: String(r[cC] || '').trim(), uf: cU >= 0 ? String(r[cU] || '').trim() : '', dias: +pz[1] });
+  });
+  if (!linhas.length) throw new Error('Nenhuma linha de prazo reconhecida (esperado "D+0", "D+1"…).');
+  return linhas;
+}
+async function _otifCarregarConfig() {
+  if (_otif.prazos) return;
+  try {
+    const s = await window.fbGetDoc(window.fbDoc(window.fbDb, 'config', 'otif_prazos'));
+    if (s.exists()) { const d = s.data(); _otif.prazos = d.linhas || null; _otif.prazosArq = d.arquivo || ''; _otif.prazosEm = d.em || ''; _otif.feriadosExtra = d.feriadosExtra || ''; }
+  } catch (e) { console.warn('[OTIF] config', e); }
+}
+async function _otifSalvarConfig() {
+  try { await window.fbSetDoc(window.fbDoc(window.fbDb, 'config', 'otif_prazos'), { linhas: _otif.prazos || [], arquivo: _otif.prazosArq || '', em: _otif.prazosEm || '', feriadosExtra: _otif.feriadosExtra || '' }, { merge: true }); }
+  catch (e) { console.warn('[OTIF] salvar config', e); showToast('Não consegui guardar a tabela de prazos no Firebase (vale só nesta sessão).', false); }
+}
+function _otifBaseCasa(origemTabela, cidadeBase) {
+  const a = _herrNorm(origemTabela), b = _herrNorm(cidadeBase);
+  return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+}
+function _otifPrazoDe(cidadeBase, cliente, cidadeCli) {
+  const tab = (_otif.prazos || []).filter(l => _otifBaseCasa(l.origem, cidadeBase));
+  if (!tab.length) return { dias: null, fonte: 'base fora da tabela' };
+  const porPosto = tab.find(l => _herrMesmoCliente(l.posto, cliente));
+  if (porPosto) return { dias: porPosto.dias, fonte: 'posto' };
+  const porCidade = tab.filter(l => _herrNorm(l.cidade) && _herrNorm(l.cidade) === _herrNorm(cidadeCli));
+  if (porCidade.length) return { dias: Math.max(...porCidade.map(l => l.dias)), fonte: 'cidade' };
+  return { dias: null, fonte: 'posto e cidade fora da tabela' };
+}
+
+// ── Herrlog ─────────────────────────────────────────────────────────────────
+function _otifLerHerrlogWb(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  const iCab = aoa.findIndex(r => (r || []).some(c => String(c || '').trim() === 'Dt'));
+  if (iCab < 0) throw new Error('Não achei a coluna "Dt" (nº da viagem) no arquivo da Herrlog.');
+  const cab = aoa[iCab].map(c => String(c ?? '').trim());
+  const col = n => cab.findIndex(c => c.toLowerCase() === n.toLowerCase());
+  const cDt = col('Dt'), cTipo = col('Tipo'), cCli = col('ClienteNome'), cCh = col('Data Chegada Real'), cPl = col('Planejamento Chegada'), cSeq = cab.findIndex(c => /^sequ/i.test(c)), cTr = col('Transportador');
+  if (cCli < 0 || cCh < 0) throw new Error('Faltam as colunas "ClienteNome" ou "Data Chegada Real" no arquivo da Herrlog.');
+  const serialParaDate = v => {
+    if (v instanceof Date) return v;
+    if (typeof v === 'number') { const p = XLSX.SSF.parse_date_code(v); return p ? new Date(p.y, p.m - 1, p.d, p.H, p.M, Math.floor(p.S)) : null; }
+    if (typeof v === 'string') { const m = /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/.exec(v); if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]); }
+    return null;
+  };
+  const porViagem = new Map();
+  aoa.slice(iCab + 1).forEach(r => {
+    const dt = String(r?.[cDt] || '').trim();
+    if (!/^P\d{4,}/.test(dt)) return;
+    if (cTipo >= 0 && String(r[cTipo] || '').trim().toUpperCase() === 'ORIGEM') return;
+    const ch = serialParaDate(r[cCh]);
+    if (!porViagem.has(dt)) porViagem.set(dt, []);
+    porViagem.get(dt).push({ cliente: String(r[cCli] || ''), chegada: ch, planejado: cPl >= 0 ? serialParaDate(r[cPl]) : null, seq: cSeq >= 0 ? +r[cSeq] : null, transp: cTr >= 0 ? String(r[cTr] || '') : '', usado: false });
+  });
+  return porViagem;
+}
+
+// ── Motor ───────────────────────────────────────────────────────────────────
+async function _otifCalcular(de, ate) {
+  const fer = _otifFeriados();
+  const primeiraVez = new Map(); // petId|cliente → Date da 1ª programação salva
+  const vigentes = [];
+  for await (const [name, handle] of dirHandleHistorico.entries()) {
+    if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
+    let data; try { data = JSON.parse(await (await handle.getFile()).text()); } catch (e) { continue; }
+    if (!data?.resultado) continue;
+    const salvo = new Date(data.savedAt || 0);
+    const cidadeTerm = {}; (data.terminais || []).forEach(t => { cidadeTerm[t.nome] = t.cidade || ''; });
+    (data.veiculos || []).forEach(v => {
+      const viagens = (data.resultado[v.id] || []).filter(vi => vi && !vi._vazio && (vi.paradas || []).length);
+      viagens.forEach((vi, idx) => {
+        vi.paradas.forEach(pa => {
+          const k = `${vi.petId}|${_herrNorm(pa.pedido?.cliente)}`;
+          if (!isNaN(salvo) && (!primeiraVez.has(k) || salvo < primeiraVez.get(k))) primeiraVez.set(k, salvo);
+        });
+        if (data.substituidoPor) return;
+        let d0 = '';
+        try { const base = _histBaseDate(data, vi); d0 = _fmtAbs(base, _histInicioCargaAbs(v, viagens, idx)).data; } catch (e) {}
+        if (!d0 || d0 < de || d0 > ate) return;
+        const term = vi.paradas[0]?.pedido?.terminal || vi.terminalOrigem || v.terminal || '';
+        const cidadeBase = cidadeTerm[term] || (typeof cidadeDoTerminal === 'function' ? cidadeDoTerminal(term) : '') || term;
+        vigentes.push({ arquivo: name, vi, v, d0, term, cidadeBase });
+      });
+    });
+  }
+  const herr = _otif.herr || new Map();
+  herr.forEach(l => l.forEach(x => { x.usado = false; }));
+  const entregas = [];
+  vigentes.forEach(({ arquivo, vi, v, d0, term, cidadeBase }) => {
+    vi.paradas.forEach((pa, i) => {
+      const ped = pa.pedido || {};
+      const itens = _herrItensDaParada(pa);
+      const k = `${vi.petId}|${_herrNorm(ped.cliente)}`;
+      const prog = primeiraVez.get(k) || null;
+      const progIso = prog ? _otifIso(prog) : '';
+      const diaUtilProg = prog ? _otifDiaUtil(progIso, fer) : false;
+      const apos18 = !!prog && diaUtilProg && prog.getHours() >= 18;
+      const pz = _otifPrazoDe(cidadeBase, ped.cliente, ped.cidade);
+      const linhasH = herr.get(vi.petId) || [];
+      let h = linhasH.find(x => !x.usado && _herrMesmoCliente(x.cliente, ped.cliente));
+      if (h) h.usado = true;
+      const chegIso = h?.chegada ? _otifIso(h.chegada) : '';
+      const limite = pz.dias != null ? _otifSomaDias(d0, pz.dias) : '';
+      let status, atraso = null;
+      if (!h || !h.chegada) status = linhasH.length ? 'sem chegada (cliente não está na viagem da Herrlog)' : 'sem chegada (viagem não está na Herrlog)';
+      else if (pz.dias == null) status = 'sem prazo cadastrado';
+      else { atraso = _otifDifDias(chegIso, limite); status = atraso <= 0 ? 'no prazo' : 'fora do prazo'; }
+      entregas.push({
+        petId: vi.petId || '', arquivo, placa: v.placa || '', transportadora: v.transportadora || '—', base: term || '—', cidadeBase: cidadeBase || '—',
+        cliente: ped.cliente || '—', cidade: ped.cidade || '', seq: i + 1, ordens: itens.map(it => it.ordem).filter(Boolean).join(' | '),
+        volume: itens.reduce((s, it) => s + it.volume, 0), d0, prazoDias: pz.dias, prazoFonte: pz.fonte, limite,
+        chegada: h?.chegada || null, chegIso, atraso, status, prog, apos18, diaUtilProg,
+      });
+    });
+  });
+  const herrSemProg = [];
+  herr.forEach((l, dt) => l.forEach(x => { if (!x.usado && x.chegada && _otifIso(x.chegada) >= de && _otifIso(x.chegada) <= _otifSomaDias(ate, 3)) herrSemProg.push({ petId: dt, ...x }); }));
+  return { entregas, herrSemProg, de, ate };
+}
+function _otifAgrupar(lista, chave) {
+  const m = new Map();
+  lista.forEach(e => { const k = chave(e); if (!m.has(k)) m.set(k, { k, total: 0, ok: 0, fora: 0, atrasoSoma: 0 }); const g = m.get(k); g.total++; if (e.status === 'no prazo') g.ok++; else { g.fora++; g.atrasoSoma += e.atraso || 0; } });
+  return [...m.values()].map(g => ({ ...g, pct: g.total ? g.ok / g.total * 100 : 0, atrasoMed: g.fora ? g.atrasoSoma / g.fora : 0 }));
+}
+
+// ── Painel ──────────────────────────────────────────────────────────────────
+function _otifModal(html) {
+  let m = document.getElementById('otif-modal');
+  if (!m) {
+    m = document.createElement('div'); m.id = 'otif-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
+    m.addEventListener('mousedown', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(1280px,100%);padding:20px 22px;font-family:var(--font,inherit);color:#111827;box-shadow:0 20px 50px rgba(0,0,0,.25);">${html}</div>`;
+}
+async function abrirOtif() {
+  if (typeof XLSX === 'undefined') { alert('Biblioteca de Excel não carregada.'); return; }
+  if (!dirHandleHistorico) { alert('Selecione a pasta do Histórico primeiro — é de lá que vêm as entregas.'); return; }
+  if (!await _histGarantirPermissao()) { alert('Permissão negada para a pasta do Histórico.'); return; }
+  await _otifCarregarConfig();
+  if (!_otif.de) { const h = new Date(); const ini = new Date(h.getFullYear(), h.getMonth() - 1, 1), fim = new Date(h.getFullYear(), h.getMonth(), 0); _otif.de = _otifIso(ini); _otif.ate = _otifIso(fim); }
+  _otifRender();
+}
+window.abrirOtif = abrirOtif;
+function _otifRender() {
+  const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const r = _otif.res;
+  const nH = _otif.herr ? [..._otif.herr.values()].reduce((s, l) => s + l.length, 0) : 0;
+  const passo = (n, ok, t, d) => `<div style="flex:1;min-width:230px;border:1px solid ${ok ? '#BBF7D0' : '#E5E7EB'};background:${ok ? '#F0FDF4' : '#F9FAFB'};border-radius:8px;padding:10px 12px;">
+    <div style="font-size:11px;font-weight:800;color:${ok ? '#15803D' : '#6B7280'};text-transform:uppercase;letter-spacing:.04em;">${ok ? '✓' : n} ${t}</div><div style="font-size:12px;color:#374151;margin-top:4px;">${d}</div></div>`;
+  let html = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <div style="font-size:18px;font-weight:800;">📈 OTIF — entregas no prazo</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">${r ? `<button class="btn btn-green btn-sm" onclick="otifExportarPDF()">📄 PDF para apresentação</button><button class="btn btn-sm" onclick="otifExportarExcel()">📊 Excel</button>` : ''}<button class="btn btn-sm" onclick="document.getElementById('otif-modal').remove()">Fechar</button></div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+    ${passo('1', !!_otif.prazos, 'Tabela de prazos', _otif.prazos ? `${_otif.prazos.length} postos${_otif.prazosArq ? ` · ${esc(_otif.prazosArq)}` : ''} · <a href="#" onclick="document.getElementById('otif-prazos-in').click();return false;">trocar</a>` : `<button class="btn btn-sm" onclick="document.getElementById('otif-prazos-in').click()">Escolher planilha de prazos</button> <span style="color:#6B7280">(fica guardada)</span>`)}
+    ${passo('2', !!_otif.herr, 'Chegadas reais (Herrlog)', _otif.herr ? `${nH} chegadas · ${_otif.herr.size} viagens · ${esc(_otif.herrNome)} · <a href="#" onclick="document.getElementById('otif-herr-in').click();return false;">trocar</a>` : `<button class="btn btn-sm" onclick="document.getElementById('otif-herr-in').click()">Escolher export da Herrlog</button>`)}
+    <div style="flex:1;min-width:300px;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;">3 Período (data do carregamento)</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;"><input type="date" id="otif-de" value="${_otif.de}" style="padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;"> até <input type="date" id="otif-ate" value="${_otif.ate}" style="padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;">
+      <button class="btn btn-green btn-sm" ${_otif.prazos && _otif.herr ? '' : 'disabled'} onclick="otifCalcular()">Calcular</button></div>
+      <div style="font-size:11px;color:#6B7280;margin-top:5px;">Feriados extras (além dos nacionais): <input id="otif-fer" value="${esc(_otif.feriadosExtra)}" placeholder="ex.: 20/11, 25/01" style="width:140px;padding:2px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;" onchange="_otif.feriadosExtra=this.value;_otifSalvarConfig()"></div>
+    </div>
+  </div>
+  <input type="file" id="otif-prazos-in" accept=".xlsx,.xls" style="display:none" onchange="otifCarregarPrazos(this)">
+  <input type="file" id="otif-herr-in" accept=".xlsx,.xls" style="display:none" onchange="otifCarregarHerrlog(this)">`;
+  if (r) html += _otifResultadoHtml(r, esc);
+  else html += `<div style="padding:30px;text-align:center;color:#6B7280;font-size:13px;border:1px dashed #D1D5DB;border-radius:10px;">Escolha a tabela de prazos e o export da Herrlog e clique em <b>Calcular</b>.<br>As entregas vêm das programações vigentes do Histórico com carregamento no período.</div>`;
+  _otifModal(html);
+}
+function _otifResultadoHtml(r, esc) {
+  const E = r.entregas;
+  const aval = E.filter(e => e.status === 'no prazo' || e.status === 'fora do prazo');
+  const ok = aval.filter(e => e.status === 'no prazo').length, fora = aval.length - ok;
+  const pct = aval.length ? ok / aval.length * 100 : 0;
+  const semCheg = E.filter(e => e.status.startsWith('sem chegada')).length, semPz = E.filter(e => e.status === 'sem prazo cadastrado').length;
+  const progUteis = E.filter(e => e.prog && e.diaUtilProg), ap18 = progUteis.filter(e => e.apos18);
+  const aval18 = aval.filter(e => e.apos18), avalAntes = aval.filter(e => !e.apos18 && e.prog);
+  const pctDe = l => l.length ? (l.filter(e => e.status === 'no prazo').length / l.length * 100) : null;
+  const atrMed = fora ? aval.filter(e => e.status === 'fora do prazo').reduce((s, e) => s + e.atraso, 0) / fora : 0;
+  const f1 = n => n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const kpi = (v, rot, cor, sub) => `<div style="flex:1;min-width:160px;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div style="font-size:26px;font-weight:800;color:${cor};line-height:1;">${v}</div><div style="font-size:12px;color:#374151;margin-top:5px;font-weight:600;">${rot}</div>${sub ? `<div style="font-size:11px;color:#6B7280;margin-top:2px;">${sub}</div>` : ''}</div>`;
+  const barra = p => `<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:8px;background:#FEE2E2;border-radius:4px;overflow:hidden;min-width:80px;"><div style="width:${p.toFixed(1)}%;height:100%;background:#16A34A;"></div></div><span style="font-weight:700;width:44px;text-align:right;">${f1(p)}%</span></div>`;
+  const th = 'text-align:left;font-size:10.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid #E5E7EB;white-space:nowrap;';
+  const td = 'padding:6px 8px;border-bottom:1px solid #F3F4F6;font-size:12px;';
+  const tabela = (titulo, linhas, rotulo) => `<div style="flex:1;min-width:380px;"><div style="font-size:12px;font-weight:800;margin:4px 0 6px;text-transform:uppercase;letter-spacing:.04em;">${titulo}</div>
+    <table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${th}">${rotulo}</th><th style="${th}text-align:right">Entregas</th><th style="${th}text-align:right">No prazo</th><th style="${th}text-align:right">Fora</th><th style="${th}">% no prazo</th></tr></thead>
+    <tbody>${linhas.map(g => `<tr><td style="${td}">${esc(g.rot || g.k)}</td><td style="${td}text-align:right">${g.total}</td><td style="${td}text-align:right;color:#15803D">${g.ok}</td><td style="${td}text-align:right;color:${g.fora ? '#B91C1C' : '#9CA3AF'}">${g.fora}</td><td style="${td}">${barra(g.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+  const porBase = _otifAgrupar(aval, e => e.cidadeBase).sort((a, b) => b.total - a.total);
+  const porTransp = _otifAgrupar(aval, e => e.transportadora).sort((a, b) => b.total - a.total);
+  const porSem = _otifAgrupar(aval, e => _otifSemana(e.d0)).sort((a, b) => a.k.localeCompare(b.k)).map(g => ({ ...g, rot: g.k.split('|')[1] }));
+  const porPrazo = _otifAgrupar(aval, e => `D+${e.prazoDias}`).sort((a, b) => a.k.localeCompare(b.k));
+  const piores = _otifAgrupar(aval, e => e.cliente).filter(g => g.fora).sort((a, b) => b.fora - a.fora || a.pct - b.pct).slice(0, 12);
+  const atrasos = aval.filter(e => e.status === 'fora do prazo').sort((a, b) => b.atraso - a.atraso || a.d0.localeCompare(b.d0));
+  const hm = d => d ? `${_otifBr(_otifIso(d)).slice(0, 5)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '—';
+  _otif.resumo = { aval: aval.length, ok, fora, pct, semCheg, semPz, total: E.length, progUteis: progUteis.length, ap18: ap18.length, pct18: pctDe(aval18), pctAntes: pctDe(avalAntes), atrMed };
+  return `
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 14px;">
+    ${kpi(`${f1(pct)}%`, 'Entregas no prazo', '#15803D', `${ok.toLocaleString('pt-BR')} de ${aval.length.toLocaleString('pt-BR')} avaliadas`)}
+    ${kpi(`${f1(100 - pct)}%`, 'Fora do prazo', '#B91C1C', `${fora.toLocaleString('pt-BR')} entregas · atraso médio ${f1(atrMed)} dia(s)`)}
+    ${kpi(`${ap18.length}`, 'Entregas programadas após 18h', '#B45309', `${f1(progUteis.length ? ap18.length / progUteis.length * 100 : 0)}% das programadas em dia útil`)}
+    ${kpi(`${f1(pctDe(aval18))}%`, 'No prazo quando programado após 18h', '#B45309', `vs ${f1(pctDe(avalAntes))}% quando programado até 18h`)}
+    ${kpi(`${E.length.toLocaleString('pt-BR')}`, 'Entregas no Histórico (período)', '#111827', `${semCheg} sem chegada na Herrlog · ${semPz} sem prazo na tabela`)}
+  </div>
+  <div style="font-size:11px;color:#6B7280;margin:-6px 0 12px;">On Time = chegada real (Herrlog) até o fim do dia D0 + prazo da tabela (D0 = data do carregamento na programação). In Full não entra: os arquivos não trazem volume pedido × entregue. Entregas sem chegada ou sem prazo ficam fora do %.</div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;">${tabela('Por base', porBase, 'Base')}${tabela('Por transportadora', porTransp, 'Transportadora')}</div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;">${tabela('Por semana (carregamento)', porSem, 'Semana')}${tabela('Por prazo da tabela', porPrazo, 'Prazo')}</div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;">${tabela('Postos com mais entregas fora do prazo', piores, 'Posto')}</div>
+  <div style="font-size:12px;font-weight:800;margin:4px 0 6px;text-transform:uppercase;letter-spacing:.04em;">Entregas fora do prazo (${atrasos.length})</div>
+  <div style="max-height:360px;overflow:auto;border:1px solid #E5E7EB;border-radius:8px;">
+  <table style="width:100%;border-collapse:collapse;"><thead style="position:sticky;top:0;background:#fff;"><tr>${['Viagem', 'Placa', 'Transportadora', 'Base', 'Posto', 'Pedido(s)', 'Programado', 'Carregamento', 'Prazo', 'Limite', 'Chegada real', 'Atraso'].map(h => `<th style="${th}">${h}</th>`).join('')}</tr></thead>
+  <tbody>${atrasos.slice(0, 300).map(e => `<tr><td style="${td}font-weight:700">${esc(e.petId)}</td><td style="${td}">${esc(e.placa)}</td><td style="${td}">${esc(e.transportadora)}</td><td style="${td}">${esc(e.cidadeBase)}</td><td style="${td}">${esc(e.cliente)}</td><td style="${td}">${esc(e.ordens || '—')}</td>
+    <td style="${td}${e.apos18 ? 'color:#B45309;font-weight:700' : ''}">${hm(e.prog)}${e.apos18 ? ' ⚠' : ''}</td><td style="${td}">${_otifBr(e.d0)}</td><td style="${td}">D+${e.prazoDias}</td><td style="${td}">${_otifBr(e.limite)}</td><td style="${td}">${hm(e.chegada)}</td><td style="${td}color:#B91C1C;font-weight:800">${e.atraso} dia(s)</td></tr>`).join('') || `<tr><td colspan="12" style="${td}text-align:center;color:#6B7280">Nenhuma 🎉</td></tr>`}</tbody></table></div>
+  ${r.herrSemProg.length ? `<div style="font-size:11px;color:#6B7280;margin-top:8px;">${r.herrSemProg.length} chegada(s) da Herrlog no período não casaram com nenhuma entrega do Histórico (viagem não salva, nº diferente ou cliente com nome diferente) — estão no Excel.</div>` : ''}`;
+}
+async function otifCarregarPrazos(input) {
+  const f = input.files?.[0]; input.value = ''; if (!f) return;
+  try {
+    _otif.prazos = _otifLerPrazosWb(XLSX.read(await f.arrayBuffer(), { type: 'array' }));
+    _otif.prazosArq = f.name; _otif.prazosEm = new Date().toISOString();
+    await _otifSalvarConfig();
+    showToast(`📋 ${_otif.prazos.length} prazos carregados e guardados.`, true);
+  } catch (e) { alert(e.message); }
+  _otifRender();
+}
+async function otifCarregarHerrlog(input) {
+  const f = input.files?.[0]; input.value = ''; if (!f) return;
+  try {
+    _otif.herr = _otifLerHerrlogWb(XLSX.read(await f.arrayBuffer(), { type: 'array', cellNF: true }));
+    _otif.herrNome = f.name;
+    // período sugerido = meses das chegadas
+    const ds = [..._otif.herr.values()].flat().map(x => x.chegada).filter(Boolean).map(_otifIso).sort();
+    if (ds.length) { const mes = ds[Math.floor(ds.length / 2)].slice(0, 7); _otif.de = mes + '-01'; const fim = new Date(+mes.slice(0, 4), +mes.slice(5, 7), 0); _otif.ate = _otifIso(fim); }
+  } catch (e) { alert(e.message); }
+  _otifRender();
+}
+async function otifCalcular() {
+  _otif.de = document.getElementById('otif-de')?.value || _otif.de;
+  _otif.ate = document.getElementById('otif-ate')?.value || _otif.ate;
+  _otif.feriadosExtra = document.getElementById('otif-fer')?.value ?? _otif.feriadosExtra;
+  _otifModal('<div style="padding:40px;text-align:center;font-size:14px;color:#374151;">📈 Lendo o Histórico e cruzando com a Herrlog…</div>');
+  try { _otif.res = await _otifCalcular(_otif.de, _otif.ate); }
+  catch (e) { console.error('[OTIF]', e); alert('Erro ao calcular: ' + e.message); }
+  _otifRender();
+}
+function otifExportarExcel() {
+  const r = _otif.res; if (!r) return;
+  const S = _otif.resumo || {};
+  const hm = d => d ? d : null;
+  const wb = XLSX.utils.book_new();
+  const resumo = [
+    ['OTIF — On Time', ''], ['Período (carregamento)', `${_otifBr(r.de)} a ${_otifBr(r.ate)}`], ['Gerado em', new Date().toLocaleString('pt-BR')], [],
+    ['Entregas avaliadas', S.aval], ['No prazo', S.ok], ['Fora do prazo', S.fora], ['% no prazo', +(S.pct || 0).toFixed(1)], ['% fora do prazo', +(100 - (S.pct || 0)).toFixed(1)], ['Atraso médio (dias, só as atrasadas)', +(S.atrMed || 0).toFixed(1)], [],
+    ['Entregas programadas em dia útil', S.progUteis], ['Programadas após 18h (dia útil)', S.ap18], ['% programadas após 18h', S.progUteis ? +(S.ap18 / S.progUteis * 100).toFixed(1) : 0],
+    ['% no prazo — programadas após 18h', S.pct18 == null ? '' : +S.pct18.toFixed(1)], ['% no prazo — programadas até 18h', S.pctAntes == null ? '' : +S.pctAntes.toFixed(1)], [],
+    ['Entregas no Histórico (período)', S.total], ['Sem chegada na Herrlog', S.semCheg], ['Sem prazo na tabela', S.semPz], ['Chegadas da Herrlog sem programação', r.herrSemProg.length], [],
+    ['Regra', 'No prazo = chegada real até o fim do dia (data do carregamento + D+N da tabela de prazos). Programação após 18h = 1ª vez salva no Histórico após 18h em dia útil (sáb., dom. e feriados fora). In Full não calculado (sem volume pedido × entregue).'],
+  ];
+  const wsR = XLSX.utils.aoa_to_sheet(resumo); wsR['!cols'] = [{ wch: 42 }, { wch: 60 }];
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumo');
+  const cab = ['Status', 'Atraso (dias)', 'Viagem', 'Placa', 'Transportadora', 'Base', 'Cidade da base', 'Posto', 'Cidade do posto', 'Seq.', 'Pedido(s) (Ordem SAP)', 'Volume (m³)', 'Programado em', 'Programado após 18h', 'Carregamento (D0)', 'Prazo (D+)', 'Prazo achado por', 'Limite', 'Chegada real', 'Arquivo do Histórico'];
+  const linhas = r.entregas.slice().sort((a, b) => a.d0.localeCompare(b.d0) || a.petId.localeCompare(b.petId) || a.seq - b.seq).map(e => [
+    e.status, e.atraso, e.petId, e.placa, e.transportadora, e.base, e.cidadeBase, e.cliente, e.cidade, e.seq, e.ordens, Math.round(e.volume * 10) / 10,
+    hm(e.prog), e.prog ? (e.apos18 ? 'Sim' : (e.diaUtilProg ? 'Não' : 'Não (sáb/dom/feriado)')) : '', e.d0 ? new Date(e.d0 + 'T00:00:00') : null, e.prazoDias, e.prazoFonte, e.limite ? new Date(e.limite + 'T00:00:00') : null, hm(e.chegada), e.arquivo]);
+  const wsE = XLSX.utils.aoa_to_sheet([cab, ...linhas], { cellDates: true });
+  for (let i = 1; i <= linhas.length; i++) {
+    [12, 18].forEach(c => { const x = wsE[XLSX.utils.encode_cell({ r: i, c })]; if (x && x.t === 'd') x.z = 'dd/mm/yyyy hh:mm'; });
+    [14, 17].forEach(c => { const x = wsE[XLSX.utils.encode_cell({ r: i, c })]; if (x && x.t === 'd') x.z = 'dd/mm/yyyy'; });
+  }
+  wsE['!cols'] = [24, 9, 11, 9, 16, 22, 16, 38, 18, 5, 22, 9, 16, 12, 12, 8, 14, 11, 16, 34].map(w => ({ wch: w }));
+  wsE['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+  XLSX.utils.book_append_sheet(wb, wsE, 'Entregas');
+  const grupos = (nome, fn) => { const g = _otifAgrupar(r.entregas.filter(e => e.status === 'no prazo' || e.status === 'fora do prazo'), fn).sort((a, b) => b.total - a.total); const ws = XLSX.utils.aoa_to_sheet([[nome, 'Entregas', 'No prazo', 'Fora do prazo', '% no prazo', 'Atraso médio (dias)'], ...g.map(x => [x.k.includes('|') ? x.k.split('|')[1] : x.k, x.total, x.ok, x.fora, +x.pct.toFixed(1), +x.atrasoMed.toFixed(1)])]); ws['!cols'] = [{ wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 11 }, { wch: 16 }]; return ws; };
+  XLSX.utils.book_append_sheet(wb, grupos('Base', e => e.cidadeBase), 'Por base');
+  XLSX.utils.book_append_sheet(wb, grupos('Transportadora', e => e.transportadora), 'Por transportadora');
+  XLSX.utils.book_append_sheet(wb, grupos('Posto', e => e.cliente), 'Por posto');
+  XLSX.utils.book_append_sheet(wb, grupos('Semana', e => _otifSemana(e.d0)), 'Por semana');
+  const wsH = XLSX.utils.aoa_to_sheet([['Viagem', 'Cliente (Herrlog)', 'Chegada real', 'Transportador'], ...r.herrSemProg.map(x => [x.petId, x.cliente, x.chegada, x.transp])], { cellDates: true });
+  for (let i = 1; i <= r.herrSemProg.length; i++) { const x = wsH[XLSX.utils.encode_cell({ r: i, c: 2 })]; if (x && x.t === 'd') x.z = 'dd/mm/yyyy hh:mm'; }
+  wsH['!cols'] = [{ wch: 11 }, { wch: 44 }, { wch: 16 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsH, 'Herrlog sem programação');
+  XLSX.writeFile(wb, `OTIF_${r.de}_a_${r.ate}.xlsx`, { cellDates: true });
+}
+// ── PDF de apresentação do OTIF (A4 paisagem, pronto pra enviar ao gestor) ──
+function otifExportarPDF() {
+  const r = _otif.res, S = _otif.resumo;
+  const { jsPDF } = window.jspdf || {};
+  if (!r || !S) return;
+  if (!jsPDF) { alert('Biblioteca de PDF não carregada.'); return; }
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = 297, H = 210, M = 14;
+  const C = { ink: [17, 24, 39], muted: [107, 114, 128], line: [229, 231, 235], track: [243, 244, 246], ok: [22, 163, 74], bad: [220, 38, 38], warn: [180, 83, 9], head: [31, 41, 55], soft: [249, 250, 251] };
+  const t = s => String(s ?? '').replace(/³/g, '3').replace(/[–—]/g, '-').replace(/→/g, '>').replace(/[^\x00-\xFF]/g, '');
+  const f1 = n => n == null || !isFinite(n) ? '-' : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const n0 = n => Number(n || 0).toLocaleString('pt-BR');
+  const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const mesTit = r.de.slice(0, 7) === r.ate.slice(0, 7) ? `${MESES[+r.de.slice(5, 7) - 1]}/${r.de.slice(0, 4)}` : `${_otifBr(r.de)} a ${_otifBr(r.ate)}`;
+  const aval = r.entregas.filter(e => e.status === 'no prazo' || e.status === 'fora do prazo');
+  const porBase = _otifAgrupar(aval, e => e.cidadeBase).sort((a, b) => b.total - a.total);
+  const porTransp = _otifAgrupar(aval, e => e.transportadora).sort((a, b) => b.total - a.total);
+  const porSem = _otifAgrupar(aval, e => _otifSemana(e.d0)).sort((a, b) => a.k.localeCompare(b.k)).map(g => ({ ...g, rot: g.k.split('|')[1] }));
+  const porPrazo = _otifAgrupar(aval, e => `D+${e.prazoDias}`).sort((a, b) => a.k.localeCompare(b.k));
+  const piores = _otifAgrupar(aval, e => e.cliente).filter(g => g.fora).sort((a, b) => b.fora - a.fora || a.pct - b.pct).slice(0, 10);
+  const atrasos = aval.filter(e => e.status === 'fora do prazo').sort((a, b) => b.atraso - a.atraso || a.d0.localeCompare(b.d0));
+  const txt = (s, x, y, o = {}) => { doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.s || 9); doc.setTextColor(...(o.c || C.ink)); doc.text(t(s), x, y, o.a ? { align: o.a } : undefined); };
+  const cabecalho = (sub) => {
+    doc.setFillColor(...C.head); doc.rect(0, 0, W, 22, 'F');
+    doc.setFillColor(...C.ok); doc.rect(0, 22, W, 1.2, 'F');
+    txt('NEXTA', M, 10, { b: 1, s: 15, c: [255, 255, 255] });
+    txt(`OTIF - Entregas no prazo · ${mesTit}`, M, 17, { s: 10, c: [209, 213, 219] });
+    txt(sub, W - M, 10, { b: 1, s: 11, c: [255, 255, 255], a: 'right' });
+    txt(`Carregamentos de ${_otifBr(r.de)} a ${_otifBr(r.ate)}`, W - M, 17, { s: 8.5, c: [209, 213, 219], a: 'right' });
+  };
+  const titulo = (s, x, y) => { txt(s.toUpperCase(), x, y, { b: 1, s: 8.5, c: C.muted }); };
+  // Barras horizontais de % no prazo (uma série; rótulo do valor em texto, nunca só cor)
+  const hBars = (x, y, w, linhas, tit, maxL = 9) => {
+    titulo(tit, x, y); y += 5;
+    const ls = linhas.slice(0, maxL), lw = 44, bw = w - lw - 30, rh = 6.3;
+    ls.forEach((g, i) => {
+      const yy = y + i * rh;
+      txt(g.rot || g.k, x, yy + 3.6, { s: 8.5 });
+      doc.setFillColor(...C.track); doc.roundedRect(x + lw, yy + 0.8, bw, 3.6, 1.2, 1.2, 'F');
+      const cor = g.pct >= 95 ? C.ok : g.pct >= 85 ? C.warn : C.bad;
+      if (g.pct > 0) { doc.setFillColor(...cor); doc.roundedRect(x + lw, yy + 0.8, Math.max(2.4, bw * g.pct / 100), 3.6, 1.2, 1.2, 'F'); }
+      txt(`${f1(g.pct)}%`, x + lw + bw + 2, yy + 3.6, { b: 1, s: 8.5 });
+      txt(`${g.total} entr. · ${g.fora} fora`, x + lw + bw + 14, yy + 3.6, { s: 7, c: C.muted });
+    });
+    if (linhas.length > maxL) txt(`+ ${linhas.length - maxL} no Excel`, x, y + ls.length * rh + 3, { s: 7, c: C.muted });
+    return y + ls.length * rh + 4;
+  };
+  const meta = 95;
+
+  // ── Página 1: resumo executivo ──
+  cabecalho('Resumo executivo');
+  let y = 32;
+  // Destaque
+  doc.setFillColor(240, 253, 244); doc.roundedRect(M, y, 88, 40, 3, 3, 'F');
+  txt('ENTREGAS NO PRAZO', M + 6, y + 8, { b: 1, s: 8, c: C.ok });
+  txt(`${f1(S.pct)}%`, M + 6, y + 24, { b: 1, s: 32, c: C.ok });
+  txt(`${n0(S.ok)} de ${n0(S.aval)} entregas avaliadas`, M + 6, y + 30.5, { s: 8.5, c: C.muted });
+  const bx = M + 6, bwid = 76;
+  doc.setFillColor(...C.bad); doc.roundedRect(bx, y + 33.5, bwid, 3.2, 1.2, 1.2, 'F');
+  doc.setFillColor(...C.ok); doc.roundedRect(bx, y + 33.5, bwid * S.pct / 100, 3.2, 1.2, 1.2, 'F');
+  // Tiles
+  const tile = (x, tt, v, sub, cor) => {
+    doc.setDrawColor(...C.line); doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, 41, 40, 3, 3, 'FD');
+    txt(tt, x + 4, y + 8, { b: 1, s: 7, c: C.muted });
+    txt(v, x + 4, y + 20, { b: 1, s: 18, c: cor });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2); doc.setTextColor(...C.muted);
+    doc.text(doc.splitTextToSize(t(sub), 34), x + 4, y + 27);
+  };
+  const tx = M + 92;
+  tile(tx, 'FORA DO PRAZO', `${f1(100 - S.pct)}%`, `${n0(S.fora)} entregas · atraso médio de ${f1(S.atrMed)} dia(s)`, C.bad);
+  tile(tx + 44, 'PROGRAMADAS APÓS 18H', n0(S.ap18), `${f1(S.progUteis ? S.ap18 / S.progUteis * 100 : 0)}% das programadas em dia útil`, C.warn);
+  tile(tx + 88, 'NO PRAZO APÓS 18H', `${f1(S.pct18)}%`, `contra ${f1(S.pctAntes)}% das programadas até 18h`, C.warn);
+  tile(tx + 132, 'COBERTURA', n0(S.total), `entregas no Histórico · ${n0(S.semPz)} sem prazo e ${n0(S.semCheg)} sem chegada (fora do %)`, C.ink);
+  y += 48;
+  // Gráficos
+  const yb = hBars(M, y, 132, porBase.map(g => ({ ...g })), 'No prazo por base (% das entregas)');
+  const yt = hBars(M + 142, y, 127, porTransp.map(g => ({ ...g })), 'No prazo por transportadora (% das entregas)');
+  y = Math.max(yb, yt) + 2;
+  // Pontos de atenção (gerados dos números)
+  const relevantes = l => l.filter(g => g.total >= 10);
+  const pior = l => relevantes(l).sort((a, b) => a.pct - b.pct)[0];
+  const pb = pior(porBase), pt = pior(porTransp), pp = porPrazo.slice().sort((a, b) => b.fora - a.fora)[0];
+  const pontos = [];
+  pontos.push(`${f1(S.pct)}% das entregas chegaram no prazo (${n0(S.ok)} de ${n0(S.aval)}); ${n0(S.fora)} atrasaram, em média ${f1(S.atrMed)} dia(s).`);
+  if (pb && pb.pct < meta) pontos.push(`Base com menor desempenho: ${pb.k} - ${f1(pb.pct)}% no prazo (${pb.fora} atrasos em ${pb.total} entregas).`);
+  if (pt && pt.pct < meta) pontos.push(`Transportadora com menor desempenho: ${pt.k} - ${f1(pt.pct)}% (${pt.fora} atrasos em ${pt.total}).`);
+  if (pp && pp.fora) pontos.push(`Prazo ${pp.k} concentra ${pp.fora} dos ${S.fora} atrasos (${f1(pp.fora / Math.max(1, S.fora) * 100)}%), com ${f1(pp.pct)}% no prazo.`);
+  if (S.pct18 != null && S.pctAntes != null) pontos.push(`${n0(S.ap18)} entregas foram programadas após 18h; dessas, ${f1(S.pct18)}% chegaram no prazo, contra ${f1(S.pctAntes)}% das programadas até 18h.`);
+  if (S.semPz) pontos.push(`${n0(S.semPz)} entregas de postos fora da tabela de prazos não entraram no cálculo.`);
+  if (y + 8 + pontos.length * 5.2 > H - 12) { doc.addPage(); cabecalho('Resumo executivo'); y = 32; }
+  doc.setFillColor(...C.soft); doc.roundedRect(M, y, W - 2 * M, 8 + pontos.length * 5.2, 3, 3, 'F');
+  titulo('Pontos de atenção', M + 5, y + 6);
+  pontos.forEach((p, i) => { doc.setFillColor(...C.ok); doc.circle(M + 6.5, y + 10.2 + i * 5.2, 0.8, 'F'); txt(p, M + 9, y + 11.2 + i * 5.2, { s: 8.4 }); });
+
+  // ── Página 2: evolução e detalhes ──
+  doc.addPage(); cabecalho('Evolução e detalhes');
+  y = 32;
+  titulo('No prazo por semana de carregamento (%)', M, y);
+  const gx = M, gy = y + 6, gw = 160, gh = 52;
+  doc.setDrawColor(...C.line); doc.setLineWidth(0.2);
+  [0, 50, 100].forEach(v => { const yy = gy + gh - gh * v / 100; doc.line(gx + 8, yy, gx + gw, yy); txt(`${v}%`, gx + 6, yy + 1, { s: 6.5, c: C.muted, a: 'right' }); });
+  doc.setDrawColor(...C.ok); doc.setLineDashPattern([1, 1], 0); const ym = gy + gh - gh * meta / 100; doc.line(gx + 8, ym, gx + gw, ym); doc.setLineDashPattern([], 0);
+  txt(`meta ${meta}%`, gx + gw, ym - 1.2, { s: 6.5, c: C.ok, a: 'right' });
+  const nS = Math.max(1, porSem.length), slot = (gw - 10) / nS, bw2 = Math.min(13, slot * 0.45);
+  porSem.forEach((g, i) => {
+    const cx = gx + 10 + slot * i + slot / 2, hh = gh * g.pct / 100;
+    doc.setFillColor(...(g.pct >= meta ? C.ok : g.pct >= 85 ? C.warn : C.bad));
+    doc.roundedRect(cx - bw2 / 2, gy + gh - hh, bw2, hh, 1, 1, 'F');
+    if (hh > 8) txt(`${f1(g.pct)}%`, cx, gy + gh - hh + 4.5, { b: 1, s: 7, c: [255, 255, 255], a: 'center' }); else txt(`${f1(g.pct)}%`, cx, gy + gh - hh - 1.5, { b: 1, s: 7, a: 'center' });
+    txt(g.rot, cx, gy + gh + 4.5, { s: 7, a: 'center' });
+    txt(`${g.total} entr. · ${g.fora} fora`, cx, gy + gh + 8.5, { s: 6.3, c: C.muted, a: 'center' });
+  });
+  // Por prazo (tiles)
+  titulo('Por prazo da tabela', M + 172, y);
+  porPrazo.forEach((g, i) => {
+    const yy = y + 5 + i * 21;
+    doc.setDrawColor(...C.line); doc.roundedRect(M + 172, yy, W - 2 * M - 172, 18, 2, 2, 'S');
+    txt(g.k, M + 176, yy + 7, { b: 1, s: 11 });
+    txt(`${g.total} entregas · ${g.fora} fora · atraso médio ${f1(g.atrasoMed)} dia(s)`, M + 176, yy + 13, { s: 7.5, c: C.muted });
+    txt(`${f1(g.pct)}%`, W - M - 4, yy + 11, { b: 1, s: 14, c: g.pct >= meta ? C.ok : g.pct >= 85 ? C.warn : C.bad, a: 'right' });
+  });
+  y = Math.max(gy + gh + 16, y + 5 + porPrazo.length * 21 + 4);
+  titulo('Postos com mais entregas fora do prazo', M, y);
+  doc.autoTable({
+    startY: y + 3, margin: { left: M, right: M }, theme: 'plain',
+    head: [['Posto', 'Entregas', 'No prazo', 'Fora', '% no prazo', 'Atraso médio']],
+    body: piores.map(g => [t(g.k), g.total, g.ok, g.fora, `${f1(g.pct)}%`, `${f1(g.atrasoMed)} dia(s)`]),
+    styles: { fontSize: 8, cellPadding: 1.8, textColor: C.ink }, headStyles: { fontStyle: 'bold', textColor: C.muted, fontSize: 7.2, lineWidth: { bottom: 0.3 }, lineColor: C.line },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right', textColor: C.bad, fontStyle: 'bold' }, 4: { halign: 'right', fontStyle: 'bold' }, 5: { halign: 'right' } },
+    alternateRowStyles: { fillColor: C.soft },
+  });
+
+  // ── Página 3+: atrasos + metodologia ──
+  doc.addPage(); cabecalho(`Entregas fora do prazo (${atrasos.length})`);
+  const hm = d => d ? `${_otifBr(_otifIso(d)).slice(0, 5)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '-';
+  doc.autoTable({
+    startY: 30, margin: { left: M, right: M, top: 30 }, theme: 'plain',
+    head: [['Viagem', 'Placa', 'Transportadora', 'Base', 'Posto', 'Programado', 'Carreg.', 'Prazo', 'Limite', 'Chegada', 'Atraso']],
+    body: atrasos.map(e => [e.petId, e.placa, t(e.transportadora), t(e.cidadeBase), t(e.cliente), hm(e.prog) + (e.apos18 ? ' *' : ''), _otifBr(e.d0).slice(0, 5), `D+${e.prazoDias}`, _otifBr(e.limite).slice(0, 5), hm(e.chegada), `${e.atraso} d`]),
+    styles: { fontSize: 7.2, cellPadding: 1.4, textColor: C.ink }, headStyles: { fontStyle: 'bold', textColor: C.muted, fontSize: 6.8, lineWidth: { bottom: 0.3 }, lineColor: C.line },
+    columnStyles: { 0: { fontStyle: 'bold' }, 4: { cellWidth: 62 }, 10: { halign: 'right', textColor: C.bad, fontStyle: 'bold' } },
+    alternateRowStyles: { fillColor: C.soft },
+    didDrawPage: () => { cabecalho(`Entregas fora do prazo (${atrasos.length})`); },
+  });
+  let ym2 = doc.lastAutoTable.finalY + 6;
+  if (ym2 > H - 42) { doc.addPage(); cabecalho('Metodologia'); ym2 = 32; }
+  titulo('Como foi calculado', M, ym2);
+  const met = [
+    'No prazo: chegada real no posto (Herrlog) até o fim do dia limite = data do carregamento (D0) + prazo do posto na tabela (D+0, D+1, D+2), em dias corridos.',
+    'Entregas: todas as entregas das programações vigentes do Histórico do Roteirizador com carregamento no período; chegada casada pelo nº da viagem e pelo cliente.',
+    'Programada após 18h (*): primeira vez que a entrega foi salva no Histórico depois das 18h em dia útil (sábados, domingos e feriados fora dessa conta).',
+    'Fora do %: entregas de postos sem prazo na tabela e entregas sem chegada registrada na Herrlog. In Full não incluído (sem volume pedido x entregue).',
+  ];
+  met.forEach((m, i) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C.muted); doc.text(doc.splitTextToSize(t(m), W - 2 * M - 4), M + 2, ym2 + 6 + i * 6.5); });
+  // Rodapé
+  const nP = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= nP; i++) {
+    doc.setPage(i); doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, H - 9, W - M, H - 9);
+    txt(`Gerado em ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · NEXTA Frota`, M, H - 5, { s: 7, c: C.muted });
+    txt(`${i} / ${nP}`, W - M, H - 5, { s: 7, c: C.muted, a: 'right' });
+  }
+  doc.save(`OTIF_${mesTit.replace('/', '_')}.pdf`);
+  showToast('📄 PDF do OTIF gerado.', true);
+}
+window.otifExportarPDF = otifExportarPDF;
+window.otifCarregarPrazos = otifCarregarPrazos; window.otifCarregarHerrlog = otifCarregarHerrlog; window.otifCalcular = otifCalcular; window.otifExportarExcel = otifExportarExcel;
 // Exclui UMA entrega (parada) de uma viagem salva, mantendo as demais.
 // Mesmo mecanismo de revisão: nunca sobrescreve o original. Não recalcula
 // rota/horários (igual ao "Incluir pedido"); se a entrega excluída era a
@@ -14341,6 +15012,13 @@ window.recuperarHandleHistoricoPromise = recuperarHandleHistorico();
 window.initRoteirizadorIntegrado = async function(){
   const root = document.getElementById('roteirizador-shell');
   if(!root) return;
+  // Pasta do Histórico: mostra a lembrada (e o botão de liberar, se o Chrome pedir permissão de novo)
+  (async () => {
+    try { await window.recuperarHandleHistoricoPromise; } catch (e) {}
+    if (!dirHandleHistorico) return;
+    let p = 'prompt'; try { p = await dirHandleHistorico.queryPermission({ mode: 'readwrite' }); } catch (e) {}
+    _histMostrarPasta(dirHandleHistorico.name, p !== 'granted');
+  })();
   if(!window.__roteirizadorDadosCarregados){
     window.__roteirizadorDadosCarregados = true;
     try { await carregarDadosFixos(); } catch(e) { console.warn('Roteirizador: falha ao carregar dados fixos', e); }
