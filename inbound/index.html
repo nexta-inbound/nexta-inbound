@@ -21176,14 +21176,12 @@ function _hoMontarLinhas() {
         // ofertada à SADI → trocada pra KMT sem evento). Antes mostrava só o 1º destino, e parecia que a SADI
         // tinha feito a viagem. A transportadora atual da viagem fecha o caminho mesmo quando a troca não
         // ficou registrada no histórico (trocas antigas, antes do evento "Transportadora trocada").
+        // 24/11/2026 (Amanda): a sequência INTEIRA da viagem, do 1º ofertado até quem ficou com ela — ex.:
+        // "SADI → TWM → MORADA → KMT" —, não só o que veio depois desta recusa.
         const caminho = [];
-        hist.slice(idx + 1).forEach(x => {
-          if (['Ofertado', 'Aceito', 'Placa Enviada', 'Frota Dedicada', 'Transportadora trocada'].includes(x.evento)
-            && x.transportador && x.transportador !== caminho.at(-1)) caminho.push(x.transportador);
-        });
-        if (v.transportador && caminho.length && v.transportador !== caminho.at(-1)) caminho.push(v.transportador);
-        while (caminho[0] === h.transportador) caminho.shift();
-        if (caminho.length) depois = `Reofertada → ${caminho.join(' → ')}`;
+        hist.forEach(x => { if (x.transportador && x.transportador !== caminho.at(-1)) caminho.push(x.transportador); });
+        if (v.transportador && v.transportador !== caminho.at(-1)) caminho.push(v.transportador);
+        if (caminho.length > 1) depois = caminho.join(' → ');
         else if (h.evento === 'Cancelado') {
           const cad = String(v.cadenciaOrigem || '').split('-')[0];
           const subst = (porCadencia.get(cad) || [])
