@@ -16,21 +16,33 @@ const PASTA_HISTORICO_LIBERADA = false;
 // testarem tudo. Só internos têm o Outbound marcado; o que for gravado é apagado na virada pela cópia final
 // (copia_final_outbound.py --nova-foto --aplicar --espelhar). Para voltar a só leitura: false.
 const GRAVACAO_SEMANA_TESTES = true;
-const AVISO_PASTA = 'Outbound novo em teste: a pasta do Histórico é só para consulta. Nada foi salvo nela.';
+const AVISO_PASTA = 'Outbound novo em teste: a pasta "Historico Roteirizações" (a real) é só para consulta. Nada foi salvo nela. Para testar salvar/publicar no Telão, escolha uma pasta de teste no Histórico.';
+// Semana de testes (24/11/2026): a trava vale só quando a pasta escolhida no Histórico é a REAL (nome
+// "Historico Roteirizações", com ou sem acento). Pasta de teste com outro nome → salvar e publicar no Telão funcionam.
+function pastaHistoricoEhAReal() {
+  let pasta = null;
+  try { pasta = typeof dirHandleHistorico !== 'undefined' ? dirHandleHistorico : null; } catch { pasta = null; }
+  if (!pasta?.name) return false; // sem pasta escolhida o app não grava arquivo nenhum
+  const nome = pasta.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return nome.includes('historico roteirizac');
+}
 function travarPastaHistoricoSoLeitura() {
   if (window.__pastaHistoricoTravada) return;
   window.__pastaHistoricoTravada = true;
   const negar = () => Promise.reject(new DOMException(AVISO_PASTA, 'NotAllowedError'));
   const F = window.FileSystemFileHandle?.prototype, D = window.FileSystemDirectoryHandle?.prototype;
-  if (F) F.createWritable = negar;                 // salvar / reescrever arquivo
+  if (F) {
+    const originalWritable = F.createWritable;     // salvar / reescrever arquivo
+    F.createWritable = function (...a) { return pastaHistoricoEhAReal() ? negar() : originalWritable.apply(this, a); };
+  }
   if (D) {
-    D.removeEntry = negar;                         // excluir roteirização
-    const original = D.getFileHandle, originalDir = D.getDirectoryHandle;
+    const originalRemove = D.removeEntry, original = D.getFileHandle, originalDir = D.getDirectoryHandle;
+    D.removeEntry = function (...a) { return pastaHistoricoEhAReal() ? negar() : originalRemove.apply(this, a); };
     D.getFileHandle = function (nome, opcoes) {    // criar arquivo novo
-      return opcoes?.create ? negar() : original.call(this, nome, opcoes);
+      return opcoes?.create && pastaHistoricoEhAReal() ? negar() : original.call(this, nome, opcoes);
     };
     D.getDirectoryHandle = function (nome, opcoes) {
-      return opcoes?.create ? negar() : originalDir.call(this, nome, opcoes);
+      return opcoes?.create && pastaHistoricoEhAReal() ? negar() : originalDir.call(this, nome, opcoes);
     };
   }
 }
