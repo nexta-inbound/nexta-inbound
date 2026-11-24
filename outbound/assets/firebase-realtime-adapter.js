@@ -16,6 +16,19 @@ const PASTA_HISTORICO_LIBERADA = false;
 // testarem tudo. Só internos têm o Outbound marcado; o que for gravado é apagado na virada pela cópia final
 // (copia_final_outbound.py --nova-foto --aplicar --espelhar). Para voltar a só leitura: false.
 const GRAVACAO_SEMANA_TESTES = true;
+// Faixa fixa no topo enquanto durar a semana de testes (pedido da Amanda 24/11/2026): evita lançar algo real aqui.
+function mostrarFaixaTestes() {
+  const pôr = () => {
+    if (document.getElementById('faixa-ambiente-testes')) return;
+    const f = document.createElement('div');
+    f.id = 'faixa-ambiente-testes';
+    f.textContent = '⚠️ AMBIENTE DE TESTES — o que for salvo aqui é apagado depois. Lançamentos reais continuam no Outbound antigo.';
+    f.style.cssText = 'position:sticky;top:0;z-index:99999;background:#f0b429;color:#1a1a1a;font:600 13px/1.4 system-ui,sans-serif;'
+      + 'text-align:center;padding:6px 12px;box-shadow:0 1px 4px rgba(0,0,0,.35)';
+    document.body.prepend(f);
+  };
+  if (document.body) pôr(); else document.addEventListener('DOMContentLoaded', pôr, {once: true});
+}
 const AVISO_PASTA = 'Outbound novo em teste: a pasta "Historico Roteirizações" (a real) é só para consulta. Nada foi salvo nela. Para testar salvar/publicar no Telão, escolha uma pasta de teste no Histórico.';
 // Semana de testes (24/11/2026): a trava vale só quando a pasta escolhida no Histórico é a REAL (nome
 // "Historico Roteirizações", com ou sem acento). Pasta de teste com outro nome → salvar e publicar no Telão funcionam.
@@ -80,6 +93,7 @@ export function getFirestore(app) {
   const testeLocal = ['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('gravar');
   const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao || testeLocal || GRAVACAO_SEMANA_TESTES});
   if (!PASTA_HISTORICO_LIBERADA) travarPastaHistoricoSoLeitura();
+  if (GRAVACAO_SEMANA_TESTES && !homologacao) mostrarFaixaTestes();
   contexts.set(context, createCompatibilityApi({reader, writer,
     makeId: collection => push(ref(database, COLLECTION_PATHS[collection])).key}));
   return context;
