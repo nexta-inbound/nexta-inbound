@@ -12,6 +12,10 @@ const contexts = new WeakMap();
 // (inclusive homologação e localhost ?gravar, que usam dados de teste) só LÊ a pasta — pedido da usuária 23/11/2026:
 // "só abrir e ver as roteirizações que já estão na pasta, sem salvar nada". Na virada: true, junto com as gravações.
 const PASTA_HISTORICO_LIBERADA = false;
+// Semana de testes (24/11/2026, pedido da usuária): o site publicado grava no nexta-outbound para Arley/Natanael
+// testarem tudo. Só internos têm o Outbound marcado; o que for gravado é apagado na virada pela cópia final
+// (copia_final_outbound.py --nova-foto --aplicar --espelhar). Para voltar a só leitura: false.
+const GRAVACAO_SEMANA_TESTES = true;
 const AVISO_PASTA = 'Outbound novo em teste: a pasta do Histórico é só para consulta. Nada foi salvo nela.';
 function travarPastaHistoricoSoLeitura() {
   if (window.__pastaHistoricoTravada) return;
@@ -62,7 +66,7 @@ export function getFirestore(app) {
   // so' com ?gravar na URL. O site publicado (nexta-logistica.com.br) nunca entra aqui. As regras do banco
   // continuam valendo (transportador so' grava o que e' dele).
   const testeLocal = ['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('gravar');
-  const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao || testeLocal});
+  const writer = createRealtimeWriter({sdk, database, authorize, writesEnabled: homologacao || testeLocal || GRAVACAO_SEMANA_TESTES});
   if (!PASTA_HISTORICO_LIBERADA) travarPastaHistoricoSoLeitura();
   contexts.set(context, createCompatibilityApi({reader, writer,
     makeId: collection => push(ref(database, COLLECTION_PATHS[collection])).key}));
