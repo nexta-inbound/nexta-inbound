@@ -1029,6 +1029,13 @@
   .scrollable::-webkit-scrollbar-track { background: transparent; }
   .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* Paginação das tabelas grandes — Gerir Viagens, Monitoramento, Tabela de Frete (ver paginar) */
+  .paginacao-viagens { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 8px 18px; font-size: 12px; color: var(--text-muted); }
+  .paginacao-viagens b { color: var(--text); font-weight: 600; }
+  .paginacao-viagens-nav { display: flex; align-items: center; gap: 6px; }
+  .paginacao-viagens-nav .btn:disabled { opacity: .35; cursor: default; }
+  .paginacao-viagens select { width: auto; text-transform: none; margin-left: 6px; }
+
   /* sticky action column */
   th.col-acao {
     position: sticky; right: 0; z-index: 2;
@@ -2039,6 +2046,52 @@
     }
   }
 
+  // Listener granular (onChildAdded/Changed/Removed) que também entrega a CARGA INICIAL, baixando o
+  // node uma vez só. Antes cada node grande era lido com get() e depois assinado com onChildAdded:
+  // o get() sem listener ativo não fica em cache, e o onChildAdded reentrega todos os filhos ao
+  // assinar — o node descia duas vezes (24/11/2026: Pamcard 2 MB + 2 MB, semana 0,8 + 0,7 MB por
+  // abertura). Aqui um onValue onlyOnce na MESMA ref divide a escuta com os listeners de filho (o
+  // SDK manda uma escuta só ao servidor) e traz o valor inteiro de uma vez em `inicial`; os
+  // onChildAdded dessa primeira entrega são ignorados (o evento value chega depois dos de filho
+  // do mesmo lote). Eventos ao vivo que chegarem depois da carga ficam na fila até `liberar()`,
+  // pra quem aplica a carga de forma assíncrona não perder nem aplicar fora de ordem.
+  // `parar()` antes da carga resolve `inicial` com null.
+  function ouvirFilhosComCarga(r, { onAdded, onChanged, onRemoved }) {
+    let carregado = false, liberado = false, parado = false, resolverInicial;
+    const fila = [];
+    const entregar = fn => {
+      if (!carregado || parado) return;
+      if (liberado) fn(); else fila.push(fn);
+    };
+    const u1 = onChildAdded(r, s => entregar(() => onAdded(s.key, s.val())));
+    const u2 = onChildChanged(r, s => entregar(() => onChanged(s.key, s.val())));
+    const u3 = onChildRemoved(r, s => entregar(() => onRemoved(s.key)));
+    let pararValor = () => {};
+    const inicial = new Promise((resolve, reject) => {
+      resolverInicial = resolve;
+      pararValor = onValue(r, snap => {
+        if (parado) return;
+        carregado = true;
+        resolve(snap.exists() ? snap.val() : {});
+      }, reject, { onlyOnce: true });
+    });
+    return {
+      inicial,
+      liberar: () => {
+        if (parado || liberado) return;
+        liberado = true;
+        fila.splice(0).forEach(fn => fn());
+      },
+      parar: () => {
+        if (parado) return;
+        parado = true;
+        fila.length = 0;
+        pararValor(); u1(); u2(); u3();
+        resolverInicial(null);
+      },
+    };
+  }
+
   // Expõe funções ao escopo global para o resto do HTML
   window._fb = {
     salvar: async (key, payload) => {
@@ -2068,49 +2121,32 @@
     // inteiras só pra descobrir isso — essa era a causa da cota de download do Firebase
     // estourando (ver conversa que levou a esta mudança). Staff lê o node inteiro
     // (pequeno: um registro por viagem, não por semana); transportador (nomeTransportador
-    // informado pelo chamador, mesmo padrão de carregarViagensTransportador) só a própria
-    // fatia, via query indexada.
-    // `desdeISO` (só se aplica sem nomeTransportador — RTDB não combina duas orderByChild
-    // na mesma query): busca só as entradas com atualizadoEm >= desdeISO em vez do node
-    // inteiro. Usado pelo cache local (ver ativarCarregamentoPorIndice) pra sync incremental
-    // em recarregamentos repetidos — exige o `.indexOn: atualizadoEm` nas regras.
-    carregarIndiceViagens: async (nomeTransportador, desdeISO) => {
-      if (nomeTransportador) {
-        const q = query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador));
+    // informado pelo chamador, mesmo padrão de ouvirViagensTransportador) só a própria
+    // fatia, via query indexada (ver ouvirIndiceViagens).
+    // Busca só as entradas com atualizadoEm >= desdeISO (staff com cache local — ver
+    // ativarCarregamentoPorIndice): a tela abre com o cache + essas poucas entradas, sem
+    // esperar o índice inteiro, que chega depois pelo listener. Exige o `.indexOn:
+    // atualizadoEm` nas regras; sem ele devolve null e quem chama faz a carga completa.
+    carregarIndiceViagensDesde: async (desdeISO) => {
+      try {
+        const q = query(ref(db, 'viagensIndice'), orderByChild('atualizadoEm'), startAt(desdeISO));
         const snap = await get(q);
         return snap.exists() ? snap.val() : {};
+      } catch (err) {
+        console.warn('Busca incremental de viagensIndice falhou (indexOn pendente?), seguindo com a carga completa:', err);
+        return null;
       }
-      if (desdeISO) {
-        try {
-          const q = query(ref(db, 'viagensIndice'), orderByChild('atualizadoEm'), startAt(desdeISO));
-          const snap = await get(q);
-          return snap.exists() ? snap.val() : {};
-        } catch (err) {
-          // `.indexOn: atualizadoEm` ainda não publicado nas regras do Firebase (ver
-          // firebase_database.rules.json) — cai pra busca completa em vez de derrubar o
-          // carregamento inteiro. Assim que a regra for publicada, a próxima carga já usa
-          // o caminho incremental normalmente sem precisar de nenhuma mudança de código.
-          console.warn('Busca incremental de viagensIndice falhou (indexOn pendente?), caindo pra busca completa:', err);
-          const snap = await get(ref(db, 'viagensIndice'));
-          return snap.exists() ? snap.val() : {};
-        }
-      }
-      const snap = await get(ref(db, 'viagensIndice'));
-      return snap.exists() ? snap.val() : {};
     },
-    // Granular (onChildAdded/Changed/Removed, mesmo padrão de ouvirMonitoramentoHerrlog) —
-    // usado por ativarCarregamentoPorIndice pra saber AO VIVO quando uma viagem passa a
-    // qualificar (ou deixa de qualificar) pro filtro padrão/período em vigor, sem precisar
-    // de F5. `nomeTransportador` opcional restringe à mesma query indexada de
-    // carregarIndiceViagens.
-    ouvirIndiceViagens: (nomeTransportador, { onAdded, onChanged, onRemoved }) => {
+    // Granular (onChildAdded/Changed/Removed) com carga inicial numa leitura só (ver
+    // ouvirFilhosComCarga) — usado por ativarCarregamentoPorIndice pra saber AO VIVO quando
+    // uma viagem passa a qualificar (ou deixa de qualificar) pro filtro padrão/período em
+    // vigor, sem precisar de F5. `inicial` traz o índice inteiro (ou a fatia do transportador,
+    // query indexada) — é também o sync completo que enxerga exclusões.
+    ouvirIndiceViagens: (nomeTransportador, handlers) => {
       const r = nomeTransportador
         ? query(ref(db, 'viagensIndice'), orderByChild('transportador'), equalTo(nomeTransportador))
         : ref(db, 'viagensIndice');
-      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
-      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
-      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
-      return () => { u1(); u2(); u3(); };
+      return ouvirFilhosComCarga(r, handlers);
     },
     // Leitura pontual (não listener permanente) do registro completo de UMA viagem —
     // usado por ativarCarregamentoPorIndice só quando o cache local não tem essa viagem
@@ -2137,13 +2173,11 @@
       await remove(ref(db, 'sessoes/' + key));
       await remove(ref(db, 'semanasDisponiveis/' + key));
     },
-    // Transportador não tem mais leitura do node `sessoes/<semana>` inteiro (ver
-    // regras do Firebase) — só pode consultar a própria fatia via query indexada
-    // em `transportador`, exigida pela regra `.read` daquele path.
-    carregarViagensTransportador: async (key, nomeTransportador) => {
-      const q = query(ref(db, 'sessoes/' + key + '/viagens'), orderByChild('transportador'), equalTo(nomeTransportador));
-      const snap = await get(q);
-      return snap.exists() ? snap.val() : {};
+    // Só o carimbo da última gravação da semana (texto "Sincronizado · há N min"), sem baixar
+    // a sessão inteira — viagens/cadências/config chegam pelos listeners (configurarListenerSemana).
+    lerSavedAtSemana: async (key) => {
+      const snap = await get(ref(db, 'sessoes/' + key + '/savedAt'));
+      return snap.exists() ? snap.val() : null;
     },
     // Listeners granulares em `viagens` (ver ouvirViagens abaixo) — por que não onValue:
     // onValue manda o valor INTEIRO do node toda vez que qualquer coisa dentro dele muda,
@@ -2152,31 +2186,27 @@
     // são resolvidos pelo próprio servidor por diff de valor — só descem o registro que de
     // fato mudou, não importa se a escrita foi um update() pontual ou um set() grande no
     // node pai. Isso é o que estava estourando a cota de download do plano gratuito.
-    ouvirViagens: (key, { onAdded, onChanged, onRemoved }) => {
-      const r = ref(db, 'sessoes/' + key + '/viagens');
-      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
-      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
-      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
-      return () => { u1(); u2(); u3(); };
+    // Devolve { inicial, liberar, parar } — a carga inicial vem do próprio listener (ver
+    // ouvirFilhosComCarga), sem um get() da semana antes.
+    ouvirViagens: (key, handlers) => {
+      return ouvirFilhosComCarga(ref(db, 'sessoes/' + key + '/viagens'), handlers);
     },
-    // Mesma ideia acima, mas restrita à fatia do transportador (mesma query indexada
-    // usada em carregarViagensTransportador) — se um registro deixar de casar com o
-    // filtro (ex.: reatribuído a outro transportador), o Firebase dispara onRemoved
-    // sozinho, mesmo sem o node ter sido de fato apagado.
-    ouvirViagensTransportador: (key, nomeTransportador, { onAdded, onChanged, onRemoved }) => {
+    // Mesma ideia acima, mas restrita à fatia do transportador: ele não lê o node
+    // `sessoes/<semana>` inteiro (ver regras do Firebase), só a própria fatia via query
+    // indexada em `transportador`, exigida pela regra `.read` daquele path. Se um registro
+    // deixar de casar com o filtro (ex.: reatribuído a outro transportador), o Firebase
+    // dispara onRemoved sozinho, mesmo sem o node ter sido de fato apagado.
+    ouvirViagensTransportador: (key, nomeTransportador, handlers) => {
       const q = query(ref(db, 'sessoes/' + key + '/viagens'), orderByChild('transportador'), equalTo(nomeTransportador));
-      const u1 = onChildAdded(q, (snap) => onAdded(snap.key, snap.val()));
-      const u2 = onChildChanged(q, (snap) => onChanged(snap.key, snap.val()));
-      const u3 = onChildRemoved(q, (snap) => onRemoved(snap.key));
-      return () => { u1(); u2(); u3(); };
+      return ouvirFilhosComCarga(q, handlers);
     },
     // cadencias/config em paths próprios (não em `sessoes/<key>` inteiro) — assim editar
-    // uma viagem não reaciona esses listeners, e vice-versa.
-    ouvirCadencias: (key, callback) => {
-      return onValue(ref(db, 'sessoes/' + key + '/cadencias'), (snap) => callback(normalizarViagensArray(snap.val())));
+    // uma viagem não reaciona esses listeners, e vice-versa. `aoFalhar` opcional (permissão negada).
+    ouvirCadencias: (key, callback, aoFalhar) => {
+      return onValue(ref(db, 'sessoes/' + key + '/cadencias'), (snap) => callback(normalizarViagensArray(snap.val())), aoFalhar);
     },
-    ouvirConfig: (key, callback) => {
-      return onValue(ref(db, 'sessoes/' + key + '/config'), (snap) => callback(snap.exists() ? snap.val() : {}));
+    ouvirConfig: (key, callback, aoFalhar) => {
+      return onValue(ref(db, 'sessoes/' + key + '/config'), (snap) => callback(snap.exists() ? snap.val() : {}), aoFalhar);
     },
     // Grava só os registros (idViagem) alterados, via update multi-path — nunca a
     // sessão inteira: transportador não tem mais permissão de escrita em
@@ -2194,7 +2224,7 @@
         updates['sessoes/' + key + '/viagens/' + id] = v;
         // viagensIndice: espelho leve usado pra decidir QUAIS viagens carregar (filtro
         // padrão/período, por viagem — não mais por semana) sem baixar o histórico
-        // inteiro — ver ativarCarregamentoPorIndice/carregarIndiceViagens. Mesmo
+        // inteiro — ver ativarCarregamentoPorIndice/ouvirIndiceViagens. Mesmo
         // request, sem round-trip extra.
         updates['viagensIndice/' + id] = entradaIndiceViagem(v, key, agora);
       });
@@ -2283,21 +2313,11 @@
     // tendo mudado só um registro. Com caminhão em movimento mudando km a cada ciclo, isso
     // virava um consumo de fundo constante o dia inteiro (mesmo padrão que já resolvemos em
     // `viagens` - ver ouvirViagens - só que aqui era o node que faltava a mesma correção).
-    ouvirMonitoramentoHerrlog: ({ onAdded, onChanged, onRemoved }) => {
-      const r = ref(db, 'monitoramentoHerrlog');
-      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
-      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
-      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
-      return () => { u1(); u2(); u3(); };
-    },
-    // Leitura única do node inteiro, usada só na largada (ver configurarListenerMonitoramentoHerrlog)
-    // pra popular monitoramentoHerrlog de uma vez antes de assinar o onChildAdded acima — sem
-    // isso, com o node já grande (centenas de viagens monitoradas), o onChildAdded reconstrói o
-    // node inteiro evento a evento na primeira assinatura, e cada evento dispara um re-render
-    // pesado da aba Monitoramento (a tabela "sobe aos poucos" em vez de aparecer de uma vez).
-    carregarMonitoramentoHerrlog: async () => {
-      const snap = await get(ref(db, 'monitoramentoHerrlog'));
-      return snap.exists() ? snap.val() : {};
+    // Carga inicial numa leitura só (ver ouvirFilhosComCarga): com o node já grande (centenas
+    // de viagens monitoradas), deixar o onChildAdded reconstruir o node evento a evento
+    // dispararia um re-render pesado da aba Monitoramento a cada um ("sobe aos poucos").
+    ouvirMonitoramentoHerrlog: (handlers) => {
+      return ouvirFilhosComCarga(ref(db, 'monitoramentoHerrlog'), handlers);
     },
     // Usado por processarViagensCanceladasNaHerrlog() para limpar do Firebase a
     // entrada já processada (statusHerrlog="Cancelado", gravado pelo
@@ -2318,18 +2338,9 @@
     // pelo bot_pamcard.py a cada transição de status). Mesmo motivo granular do
     // ouvirMonitoramentoHerrlog acima: onValue reenviaria o node inteiro (todas as
     // viagens com pedágio) a cada gravação de UMA viagem.
-    ouvirMonitoramentoPamcard: ({ onAdded, onChanged, onRemoved }) => {
-      const r = ref(db, 'monitoramentoPamcard');
-      const u1 = onChildAdded(r, (snap) => onAdded(snap.key, snap.val()));
-      const u2 = onChildChanged(r, (snap) => onChanged(snap.key, snap.val()));
-      const u3 = onChildRemoved(r, (snap) => onRemoved(snap.key));
-      return () => { u1(); u2(); u3(); };
-    },
-    // Mesmo motivo do carregarMonitoramentoHerrlog acima — leitura única antes de assinar o
-    // onChildAdded do vale-pedágio.
-    carregarMonitoramentoPamcard: async () => {
-      const snap = await get(ref(db, 'monitoramentoPamcard'));
-      return snap.exists() ? snap.val() : {};
+    // Carga inicial numa leitura só, como no Herrlog (~2 MB em nov/2026: era baixado duas vezes).
+    ouvirMonitoramentoPamcard: (handlers) => {
+      return ouvirFilhosComCarga(ref(db, 'monitoramentoPamcard'), handlers);
     },
     // URL de download do comprovante em PDF gravado pelo bot_pamcard.py no Storage
     // (`comprovantes-pamcard/AAAA/MM/arquivo.pdf`, ver comprovanteStoragePath em
@@ -2479,7 +2490,7 @@
       const sessaoSalva = { ...payload, viagens: Object.fromEntries(viagensComId.map(v => [v.idViagem, v])) };
       // update() multi-path em vez de set(), pra sobrescrever 'sessoes/'+key e gravar
       // viagensIndice (mesmo mirror leve de salvarViagensParciais) no mesmo request —
-      // ver ativarCarregamentoPorIndice/carregarIndiceViagens.
+      // ver ativarCarregamentoPorIndice/ouvirIndiceViagens.
       const agora = new Date().toISOString();
       const updates = { ['sessoes/' + key]: sessaoSalva };
       viagensComId.forEach(v => {
@@ -3320,6 +3331,7 @@
           <tbody id="viagensBody"></tbody>
         </table>
       </div>
+      <div id="viagensPaginacao" class="paginacao-viagens" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -3518,6 +3530,7 @@
           <tbody id="monitoramentoBody"></tbody>
         </table>
       </div>
+      <div id="monitoramentoPaginacao" class="paginacao-viagens" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -4236,6 +4249,7 @@
           <tbody id="tabelaFreteBody"></tbody>
         </table>
       </div>
+      <div id="tabelaFretePaginacao" class="paginacao-viagens" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -6703,6 +6717,30 @@ function viagensAtivo() {
   return modoMultiSemana ? viagensMultiSemana : viagens;
 }
 
+// ── DESENHO ADIADO DURANTE A CARGA ──
+// Enquanto iniciarFirebase/ativarCarregamentoPorIndice carregam, as telas pesadas (Gerir
+// Viagens, Exportar, Monitoramento, Veículos, Performance, fretes pendentes) só marcam que
+// precisam ser desenhadas; o desenho sai uma vez só quando a carga termina. Antes a Gerir
+// Viagens era montada 7 vezes na abertura (semana única, troca de aba, carga por índice,
+// reentrega dos listeners, Herrlog...), ~13 s de CPU no diagnóstico de 24/11/2026.
+// Contador: as cargas se aninham (ativarSelecaoPadrao roda dentro de iniciarFirebase).
+let _rendersSuspensos = 0;
+let _renderAbaPendente = false;
+function suspenderRenders() { _rendersSuspensos++; }
+function retomarRenders() {
+  _rendersSuspensos = Math.max(0, _rendersSuspensos - 1);
+  if (_rendersSuspensos || !_renderAbaPendente) return;
+  _renderAbaPendente = false;
+  updatePipeline(viagensAtivo());
+  renderizarAbaAtual();
+}
+// true = carga em andamento: quem chamou não desenha agora (retomarRenders desenha depois)
+function adiarRender() {
+  if (!_rendersSuspensos) return false;
+  _renderAbaPendente = true;
+  return true;
+}
+
 // Semanas de origem das viagens atualmente carregadas (deduplicadas) — usado só pelo
 // cálculo de ocupação de veículos (diasDaSemanaAtiva/garantirSemanasVizinhasCarregadas),
 // que ainda pensa em "semana" pra montar o calendário. Não é mais uma "seleção" do
@@ -8751,7 +8789,96 @@ function renderCardsPlacasPendentesTransportador() {
   }).join('');
 }
 
+/// ── PAGINAÇÃO DAS TABELAS GRANDES (Gerir Viagens, Monitoramento, Tabela de Frete) ──
+// Com todas as viagens do Padrão de uma vez (1.701 em 24/11/2026) cada desenho da Gerir Viagens
+// gerava ~10 MB de HTML e ~95 mil elementos, travando a página 4-7 s a cada filtro ou
+// atualização; Monitoramento e Tabela de Frete passavam de 30 mil elementos cada. Só a página
+// atual vira HTML — KPIs, badges, exportação e "selecionar todas" continuam sobre a lista
+// filtrada inteira. Filtro, busca, card, chip ou ordenação novos voltam pra 1ª página
+// (assinatura); atualização de dados (outro usuário, Herrlog) mantém a página. A barra fica só
+// no fim da tabela. Linhas por página lembradas no navegador, por tabela.
+const OPCOES_TAMANHO_PAGINA = [100, 200, 500, 0]; // 0 = todas
+const PAGINACOES = {
+  viagens: { barra: 'viagensPaginacao', rolagem: '#viagensContent .scrollable', chave: 'nextaViagensPorPagina',
+             itens: ['viagem', 'viagens'], desenhar: () => renderViagensTable() },
+  monitoramento: { barra: 'monitoramentoPaginacao', rolagem: '#monitoramentoContent .scrollable', chave: 'nextaMonitoramentoPorPagina',
+                   itens: ['viagem', 'viagens'], desenhar: () => renderMonitoramento() },
+  frete: { barra: 'tabelaFretePaginacao', rolagem: '#tabelaFreteViewTransp .scrollable', chave: 'nextaTabelaFretePorPagina',
+           itens: ['frete', 'fretes'], desenhar: () => renderTabelaFrete() },
+};
+Object.values(PAGINACOES).forEach(cfg => {
+  cfg.pagina = 0; // 0 = primeira
+  cfg.assinatura = '';
+  try {
+    const n = parseInt(localStorage.getItem(cfg.chave), 10);
+    cfg.tamanho = OPCOES_TAMANHO_PAGINA.includes(n) ? n : 100;
+  } catch { cfg.tamanho = 100; }
+});
+
+// Assinatura dos filtros de uma tabela: objeto/valores com Set viram listas ordenadas.
+function assinaturaPaginacao(...partes) {
+  return JSON.stringify(partes, (k, v) => (v instanceof Set ? [...v].sort() : typeof v === 'function' ? undefined : v));
+}
+
+// Devolve a fatia visível de `lista` e desenha a barra. `assinatura` muda quando o usuário
+// mexe em filtro/ordenação (não quando os dados mudam).
+function paginar(nome, lista, assinatura) {
+  const cfg = PAGINACOES[nome];
+  if (assinatura !== cfg.assinatura) { cfg.assinatura = assinatura; cfg.pagina = 0; }
+  const porPagina = cfg.tamanho || Math.max(1, lista.length);
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / porPagina));
+  cfg.pagina = Math.min(Math.max(0, cfg.pagina), totalPaginas - 1);
+  const inicio = cfg.pagina * porPagina;
+  const visiveis = lista.slice(inicio, inicio + porPagina);
+  renderBarraPaginacao(nome, lista.length, inicio, visiveis.length, totalPaginas);
+  return { visiveis, inicio };
+}
+
+function renderBarraPaginacao(nome, total, inicio, qtd, totalPaginas) {
+  const cfg = PAGINACOES[nome];
+  const el = document.getElementById(cfg.barra);
+  if (!el) return;
+  const fmt = n => n.toLocaleString('pt-BR');
+  const pag = cfg.pagina + 1;
+  const ir = p => `irParaPagina('${nome}', ${p})`;
+  const opcoes = OPCOES_TAMANHO_PAGINA.map(n =>
+    `<option value="${n}" ${n === cfg.tamanho ? 'selected' : ''}>${n ? n : 'Todas'}</option>`).join('');
+  el.innerHTML = total ? `
+    <span>Mostrando <b>${fmt(inicio + 1)}–${fmt(inicio + qtd)}</b> de <b>${fmt(total)}</b> ${total !== 1 ? cfg.itens[1] : cfg.itens[0]}</span>
+    <span class="paginacao-viagens-nav">
+      <button class="btn btn-secondary btn-sm" onclick="${ir(0)}" ${pag <= 1 ? 'disabled' : ''} title="Primeira página">«</button>
+      <button class="btn btn-secondary btn-sm" onclick="${ir(cfg.pagina - 1)}" ${pag <= 1 ? 'disabled' : ''}>‹ Anterior</button>
+      <span>Página <b>${pag}</b> de <b>${totalPaginas}</b></span>
+      <button class="btn btn-secondary btn-sm" onclick="${ir(cfg.pagina + 1)}" ${pag >= totalPaginas ? 'disabled' : ''}>Próxima ›</button>
+      <button class="btn btn-secondary btn-sm" onclick="${ir(totalPaginas - 1)}" ${pag >= totalPaginas ? 'disabled' : ''} title="Última página">»</button>
+    </span>
+    <label>Linhas por página<select class="placa-input" onchange="mudarTamanhoPagina('${nome}', this.value)">${opcoes}</select></label>` : '';
+  el.style.display = total ? 'flex' : 'none';
+}
+
+function irParaPagina(nome, pagina) {
+  const cfg = PAGINACOES[nome];
+  cfg.pagina = pagina;
+  cfg.desenhar();
+  // A barra fica no fim: a página nova começa do topo da tabela
+  const rolagem = document.querySelector(cfg.rolagem);
+  if (!rolagem) return;
+  rolagem.scrollTop = 0;
+  if (rolagem.getBoundingClientRect().top < 0) rolagem.scrollIntoView({ block: 'start' });
+}
+
+function mudarTamanhoPagina(nome, valor) {
+  const cfg = PAGINACOES[nome];
+  const n = parseInt(valor, 10);
+  const primeira = cfg.pagina * (cfg.tamanho || 0); // mantém à vista a 1ª linha da página atual
+  cfg.tamanho = OPCOES_TAMANHO_PAGINA.includes(n) ? n : 100;
+  cfg.pagina = cfg.tamanho ? Math.floor(primeira / cfg.tamanho) : 0;
+  try { localStorage.setItem(cfg.chave, String(cfg.tamanho)); } catch { /* sem armazenamento: vale só nesta aba */ }
+  cfg.desenhar();
+}
+
 function renderViagensTable() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   const fonte = viagensAtivo();
   if (isTransportador()) {
     renderCardsOfertadasTransportador();
@@ -8763,7 +8890,7 @@ function renderViagensTable() {
   // Limpa qualquer linha de uma semana anterior — sem isso, a tabela (embora oculta por
   // display:none) ficava com HTML antigo, que reaparecia se algo religasse o conteúdo
   // sem repassar por aqui (ex.: alternar o modo multi-semana).
-  if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; return; }
+  if (isEmpty) { document.getElementById('viagensBody').innerHTML = ''; renderBarraPaginacao('viagens', 0, 0, 0, 1); return; }
 
   const filtrosViagem = estadoFiltrosViagem();
   atualizarOpcoesFiltrosViagem(filtrosViagem, fonte);
@@ -8795,7 +8922,10 @@ function renderViagensTable() {
   updateKPIs(paraKpis);
   updatePipeline(paraPipeline);
   const tbody = document.getElementById('viagensBody');
-  const linhasViagensHtml = filtered.map((v) => {
+  // Só a página atual vira HTML (ver paginar).
+  const { visiveis } = paginar('viagens', filtered,
+    assinaturaPaginacao(filtrosViagem, activeFilter, activeIndicador || '', sortColuna || '', sortDir));
+  const linhasViagensHtml = visiveis.map((v) => {
     const realIdx = idxPorViagem.get(v);
     const isSelected = selectedViagens.has(realIdx);
 
@@ -10587,8 +10717,11 @@ function renderTabelaFrete() {
     + (fValidade === 'encerrado' ? ` temporária${s} encerrada${s}` : ` frete${s}`);
   atualizarSetasOrdenacaoFrete();
 
+  // Só a página atual vira HTML (ver paginar) — o badge conta todas as filtradas.
+  const { visiveis } = paginar('frete', filtradas, assinaturaPaginacao(
+    busca, fOrigem, fDestino, fTransp, fTipo, fValidade, _soUfDivergenteFrete, sortColunaFrete || '', sortDirFrete));
   document.getElementById('tabelaFreteBody').innerHTML = filtradas.length
-    ? filtradas.map(linhaTabelaFreteHtml).join('')
+    ? visiveis.map(linhaTabelaFreteHtml).join('')
     : '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Nenhum frete encontrado para o filtro</td></tr>';
 }
 
@@ -11149,6 +11282,7 @@ function calcularFretesPendentes(statusFiltro = null) {
 }
 
 function renderFretesPendentes() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   const wrap = document.getElementById('fretePendentesWrap');
   // Sem a tabela carregada toda viagem pareceria pendente
   if (!_tabelaFreteCarregada || _tabelaFreteErro) { wrap.style.display = 'none'; return; }
@@ -13354,6 +13488,7 @@ function limparFiltroIndicadorVeiculo() {
 }
 
 function renderVeiculosTable() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   // Disparo assíncrono (não bloqueia este render) — quando resolver e trouxer dados novos,
   // ele mesmo chama renderVeiculosTable() de novo (ver garantirSemanasVizinhasCarregadas).
   garantirSemanasVizinhasCarregadas();
@@ -13710,6 +13845,7 @@ function irParaHojeFrota() {
 }
 
 function renderStatusFrota() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   // Mesmo disparo assíncrono de renderVeiculosTable — garante que viagens do dia exibido
   // alocadas numa semana vizinha à selecionada também entrem no cálculo (ver
   // garantirSemanasVizinhasCarregadas).
@@ -16534,6 +16670,7 @@ function toggleSelectAllExport(checked) {
 }
 
 function renderExport() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   const { elegiveis, naoConfirmadas, filtradas, selecionaveis } = calcularFiltradasExport();
   const isEmpty = elegiveis.length === 0;
   document.getElementById('exportEmpty').style.display = isEmpty ? 'block' : 'none';
@@ -17036,6 +17173,7 @@ function atualizarSetasOrdenacaoMon() {
 }
 
 function renderMonitoramento() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   // Viagens CIF nunca têm monitoramentoHerrlog (frota é do fornecedor, fora do rastreio
   // automático) — entram sempre, independente de já terem ETA/status manual preenchido.
   const monitoradas = (modoMultiSemana ? viagensMultiSemana : viagens).filter(v => {
@@ -17131,7 +17269,10 @@ function renderMonitoramento() {
 
   const tbody = document.getElementById('monitoramentoBody');
   const ehCarreg = subViewMonitoramento === 'carregamento';
-  tbody.innerHTML = linhasFiltradas.map((l) => {
+  // Só a página atual vira HTML (ver paginar) — badge e KPIs continuam sobre todas as filtradas.
+  const { visiveis: linhasPagina } = paginar('monitoramento', linhasFiltradas, assinaturaPaginacao(
+    f, activeFilterMonStatus, activeIndicadorMon || '', activeDiasEntregaMon, sortColunaMon || '', sortDirMon, subViewMonitoramento));
+  tbody.innerHTML = linhasPagina.map((l) => {
     const { v, mon, vsProgramacao, vsDesejada, vsProgramacaoCarreg, vsDesejadaCarreg } = l;
     const dataDesejadaTxt = fmtDataAno(ehCarreg ? v.dtCarreg : v.dtDesc);
     const dataProgTxt = ehCarreg
@@ -18966,39 +19107,31 @@ async function carregarListaSemanas() {
   wrapImport.style.display = semanas.length > 0 ? 'flex' : 'none';
 }
 
-// Carrega o payload da semana adequado ao papel do usuario, uma vez (sem listener).
-// Transportador nao tem mais leitura do node `sessoes/<semana>` inteiro (ver regras
-// do Firebase) - so consulta a propria fatia de viagens via query indexada.
-async function carregarPayloadSemana(key) {
-  if (isTransportador()) {
-    const viagensObj = await window._fb.carregarViagensTransportador(key, nomeTransportadorLogado());
-    return { viagens: viagensObj, savedAt: new Date().toISOString() };
+/// Aplica a carga inicial da semana (ver configurarListenerSemana) — boot e troca de semana.
+// Sem payload = semana ainda sem sessão salva no Firebase — trata como vazia em vez de manter
+// cadências/viagens da semana anterior na memória (bug: ficavam "presas").
+function aplicarCargaSemana(payload) {
+  if (payload) {
+    aplicarPayload(payload);
+  } else {
+    cadencias = [];
+    viagens = [];
+    renderPainelCadenciado();
   }
-  return window._fb.carregar(key);
+  sincronizarStatusHerrlog();
+  document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
+  if (cadencias.length > 0) renderPreview();
+  updatePipeline();
+  renderViagensTable();
 }
 
 function trocarSemana(key) {
   if (!key || key === semanaAtiva) return Promise.resolve();
   semanaAtiva = key;
-  if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
-  const carregamento = carregarPayloadSemana(key).then(payload => {
-    // Sem payload = semana ainda sem sessão salva no Firebase — trata como vazia em vez
-    // de manter cadências/viagens da semana anterior na memória (bug: ficavam "presas").
-    if (payload) {
-      aplicarPayload(payload);
-    } else {
-      cadencias = [];
-      viagens = [];
-      renderPainelCadenciado();
-    }
-    sincronizarStatusHerrlog();
-    document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
-    if (cadencias.length > 0) renderPreview();
-    updatePipeline();
-    renderViagensTable();
+  const carregamento = configurarListenerSemana(key, payload => {
+    aplicarCargaSemana(payload);
     if (viagens.length > 0) switchTab(1); else switchTab(0);
   });
-  configurarListenerSemana(key);
   mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(key));
   return carregamento;
 }
@@ -19011,15 +19144,15 @@ function trocarSemana(key) {
 // Importar Cadência e por gerarViagens() — o restante (Gerir Viagens/Exportar/Monitoramento)
 // lê de viagensMultiSemana (ver viagensAtivo/ativarCarregamentoPorIndice) — mas o listener
 // em si roda sempre, então precisa ser barato independente de quem está usando o quê.
-function configurarListenerSemana(key) {
+//
+// A carga inicial vem dos próprios listeners (24/11/2026: antes era um get() da sessão inteira
+// e depois o onChildAdded reentregava as ~500 viagens — a semana descia duas vezes). Devolve
+// uma Promise que resolve depois de `aoCarregar(payload | null)` — payload no formato de
+// aplicarPayload — ou sem chamá-lo, se outra semana foi assinada antes da carga chegar.
+// Transportador: só a própria fatia de viagens (não lê cadencias/config nem a sessão inteira —
+// ver regras do Firebase). Sem `aoCarregar` (semana recém-criada), junta o que já existir.
+function configurarListenerSemana(key, aoCarregar) {
   if (window._fbUnsub) { window._fbUnsub(); window._fbUnsub = null; }
-
-  // IDs já presentes em `viagens` no momento de assinar (carregados por
-  // carregarPayloadSemana/trocarSemana pouco antes) — o onChildAdded do Firebase sempre
-  // reentrega o estado atual de cada filho já existente ao assinar, não só mudanças
-  // futuras. Sem essa lista, cada reentrega dessas seria tratada como "mudança de outro
-  // usuário" (toast + fechar modal indevidos logo ao trocar de semana).
-  const idsConhecidos = new Set(viagens.map(v => v.idViagem));
 
   let refreshTimer = null;
   let precisaToast = false;
@@ -19067,41 +19200,73 @@ function configurarListenerSemana(key) {
     if (idx >= 0) viagens.splice(idx, 1);
     reposicionarModalAberto(); // a remoção desloca as posições — não espera o refresh
   };
+  // Só eventos ao vivo: a carga inicial chega inteira em `inicial` (ver ouvirFilhosComCarga).
   const handlersViagens = {
-    onAdded: (id, dados) => {
-      const conhecida = idsConhecidos.has(id);
-      idsConhecidos.delete(id);
-      aplicarViagemLocal(id, dados);
-      agendarRefresh(!conhecida, id);
-    },
+    onAdded: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true, id); },
     onChanged: (id, dados) => { aplicarViagemLocal(id, dados); agendarRefresh(true, id); },
     onRemoved: (id) => { removerViagemLocal(id); agendarRefresh(true, null, id); },
   };
-  const unsubViagens = isTransportador()
+  const assinaturaViagens = isTransportador()
     ? window._fb.ouvirViagensTransportador(key, nomeTransportadorLogado(), handlersViagens)
     : window._fb.ouvirViagens(key, handlersViagens);
 
   // cadencias/config: transportador não tem permissão de leitura nesses paths (ver regras
-  // do Firebase) — só assina pra staff/admin.
+  // do Firebase) — só assina pra staff/admin. A 1ª entrega de cada um é a carga inicial; as
+  // seguintes (mudança de outro usuário) esperam a carga ser aplicada.
+  let cargaAplicada = false;
+  const filaAoVivo = [];
+  const aoVivo = fn => { if (cargaAplicada) fn(); else filaAoVivo.push(fn); };
   let unsubCad = () => {};
   let unsubCfg = () => {};
+  let cadInicial = Promise.resolve(null);
+  let cfgInicial = Promise.resolve(null);
+  let savedAtInicial = Promise.resolve(new Date().toISOString());
   if (!isTransportador()) {
-    let primeiraCad = true;
-    unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
-      cadencias = normalizarViagensArray(novasCadencias);
-      if (activeTab === 0) renderPainelCadenciado();
-      if (primeiraCad) { primeiraCad = false; return; }
-      agendarRefresh(true);
+    cadInicial = new Promise((resolve, reject) => {
+      let primeira = true;
+      unsubCad = window._fb.ouvirCadencias(key, (novasCadencias) => {
+        if (primeira) { primeira = false; resolve(novasCadencias); return; }
+        aoVivo(() => {
+          cadencias = normalizarViagensArray(novasCadencias);
+          if (activeTab === 0) renderPainelCadenciado();
+          agendarRefresh(true);
+        });
+      }, reject);
     });
-    let primeiraCfg = true;
-    unsubCfg = window._fb.ouvirConfig(key, (cfg) => {
-      if (cfg && cfg.capCaminhao != null) document.getElementById('capCaminhao').value = cfg.capCaminhao;
-      if (primeiraCfg) { primeiraCfg = false; return; }
-      agendarRefresh(true);
+    cfgInicial = new Promise((resolve, reject) => {
+      let primeira = true;
+      unsubCfg = window._fb.ouvirConfig(key, (cfg) => {
+        if (primeira) { primeira = false; resolve(cfg); return; }
+        aoVivo(() => {
+          if (cfg && cfg.capCaminhao != null) document.getElementById('capCaminhao').value = cfg.capCaminhao;
+          agendarRefresh(true);
+        });
+      }, reject);
     });
+    savedAtInicial = window._fb.lerSavedAtSemana(key).catch(() => null);
   }
 
-  window._fbUnsub = () => { unsubViagens(); unsubCad(); unsubCfg(); };
+  let parado = false;
+  window._fbUnsub = () => { parado = true; assinaturaViagens.parar(); unsubCad(); unsubCfg(); };
+
+  return Promise.all([assinaturaViagens.inicial, cadInicial, cfgInicial, savedAtInicial])
+    .then(([viagensObj, cads, cfg, savedAt]) => {
+      if (parado || viagensObj === null) return;
+      const temConfig = !!cfg && Object.keys(cfg).length > 0;
+      if (aoCarregar) {
+        const vazia = !Object.keys(viagensObj).length && !(cads && cads.length) && !temConfig && !savedAt;
+        aoCarregar(vazia ? null : { viagens: viagensObj, cadencias: cads || [], ...(temConfig ? { config: cfg } : {}), savedAt });
+      } else {
+        Object.entries(viagensObj).forEach(([id, dados]) => aplicarViagemLocal(id, dados));
+        if (cads) cadencias = normalizarViagensArray(cads);
+        if (temConfig && cfg.capCaminhao != null) document.getElementById('capCaminhao').value = cfg.capCaminhao;
+        if (activeTab === 0) renderPainelCadenciado();
+        if (Object.keys(viagensObj).length) agendarRefresh(false);
+      }
+      cargaAplicada = true;
+      filaAoVivo.splice(0).forEach(fn => fn());
+      assinaturaViagens.liberar();
+    });
 }
 
 // ── CARREGAMENTO POR VIAGEM (Gerir Viagens/Exportar/Monitoramento/Performance) ──
@@ -19112,7 +19277,7 @@ function configurarListenerSemana(key) {
 // a semana inteira — antes, carregar por semana fazia isso: uma viagem recente resgatava
 // centenas de outras já finalizadas há meses, só de carona (ver conversa que levou a esta
 // mudança). Agora o filtro (padrão ou período) é avaliado por VIAGEM, usando o espelho
-// leve viagensIndice (ver window._fb.carregarIndiceViagens/ouvirIndiceViagens) — nunca a
+// leve viagensIndice (ver window._fb.ouvirIndiceViagens/carregarIndiceViagensDesde) — nunca a
 // semana inteira. viagensMultiSemana/_cadenciasCountPorSemana continuam sendo o destino
 // (viagensAtivo() é genérico, não se importa em como foi populado; _semanaOrigem em cada
 // viagem continua essencial — é o que marcarEAgendar usa pra saber onde gravar).
@@ -19123,11 +19288,20 @@ function configurarListenerSemana(key) {
 const STATUS_FINALIZADOS_JANELA = ['Viagem Finalizada', 'Cancelado', 'CIF', 'Recusado'];
 const JANELA_FINALIZADAS_DIAS = 15;
 
+// Finalizada entra pela DATA DA VIAGEM (fim, senão início — dataFim/dataInicio do índice, já
+// com a programada prevalecendo), não pela última gravação: com atualizadoEm, qualquer script
+// ou bot que regravasse viagens antigas trazia todas de volta por 15 dias (24/11/2026: das
+// 1.701 viagens do Padrão, 1.403 eram canceladas/finalizadas/CIF). Viagem com data futura
+// também entra. Sem data conhecida (vazia ou ano implausível, ver dmyParaIso) vale o
+// atualizadoEm, como antes.
 function predicadoAtivas(entrada) {
   if (!STATUS_FINALIZADOS_JANELA.includes(entrada.status)) return true;
+  const limite = new Date();
+  limite.setDate(limite.getDate() - JANELA_FINALIZADAS_DIAS);
+  const dataViagem = entrada.dataFim || entrada.dataInicio;
+  if (dataViagem) return dataViagem >= isoLocal(limite);
   const t = Date.parse(entrada.atualizadoEm || '');
-  if (!Number.isFinite(t)) return false;
-  return t >= Date.now() - JANELA_FINALIZADAS_DIAS * 24 * 60 * 60 * 1000;
+  return Number.isFinite(t) && t >= limite.getTime();
 }
 
 // Overlap entre [dataInicio,dataFim] da viagem (data efetiva real — dtCarregProg||dtCarreg
@@ -19163,8 +19337,8 @@ const CACHE_VERSAO_KEY = 'nextaCacheVersao';
 const CACHE_CURSOR_KEY = 'nextaCacheCursor';
 // Separado do cursor: o cursor avança a cada carga, então "cursor velho" nunca acontecia
 // pra quem abre o portal todo dia e o sync completo de segurança nunca rodava. Este marca
-// o último sync COMPLETO — o único que enxerga exclusões (a busca incremental por
-// atualizadoEm só traz entradas que existem).
+// o último sync COMPLETO (busca incremental por atualizadoEm só traz entradas que existem; desde
+// 24/11/2026 a conferência do listener em ativarCarregamentoPorIndice também conta como completo).
 const CACHE_ULTIMO_COMPLETO_KEY = 'nextaCacheUltimoCompleto';
 // uid dono do cache local. O ✕ (fazerLogout) limpa o cache, mas o logout por inatividade
 // (central/sso.js) não — se OUTRO usuário entrar no mesmo navegador depois, o cache
@@ -19270,7 +19444,9 @@ function _aplicarViagemCarregada(id, semana, registro) {
 // reaproveitadas sem nenhuma chamada de rede. Paraleliza em lotes pequenos: sequencial seria
 // lento demais na primeira carga (centenas de viagens, um round-trip cada); tudo de uma vez
 // arriscaria abrir requisições demais simultâneas.
-async function _carregarQualificadas(entradas, predicado) {
+// `vigente` (opcional): false quando outra carga já começou — o registro baixado vai pro cache,
+// mas não entra mais em viagensMultiSemana (que a carga nova zerou).
+async function _carregarQualificadas(entradas, predicado, vigente = () => true) {
   const TAMANHO_LOTE = 40;
   const paraBuscar = [];
   for (const [id, entrada] of entradas) {
@@ -19283,13 +19459,14 @@ async function _carregarQualificadas(entradas, predicado) {
     }
   }
   for (let i = 0; i < paraBuscar.length; i += TAMANHO_LOTE) {
+    if (!vigente()) return;
     const lote = paraBuscar.slice(i, i + TAMANHO_LOTE);
     await Promise.all(lote.map(async ([id, entrada]) => {
       const registro = await window._fb.obterViagemIndividual(entrada.semana, id);
       if (!registro) { _esquecerViagemEmCache(id); return; } // índice órfão — registro já não existe
       _viagensCacheMemoria[id] = { _atualizadoEmCache: entrada.atualizadoEm, dados: registro };
       window._fb.cache.gravarViagens({ [id]: _viagensCacheMemoria[id] });
-      _aplicarViagemCarregada(id, entrada.semana, registro);
+      if (vigente()) _aplicarViagemCarregada(id, entrada.semana, registro);
     }));
   }
 }
@@ -19329,6 +19506,13 @@ function _removerViagemCarregada(idViagem) {
   _agendarRefreshCarregamento(idViagem);
 }
 
+// Campos de uma entrada de viagensIndice (ver entradaIndiceViagem no módulo do Firebase).
+// Campo ausente no Firebase chega undefined; null do índice local vale o mesmo.
+const CAMPOS_ENTRADA_INDICE = ['semana', 'status', 'transportador', 'atualizadoEm', 'dataInicio', 'dataFim'];
+function mesmaEntradaIndice(a, b) {
+  return !!a && !!b && CAMPOS_ENTRADA_INDICE.every(c => (a[c] ?? null) === (b[c] ?? null));
+}
+
 function desativarCarregamentoPorIndice() {
   if (_unsubIndiceViagens) { _unsubIndiceViagens(); _unsubIndiceViagens = null; }
   _unsubsCadenciasPorSemana.forEach(unsub => unsub());
@@ -19340,10 +19524,16 @@ function desativarCarregamentoPorIndice() {
 }
 
 // Motor único por trás de "Padrão" e "Período personalizado" (ver ativarSelecaoPadrao/
-// ativarPeriodoPersonalizado abaixo). Carga em lote primeiro (mesmo motivo de
-// configurarListenerMonitoramentoHerrlog: evitar que o onChildAdded reconstrua o índice
-// inteiro evento a evento na largada), depois assina o índice ao vivo pra buscar (ou
-// remover de viagensMultiSemana) conforme uma viagem passa a qualificar (ou deixa de).
+// ativarPeriodoPersonalizado abaixo). Avalia o índice inteiro de uma vez (sem o onChildAdded
+// reconstruí-lo evento a evento na largada) e assina o índice ao vivo pra buscar (ou remover
+// de viagensMultiSemana) conforme uma viagem passa a qualificar (ou deixa de). O índice desce
+// UMA vez por abertura (24/11/2026: era get + reentrega do onChildAdded, 1,2 MB cada):
+//   - com cache local válido (staff): a tela abre com o cache + o que mudou desde o cursor
+//     (carregarIndiceViagensDesde, poucos KB); o índice inteiro chega depois pelo listener e
+//     é conferido contra o local — pega mudança que escapou do cursor e exclusão feita com o
+//     portal fechado (sync completo a cada abertura, não só a cada 24h);
+//   - sem cache (1º acesso, cache vencido, 🔄, transportador): o próprio listener traz o
+//     índice inteiro e a tela abre com ele.
 //
 // Não mantém mais um onValue permanente por viagem: o RTDB sempre reenvia o valor inteiro
 // no primeiro attach de um listener, então um listener por viagem pagaria o custo de rede
@@ -19353,62 +19543,17 @@ function desativarCarregamentoPorIndice() {
 // tabela de invariantes do CLAUDE.md) — se algum caminho de escrita futuro esquecer disso, o
 // pior caso é a viagem ficar visivelmente desatualizada até o cursor expirar (24h) ou o
 // usuário forçar 🔄 (que ignora cache e cursor por completo).
+let _execucaoCarregamento = 0; // a ativação mais recente vence (Padrão ↔ período ↔ 🔄 em sequência)
+
 async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = false } = {}) {
-  desativarCarregamentoPorIndice();
-  _modoSelecaoAtual = modo;
-  modoMultiSemana = true;
-  mostrarStatus('saving', 'Carregando...');
-
+  const execucao = ++_execucaoCarregamento;
+  const vigente = () => execucao === _execucaoCarregamento;
+  // Telas desenhadas uma vez só, no fim da carga (ver suspenderRenders) — sem mostrar a lista
+  // vazia/pela metade enquanto carrega.
+  suspenderRenders();
   const nomeTransportador = isTransportador() ? nomeTransportadorLogado() : undefined;
-
-  if (forcarCompleto) {
-    await window._fb.cache.limpar();
-    localStorage.removeItem(CACHE_CURSOR_KEY);
-    localStorage.removeItem(CACHE_ULTIMO_COMPLETO_KEY);
-    _indiceCacheCompleto = {};
-    _viagensCacheMemoria = {};
-    _cacheInicialCarregado = true;
-  } else if (!_cacheInicialCarregado) {
-    await _cacheCarregarInicial();
-    _cacheInicialCarregado = true;
-  }
-
-  // Transportador sempre busca a própria fatia inteira (já é pequena, e RTDB não combina
-  // duas orderByChild na mesma query) — a busca incremental por atualizadoEm só vale a pena
-  // pra staff, que vê o índice inteiro.
-  const desdeISO = nomeTransportador ? null : _cursorValido(forcarCompleto);
-  const inicioSync = new Date().toISOString();
-  const respostaIndice = await window._fb.carregarIndiceViagens(nomeTransportador, desdeISO);
-  if (desdeISO) {
-    Object.assign(_indiceCacheCompleto, respostaIndice);
-    window._fb.cache.gravarIndice(respostaIndice);
-  } else {
-    // Sync completo: substitui (não mescla) — entradas que sumiram do Firebase têm que
-    // sumir daqui também, junto com o registro completo em cache, senão viram "fantasma"
-    // servido do IndexedDB sem nenhuma chamada de rede (ver _carregarQualificadas).
-    const idsSumidos = Object.keys(_indiceCacheCompleto).filter(id => !(id in respostaIndice));
-    idsSumidos.forEach(id => delete _viagensCacheMemoria[id]);
-    window._fb.cache.removerViagens(idsSumidos);
-    _indiceCacheCompleto = { ...respostaIndice };
-    window._fb.cache.substituirIndice(respostaIndice);
-  }
-
-  // O predicado sempre avalia sobre o índice FUNDIDO (cache + delta), nunca só o que acabou
-  // de chegar — precisa decidir também sobre entradas que não mudaram mas ainda estão
-  // dentro da janela de 15 dias, por exemplo.
-  await _carregarQualificadas(Object.entries(_indiceCacheCompleto), predicado);
-
-  if (!nomeTransportador) {
-    localStorage.setItem(CACHE_CURSOR_KEY, inicioSync);
-    if (!desdeISO) localStorage.setItem(CACHE_ULTIMO_COMPLETO_KEY, inicioSync);
-  }
-
-  sincronizarStatusHerrlog();
-  mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) carregada(s)`);
-  updatePipeline(viagensAtivo());
-  renderizarAbaAtual();
-
-  _unsubIndiceViagens = window._fb.ouvirIndiceViagens(nomeTransportador, {
+  // Eventos ao vivo do índice (depois da carga inicial — ver ouvirFilhosComCarga).
+  const handlers = {
     onAdded: (id, entrada) => {
       _indiceCacheCompleto[id] = entrada;
       window._fb.cache.gravarIndice({ [id]: entrada });
@@ -19427,7 +19572,109 @@ async function ativarCarregamentoPorIndice(predicado, modo, { forcarCompleto = f
       window._fb.cache.removerViagens([id]);
       _removerViagemCarregada(id);
     },
-  });
+  };
+  let assinatura = null;
+  let inicioSync = '';
+  try {
+  desativarCarregamentoPorIndice();
+  _modoSelecaoAtual = modo;
+  modoMultiSemana = true;
+  mostrarStatus('saving', 'Carregando...');
+
+  if (forcarCompleto) {
+    await window._fb.cache.limpar();
+    localStorage.removeItem(CACHE_CURSOR_KEY);
+    localStorage.removeItem(CACHE_ULTIMO_COMPLETO_KEY);
+    _indiceCacheCompleto = {};
+    _viagensCacheMemoria = {};
+    _cacheInicialCarregado = true;
+  } else if (!_cacheInicialCarregado) {
+    await _cacheCarregarInicial();
+    _cacheInicialCarregado = true;
+  }
+  if (!vigente()) return;
+
+  // Transportador sempre carrega a própria fatia inteira (já é pequena, e RTDB não combina
+  // duas orderByChild na mesma query) — a busca incremental por atualizadoEm só vale a pena
+  // pra staff, que vê o índice inteiro.
+  const desdeISO = nomeTransportador ? null : _cursorValido(forcarCompleto);
+  inicioSync = new Date().toISOString();
+  const delta = desdeISO ? await window._fb.carregarIndiceViagensDesde(desdeISO) : null;
+  if (!vigente()) return;
+  if (delta) {
+    Object.assign(_indiceCacheCompleto, delta);
+    window._fb.cache.gravarIndice(delta);
+  } else {
+    // Sem cache válido: o próprio listener traz o índice inteiro (carga inicial numa leitura só).
+    assinatura = window._fb.ouvirIndiceViagens(nomeTransportador, handlers);
+    _unsubIndiceViagens = assinatura.parar;
+    const completo = await assinatura.inicial;
+    if (completo === null || !vigente()) return;
+    // Sync completo: substitui (não mescla) — entradas que sumiram do Firebase têm que
+    // sumir daqui também, junto com o registro completo em cache, senão viram "fantasma"
+    // servido do IndexedDB sem nenhuma chamada de rede (ver _carregarQualificadas).
+    const idsSumidos = Object.keys(_indiceCacheCompleto).filter(id => !(id in completo));
+    idsSumidos.forEach(id => delete _viagensCacheMemoria[id]);
+    window._fb.cache.removerViagens(idsSumidos);
+    _indiceCacheCompleto = { ...completo };
+    window._fb.cache.substituirIndice(completo);
+  }
+
+  // O predicado sempre avalia sobre o índice FUNDIDO (cache + delta), nunca só o que acabou
+  // de chegar — precisa decidir também sobre entradas que não mudaram mas ainda estão
+  // dentro da janela de 15 dias, por exemplo.
+  await _carregarQualificadas(Object.entries(_indiceCacheCompleto), predicado, vigente);
+  if (!vigente()) return;
+
+  if (!nomeTransportador) {
+    localStorage.setItem(CACHE_CURSOR_KEY, inicioSync);
+    if (assinatura) localStorage.setItem(CACHE_ULTIMO_COMPLETO_KEY, inicioSync);
+  }
+
+  sincronizarStatusHerrlog();
+  mostrarStatus('saved', `${viagensMultiSemana.length} viagem(ns) carregada(s)`);
+  updatePipeline(viagensAtivo());
+  renderizarAbaAtual();
+  } finally {
+    retomarRenders();
+  }
+  if (!vigente()) return;
+
+  if (assinatura) { assinatura.liberar(); return; } // eventos que chegaram durante a carga
+
+  // Abriu pelo cache: a conferência com o índice inteiro corre em segundo plano — a abertura
+  // (iniciarFirebase, que espera esta função) não fica esperando o índice descer.
+  _conferirIndiceCompleto(nomeTransportador, handlers, predicado, vigente, inicioSync);
+}
+
+// O índice inteiro chega pelo listener (uma vez) e é conferido contra o local — só o que difere
+// grava no IndexedDB e mexe na tela. Pega mudança que escapou do cursor e exclusão feita com o
+// portal fechado; depois seguem os eventos ao vivo (handlers de ativarCarregamentoPorIndice).
+async function _conferirIndiceCompleto(nomeTransportador, handlers, predicado, vigente, inicioSync) {
+  const assinatura = window._fb.ouvirIndiceViagens(nomeTransportador, handlers);
+  _unsubIndiceViagens = assinatura.parar; // antes do 1º await: outra carga consegue parar este listener
+  let completo;
+  try { completo = await assinatura.inicial; } catch (e) { console.error('Erro ao assinar viagensIndice:', e); return; }
+  if (completo === null || !vigente()) return;
+  const mudadas = {};
+  for (const [id, entrada] of Object.entries(completo)) {
+    if (!mesmaEntradaIndice(_indiceCacheCompleto[id], entrada)) mudadas[id] = entrada;
+  }
+  const sumidas = Object.keys(_indiceCacheCompleto).filter(id => !(id in completo));
+  if (Object.keys(mudadas).length) {
+    Object.assign(_indiceCacheCompleto, mudadas);
+    window._fb.cache.gravarIndice(mudadas);
+    for (const [id, entrada] of Object.entries(mudadas)) {
+      if (predicado(entrada)) _garantirViagemCarregada(id, entrada); else _removerViagemCarregada(id);
+    }
+  }
+  if (sumidas.length) {
+    sumidas.forEach(id => { delete _indiceCacheCompleto[id]; delete _viagensCacheMemoria[id]; _removerViagemCarregada(id); });
+    window._fb.cache.removerIndice(sumidas);
+    window._fb.cache.removerViagens(sumidas);
+  }
+  if (!nomeTransportador) localStorage.setItem(CACHE_ULTIMO_COMPLETO_KEY, inicioSync);
+  assinatura.liberar();
 }
 
 // Padrão ao logar/recarregar: viagens não finalizadas + finalizadas há até 15 dias.
@@ -19557,29 +19804,18 @@ function configurarListenerMonitoramentoHerrlog() {
     }, 200);
   }
 
-  const assinar = () => {
-    // idsConhecidos evita reagendar refresh pra cada registro que a redelivery do
-    // onChildAdded reentrega logo depois de assinar (mesmo padrão de idsConhecidos em
-    // configurarListenerSemana) — sem isso, a carga em lote abaixo não evitaria a segunda
-    // rajada de re-renders causada pela própria assinatura do listener.
-    const idsConhecidos = new Set(Object.keys(monitoramentoHerrlog));
-    window._fbUnsubMonitoramento = window._fb.ouvirMonitoramentoHerrlog({
-      onAdded: (id, dados) => {
-        monitoramentoHerrlog[id] = dados;
-        if (!idsConhecidos.delete(id)) agendarRefresh(id);
-      },
-      onChanged: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
-      onRemoved: (id) => { delete monitoramentoHerrlog[id]; agendarRefresh(); },
-    });
-  };
-
-  // Carga em lote (1 leitura) antes de assinar o onChildAdded: com o node já grande
-  // (centenas de viagens monitoradas), assinar direto sem essa carga prévia faz o
-  // onChildAdded reconstruir o node inteiro evento a evento na largada — cada evento
-  // dispara um re-render pesado da aba Monitoramento, que por isso "sobe aos poucos" em
-  // vez de aparecer de uma vez.
-  window._fb.carregarMonitoramentoHerrlog().then(dados => {
-    monitoramentoHerrlog = dados || {};
+  // Carga em lote e listener numa leitura só (ver ouvirFilhosComCarga no módulo do Firebase):
+  // o node inteiro chega de uma vez em `inicial` (sem a tabela "subir aos poucos" evento a
+  // evento), e só depois os eventos ao vivo passam a valer.
+  const assinatura = window._fb.ouvirMonitoramentoHerrlog({
+    onAdded: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
+    onChanged: (id, dados) => { monitoramentoHerrlog[id] = dados; agendarRefresh(id); },
+    onRemoved: (id) => { delete monitoramentoHerrlog[id]; agendarRefresh(); },
+  });
+  window._fbUnsubMonitoramento = assinatura.parar;
+  assinatura.inicial.then(dados => {
+    if (dados === null) return; // listener trocado antes de carregar
+    monitoramentoHerrlog = dados;
     processarViagensCanceladasNaHerrlog();
     sincronizarStatusHerrlog();
     if (activeTab === 1) renderViagensTable();
@@ -19587,11 +19823,8 @@ function configurarListenerMonitoramentoHerrlog() {
     if (activeTab === 3) renderMonitoramento();
     if (activeTab === 9) renderPerformance();
     if (activeTab === 7 && subViewVeiculos === 'frota') renderStatusFrota();
-    assinar();
-  }).catch(e => {
-    console.error('Erro ao carregar monitoramentoHerrlog:', e);
-    assinar(); // fallback: segue só com o listener incremental mesmo sem a carga em lote
-  });
+    assinatura.liberar();
+  }).catch(e => console.error('Erro ao carregar monitoramentoHerrlog:', e));
 }
 
 // Vale-pedágio Pamcard (node `monitoramentoPamcard`, fora de `sessoes` — alimentado
@@ -19608,29 +19841,21 @@ function configurarListenerMonitoramentoPamcard() {
     }, 200);
   }
 
-  const assinar = () => {
-    // Mesmo padrão de idsConhecidos do configurarListenerMonitoramentoHerrlog acima.
-    const idsConhecidos = new Set(Object.keys(monitoramentoPamcard));
-    window._fbUnsubPamcard = window._fb.ouvirMonitoramentoPamcard({
-      onAdded: (id, dados) => {
-        monitoramentoPamcard[id] = dados;
-        if (!idsConhecidos.delete(id)) agendarRefresh();
-      },
-      onChanged: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
-      onRemoved: (id) => { delete monitoramentoPamcard[id]; agendarRefresh(); },
-    });
-  };
-
-  // Mesmo motivo do configurarListenerMonitoramentoHerrlog acima — carga em lote antes de
-  // assinar o onChildAdded, pra não reconstruir o node inteiro evento a evento na largada.
-  window._fb.carregarMonitoramentoPamcard().then(dados => {
-    monitoramentoPamcard = dados || {};
-    if (activeTab === 3) renderMonitoramento();
-    assinar();
-  }).catch(e => {
-    console.error('Erro ao carregar monitoramentoPamcard:', e);
-    assinar();
+  // Mesmo padrão do configurarListenerMonitoramentoHerrlog acima: carga inicial e listener
+  // numa leitura só (~2 MB em nov/2026, antes baixados duas vezes por abertura).
+  const assinatura = window._fb.ouvirMonitoramentoPamcard({
+    onAdded: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
+    onChanged: (id, dados) => { monitoramentoPamcard[id] = dados; agendarRefresh(); },
+    onRemoved: (id) => { delete monitoramentoPamcard[id]; agendarRefresh(); },
   });
+  window._fbUnsubPamcard = assinatura.parar;
+  assinatura.inicial.then(dados => {
+    if (dados === null) return;
+    monitoramentoPamcard = dados;
+    if (activeTab === 1) renderViagensTable(); // trava de edição pós-compra (pedagioComprado) nas linhas
+    if (activeTab === 3) renderMonitoramento();
+    assinatura.liberar();
+  }).catch(e => console.error('Erro ao carregar monitoramentoPamcard:', e));
 }
 
 // O monitoramento_tempo_real_herrlog.py marca statusHerrlog="Cancelado" (em vez de
@@ -19792,7 +20017,7 @@ function confirmarNovaSemana() {
     // ver ativarCarregamentoPorIndice).
     carregarListaSemanas().then(() => {
       document.getElementById('semanaSelect').value = key;
-      configurarListenerSemana(key);
+      configurarListenerSemana(key).catch(e => console.error('Erro ao assinar a semana nova:', e));
     });
   }, 600);
   document.getElementById('novaSemanaOverlay')?.remove();
@@ -19802,6 +20027,11 @@ function confirmarNovaSemana() {
 async function iniciarFirebase() {
   if (!_authUsuarioAtual) return;
   mostrarStatus('saving', 'Carregando dados...');
+  // Nada pesado é desenhado até as viagens do Padrão chegarem (ver suspenderRenders) — nem a
+  // semana única carregada antes, que ativarSelecaoPadrao logo substitui.
+  suspenderRenders();
+  let rendersRetomados = false;
+  const retomar = () => { if (!rendersRetomados) { rendersRetomados = true; retomarRenders(); } };
   try {
   // Tabela de Frete (~1 MB em nov/2026): baixa junto com o resto e a tela de entrada espera por ela (ver o fim
   // desta função), para quem usa: a aba de frete ou Gerir Viagens, cujo modal e seleção em lote mostram o frete
@@ -19833,29 +20063,21 @@ await carregarUsuariosFirebase();
   semanaAtiva = semanas[0];
   andamentoCarga('Carregando a semana…');
   await carregarListaSemanas();
-  const payload = await carregarPayloadSemana(semanaAtiva);
-  if (payload) {
-    aplicarPayload(payload);
-  } else {
-    cadencias = [];
-    viagens = [];
-  }
-  sincronizarStatusHerrlog();
-  document.getElementById('previewSection').style.display = cadencias.length > 0 ? 'block' : 'none';
-  if (cadencias.length > 0) renderPreview();
-  updatePipeline();
-  renderViagensTable();
-  if (viagens.length > 0) switchTab(1);
-  mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
-  configurarListenerSemana(semanaAtiva);
+  // Listener e carga inicial da semana numa leitura só (ver configurarListenerSemana).
+  await configurarListenerSemana(semanaAtiva, payload => {
+    aplicarCargaSemana(payload);
+    if (viagens.length > 0) switchTab(1);
+    mostrarStatus('saved', 'Semana: '+formatarKeyParaLabel(semanaAtiva));
+  });
   // Padrão: abre já com as viagens "ativas" (não finalizadas + finalizadas nos últimos 15
   // dias — ver predicadoAtivas/ativarCarregamentoPorIndice), calculado por VIAGEM, não por
   // semana — quem quiser um período específico usa o Menu de Seleção. A aba Importar
   // Cadência continua usando o seletor único (semanaAtiva) normalmente. Transportador
-  // participa também: carregarIndiceViagens/ouvirIndiceViagens/obterViagemIndividual já
+  // participa também: ouvirIndiceViagens/obterViagemIndividual já
   // usam a query restrita por transportador.
   andamentoCarga('Carregando as viagens…');
   await ativarSelecaoPadrao();
+  retomar(); // desenha agora, sem esperar a tabela de frete abaixo
   if (usaTabelaFrete && !_tabelaFreteCarregada) {
     andamentoCarga('Carregando a tabela de frete…');
     // Teto próprio: sem resposta, segue (a aba e o modal mostram "Carregando..." e se atualizam quando chegar)
@@ -19864,6 +20086,8 @@ await carregarUsuariosFirebase();
   } catch(err) {
     mostrarStatus('saving', 'Erro ao carregar: ' + err.message);
     console.error('iniciarFirebase error:', err);
+  } finally {
+    retomar();
   }
 }
 
@@ -21112,6 +21336,51 @@ function _hoFmtData(iso) {
   return isNaN(d) ? String(iso || '') : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+// Viagens das semanas desde HO_DESDE, a partir do índice (viagensIndice) e do cache local de viagens
+// (o mesmo do carregamento por índice — ver _carregarQualificadas): a viagem já em cache com o mesmo
+// atualizadoEm do índice não desce de novo. Antes baixava a semana inteira, uma por uma (~0,8 MB cada),
+// toda vez que a aba abria pela 1ª vez depois do F5. Semana com muitas viagens faltando no cache baixa
+// inteira numa leitura só (mais rápido que dezenas de leituras individuais); com poucas, uma a uma.
+// 🔄 (forcar) ignora o cache e baixa as semanas inteiras. Sem índice carregado, cai no jeito antigo.
+const HO_MAX_INDIVIDUAIS_POR_SEMANA = 40;
+async function _hoCarregarSemanas(forcar) {
+  const status = document.getElementById('hoStatus');
+  const porSemana = new Map();
+  for (const [id, entrada] of Object.entries(_indiceCacheCompleto || {})) {
+    const k = entrada?.semana;
+    if (!k || (String(k).split('_')[1] || k) < HO_DESDE) continue;
+    if (!porSemana.has(k)) porSemana.set(k, []);
+    porSemana.get(k).push([id, entrada]);
+  }
+  const novas = new Map();
+  for (const k of [...porSemana.keys()].sort().reverse()) {
+    const entradas = porSemana.get(k);
+    const faltam = forcar ? entradas
+      : entradas.filter(([id, e]) => _viagensCacheMemoria[id]?._atualizadoEmCache !== e.atualizadoEm);
+    if (faltam.length) status.textContent = `Carregando a semana ${k.replace('_', ' a ')}…`;
+    const paraGravar = {};
+    if (faltam.length > HO_MAX_INDIVIDUAIS_POR_SEMANA) {
+      const semana = await window._fb.carregarViagensSemana(k);
+      for (const [id, e] of entradas) {
+        if (semana[id]) paraGravar[id] = { _atualizadoEmCache: e.atualizadoEm, dados: semana[id] };
+      }
+    } else {
+      for (let i = 0; i < faltam.length; i += HO_MAX_INDIVIDUAIS_POR_SEMANA) {
+        await Promise.all(faltam.slice(i, i + HO_MAX_INDIVIDUAIS_POR_SEMANA).map(async ([id, e]) => {
+          const registro = await window._fb.obterViagemIndividual(k, id);
+          if (registro) paraGravar[id] = { _atualizadoEmCache: e.atualizadoEm, dados: registro };
+        }));
+      }
+    }
+    if (Object.keys(paraGravar).length) {
+      Object.assign(_viagensCacheMemoria, paraGravar);
+      window._fb.cache.gravarViagens(paraGravar);
+    }
+    novas.set(k, entradas.map(([id]) => _viagensCacheMemoria[id]?.dados).filter(Boolean));
+  }
+  _ho.semanas = novas;
+}
+
 async function _hoCarregar(forcar) {
   if (_ho.carregando) return _ho.carregando;
   _ho.carregando = (async () => {
@@ -21121,11 +21390,15 @@ async function _hoCarregar(forcar) {
       _ho.tipoPorNome = new Map(Object.values(perfis || {}).filter(p => p && p.nome)
         .map(p => [_hoNorm(p.nome), p.tipo === 'transportador' ? 'Transportadora' : 'Interno']));
     } catch (e) { console.warn('Historico de recusas: perfis nao lidos', e); _ho.tipoPorNome = new Map(); }
-    const semanas = (await window._fb.listarSemanas()).filter(k => (String(k).split('_')[1] || k) >= HO_DESDE);
-    for (const k of semanas) {
-      if (!forcar && _ho.semanas.has(k)) continue;
-      document.getElementById('hoStatus').textContent = `Carregando a semana ${k.replace('_', ' a ')}…`;
-      _ho.semanas.set(k, _hoLista(await window._fb.carregarViagensSemana(k)));
+    if (Object.keys(_indiceCacheCompleto || {}).length) {
+      await _hoCarregarSemanas(forcar);
+    } else {
+      const semanas = (await window._fb.listarSemanas()).filter(k => (String(k).split('_')[1] || k) >= HO_DESDE);
+      for (const k of semanas) {
+        if (!forcar && _ho.semanas.has(k)) continue;
+        document.getElementById('hoStatus').textContent = `Carregando a semana ${k.replace('_', ' a ')}…`;
+        _ho.semanas.set(k, _hoLista(await window._fb.carregarViagensSemana(k)));
+      }
     }
     _ho.linhas = _hoMontarLinhas();
   })().finally(() => { _ho.carregando = null; });
@@ -21358,6 +21631,7 @@ function exportarHistoricoOfertas() {
 }
 
 function renderPerformance() {
+  if (adiarRender()) return; // carga em andamento: desenha uma vez no fim (ver suspenderRenders)
   const lista = viagensPerf();
   document.getElementById('performanceEmpty').style.display = lista.length ? 'none' : 'block';
   document.getElementById('performanceContent').style.display = lista.length ? '' : 'none';
