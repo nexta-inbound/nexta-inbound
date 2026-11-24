@@ -2964,13 +2964,14 @@ async function renderAdmin(){
     {id:"register",label:"Cadastros"},
   ];
   // Operacional não acessa Cadastros (que agora também contempla Usuários)
-  const tabs=isOper?allTabs.filter(t=>t.id!=="register"):allTabs;
+  // 24/11/2026 (Amanda): interno/operacional também acessa Cadastros — só Placas e Motoristas
+  // (Operações e Usuários seguem só admin dentro de renderRegister; regra do banco barra usuários).
+  const tabs=allTabs;
   // Reset adminTab se ficou apontando pra uma aba que não existe mais
   // (archives/users foram fundidas em export/register) ou se operacional
   // estiver numa aba restrita.
   if(S.adminTab==="archives") S.adminTab="export";
   if(S.adminTab==="users") S.adminTab="register";
-  if(isOper&&S.adminTab==="register") S.adminTab="dashboard";
   mc.innerHTML=`
     <p class="sec-title">${isOper?"Painel operacional":"Painel do administrador"}</p>
     <div class="tabs admin-tabs">
@@ -2985,8 +2986,8 @@ async function setTab(t){
   if(t==="roteirizador"&&u2&&u2.role!=="admin"&&u2.role!=="operacional"){
     showToast("Acesso restrito.",false); return;
   }
-  // Operacional não acessa register/users
-  if(u2&&u2.role==="operacional"&&(t==="register"||t==="users")){
+  // Operacional acessa Cadastros (placas/motoristas), mas não a aba antiga de usuários
+  if(u2&&u2.role==="operacional"&&t==="users"){
     showToast("Acesso restrito.",false); return;
   }
   S.adminTab=t;
@@ -3838,6 +3839,8 @@ async function renderToday(body){
     }
     if(!plates.length) continue;
     const isAdmin2=USERS_DB[S.user]&&USERS_DB[S.user].role==="admin";
+    // Desbloquear (placa ou transportadora inteira): admin e interno/operacional — pedido da Amanda 24/11/2026.
+    const podeDesbloquear=isAdmin2||(USERS_DB[S.user]&&USERS_DB[S.user].role==="operacional");
     const rows=plates.map(p=>{
       const rec=statusMap[`${carrier}||${p.placa}||${ds}`];
       const v=rec?rec.status:null;
@@ -3846,7 +3849,7 @@ async function renderToday(body){
       // Only show drivers if availability was actually filled, and only if driver is active
       const motDToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaDiurno)||p.motoristaDiurno||''):'';
       const motNToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaNoturno)||p.motoristaNoturno||''):'';
-      const unlockPlateBtn=(v&&isAdmin2)?`<button class="btn-unlock-plate" onclick="adminUnlockPlate('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Desbloquear apenas esta placa">🔓</button>`:''
+      const unlockPlateBtn=(v&&podeDesbloquear)?`<button class="btn-unlock-plate" onclick="adminUnlockPlate('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Desbloquear apenas esta placa">🔓</button>`:''
       return `<tr>
         <td style="font-weight:500;font-family:'DM Mono',monospace">${esc(p.placa)}</td>
         <td style="font-size:12px">${esc(p.operacao)}</td>
@@ -3875,7 +3878,7 @@ async function renderToday(body){
     const lockBadge=done
       ?`<span style="font-size:11px;color:var(--lime);margin-left:8px;background:var(--lime-bg);border:1px solid var(--border2);padding:2px 8px;border-radius:99px;">🔒 Enviado ${lock?lock.lockedAt:'preenchimento concluído'}</span>`
       :`<span style="font-size:11px;color:var(--muted);margin-left:8px;">Pendente</span>`;
-    const unlockBtn=(done&&isAdmin2)
+    const unlockBtn=(done&&podeDesbloquear)
       ?`<button class="btn-unlock" onclick="adminUnlock('${attr(jsArg(carrier))}','${attr(jsArg(ds))}')" title="Desfazer lançamento">🔓 Desbloquear tudo</button>`
       :'';
     sections+=`<div class="carrier-block">
@@ -5833,7 +5836,7 @@ async function renderRegisterDrivers(body, subTabs=''){
   const isAdmin=u&&u.role==='admin';
   const allDrivers=await dbGetDrivers();
   // Filter by carrier for non-admin
-  const carriersToShow=isAdmin?CARRIERS:[u.carrier].filter(Boolean);
+  const carriersToShow=(isAdmin||u?.role==='operacional')?CARRIERS:[u.carrier].filter(Boolean);
   // Build driver list grouped by carrier then operation
   let listHTML='';
   for(const carrier of carriersToShow){
