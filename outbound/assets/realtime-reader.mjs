@@ -90,7 +90,10 @@ export function createRealtimeReader({sdk, database, authorize}) {
   // Antes cada getDocs baixava a COLECAO INTEIRA (ex.: ~4.000 disponibilidades) e filtrava aqui; o Daily Briefing
   // faz dezenas de consultas por transportadora+dia. Agora: (1) filtro por campo com indice (regras: .indexOn) vai
   // pro servidor; (2) leituras iguais disparadas juntas (ate' 5 s) viram uma so'.
-  const INDICES = {availability: ['carrier', 'plate', 'dateStr'], locks: ['carrier', 'dateStr'],
+  // Ordem = preferencia (24/11/2026, KPIs Mensais 10-16 s): com transportadora E dia na mesma consulta, pedir
+  // pelo DIA (~40 registros) em vez da transportadora (Veronese: 1.000+ registros, baixados e decodificados de novo
+  // a cada dia do mes). Os filtros restantes continuam sendo aplicados aqui (applyQuery), resultado igual.
+  const INDICES = {availability: ['dateStr', 'plate', 'carrier'], locks: ['dateStr', 'carrier'],
     sob_ciclos: ['carrier', 'status'], devolucoesReentregas: ['transportadora', 'criadoEm'], telao_programacao: ['mes']};
   const JANELA_MS = 5000;
   const emVoo = new Map();
@@ -104,7 +107,8 @@ export function createRealtimeReader({sdk, database, authorize}) {
   function filtrosServidor(collection, constraints) {
     const idx = INDICES[collection] || [];
     const simples = v => typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v));
-    const igual = constraints.find(c => c.kind === 'where' && c.op === '==' && idx.includes(c.field) && simples(c.value));
+    const igual = idx.map(campo => constraints.find(c => c.kind === 'where' && c.op === '==' && c.field === campo && simples(c.value)))
+      .find(Boolean);
     if (igual) return [{campo: igual.field, valor: igual.value}];
     const lista = constraints.find(c => c.kind === 'where' && c.op === 'in' && idx.includes(c.field)
       && Array.isArray(c.value) && c.value.length <= 10 && c.value.every(simples));
