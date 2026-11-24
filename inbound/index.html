@@ -4303,7 +4303,7 @@
     </div>
     <table>
       <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. prog.</th><th>Descarga prog.</th>
-        <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Motivo</th><th>Depois</th><th>Histórico da viagem</th></tr></thead>
+        <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Depois</th><th>Histórico da viagem</th></tr></thead>
       <tbody id="hoEventosBody"></tbody>
     </table>
   </div>
@@ -21181,14 +21181,18 @@ function _hoMontarLinhas() {
         const caminho = [];
         hist.forEach(x => { if (x.transportador && x.transportador !== caminho.at(-1)) caminho.push(x.transportador); });
         if (v.transportador && v.transportador !== caminho.at(-1)) caminho.push(v.transportador);
+        // 24/11/2026 (Amanda): passou por uma transportadora só → mostra ela (antes ficava vazio).
         if (caminho.length > 1) depois = caminho.join(' → ');
-        else if (h.evento === 'Cancelado') {
-          const cad = String(v.cadenciaOrigem || '').split('-')[0];
-          const subst = (porCadencia.get(cad) || [])
-            .filter(o => o.idViagem !== v.idViagem && o.status !== 'Cancelado' && o.destino === v.destino && o.produto === v.produto
-              && primeiraData(o) > String(h.data))
-            .sort((a, b) => primeiraData(a).localeCompare(primeiraData(b)))[0];
-          if (subst) depois = `Substituída por ${subst.idViagem}${subst.transportador ? ' (' + subst.transportador + ')' : ''} · mesma cadência`;
+        else {
+          if (h.evento === 'Cancelado') {
+            const cad = String(v.cadenciaOrigem || '').split('-')[0];
+            const subst = (porCadencia.get(cad) || [])
+              .filter(o => o.idViagem !== v.idViagem && o.status !== 'Cancelado' && o.destino === v.destino && o.produto === v.produto
+                && primeiraData(o) > String(h.data))
+              .sort((a, b) => primeiraData(a).localeCompare(primeiraData(b)))[0];
+            if (subst) depois = `Substituída por ${subst.idViagem}${subst.transportador ? ' (' + subst.transportador + ')' : ''} · mesma cadência`;
+          }
+          if (!depois && caminho.length === 1) depois = caminho[0];
         }
       }
       const negativo = HO_NEGATIVOS.has(h.evento);
@@ -21319,11 +21323,11 @@ async function renderHistoricoOfertas(forcar) {
       + `<td>${esc(l.transportador)}</td><td>${l.quemTipo === 'Transportadora' ? '<span class="badge badge-warn">Transportadora</span> ' + esc(l.quemNome)
           : l.quemTipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(l.quemNome) : '<span class="badge">Não identificado</span> ' + esc(l.quemNome)}</td>`
       + `<td><span class="badge badge-danger">RECUSADA</span></td><td>${_hoBadgeStatus(l.statusAtual)}</td>`
-      + `<td>${ant}</td><td>${esc(l.motivo)}</td><td>${esc(l.depois)}</td>`
+      + `<td>${ant}</td><td>${esc(l.depois)}</td>`
       // Histórico completo da viagem (igual à janela da viagem); a recusa desta linha fica em destaque
       + `<td><div style="max-height:92px;overflow-y:auto;min-width:340px;font-size:11px;line-height:1.5">${(l.hist || []).map((x, i) =>
           `<div style="white-space:nowrap${i === l.idxHist ? ';font-weight:700;color:var(--danger)' : ''}">${esc(_hoHistTexto(x))}</div>`).join('')}</div></td></tr>`;
-  }).join('') || '<tr><td colspan="14" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+  }).join('') || '<tr><td colspan="13" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
 }
 
 function exportarHistoricoOfertas() {
@@ -21334,7 +21338,7 @@ function exportarHistoricoOfertas() {
     'Data/hora da recusa': _hoFmtData(l.data), 'Semana': l.semana.replace('_', ' a '), 'Viagem': l.idViagem, 'Destino': l.destino,
     'Produto': l.produto, 'Volume (m³)': l.volume, 'Carregamento prog.': l.carregamento, 'Descarga prog.': l.descarga,
     'Transportadora': l.transportador, 'Quem recusou': l.quemTipo === 'Interno' ? 'Interno' : l.quemTipo,
-    'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual, 'Motivo': l.motivo,
+    'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual,
     'Antecedência até a descarga (dias)': l.antecedencia,
     'Em cima da hora (< 2 dias)': l.nivel === 'critico' ? 'Sim' : '', 'Depois': l.depois,
     // Um evento por linha dentro da célula (no Excel: Quebrar Texto Automaticamente pra ver em linhas)
