@@ -1630,6 +1630,17 @@
   .transp-card.transp-urg-atencao { border-left: 3px solid var(--success); }
 
   .transp-card-top { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px 0; }
+
+  /* Prazo de aceite da oferta (prazoAceiteHtml): linha no card do transportador e selo
+     compacto na célula de status da Gerir Viagens. Amarelo a 2h do fim, vermelho vencido. */
+  .prazo-aceite { margin-top: 8px; padding: 6px 9px; border-radius: 8px; font-size: 12px; line-height: 1.35;
+    color: var(--text); background: var(--surface2, rgba(127,127,127,0.10)); border: 1px solid var(--border); }
+  .prazo-aceite.perto { color: var(--accent2); border-color: var(--accent2); }
+  .prazo-aceite.vencido { color: var(--danger); border-color: var(--danger); background: var(--danger-dim); }
+  .prazo-aceite.compacto { margin-top: 3px; padding: 0; border: 0; background: none; font-size: 10px;
+    color: var(--text-muted); white-space: nowrap; }
+  .prazo-aceite.compacto.perto { color: var(--accent2); font-weight: 600; }
+  .prazo-aceite.compacto.vencido { color: var(--danger); font-weight: 600; background: none; }
   .transp-card-body { padding: 10px 14px 4px; }
   .transp-prod-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .transp-rota { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -2650,6 +2661,12 @@
       return onValue(ref(db, 'assinaturasProgramadores'), (snap) => {
         callback(snap.exists() ? snap.val() : []);
       });
+    },
+    // Chave do prazo de aceite das ofertas (ver configPrazoAceite) — node pequeno em `meta`,
+    // que qualquer perfil lê (inclusive transportador) e só a equipe grava (ver regras).
+    ouvirConfigPrazoAceite: (callback) => {
+      return onValue(ref(db, 'meta/prazoAceite'), (snap) => callback(snap.exists() ? snap.val() : null),
+        (err) => { console.warn('meta/prazoAceite não lido:', err); callback(null); });
     },
     salvarAssinaturaProgramador: async (nome, assinatura) => {
       const snap = await get(ref(db, 'assinaturasProgramadores'));
@@ -4276,7 +4293,7 @@
       <input type="text" class="filter-input" id="hoTransp" placeholder="🚚 Transportadora..." style="width:170px" oninput="renderHistoricoOfertas()">
       <input type="text" class="filter-input" id="hoBusca" placeholder="🔎 Viagem, destino ou produto..." style="width:210px" oninput="renderHistoricoOfertas()">
       <select class="filter-input" id="hoQuem" onchange="renderHistoricoOfertas()" style="width:190px">
-        <option value="">Quem recusou: todos</option><option value="Transportadora">A própria transportadora</option><option value="Interno">Alguém da equipe (interno)</option>
+        <option value="">Quem recusou: todos</option><option value="Transportadora">A própria transportadora</option><option value="Interno">Alguém da equipe (interno)</option><option value="Prazo vencido (automático)">Prazo de aceite vencido (automático)</option>
       </select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="hoSoCritico" onchange="renderHistoricoOfertas()"> Só em cima da hora (&lt; 2 dias)</label>
     </div>
@@ -5664,6 +5681,147 @@ function responderConfirmacaoTrocaDestino(confirmou) {
   const resolve = _confirmacaoTrocaDestinoResolve;
   _confirmacaoTrocaDestinoResolve = null;
   if (resolve) resolve(confirmou);
+}
+
+// ── PRAZO DE ACEITE DA OFERTA (pedido do usuário, 25/11/2026) ──
+// A transportadora deixava a oferta pendente e recusava em cima do carregamento. Viagem em
+// Ofertado tem prazo pra resposta: o que vier primeiro entre 8 horas úteis (seg–sex 08h–18h,
+// feriado nacional para o relógio) e 24h antes do carregamento, com no mínimo 2h corridas
+// (oferta que já nasce perto do carregamento). O relógio começa no último evento Ofertado/
+// Transportadora trocada do histórico. Vencido o prazo, o bot_alerta_viagens recusa a oferta
+// (mesmos campos de _aplicarRecusaViagem, usuário PRAZO_ACEITE_USUARIO) e avisa a transportadora
+// no WhatsApp; aqui o portal só MOSTRA o prazo. O cálculo é o mesmo de
+// nexta_bots/bots/whatsapp/prazo_aceite.py — mantenha os dois iguais.
+// Chave em meta/prazoAceite ({ ligado: true, ativadoEm: ISO }; opcionais numéricos horasUteis,
+// inicioExpediente, fimExpediente, antecedenciaCarregamentoH, prazoMinimoH e `feriados`
+// { 'AAAA-MM-DD': nome }, que substitui a lista padrão). Desligada ou sem ativadoEm: nada aparece
+// e nada é recusado. Oferta anterior à ativação conta a partir dela (decisão do usuário).
+// Horário de Brasília fixo (UTC−3, sem horário de verão desde 2019), seja qual for o fuso do
+// navegador: transportadora no MT veria o prazo uma hora antes do que o bot aplica.
+const PRAZO_ACEITE_PADRAO = { horasUteis: 8, inicioExpediente: 8, fimExpediente: 18, antecedenciaCarregamentoH: 24, prazoMinimoH: 2 };
+const FERIADOS_NACIONAIS_PADRAO = {
+  '2026-01-01': 'Confraternização Universal', '2026-04-03': 'Paixão de Cristo', '2026-04-21': 'Tiradentes',
+  '2026-05-01': 'Dia do Trabalho', '2026-09-07': 'Independência', '2026-10-12': 'Nossa Senhora Aparecida',
+  '2026-11-02': 'Finados', '2026-11-15': 'Proclamação da República', '2026-11-20': 'Consciência Negra', '2026-12-25': 'Natal',
+  '2027-01-01': 'Confraternização Universal', '2027-03-26': 'Paixão de Cristo', '2027-04-21': 'Tiradentes',
+  '2027-05-01': 'Dia do Trabalho', '2027-09-07': 'Independência', '2027-10-12': 'Nossa Senhora Aparecida',
+  '2027-11-02': 'Finados', '2027-11-15': 'Proclamação da República', '2027-11-20': 'Consciência Negra', '2027-12-25': 'Natal',
+};
+const PRAZO_ACEITE_USUARIO = 'Prazo de aceite (automático)';
+const _BRT_OFFSET_MS = 3 * 3600000;
+const _H_MS = 3600000;
+let _cfgPrazoAceiteBruto = null; // meta/prazoAceite, ver configurarListenerPrazoAceite
+
+// ISO -> ms; sem fuso no texto, Brasília (o bot faz igual).
+function _parseIsoBrt(s) {
+  const t = String(s || '').trim();
+  if (!t) return NaN;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return Date.parse(t + 'T00:00:00-03:00');
+  return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(t) ? t : t + '-03:00');
+}
+
+function configPrazoAceite() {
+  const c = _cfgPrazoAceiteBruto;
+  if (!c || typeof c !== 'object' || c.ligado !== true) return null;
+  const ativadoEm = _parseIsoBrt(c.ativadoEm);
+  if (!Number.isFinite(ativadoEm)) return null;
+  const num = k => (typeof c[k] === 'number' && Number.isFinite(c[k])) ? c[k] : PRAZO_ACEITE_PADRAO[k];
+  const feriados = (c.feriados && typeof c.feriados === 'object') ? c.feriados : FERIADOS_NACIONAIS_PADRAO;
+  return {
+    ativadoEm,
+    horasUteis: num('horasUteis'), inicioExpediente: num('inicioExpediente'), fimExpediente: num('fimExpediente'),
+    antecedenciaCarregamentoH: num('antecedenciaCarregamentoH'), prazoMinimoH: num('prazoMinimoH'),
+    feriados,
+  };
+}
+
+// Momento (ms) em que se completam `horas` úteis a partir de inicioMs.
+function somarHorasUteis(inicioMs, horas, cfg) {
+  let restante = horas * _H_MS;
+  let t = inicioMs;
+  for (let i = 0; i < 400; i++) { // ~1 ano: config absurda não trava a tela
+    if (restante <= 0) return t;
+    const b = new Date(t - _BRT_OFFSET_MS); // relógio de Brasília nos campos UTC
+    const dia0 = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) + _BRT_OFFSET_MS;
+    const dow = b.getUTCDay();
+    if (dow !== 0 && dow !== 6 && !cfg.feriados[b.toISOString().slice(0, 10)]) {
+      const abre = dia0 + cfg.inicioExpediente * _H_MS;
+      const fecha = dia0 + cfg.fimExpediente * _H_MS;
+      const de = Math.max(t, abre);
+      if (de < fecha) {
+        const usa = Math.min(restante, fecha - de);
+        restante -= usa;
+        if (restante <= 0) return de + usa;
+      }
+    }
+    t = dia0 + 24 * _H_MS;
+  }
+  return t;
+}
+
+// Data do último evento que (re)começou a oferta atual (ms), NaN se não houver.
+function inicioOfertaMs(v) {
+  const hist = (Array.isArray(v?.historico) ? v.historico : Object.values(v?.historico || {})).filter(h => h && typeof h === 'object');
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].evento === 'Ofertado' || hist[i].evento === 'Transportadora trocada') {
+      const t = _parseIsoBrt(hist[i].data);
+      if (Number.isFinite(t)) return t;
+    }
+  }
+  return NaN;
+}
+
+// Carregamento programado (ms, horário de Brasília), NaN sem data.
+function carregamentoProgMs(v) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v?.dtCarregProg || v?.dtCarreg || '').trim());
+  if (!m) return NaN;
+  let hh = 12, mi = 0;
+  const h = /^(\d{1,2}):(\d{2})/.exec(String(v?.horaCarregProg || '').trim());
+  if (h && +h[1] <= 23 && +h[2] <= 59) { hh = +h[1]; mi = +h[2]; }
+  const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], hh, mi));
+  if (d.getUTCDate() !== +m[1] || d.getUTCMonth() !== +m[2] - 1) return NaN; // 31/02 etc.
+  return d.getTime() + _BRT_OFFSET_MS;
+}
+
+// { inicio, ate } (ms) do prazo da oferta atual, ou null (regra desligada / não está em oferta).
+function prazoAceiteViagem(v) {
+  const cfg = configPrazoAceite();
+  if (!cfg || v?.status !== 'Ofertado' || !String(v.transportador || '').trim()) return null;
+  const t0 = inicioOfertaMs(v);
+  const inicio = Number.isFinite(t0) ? Math.max(t0, cfg.ativadoEm) : cfg.ativadoEm;
+  let ate = somarHorasUteis(inicio, cfg.horasUteis, cfg);
+  const carreg = carregamentoProgMs(v);
+  if (Number.isFinite(carreg)) ate = Math.min(ate, carreg - cfg.antecedenciaCarregamentoH * _H_MS);
+  return { inicio, ate: Math.max(ate, inicio + cfg.prazoMinimoH * _H_MS) };
+}
+
+// 'qui 26/11 14:30' no horário de Brasília (mesmo texto do WhatsApp do bot).
+function fmtPrazoAceite(ms) {
+  const b = new Date(ms - _BRT_OFFSET_MS);
+  const p = n => String(n).padStart(2, '0');
+  return `${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][b.getUTCDay()]} ${p(b.getUTCDate())}/${p(b.getUTCMonth() + 1)} ${p(b.getUTCHours())}:${p(b.getUTCMinutes())}`;
+}
+
+function textoRegraPrazoAceite() {
+  const cfg = configPrazoAceite() || PRAZO_ACEITE_PADRAO;
+  const h = n => String(n).replace('.', ',');
+  return `Sem aceite até esse horário (de Brasília), a oferta é recusada automaticamente e volta para a equipe Nexta ofertar a outra transportadora. `
+    + `Prazo: ${h(cfg.horasUteis)} horas úteis (seg a sex, ${h(cfg.inicioExpediente)}h às ${h(cfg.fimExpediente)}h, sem feriados), `
+    + `no máximo até ${h(cfg.antecedenciaCarregamentoH)}h antes do carregamento e no mínimo ${h(cfg.prazoMinimoH)}h.`;
+}
+
+// Selo do prazo. compacto: célula de status da Gerir Viagens; senão, linha do card do transportador.
+function prazoAceiteHtml(v, compacto) {
+  const p = prazoAceiteViagem(v);
+  if (!p) return '';
+  const falta = p.ate - Date.now();
+  const cls = falta <= 0 ? 'vencido' : falta <= 2 * _H_MS ? 'perto' : '';
+  const quando = fmtPrazoAceite(p.ate);
+  const texto = compacto
+    ? (falta <= 0 ? `⏳ venceu ${quando}` : `⏳ aceite até ${quando}`)
+    : (falta <= 0 ? `⏳ Prazo de resposta venceu (${quando}) — a oferta será recusada automaticamente`
+                  : `⏳ Responda até ${quando} — sem resposta, a oferta é recusada automaticamente`);
+  return `<div class="prazo-aceite${compacto ? ' compacto' : ''} ${cls}" title="${esc(textoRegraPrazoAceite())}">${esc(texto)}</div>`;
 }
 
 // ── HISTÓRICO DE OFERTAS POR VIAGEM ──
@@ -8731,6 +8889,7 @@ function renderCardsOfertadasTransportador() {
             <div class="d"><div class="lbl">↑ Carregamento</div><div class="val">${fmtShort(progCarreg)} ${horaCarreg}</div></div>
             <div class="d"><div class="lbl">↓ Descarga</div><div class="val">${fmtShort(progDesc)} ${horaDesc}</div></div>
           </div>
+          ${prazoAceiteHtml(v, false)}
           ${freteOfertaCardHtml(v)}
           ${renderSeletorCnpjTransportador(v, i)}
         </div>
@@ -15849,6 +16008,8 @@ function renderSeletorStatus(v, realIdx) {
       </select>`;
   } else if (v.status === 'Em Andamento') {
     html += renderCicloHerrlogInline(v);
+  } else if (v.status === 'Ofertado') {
+    html += prazoAceiteHtml(v, true); // vazio com a regra desligada (ver configPrazoAceite)
   }
   return html;
 }
@@ -19958,6 +20119,27 @@ function configurarListenerAssinaturasProgramadores() {
   });
 }
 
+// Chave do prazo de aceite (meta/prazoAceite, ver configPrazoAceite): só muda quando alguém
+// liga/desliga ou ajusta a regra, então redesenha a Gerir Viagens (selo na célula de status e
+// nos cards do transportador) só se mudou de fato.
+function configurarListenerPrazoAceite() {
+  if (window._fbUnsubPrazoAceite) { window._fbUnsubPrazoAceite(); window._fbUnsubPrazoAceite = null; }
+  if (!window._fb.ouvirConfigPrazoAceite) return;
+  window._fbUnsubPrazoAceite = window._fb.ouvirConfigPrazoAceite((dados) => {
+    const mudou = JSON.stringify(dados) !== JSON.stringify(_cfgPrazoAceiteBruto);
+    _cfgPrazoAceiteBruto = dados;
+    if (mudou && activeTab === 1) renderViagensTable();
+  });
+}
+
+// Selo do prazo muda de cor com o tempo (amarelo a 2h do fim, vermelho vencido) sem ninguém
+// gravar nada: o transportador costuma deixar a tela aberta, então os cards (baratos) são
+// redesenhados a cada 5 min enquanto a regra está ligada. A equipe vê a mudança no próximo
+// desenho da tabela.
+setInterval(() => {
+  if (configPrazoAceite() && isTransportador() && activeTab === 1 && !document.hidden) renderCardsOfertadasTransportador();
+}, 5 * 60000);
+
 function novaSemana() {
   const hoje = new Date();
   const fmt = (d) => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -20053,6 +20235,7 @@ await carregarUsuariosFirebase();
   configurarListenerCadastroHerrlogPlacas();
   configurarListenerCadastroHerrlogClientes();
   configurarListenerAssinaturasProgramadores();
+  configurarListenerPrazoAceite();
 
   const semanas = await window._fb.listarSemanas();
   if (semanas.length === 0) {
@@ -21317,6 +21500,7 @@ function renderPerformanceKpis(lista) {
 // reofertada, ou (cancelada) a viagem nova com a mesma cadência de origem, mesmo destino e produto.
 const HO_DESDE = '2026-10-01';  // de outubro em diante (usuaria, 2026-11-18)
 const HO_NEGATIVOS = new Set(['Recusado', 'Cancelado']);
+const HO_QUEM_PRAZO = 'Prazo vencido (automático)'; // ver _hoQuem
 const _ho = { semanas: new Map(), carregando: null, linhas: [], filtradas: [] };
 
 function _hoDataBR(s) {
@@ -21410,6 +21594,8 @@ function _hoNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g
 // equipe). Corrigido em 2026-11-18: so' pelo nome, o Alexei Galli (usuario da RODOBELO) saia como "Interno".
 // Sem perfil (conta apagada): nome igual ao da transportadora = transportadora; senao "Nao identificado".
 function _hoQuem(h) {
+  // Recusa do bot por prazo de aceite vencido (ver prazoAceiteViagem): linha própria, conta contra a transportadora.
+  if (h.automatico === 'prazoAceite' || h.usuario === PRAZO_ACEITE_USUARIO) return { tipo: HO_QUEM_PRAZO, nome: '' };
   const u = _hoNorm(h.usuario), tr = _hoNorm(h.transportador);
   if (!u) return { tipo: 'Não identificado', nome: '' };
   const peloPerfil = _ho.tipoPorNome?.get(u);
@@ -21576,6 +21762,7 @@ async function renderHistoricoOfertas(forcar) {
   _ho.quem = _hoPorQuem(linhas);
   document.getElementById('hoQuemBody').innerHTML = _ho.quem.map(q =>
     `<tr><td>${q.tipo === 'Transportadora' ? '<span class="badge badge-warn">A própria transportadora</span>'
+      : q.tipo === HO_QUEM_PRAZO ? '<span class="badge badge-danger" title="Sem resposta no prazo de aceite: o bot recusou automaticamente">⏳ Prazo de aceite vencido</span>'
       : q.tipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(q.nome) : '<span class="badge">Não identificado</span> ' + esc(q.nome)}</td>`
     + `<td>${q.recusas}</td><td>${q.critico ? `<span class="badge badge-danger">${q.critico}</span>` : '0'}</td><td>${esc(q.transps)}</td></tr>`
   ).join('') || '<tr><td colspan="4" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
@@ -21594,6 +21781,7 @@ async function renderHistoricoOfertas(forcar) {
     return `<tr class="${l.nivel ? 'ho-' + l.nivel : ''}"><td>${esc(_hoFmtData(l.data))}</td><td>${esc(l.idViagem)}</td><td>${esc(l.destino)}</td>`
       + `<td>${esc(l.produto)}</td><td>${esc(l.carregamento)}</td><td>${esc(l.descarga)}</td>`
       + `<td>${esc(l.transportador)}</td><td>${l.quemTipo === 'Transportadora' ? '<span class="badge badge-warn">Transportadora</span> ' + esc(l.quemNome)
+          : l.quemTipo === HO_QUEM_PRAZO ? '<span class="badge badge-danger">⏳ Prazo de aceite vencido</span>'
           : l.quemTipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(l.quemNome) : '<span class="badge">Não identificado</span> ' + esc(l.quemNome)}</td>`
       + `<td><span class="badge badge-danger">RECUSADA</span></td><td>${_hoBadgeStatus(l.statusAtual)}</td>`
       + `<td>${ant}</td><td>${esc(l.depois)}</td>`
