@@ -397,6 +397,9 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .documentos-impressao .sub { max-width: none; margin: 8px 0 16px; font-size: 16px; }
 .documentos-status { min-height: 24px; font-size: 18px; font-weight: 600; }
 .btn-reimprimir { width: 100%; min-height: 64px; }
+.aditivos-fim { max-width: 720px; margin: 24px auto 0; text-align: left; border-color: var(--accent2); background: var(--accent2-dim); }
+.aditivos-fim .cartao-titulo { color: var(--accent2); }
+.aditivos-fim + .documentos-impressao { margin-top: 16px; }
 
 /* ── PROCESSAMENTO DO FATURAMENTO ── */
 .processamento { max-width: 720px; margin: 0 auto; }
@@ -720,6 +723,11 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
     <div class="resultado">
       <div class="selo ok"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
       <div class="titulo">Faturamento concluído!</div>
+      <!-- Aditivos (cadastro no portal): o que retirar no guichê; a folha de retirada sai junto dos documentos -->
+      <div class="cartao aditivos-fim hidden" id="fim-aditivos">
+        <div class="cartao-titulo">Retire no guichê com a folha de aditivos</div>
+        <div id="fim-aditivos-lista"></div>
+      </div>
       <!-- A impressão começa sozinha; o botão só reenvia tudo se a impressora não começar -->
       <div class="cartao documentos-impressao hidden" id="fim-documentos">
         <div class="documentos-status" id="fim-documentos-status" aria-live="polite"></div>
@@ -836,7 +844,7 @@ const MAX_LACRES_POR_COMPARTIMENTO = 10;
 const CAPACIDADE_MAX_LITROS = 50000;
 const TEMPO_INATIVIDADE = 90;        // s sem tocar na tela até perguntar "Ainda está aí?"
 const TEMPO_RESPOSTA_INATIVIDADE = 15; // s para responder antes de voltar ao início (e apagar o que foi digitado)
-const TEMPO_TELA_FIM = 120;          // tempo para imprimir os PDFs (ordem, amostragem, DANFEs e laudos); reinicia em Imprimir novamente
+const TEMPO_TELA_FIM = 120;          // tempo para imprimir os PDFs (ordem, amostragem, aditivos, DANFEs e laudos); reinicia em Imprimir novamente
 const TEMPO_TELA_AVISO = 30;
 const TEMPO_MENU = 45;               // s sem tocar até fechar o menu da equipe / voltar da troca de terminal
 const CHAVE_TERMINAL = 'nexta-autoatendimento.terminal'; // localStorage: base escolhida neste tablet
@@ -1076,6 +1084,7 @@ function reiniciar() {
 }
 
 function renderDocumentosFim(documentos) {
+  renderAditivosFim(null); // aparece quando a impressão calcula os aditivos deste protocolo
   document.getElementById('fim-documentos').classList.toggle('hidden', !documentosParaImpressao(documentos).length);
   document.getElementById('fim-documentos-status').textContent = '';
   document.getElementById('btn-imprimir-novamente').disabled = true; // libera quando o envio automático terminar
@@ -1140,21 +1149,241 @@ function avisoLaudos(laudos) {
     : '';
 }
 
-// Ordem de impressão: ordem de carregamento, amostragem e cada DANFE seguido dos laudos dos produtos dele
-function documentosParaImpressao(documentos, laudos = null) {
+/* ── ADITIVOS ── cadastro no portal (Cadastros → Aditivos): aditivos/<produto de venda> = frasco e quantidade a cada
+   5.000 L. Depois do faturamento sai uma folha a mais, a de retirada dos frascos no guichê, gravada no Storage
+   (autoatendimento-aditivos/<protocolo>/) e apontada em autoatendimento/<protocolo>/fichaAditivos (histórico do portal).
+   A conta é por compartimento: litros ÷ 5.000 arredondado (0,5 sobe; no mínimo 1) vezes os frascos do cadastro. */
+const LITROS_POR_DOSE_ADITIVO = 5000;
+const ROTULO_FOLHA_ADITIVOS = 'Retirada de aditivos';
+// protocolo → { itens, compartimentos, documento }: o registro em memória não recebe a gravação da folha, e a
+// reimpressão usa a mesma folha em vez de gerar outra
+const _folhasAditivos = new Map();
+function frascosDoCompartimento(litros, frascosPor5000L) {
+  return Math.max(1, Math.round(litros / LITROS_POR_DOSE_ADITIVO)) * frascosPor5000L;
+}
+// { itens: total de frascos por aditivo, compartimentos: a conta de cada compartimento com produto que leva aditivo }
+function aditivosDoRegistro(registro, cadastro) {
+  const descricoes = new Map(listaHistorico(registro?.alocacoes).map((l) => [ordemSemZeros(l?.produto), l?.descricao]));
+  const carregados = listaHistorico(registro?.compartimentos)
+    .slice().sort((a, b) => (Number(a?.indiceGlobal) || 0) - (Number(b?.indiceGlobal) || 0));
+  const compartimentos = [], porAditivo = new Map();
+  for (const c of carregados) {
+    const produto = ordemSemZeros(c?.produto); // o pedido pode trazer o material com zeros à esquerda
+    const cad = cadastro?.[produto];
+    const porDose = Math.trunc(Number(cad?.frascosPor5000L));
+    const litros = Number(c?.volumePrevistoLitros) || Number(c?.capacidadeLitros) || 0;
+    if (!cad?.aditivoCodigo || !(porDose >= 1) || !(litros > 0)) continue;
+    const aditivoCodigo = String(cad.aditivoCodigo), frascos = frascosDoCompartimento(litros, porDose);
+    compartimentos.push({
+      placa: String(c.placa || ''), indice: Number(c.indice) || 0, produto,
+      produtoDescricao: String(descricoes.get(produto) || cad.produtoDescricao || ''),
+      litros, aditivoCodigo, frascos,
+    });
+    const item = porAditivo.get(aditivoCodigo) || { aditivoCodigo, aditivoDescricao: String(cad.aditivoDescricao || ''), frascos: 0 };
+    item.frascos += frascos;
+    porAditivo.set(aditivoCodigo, item);
+  }
+  return { itens: [...porAditivo.values()], compartimentos };
+}
+// Só o que a fonte padrão do PDF (WinAnsi) desenha: letra fora dela perde o acento ou sai do texto
+function textoPdf(valor) {
+  return String(valor ?? '').replace(/\s+/g, ' ').trim()
+    .replace(/[^\x20-\x7E\xA0-\xFF–—‘’“”•…]/g, (c) => c.normalize('NFD').replace(/[^\x20-\x7E]/g, ''));
+}
+async function gerarFolhaAditivos(registro, calculo) {
+  const { PDFDocument, StandardFonts, rgb } = await carregarPdfLib();
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`${ROTULO_FOLHA_ADITIVOS} ${registro.protocolo}`);
+  const normal = await pdf.embedFont(StandardFonts.Helvetica);
+  const negrito = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const [L, A] = FOLHA_A4_PT;
+  const pagina = pdf.addPage([L, A]);
+  const M = 40, largura = L - 2 * M;
+  const preto = rgb(0.1, 0.1, 0.1), cinza = rgb(0.4, 0.4, 0.4), claro = rgb(0.78, 0.78, 0.78), fundo = rgb(0.93, 0.93, 0.93);
+  const caber = (texto, fonte, tam, max) => {
+    let t = textoPdf(texto);
+    if (fonte.widthOfTextAtSize(t, tam) <= max) return t;
+    while (t && fonte.widthOfTextAtSize(t + '…', tam) > max) t = t.slice(0, -1);
+    return t.trimEnd() + '…';
+  };
+  const escrever = (texto, x, y, { fonte = normal, tam = 10, cor = preto, max = largura, direita = false } = {}) => {
+    const t = caber(texto, fonte, tam, max);
+    pagina.drawText(t, { x: direita ? x + max - fonte.widthOfTextAtSize(t, tam) : x, y, size: tam, font: fonte, color: cor });
+  };
+  const traco = (y, espessura = 0.6, cor = claro, x1 = M, x2 = L - M) =>
+    pagina.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness: espessura, color: cor });
+  // Tabela: colunas [{ titulo, largura, direita }]; a primeira coluna com largura 0 fica com o que sobra
+  const tabela = (y, colunas, linhas, { alturaLinha, tam, tamDestaque = tam, destaque = -1 }) => {
+    const fixas = colunas.reduce((s, c) => s + c.largura, 0);
+    const larguras = colunas.map((c) => c.largura || largura - fixas);
+    const xs = larguras.map((_, i) => M + larguras.slice(0, i).reduce((s, w) => s + w, 0));
+    pagina.drawRectangle({ x: M, y: y - 18, width: largura, height: 18, color: fundo });
+    colunas.forEach((c, i) => escrever(c.titulo.toUpperCase(), xs[i] + 6, y - 12.5, { fonte: negrito, tam: 7.5, cor: cinza, max: larguras[i] - 12, direita: c.direita }));
+    y -= 18;
+    for (const linha of linhas) {
+      linha.forEach((valor, i) => {
+        const grande = i === destaque;
+        escrever(valor, xs[i] + 6, y - alturaLinha / 2 - (grande ? tamDestaque : tam) * 0.35, {
+          fonte: grande ? negrito : normal, tam: grande ? tamDestaque : tam, max: larguras[i] - 12, direita: colunas[i].direita,
+        });
+      });
+      y -= alturaLinha;
+      traco(y);
+    }
+    return y;
+  };
+  const r = registro.resultado || {};
+  const notas = listaHistorico(r.notasFiscais).map(String);
+  const notasDanfe = listaHistorico(registro.documentos?.notasFiscaisPdf).map((n) => String(n?.notaFiscal || '')).filter(Boolean);
+  const agora = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const plural = (n) => `${n} frasco${n === 1 ? '' : 's'}`;
+
+  // Cabeçalho
+  let y = A - M;
+  escrever('RETIRADA DE ADITIVOS', M, y - 20, { fonte: negrito, tam: 20, max: largura * 0.62 });
+  escrever(registro.protocolo, M, y - 20, { fonte: negrito, tam: 18, direita: true });
+  escrever('Entregue esta folha no guichê e retire os frascos abaixo.', M, y - 40, { tam: 11, cor: cinza });
+  y -= 52;
+  traco(y, 1.4, preto);
+
+  // Dados do carregamento, em duas colunas
+  const dados = [
+    ['Terminal', registro.baseNome],
+    ['Data do carregamento', formatDataBR(registro.dataCarregamento)],
+    ['Placas', listaHistorico(registro.placas).join(' / ') || registro.placa],
+    ['Motorista', registro.motoristaNome],
+    ['Ordem de frete', r.ordemFrete],
+    ['Notas fiscais', (notas.length ? notas : notasDanfe).join(', ')],
+  ];
+  const meia = largura / 2;
+  dados.forEach(([rotulo, valor], i) => {
+    const x = M + (i % 2) * meia, yy = y - 20 - Math.floor(i / 2) * 32;
+    escrever(rotulo.toUpperCase(), x, yy, { fonte: negrito, tam: 7.5, cor: cinza, max: meia - 12 });
+    escrever(valor || '—', x, yy - 13, { tam: 11, max: meia - 12 });
+  });
+  y -= 20 + 3 * 32 - 6;
+  traco(y);
+
+  // Frascos a retirar (total por aditivo)
+  y -= 28;
+  escrever('FRASCOS A RETIRAR NO GUICHÊ', M, y, { fonte: negrito, tam: 10 });
+  y = tabela(y - 8, [
+    { titulo: 'Código', largura: 80 },
+    { titulo: 'Aditivo', largura: 0 },
+    { titulo: 'Quantidade', largura: 110, direita: true },
+  ], calculo.itens.map((i) => [i.aditivoCodigo, i.aditivoDescricao, plural(i.frascos)]), { alturaLinha: 34, tam: 12, tamDestaque: 16, destaque: 2 });
+
+  // Conta de cada compartimento
+  y -= 30;
+  escrever('CÁLCULO POR COMPARTIMENTO', M, y, { fonte: negrito, tam: 10 });
+  y = tabela(y - 8, [
+    { titulo: 'Compartimento', largura: 100 },
+    { titulo: 'Produto de venda', largura: 0 },
+    { titulo: 'Litros', largura: 62, direita: true },
+    { titulo: 'Aditivo', largura: 62 },
+    { titulo: 'Frascos', largura: 52, direita: true },
+  ], calculo.compartimentos.map((c) => [
+    `${c.placa} · CT ${pad2(c.indice)}`, `${c.produto} ${c.produtoDescricao}`,
+    Number(c.litros).toLocaleString('pt-BR'), c.aditivoCodigo, String(c.frascos),
+  ]), { alturaLinha: 20, tam: 9.5 });
+  escrever('Em cada compartimento: litros ÷ 5.000, arredondado (0,5 sobe; no mínimo 1), vezes os frascos do cadastro do produto.',
+    M, y - 14, { tam: 8.5, cor: cinza });
+
+  // Assinaturas
+  y -= 82;
+  const assinatura = largura / 2 - 20;
+  for (const [i, rotulo] of ['Entregue por (guichê)', 'Recebido por (motorista)'].entries()) {
+    const x = M + i * (assinatura + 40);
+    traco(y, 0.8, preto, x, x + assinatura);
+    escrever(rotulo, x, y - 12, { tam: 9, cor: cinza, max: assinatura });
+  }
+  escrever(`Gerada pelo autoatendimento em ${agora}${registro.quiosqueNome ? ` · ${registro.quiosqueNome}` : ''} · ${registro.protocolo}`,
+    M, M - 12, { tam: 7.5, cor: cinza });
+  return new Blob([await pdf.save()], { type: 'application/pdf' });
+}
+// Prepara a folha do protocolo uma vez: calcula, gera o PDF, grava no Firebase (sem bloquear a impressão se a gravação
+// falhar) e guarda para a reimpressão. Devolve { itens, documento } ou { itens, erro } (nunca lança)
+async function prepararFolhaAditivos(registro) {
+  const protocolo = String(registro?.protocolo || '');
+  if (_folhasAditivos.has(protocolo)) return _folhasAditivos.get(protocolo);
+  const guardar = (folha) => {
+    _folhasAditivos.set(protocolo, folha);
+    while (_folhasAditivos.size > 10) _folhasAditivos.delete(_folhasAditivos.keys().next().value);
+    return folha;
+  };
+  // Folha já gerada (quiosque recarregado na tela final): imprime a que está no Storage
+  const gravada = registro?.fichaAditivos;
+  if (gravada?.storagePath) {
+    return guardar({ itens: listaHistorico(gravada.itens), documento: { ...gravada, rotulo: ROTULO_FOLHA_ADITIVOS, chaveImpressao: 'aditivos', emA4: true } });
+  }
+  let cadastro = null;
+  for (let tentativa = 1; tentativa <= 3 && !cadastro; tentativa += 1) {
+    try {
+      cadastro = await window._fb.carregarAditivos();
+    } catch (e) {
+      console.error(e);
+      if (tentativa < 3) await aguardar(2000);
+    }
+  }
+  if (!cadastro) return { itens: [], erro: true }; // não guarda: o Imprimir novamente tenta de novo
+  const calculo = aditivosDoRegistro(registro, cadastro);
+  if (!calculo.itens.length) return guardar({ itens: [] });
+  let blob;
+  try {
+    blob = await gerarFolhaAditivos(registro, calculo);
+  } catch (e) {
+    console.error('Não foi possível gerar a folha de aditivos.', e);
+    return { itens: calculo.itens, erro: true };
+  }
+  const documento = { blob, rotulo: ROTULO_FOLHA_ADITIVOS, chaveImpressao: 'aditivos', emA4: true };
+  try {
+    const salvo = await window._fb.salvarFichaAditivos(protocolo, blob, {
+      nomeArquivo: `retirada_aditivos_${protocolo}.pdf`,
+      geradoEm: new Date().toISOString(),
+      quiosqueUid: Q.usuario.uid,
+      quiosqueNome: Q.usuario.nome || '',
+      itens: calculo.itens,
+      compartimentos: calculo.compartimentos,
+    });
+    documento.storagePath = salvo.storagePath;
+  } catch (e) {
+    console.warn('A folha de aditivos não foi gravada no Firebase; imprimindo a gerada no quiosque.', e);
+  }
+  return guardar({ itens: calculo.itens, documento });
+}
+function avisoAditivos(folha) {
+  if (!folha?.erro) return '';
+  return folha.itens.length
+    ? ' Não foi possível gerar a folha de aditivos: peça os frascos no guichê.'
+    : ' Não foi possível consultar os aditivos: peça ao guichê.';
+}
+// Tela final: o motorista vê o que retirar no guichê mesmo que a folha não imprima
+function renderAditivosFim(folha) {
+  const itens = folha?.itens || [];
+  document.getElementById('fim-aditivos').classList.toggle('hidden', !itens.length);
+  document.getElementById('fim-aditivos-lista').innerHTML = itens.map((i) => `
+    <div class="produto-linha">
+      <div><div class="produto-nome">${esc(i.aditivoDescricao)}</div><div class="produto-meta">Código ${esc(i.aditivoCodigo)}</div></div>
+      <div class="produto-vol">${esc(i.frascos)} frasco${Number(i.frascos) === 1 ? '' : 's'}</div>
+    </div>`).join('');
+}
+
+// Ordem de impressão: ordem de carregamento, amostragem, retirada de aditivos e cada DANFE seguido dos laudos dos produtos dele
+function documentosParaImpressao(documentos, laudos = null, folhaAditivos = null) {
   const danfes = Array.isArray(documentos?.notasFiscaisPdf) ? documentos.notasFiscaisPdf : [];
   const boletos = Array.isArray(documentos?.boletosPdf) ? documentos.boletosPdf : [];
   const notasComDanfe = new Set(danfes.map((danfe) => String(danfe?.notaFiscal || '')));
   return [
     documentos?.ordemCarregamento,
     documentos?.formularioAmostragem,
+    folhaAditivos,
     ...danfes.flatMap((danfe) => [
       danfe,
       ...(laudos?.porNota.get(danfe?.storagePath) || []),
       ...boletos.filter((boleto) => String(boleto?.notaFiscal || '') === String(danfe?.notaFiscal || '')),
     ]),
     ...boletos.filter((boleto) => !notasComDanfe.has(String(boleto?.notaFiscal || ''))),
-  ].filter((documento) => documento?.storagePath);
+  ].filter((documento) => documento?.storagePath || documento?.blob); // a folha de aditivos pode existir só no quiosque
 }
 
 function controleImpressoes() {
@@ -1300,10 +1529,11 @@ async function carregarEImprimirDocumento(documento) {
   let ultimoErro;
   for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
     try {
-      const blob = await window._fb.carregarDocumento(documento.storagePath);
+      const blob = documento.blob || await window._fb.carregarDocumento(documento.storagePath);
       if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
       if (!(await blob.slice(0, 5).text()).startsWith('%PDF-')) throw new Error('arquivo PDF inválido');
-      await imprimirPdfNaEstacao(await pdfAjustadoParaImpressao(blob), documento.rotulo);
+      // A folha de aditivos já nasce em A4 com margem: vai como está
+      await imprimirPdfNaEstacao(documento.emA4 ? blob : await pdfAjustadoParaImpressao(blob), documento.rotulo);
       return;
     } catch (e) {
       ultimoErro = e;
@@ -1328,11 +1558,16 @@ async function imprimirDocumentos(registro, { novamente = false } = {}) {
   botao.disabled = true;
   try {
     mostrar('Preparando a impressão…');
-    const laudos = await carregarLaudosDoRegistro(registro);
-    const todos = documentosParaImpressao(registro.documentos, laudos);
+    const [laudos, aditivos] = await Promise.all([carregarLaudosDoRegistro(registro), prepararFolhaAditivos(registro)]);
+    const todos = documentosParaImpressao(registro.documentos, laudos, aditivos.documento);
+    const avisos = avisoLaudos(laudos) + avisoAditivos(aditivos);
+    if (naTela()) {
+      renderAditivosFim(aditivos);
+      document.getElementById('fim-documentos').classList.toggle('hidden', !todos.length && !avisos);
+    }
     const pendentes = novamente ? todos : todos.filter((documento) => !documentoJaImpresso(protocolo, documento));
     if (!pendentes.length) {
-      mostrar(todos.length ? 'Documentos já enviados para a impressora.' + avisoLaudos(laudos) : '');
+      mostrar(todos.length ? 'Documentos já enviados para a impressora.' + avisos : avisos.trim());
       return;
     }
     for (let indice = 0; indice < pendentes.length; indice += 1) {
@@ -1350,7 +1585,7 @@ async function imprimirDocumentos(registro, { novamente = false } = {}) {
     mostrar((falhas.length
       ? `Não foi possível imprimir: ${[...new Set(falhas)].join(', ')}. Toque em Imprimir novamente.`
       : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} para a impressora.`)
-      + avisoLaudos(laudos));
+      + avisos);
   } finally {
     _impressoesProtocolosEmAndamento.delete(protocolo);
     if (naTela()) botao.disabled = false;
@@ -3349,7 +3584,7 @@ setTimeout(() => {
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getStorage, ref as storageRef, getBlob }
+  import { getStorage, ref as storageRef, getBlob, uploadBytes }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // Mesmo projeto do portal de agendamento. Config pública (não é segredo): o acesso é protegido pelas regras
@@ -3406,6 +3641,16 @@ setTimeout(() => {
     carregarDocumento: (storagePath) => getBlob(storageRef(storage, storagePath)),
     // laudosAnalise/<base>/<produto>: laudo atual de cada produto geral do terminal (enviado pelo portal)
     carregarLaudos: async (baseId) => (await ler('laudosAnalise/' + baseId)) || {},
+    // aditivos/<produto de venda>: frasco que o motorista retira no guichê (Cadastros → Aditivos no portal)
+    carregarAditivos: async () => (await ler('aditivos')) || {},
+    // Folha de retirada dos aditivos: PDF novo no Storage e o registro aponta para ele (histórico do portal)
+    salvarFichaAditivos: async (protocolo, blob, dados) => {
+      const storagePath = `autoatendimento-aditivos/${protocolo}/${Date.now()}.pdf`;
+      await uploadBytes(storageRef(storage, storagePath), blob, { contentType: 'application/pdf' });
+      const ficha = { storagePath, ...dados };
+      await set(ref(db, `autoatendimento/${protocolo}/fichaAditivos`), ficha);
+      return ficha;
+    },
   };
 
   onAuthStateChanged(auth, (user) => onSessaoFirebase(user));
