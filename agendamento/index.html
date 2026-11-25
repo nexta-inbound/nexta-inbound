@@ -1019,7 +1019,7 @@ tbody tr:hover td { background: var(--panel-soft); }
     <div class="section-header">
       <div>
         <div class="section-title">Cadastros</div>
-        <div class="section-sub">Bases (ligadas aos pedidos do datalake por centro + depósito), clientes, recursos (veículos do SAP TM) e motoristas.</div>
+        <div class="section-sub">Bases (ligadas aos pedidos do datalake por centro + depósito), clientes, recursos (veículos do SAP TM), motoristas e aditivos.</div>
       </div>
     </div>
     <div class="subtabs">
@@ -1027,6 +1027,7 @@ tbody tr:hover td { background: var(--panel-soft); }
       <div class="subtab" data-sub="clientes" onclick="switchSubtab('clientes')">Clientes</div>
       <div class="subtab" data-sub="recursos" onclick="switchSubtab('recursos')">Recursos <span class="badge badge-warn hidden" id="subtabPendentes" title="Cadastros provisórios aguardando validação"></span></div>
       <div class="subtab" data-sub="motoristas" onclick="switchSubtab('motoristas')">Motoristas <span class="badge badge-warn hidden" id="subtabPendentesMot" title="Cadastros provisórios aguardando validação"></span></div>
+      <div class="subtab" data-sub="aditivos" onclick="switchSubtab('aditivos')">Aditivos</div>
     </div>
 
     <div class="subtab-content active" id="sub-bases">
@@ -1141,6 +1142,30 @@ tbody tr:hover td { background: var(--panel-soft); }
         <div id="listaMotoristas"><div class="chip-empty">Carregando motoristas…</div></div>
       </div>
     </div>
+
+    <!-- Aditivos (aditivos/<produto de venda>): o quiosque imprime a folha de retirada dos frascos no guichê -->
+    <div class="subtab-content" id="sub-aditivos">
+      <div class="card">
+        <div class="card-title" id="aditivoFormTitulo">Novo aditivo</div>
+        <div class="form-hint" style="margin:0 0 12px">Produto de venda que leva aditivo e o frasco que o motorista retira no guichê. No autoatendimento, o carregamento com esses produtos sai com uma folha a mais, a de retirada dos aditivos. A conta é feita em cada compartimento: litros ÷ 5.000, arredondado (0,5 sobe; no mínimo 1), vezes os frascos informados aqui. Exemplo com 1 frasco: 3.000 L = 1, 7.000 L = 1, 8.000 L = 2, 10.000 L = 2.</div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-field"><label for="na-produto">Código do produto de venda</label><input type="text" id="na-produto" inputmode="numeric" autocomplete="off" placeholder="ex: 2000047"></div>
+          <div class="form-field"><label for="na-produto-desc">Descrição do produto de venda</label><input type="text" id="na-produto-desc" autocomplete="off" maxlength="120" placeholder="ex: PETRONAS DYNAMIC DIESEL S10"></div>
+        </div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-field"><label for="na-aditivo">Código do aditivo</label><input type="text" id="na-aditivo" inputmode="numeric" autocomplete="off" placeholder="ex: 2000046"></div>
+          <div class="form-field"><label for="na-aditivo-desc">Descrição do aditivo</label><input type="text" id="na-aditivo-desc" autocomplete="off" maxlength="120" placeholder="ex: ADITIVO D24 DYNAMIC - ADITIVO DIESEL"></div>
+          <div class="form-field"><label for="na-frascos">Frascos a cada 5.000 L</label><input type="number" id="na-frascos" min="1" max="20" step="1" value="1" inputmode="numeric"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btnSalvarAditivo" onclick="salvarAditivoForm()">Adicionar aditivo</button>
+        <button class="btn btn-secondary btn-sm hidden" id="btnCancelarAditivo" onclick="limparFormAditivo()">Cancelar edição</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Produtos com aditivo</div>
+        <div class="form-hint" style="margin:0 0 12px">Produto de venda fora desta lista não leva aditivo. Uma alteração vale para os próximos faturamentos do autoatendimento; as folhas já impressas não mudam.</div>
+        <div id="listaAditivos"><div class="chip-empty">Carregando aditivos…</div></div>
+      </div>
+    </div>
   </div>
 
   <!-- TAB: LAUDOS DE ANÁLISE (equipe interna): um PDF por terminal e produto geral; o quiosque imprime com cada NF -->
@@ -1220,6 +1245,8 @@ const STATE = {
   laudos: null,             // laudosAnalise/<base>/<produto>: laudo atual (null até o 1º retorno do Firebase)
   laudosBase: '',           // terminal escolhido na aba Laudos Análise
   laudoEnvio: null,         // { baseId, produto } do laudo cujo PDF está sendo escolhido ou enviado
+  aditivos: null,           // Cadastros → Aditivos: aditivos/<produto de venda> (null até o 1º retorno do Firebase)
+  aditivoEditando: null,    // código do produto de venda cujo aditivo está no formulário
 };
 
 function esc(s) {
@@ -1424,6 +1451,10 @@ function iniciarApp() {
       STATE.motoristasPendentes = pendentes;
       renderMotoristasPendentes();
     }, erroListener('os cadastros provisórios de motorista'));
+    window._fb.ouvirAditivos((aditivos) => {
+      STATE.aditivos = aditivos;
+      renderCadastroAditivos();
+    }, erroListener('os aditivos'));
   }
 
   reiniciarListenerAgendamentos();
@@ -3493,7 +3524,15 @@ function documentosAutoatendimento(registro) {
     ...documento,
     rotulo: documento.rotulo || `Boleto ${documento.notaFiscal || documento.numero || i + 1}`,
   }));
-  return [...fixos, ...danfes, ...boletos].filter((documento) => documento?.storagePath);
+  // Folha de retirada dos aditivos: o quiosque gera depois do faturamento (cadastro em Cadastros → Aditivos)
+  const aditivos = registro?.fichaAditivos ? [{ ...registro.fichaAditivos, rotulo: 'Retirada de Aditivos' }] : [];
+  return [...fixos, ...danfes, ...boletos, ...aditivos].filter((documento) => documento?.storagePath);
+}
+// "2 frascos de 2000046 ADITIVO D24…" para cada aditivo da folha
+function textoAditivosAutoatendimento(ficha) {
+  return listaDadosAutoatendimento(ficha?.itens)
+    .map((i) => `${i.frascos} frasco${Number(i.frascos) === 1 ? '' : 's'} de ${i.aditivoCodigo} ${i.aditivoDescricao}`)
+    .join(' · ');
 }
 async function abrirDocumentoAutoatendimento(indice, botao) {
   const protocolo = STATE.historicoAutoatendimento;
@@ -3587,6 +3626,7 @@ function renderHistoricoAutoatendimento() {
       <div class="info-item"><div class="info-lbl">Ordem de frete</div><div class="info-val placa">${esc(resultado.ordemFrete) || '—'}</div></div>
       <div class="info-item"><div class="info-lbl">Notas fiscais</div><div class="info-val">${esc(listaDadosAutoatendimento(resultado.notasFiscais).join(', ')) || '—'}</div></div>
       <div class="info-item"><div class="info-lbl">Motorista SAP</div><div class="info-val">${esc(resultado.motoristaNome || resultado.motoristaCodigo) || '—'}</div></div>
+      ${registro.fichaAditivos ? `<div class="info-item"><div class="info-lbl">Aditivos no guichê</div><div class="info-val">${esc(textoAditivosAutoatendimento(registro.fichaAditivos)) || '—'}</div></div>` : ''}
     </div>` : '';
   el.innerHTML = `
     <div class="modal-title">Status Autoatendimento</div>
@@ -6039,6 +6079,96 @@ async function criarCliente() {
   } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
 }
 
+/* ── CADASTROS → ADITIVOS ── aditivos/<produto de venda> = frasco que o motorista retira no guichê. O quiosque
+   calcula por compartimento (litros ÷ 5.000 arredondado, 0,5 sobe, mínimo 1, vezes frascosPor5000L) e imprime a
+   folha de retirada junto dos documentos do faturamento */
+const MAX_FRASCOS_ADITIVO = 20;
+// Código do SAP sem os zeros à esquerda: o pedido pode trazer o material com 18 dígitos (000000000002000047)
+function codigoSapSemZeros(valor) { return String(valor ?? '').trim().replace(/^0+(?=\d)/, ''); }
+function renderCadastroAditivos() {
+  const el = document.getElementById('listaAditivos');
+  if (!el) return;
+  if (!STATE.aditivos) { el.innerHTML = '<div class="chip-empty">Carregando aditivos…</div>'; return; }
+  const lista = objList(STATE.aditivos).sort((a, b) => String(a.produtoDescricao).localeCompare(String(b.produtoDescricao), 'pt-BR'));
+  if (!lista.length) { el.innerHTML = '<div class="chip-empty">Nenhum produto com aditivo cadastrado. Sem cadastro, o autoatendimento não imprime a folha de aditivos.</div>'; return; }
+  el.innerHTML = `<div class="tabela-scroll"><table class="tabela-itens">
+    <thead><tr><th>Produto de venda</th><th>Aditivo</th><th class="num">Frascos a cada 5.000 L</th><th>Atualizado</th><th></th></tr></thead>
+    <tbody>${lista.map((a) => `<tr>
+      <td class="quebra"><strong>${esc(a.produtoCodigo)}</strong> · ${esc(a.produtoDescricao)}</td>
+      <td class="quebra"><strong>${esc(a.aditivoCodigo)}</strong> · ${esc(a.aditivoDescricao)}</td>
+      <td class="num">${esc(a.frascosPor5000L)}</td>
+      <td class="quebra">${a.atualizadoEm ? esc(dataHoraBR(a.atualizadoEm)) : ''}${a.atualizadoPorNome ? `<div class="form-hint" style="margin:0">${esc(a.atualizadoPorNome)}</div>` : ''}</td>
+      <td><div class="list-item-actions">
+        <button class="btn btn-secondary btn-sm" type="button" onclick="editarAditivo(${jsArg(a.id)})">Editar</button>
+        <button class="btn btn-secondary btn-sm" type="button" onclick="removerAditivo(${jsArg(a.id)})">Remover</button>
+      </div></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+function editarAditivo(codigo) {
+  const a = STATE.aditivos?.[codigo];
+  if (!a) return;
+  STATE.aditivoEditando = codigo;
+  document.getElementById('na-produto').value = a.produtoCodigo || codigo;
+  document.getElementById('na-produto-desc').value = a.produtoDescricao || '';
+  document.getElementById('na-aditivo').value = a.aditivoCodigo || '';
+  document.getElementById('na-aditivo-desc').value = a.aditivoDescricao || '';
+  document.getElementById('na-frascos').value = a.frascosPor5000L || 1;
+  document.getElementById('aditivoFormTitulo').textContent = `Editar aditivo do produto ${codigo}`;
+  document.getElementById('btnSalvarAditivo').textContent = 'Salvar alterações';
+  document.getElementById('btnCancelarAditivo').classList.remove('hidden');
+  document.getElementById('na-produto').focus();
+}
+function limparFormAditivo() {
+  STATE.aditivoEditando = null;
+  for (const id of ['na-produto', 'na-produto-desc', 'na-aditivo', 'na-aditivo-desc']) document.getElementById(id).value = '';
+  document.getElementById('na-frascos').value = 1;
+  document.getElementById('aditivoFormTitulo').textContent = 'Novo aditivo';
+  document.getElementById('btnSalvarAditivo').textContent = 'Adicionar aditivo';
+  document.getElementById('btnCancelarAditivo').classList.add('hidden');
+}
+async function salvarAditivoForm() {
+  const campo = (id) => document.getElementById(id).value.trim();
+  const produtoCodigo = codigoSapSemZeros(campo('na-produto'));
+  const aditivoCodigo = codigoSapSemZeros(campo('na-aditivo'));
+  const produtoDescricao = campo('na-produto-desc').toUpperCase();
+  const aditivoDescricao = campo('na-aditivo-desc').toUpperCase();
+  const frascos = Number(campo('na-frascos'));
+  const antigo = STATE.aditivoEditando;
+  if (!/^[1-9]\d{0,17}$/.test(produtoCodigo)) { toast('Código do produto de venda: só números, como no SAP (ex.: 2000047).', 'error'); return; }
+  if (!produtoDescricao) { toast('Informe a descrição do produto de venda.', 'error'); return; }
+  if (!/^[1-9]\d{0,17}$/.test(aditivoCodigo)) { toast('Código do aditivo: só números, como no SAP (ex.: 2000046).', 'error'); return; }
+  if (!aditivoDescricao) { toast('Informe a descrição do aditivo.', 'error'); return; }
+  if (!Number.isInteger(frascos) || frascos < 1 || frascos > MAX_FRASCOS_ADITIVO) {
+    toast(`Frascos a cada 5.000 L: número inteiro de 1 a ${MAX_FRASCOS_ADITIVO}.`, 'error'); return;
+  }
+  if (produtoCodigo === aditivoCodigo) { toast('O aditivo não pode ter o mesmo código do produto de venda.', 'error'); return; }
+  // Um aditivo por produto de venda (a chave é o código do produto)
+  if (produtoCodigo !== antigo && STATE.aditivos?.[produtoCodigo]) {
+    toast(`O produto ${produtoCodigo} já tem aditivo. Clique em Editar na linha dele.`, 'error'); return;
+  }
+  const dados = {
+    produtoCodigo, produtoDescricao, aditivoCodigo, aditivoDescricao, frascosPor5000L: frascos,
+    atualizadoEm: new Date().toISOString(),
+    atualizadoPorUid: STATE.usuario.uid,
+    atualizadoPorNome: STATE.usuario.nome || STATE.usuario.email || '',
+  };
+  try {
+    await window._fb.salvarAditivo(produtoCodigo, dados, antigo);
+    toast(antigo ? 'Aditivo atualizado.' : 'Aditivo cadastrado.', 'success');
+    limparFormAditivo();
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+async function removerAditivo(codigo) {
+  const a = STATE.aditivos?.[codigo];
+  if (!a || !confirm(`Remover o aditivo do produto ${codigo} (${a.produtoDescricao})?\n\nOs próximos carregamentos com esse produto saem sem a folha de aditivos.`)) return;
+  try {
+    await window._fb.removerAditivo(codigo);
+    if (STATE.aditivoEditando === codigo) limparFormAditivo();
+    toast('Aditivo removido.', 'success');
+  } catch (e) { console.error(e); toast(msgErro(e), 'error'); }
+}
+
 /* ── CADASTROS → RECURSOS (veículos e perfis de compartimento do SAP TM) ── */
 // recursos/ é sincronizado automaticamente do datalake. A planilha administrativa alimenta apenas
 // perfisCompartimento/: perfil SAP → capacidades, na ordem dos compartimentos.
@@ -6924,6 +7054,14 @@ async function abrirLaudo(baseId, produto, botao) {
     ouvirClientes: (cb, onErro) => ouvir('clientes', cb, onErro),
     criarCliente: (codigo, dados) => set(ref(db, 'clientes/' + codigo), dados),
     salvarCliente: (codigo, dados) => update(ref(db, 'clientes/' + codigo), dados),
+
+    // aditivos/<código do produto de venda>: trocar o código na edição move o registro (grava o novo e apaga o antigo juntos)
+    ouvirAditivos: (cb, onErro) => ouvir('aditivos', cb, onErro),
+    salvarAditivo: (codigo, dados, codigoAntigo) => update(ref(db), {
+      ['aditivos/' + codigo]: dados,
+      ...(codigoAntigo && codigoAntigo !== codigo ? { ['aditivos/' + codigoAntigo]: null } : {}),
+    }),
+    removerAditivo: (codigo) => remove(ref(db, 'aditivos/' + codigo)),
 
     // recursos/<placas Mercosul em ordem, juntas por "+">: veículos e perfis por placa vindos do datalake.
     // A lista inteira só a equipe interna lê; qualquer usuário consulta um recurso pela chave (capacidade no agendamento)
