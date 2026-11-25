@@ -404,6 +404,12 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .processamento-percentual { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--accent); }
 .barra-progresso { height: 18px; overflow: hidden; border-radius: 999px; background: var(--panel-soft); border: 1px solid var(--border); }
 .barra-progresso > div { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .5s linear; }
+/* Listras andando enquanto o robô trabalha: nas esperas do SAP o percentual fica parado, mas a tela não parece travada */
+.barra-progresso.ativa > div {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.24) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.24) 50%, rgba(255,255,255,.24) 75%, transparent 75%, transparent);
+  background-size: 28px 28px; animation: barra-listras 1s linear infinite;
+}
+@keyframes barra-listras { from { background-position: 0 0; } to { background-position: 28px 0; } }
 .processamento-msg { min-height: 30px; margin-top: 14px; font-size: 19px; font-weight: 600; color: var(--text); }
 .processamento-msg.erro { color: var(--danger); }
 .correcao-lacre { margin-top: 18px; border-color: var(--accent2); background: var(--accent2-dim); }
@@ -411,7 +417,7 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .correcao-lacre .acoes { margin-top: 16px; }
 .correcao-lacre .acoes .btn-primario { min-width: 220px; }
 .correcao-lacre-status { min-height: 22px; margin-top: 10px; color: var(--text-dim); font-size: 15px; font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .barra-progresso > div { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .barra-progresso > div { transition: none; } .barra-progresso.ativa > div { animation: none; } }
 
 .rodape { text-align: center; font-size: 13px; color: var(--text-muted); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); user-select: none; }
 
@@ -870,8 +876,7 @@ let atd = null;
 let novo = null;
 let _cancelarAcompanhamento = null;
 let _registroProcessamento = null;
-// Barra do faturamento: fase atual, quando ela começou (relógio do tablet), pausa (correção de lacre) e o maior
-// percentual já mostrado (a barra nunca volta)
+// Barra do faturamento: o maior percentual já mostrado (a barra nunca volta) e o texto da última fase conhecida
 let _progresso = null;
 const _impressoesProtocolosEmAndamento = new Set();
 
@@ -1056,7 +1061,6 @@ function reiniciar() {
   atd = null;
   limparNovoAgendamento();
   _registroProcessamento = null;
-  pararProgresso();
   Q.falhasBusca = 0;
   for (const id of ['in-protocolo', 'in-cpf', 'in-placa']) document.getElementById(id).value = '';
   digitarProtocolo(document.getElementById('in-protocolo'));
@@ -1187,6 +1191,63 @@ function aguardar(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// O Chrome do quiosque (--kiosk-printing) imprime PDF em tamanho real, sem ajustar à área de impressão: a ordem e a
+// amostragem saem do SAP em Carta (mais largas que o A4) e a DANFE encosta na borda, então a impressora cortava as
+// beiradas. Antes de imprimir, cada página é encaixada (vetorial, sem virar imagem) numa folha A4 com margem de segurança.
+const PDF_LIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+const MM_EM_PT = 72 / 25.4;
+const FOLHA_A4_PT = [210 * MM_EM_PT, 297 * MM_EM_PT];
+const MARGEM_IMPRESSAO_PT = 6 * MM_EM_PT; // a área que as impressoras não alcançam fica entre 4 e 5 mm
+let _pdfLib = null;
+function carregarPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  _pdfLib = _pdfLib || new Promise((ok, falha) => {
+    const s = document.createElement('script');
+    s.src = PDF_LIB_URL;
+    s.onload = () => (window.PDFLib ? ok(window.PDFLib) : falha(new Error('biblioteca de PDF indisponível')));
+    s.onerror = () => { s.remove(); falha(new Error('sem conexão com o servidor da biblioteca de PDF')); };
+    document.head.appendChild(s);
+  }).catch((e) => { _pdfLib = null; throw e; });
+  return _pdfLib;
+}
+// Página em pé vai para A4 em pé e deitada para A4 deitado; respeita a rotação (/Rotate) e não amplia o que já cabe.
+async function pdfAjustadoParaImpressao(blob) {
+  try {
+    const { PDFDocument, degrees } = await carregarPdfLib();
+    const origem = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+    if (origem.isEncrypted) return blob; // o pdf-lib não decifra: sai como veio
+    const destino = await PDFDocument.create();
+    for (const pagina of origem.getPages()) {
+      const caixa = pagina.getCropBox();
+      const embutida = await destino.embedPage(pagina, {
+        left: caixa.x, bottom: caixa.y, right: caixa.x + caixa.width, top: caixa.y + caixa.height,
+      });
+      const giro = ((Math.round((pagina.getRotation().angle || 0) / 90) * 90) % 360 + 360) % 360;
+      const deitadaPeloGiro = giro === 90 || giro === 270;
+      const larguraVista = deitadaPeloGiro ? embutida.height : embutida.width;
+      const alturaVista = deitadaPeloGiro ? embutida.width : embutida.height;
+      const [folhaL, folhaA] = larguraVista > alturaVista ? [FOLHA_A4_PT[1], FOLHA_A4_PT[0]] : FOLHA_A4_PT;
+      const escala = Math.min(1,
+        (folhaL - 2 * MARGEM_IMPRESSAO_PT) / larguraVista,
+        (folhaA - 2 * MARGEM_IMPRESSAO_PT) / alturaVista);
+      const L = embutida.width * escala, A = embutida.height * escala;
+      const vistaL = larguraVista * escala, vistaA = alturaVista * escala;
+      // Centralizada na largura e encostada na margem de cima, como sai uma folha impressa normalmente
+      const x = (folhaL - vistaL) / 2;
+      const y = folhaA - MARGEM_IMPRESSAO_PT - vistaA;
+      // O /Rotate gira no sentido horário; o drawPage gira no anti-horário em volta do ponto (x, y)
+      const origemDesenho = { 0: [x, y], 90: [x, y + L], 180: [x + L, y + A], 270: [x + A, y] }[giro];
+      destino.addPage([folhaL, folhaA]).drawPage(embutida, {
+        x: origemDesenho[0], y: origemDesenho[1], width: L, height: A, rotate: degrees(-giro),
+      });
+    }
+    return new Blob([await destino.save()], { type: 'application/pdf' });
+  } catch (e) {
+    console.warn('Não foi possível ajustar o PDF à folha A4; imprimindo o original.', e);
+    return blob;
+  }
+}
+
 function imprimirPdfNaEstacao(blob, rotulo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
@@ -1242,7 +1303,7 @@ async function carregarEImprimirDocumento(documento) {
       const blob = await window._fb.carregarDocumento(documento.storagePath);
       if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
       if (!(await blob.slice(0, 5).text()).startsWith('%PDF-')) throw new Error('arquivo PDF inválido');
-      await imprimirPdfNaEstacao(blob, documento.rotulo);
+      await imprimirPdfNaEstacao(await pdfAjustadoParaImpressao(blob), documento.rotulo);
       return;
     } catch (e) {
       ultimoErro = e;
@@ -2843,75 +2904,40 @@ function listaHistorico(valor) {
   return valor && typeof valor === 'object' ? Object.values(valor).filter(Boolean) : [];
 }
 /* ── PROCESSAMENTO: o motorista vê só a fase e a barra; o passo a passo do SAP fica no portal de agendamento ── */
-// Fases e tempo típico de cada uma (s), medidos no histórico do runner_faturamento.py (nov/2026: faturamentos
-// completos de 2 a 3 min). Cada etapa publicada pelo cockpit cai numa fase; alocação e lacres crescem com o
-// check-in (pedido/produto alocado: ~10 s; compartimento carregado: ~5,5 s). Não precisa ser exato
-const FASES_FATURAMENTO = [
-  // SAP já aberto: ~25 s; navegador novo + login + Cockpit: ~60 s
-  { texto: 'Preparando o sistema', segundos: (c) => (c.sessaoNova ? 60 : 25),
+// O percentual é o mesmo do portal: o que o robô (runner_faturamento.py / cockpit_transporte.py) grava em
+// processamento.percentual a cada etapa. Nas esperas do SAP (a liberação da DANFE leva de 2 a 4 min) o número fica
+// parado, e as listras andando na barra mostram que o faturamento continua.
+// Faturamentos completos em nov/2026 (AG-000119 a AG-000129): de 7 a 9,5 min; os mais simples, perto de 5 min.
+const TEMPO_TIPICO_FATURAMENTO = 'de 5 a 10 minutos';
+// Só o texto da fase: cada etapa gravada pelo robô cai num texto; etapa desconhecida mantém o texto anterior
+const TEXTOS_FATURAMENTO = [
+  { texto: 'Preparando o sistema',
     etapas: ['solicitacao_recebida', 'validando_dados', 'reutilizando_sessao_sap', 'abrindo_navegador', 'autenticando_sap', 'abrindo_cockpit', 'cockpit_reutilizado_sem_renovar', 'cockpit_renovado'] },
-  { texto: 'Criando a ordem de frete', segundos: () => 15,
+  { texto: 'Criando a ordem de frete',
     etapas: ['localizando_veiculo', 'capturando_remessas_originais', 'veiculo_selecionado', 'criando_ordem_temporaria', 'ordem_temporaria_criada', 'abrindo_equipamento', 'equipamento_aberto', 'filtrando_etapas_sem_alocar'] },
-  { texto: 'Alocando os produtos nos compartimentos', segundos: (c) => 10 * Math.max(1, c.alocacoes),
-    etapas: ['alocando_', 'alocacao_'] }, // alocando_1_de_2, alocacao_1_concluida…
-  { texto: 'Registrando lacres e envelopes', segundos: (c) => 5 + 5.5 * Math.max(1, c.compartimentos),
-    etapas: ['preenchendo_lacres', 'corrigindo_lacre', 'correcao_lacre_recebida', 'aguardando_correcao_lacre'] },
-  { texto: 'Gravando a ordem de frete', segundos: () => 15,
-    etapas: ['preenchendo_motorista', 'gravando_ordem_frete', 'ordem_frete_gravada', 'motorista_gravado'] },
-  { texto: 'Registrando a saída da mercadoria', segundos: () => 37, etapas: ['saida_mercadoria'] },
-  { texto: 'Emitindo a nota fiscal', segundos: () => 18, etapas: ['faturando_remessas'] },
-  { texto: 'Preparando os documentos para impressão', segundos: () => 22,
-    etapas: ['gerando_documentos_carregamento', 'gerando_danfes', 'salvando_evidencia', 'publicando_documentos'] },
+  { texto: 'Alocando os produtos nos compartimentos', etapas: ['alocando_', 'alocacao_'] }, // alocando_1_de_2, alocacao_1_concluida…
+  { texto: 'Registrando lacres e envelopes',
+    etapas: ['preenchendo_lacres', 'corrigindo_lacre', 'corrigindo_lacre_planejamento', 'correcao_lacre_recebida', 'aguardando_correcao_lacre'] },
+  { texto: 'Gravando a ordem de frete',
+    etapas: ['preenchendo_motorista', 'gravando_ordem_frete', 'regravando_ordem_frete', 'ordem_frete_gravada', 'motorista_gravado'] },
+  { texto: 'Registrando a saída da mercadoria', etapas: ['saida_mercadoria', 'repetindo_saida_mercadoria', 'saida_mercadoria_concluida'] },
+  { texto: 'Emitindo a nota fiscal',
+    etapas: ['faturando_remessas', 'reexecutando_lista_faturamento', 'acionando_faturamento_coletivo', 'faturamento_concluido'] },
+  { texto: 'Aguardando a liberação da nota fiscal', etapas: ['aguardando_liberacao_danfe'] },
+  { texto: 'Preparando os documentos para impressão',
+    etapas: ['gerando_documentos_carregamento', 'retomando_geracao_documentos', 'gerando_danfes', 'gerando_danfe_', 'danfe_',
+      'gerando_boletos', 'gerando_boleto_', 'aguardando_liberacao_boleto', 'boletos_concluidos', 'salvando_evidencia', 'concluido', 'publicando_documentos'] },
 ];
-const ETAPAS_SESSAO_NOVA = ['abrindo_navegador', 'autenticando_sap', 'abrindo_cockpit'];
-function faseDaEtapa(etapa) {
+function textoDaEtapa(etapa) {
   const e = String(etapa || '');
-  return FASES_FATURAMENTO.findIndex((f) => f.etapas.some((x) => (x.endsWith('_') ? e.startsWith(x) : e === x)));
-}
-function duracoesFases() { return FASES_FATURAMENTO.map((f) => f.segundos(_progresso.contexto)); }
-// Percentual pelo tempo: as fases já feitas contam inteiras; na atual, a barra anda no ritmo típico até 90% dela e,
-// se demorar mais que o normal, continua devagar sem chegar à próxima fase
-function percentualEstimado() {
-  const dur = duracoesFases(), total = somar(dur), d = dur[_progresso.fase];
-  const decorrido = Math.max(0, ((_progresso.pausadoEm ?? Date.now()) - _progresso.inicioFase) / 1000);
-  const fracao = decorrido <= d ? 0.9 * decorrido / d : 0.9 + 0.09 * (1 - Math.exp(-(decorrido - d) / d));
-  return Math.min(99, Math.max(1, Math.floor(100 * (somar(dur.slice(0, _progresso.fase)) + fracao * d) / total)));
+  return TEXTOS_FATURAMENTO.find((f) => f.etapas.some((x) => (x.endsWith('_') ? e.startsWith(x) : e === x)))?.texto || null;
 }
 function desenharBarra(percentual) {
   const barra = document.getElementById('processamento-barra');
-  _progresso.exibido = Math.max(_progresso.exibido, percentual);
+  _progresso.exibido = Math.max(_progresso.exibido, Math.min(100, Math.round(Number(percentual) || 0)));
   document.getElementById('processamento-percentual').textContent = `${_progresso.exibido}%`;
   barra.setAttribute('aria-valuenow', _progresso.exibido);
   barra.firstElementChild.style.width = `${_progresso.exibido}%`;
-}
-function tickProgresso() {
-  if (!_progresso || Q.tela !== 'processamento') { pararProgresso(); return; }
-  if (!_progresso.encerrado) desenharBarra(percentualEstimado());
-}
-function pararProgresso() { clearInterval(_progresso?.timer); if (_progresso) _progresso.timer = null; }
-// Avança a fase pelo registro do runner. O início da fase vem do histórico (diferença entre horários do próprio
-// runner, sem depender do relógio do tablet): reabrir a tela no meio do faturamento não volta a barra para trás
-function acompanharFase(registro) {
-  const p = registro.processamento || {};
-  const historico = listaHistorico(p.historico);
-  _progresso.contexto = {
-    sessaoNova: historico.some((ev) => ETAPAS_SESSAO_NOVA.includes(ev.etapa)) || ETAPAS_SESSAO_NOVA.includes(p.etapa),
-    alocacoes: listaHistorico(registro.alocacoes).length,
-    compartimentos: listaHistorico(registro.compartimentos).length,
-  };
-  const pausado = registro.status === 'aguardando_correcao_lacre';
-  if (pausado && _progresso.pausadoEm == null) _progresso.pausadoEm = Date.now();
-  if (!pausado && _progresso.pausadoEm != null) { _progresso.inicioFase += Date.now() - _progresso.pausadoEm; _progresso.pausadoEm = null; }
-  const fase = faseDaEtapa(p.etapa);
-  if (fase > _progresso.fase) {
-    const primeiro = historico.find((ev) => faseDaEtapa(ev.etapa) === fase);
-    const jaPassou = primeiro?.em && p.em ? Math.max(0, Date.parse(p.em) - Date.parse(primeiro.em)) : 0;
-    _progresso.fase = fase;
-    _progresso.inicioFase = Date.now() - jaPassou;
-  }
-  const dur = duracoesFases();
-  const minutos = Math.max(1, Math.round(somar(dur) / 60));
-  document.getElementById('processamento-sub').textContent = `Não feche esta tela. Costuma levar cerca de ${minutos} minuto${minutos === 1 ? '' : 's'}.`;
 }
 function lacresDoRegistro(registro) {
   return listaHistorico(registro?.compartimentos).flatMap((c) => Array.isArray(c?.lacres)
@@ -2983,18 +3009,19 @@ function atualizarProcessamento(registro) {
   _registroProcessamento = registro;
   const status = registro.status || 'aguardando';
   const falhou = ['erro', 'revisao_manual'].includes(status);
-  acompanharFase(registro);
-  if (status === 'concluido' || falhou) { _progresso.encerrado = true; pararProgresso(); }
-  if (status === 'concluido') desenharBarra(100);
-  else if (!falhou) desenharBarra(percentualEstimado());
-  document.getElementById('processamento-barra').firstElementChild.style.background = falhou
+  const p = registro.processamento || {};
+  _progresso.texto = textoDaEtapa(p.etapa) || _progresso.texto;
+  desenharBarra(status === 'concluido' ? 100 : p.percentual);
+  const barra = document.getElementById('processamento-barra');
+  barra.classList.toggle('ativa', status === 'aguardando' || status === 'processando');
+  barra.firstElementChild.style.backgroundColor = falhou
     ? 'var(--danger)'
     : status === 'aguardando_correcao_lacre' ? 'var(--accent2)' : '';
   const msg = document.getElementById('processamento-msg');
   msg.textContent = falhou ? 'Faturamento não concluído'
     : status === 'aguardando' ? 'Na fila do faturamento…'
     : status === 'aguardando_correcao_lacre' ? 'Aguardando a leitura de outro lacre'
-    : status === 'concluido' ? 'Faturamento concluído' : FASES_FATURAMENTO[_progresso.fase].texto + '…';
+    : status === 'concluido' ? 'Faturamento concluído' : (_progresso.texto || 'Processando o faturamento') + '…';
   msg.classList.toggle('erro', falhou);
   renderCorrecaoLacre(registro);
 
@@ -3017,12 +3044,11 @@ function atualizarProcessamento(registro) {
 }
 function acompanharFaturamento(protocolo) {
   if (_cancelarAcompanhamento) _cancelarAcompanhamento();
-  pararProgresso();
-  _progresso = { fase: 0, inicioFase: Date.now(), pausadoEm: null, exibido: 0, encerrado: false,
-    contexto: { sessaoNova: false, alocacoes: 1, compartimentos: 1 }, timer: null };
+  _progresso = { exibido: 0, texto: null };
   document.getElementById('processamento-protocolo').textContent = protocolo;
-  document.getElementById('processamento-sub').textContent = 'Não feche esta tela.';
-  document.getElementById('processamento-barra').firstElementChild.style.background = '';
+  document.getElementById('processamento-sub').textContent = `Não feche esta tela. Costuma levar ${TEMPO_TIPICO_FATURAMENTO}.`;
+  document.getElementById('processamento-barra').classList.add('ativa');
+  document.getElementById('processamento-barra').firstElementChild.style.backgroundColor = '';
   desenharBarra(1);
   document.getElementById('processamento-msg').textContent = 'Solicitação enviada…';
   document.getElementById('processamento-msg').classList.remove('erro');
@@ -3033,7 +3059,6 @@ function acompanharFaturamento(protocolo) {
   document.getElementById('processamento-acoes').classList.add('hidden');
   document.getElementById('processamento-contagem').textContent = '';
   mostrarTela('processamento');
-  _progresso.timer = setInterval(tickProgresso, 500);
   _cancelarAcompanhamento = window._fb.acompanharCheckin(
     protocolo,
     atualizarProcessamento,
