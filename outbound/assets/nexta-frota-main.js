@@ -3793,12 +3793,15 @@ async function saveCutoffHour(){
 // TODAY
 // ═══════════════════════════════════════════════════════════
 async function renderToday(body){
-  body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando...</div>`;
+  // Digitando na busca (teste 25/11, item 6): não apaga a tela com "Carregando..." — senão a caixa de busca
+  // some a cada letra e perde o cursor. A tela antiga fica até a nova estar pronta.
+  const _buscaAntes=document.getElementById('today-search-input');
+  if(!(_buscaAntes && document.activeElement===_buscaAntes))
+    body.innerHTML=`<div class="loading"><span class="spin"></span>Carregando...</div>`;
   const ds=dateStr(S.dateOffset);
   const [allPTodas, allDrivers]=await Promise.all([dbGetPlates(), dbGetDrivers().catch(()=>({}))]);
   const allP=_semSobDemanda(allPTodas); // sob demanda: seção própria de ofertas (abaixo), fora dos números
   const _uRoleToday=USERS_DB[S.user]?.role;
-  const ofertasHtml=(_uRoleToday==='admin'||_uRoleToday==='operacional') ? await renderOfertasSobDemanda(allPTodas, ds) : '';
   // Retorna nome do motorista somente se ele estiver ativo (ou não estiver cadastrado — legado)
   function driverAtivoNome(carrier, operacao, nome){
     if(!nome) return '';
@@ -3821,6 +3824,18 @@ async function renderToday(body){
   )].sort((a,b)=>Number(a)-Number(b));
   const volumeOpts=`<option value="">Todos os volumes</option>${volumesDisponiveis.map(v=>`<option value="${attr(v)}" ${String(v)===volumeFilter?'selected':''}>${esc(v)} m³</option>`).join('')}`;
   const carrierOptsToday=`<option value="">Todos os transportadores</option>${CARRIERS.map(c=>`<option value="${attr(c)}" ${c===carrierFilter?'selected':''}>${esc(c)}</option>`).join('')}`;
+  // Ofertas sob demanda seguem os mesmos filtros do painel (teste 25/11, item 8: com Dedicado/Spot
+  // marcado a seção continuava aparecendo inteira). Operação: vale a da placa ou uma das bases dela.
+  const allPOfertas={};
+  for(const c of CARRIERS){
+    if(carrierFilter && c!==carrierFilter) continue;
+    allPOfertas[c]=(allPTodas[c]||[]).filter(p=>
+      (!S.contratoFilter||p.contrato===S.contratoFilter)&&
+      (!opFilter||p.operacao===opFilter||(p.basesCarregamento||[]).includes(opFilter))&&
+      (!volumeFilter||String(p.capacidade)===volumeFilter)&&
+      (!placaFilter||String(p.placa||'').toUpperCase().includes(placaFilter)||c.toUpperCase().includes(placaFilter)));
+  }
+  const ofertasHtml=(_uRoleToday==='admin'||_uRoleToday==='operacional') ? await renderOfertasSobDemanda(allPOfertas, ds) : '';
   let counts={disponivel:0,indisponivel:0,manutencao:0,folga:0,total:0};
   const allPairs=[];
   for(const carrier of CARRIERS){
@@ -3889,6 +3904,9 @@ async function renderToday(body){
       </table></div></div>`;
   }
   const opOpts=`<option value="">Todas as operações</option>${OPERACOES.map(o=>optHtml(o, o===opFilter)).join("")}`;
+  // Guarda foco e cursor da busca antes de redesenhar (a caixa é recriada).
+  const _busca=document.getElementById('today-search-input');
+  const _focoBusca=_busca && document.activeElement===_busca ? [_busca.selectionStart, _busca.selectionEnd] : null;
   body.innerHTML=`
     <div class="date-nav">
       <button onclick="chDate(-1)">‹</button>
@@ -3913,6 +3931,10 @@ async function renderToday(body){
       <div class="sum-card"><div class="sum-num" style="color:var(--lime)">${counts.total}</div><div class="sum-label">Total</div></div>
     </div>
     ${sections||'<div class="empty"><span class="ei">🔍</span>Nenhuma placa com esse filtro.</div>'}`;
+  if(_focoBusca){
+    const nova=document.getElementById('today-search-input');
+    if(nova){ nova.focus(); try{ nova.setSelectionRange(_focoBusca[0], _focoBusca[1]); }catch(_){} }
+  }
 }
 // ── Ofertas da operação sob demanda (Painel de Disponibilidade) ──────────────
 // A oferta É o registro de disponibilidade do dia (coleção availability), com
