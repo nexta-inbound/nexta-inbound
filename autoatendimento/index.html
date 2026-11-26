@@ -1432,51 +1432,81 @@ function carregarPdfLib() {
   if (window.PDFLib) return Promise.resolve(window.PDFLib);
   _pdfLib = _pdfLib || new Promise((ok, falha) => {
     const s = document.createElement('script');
+    // Sem resposta da cdnjs a impressão não pode ficar presa: segue sem a biblioteca (documentos como vieram)
+    const limite = setTimeout(() => falha(new Error('tempo esgotado ao baixar a biblioteca de PDF')), 20000);
     s.src = PDF_LIB_URL;
-    s.onload = () => (window.PDFLib ? ok(window.PDFLib) : falha(new Error('biblioteca de PDF indisponível')));
-    s.onerror = () => { s.remove(); falha(new Error('sem conexão com o servidor da biblioteca de PDF')); };
+    s.onload = () => { clearTimeout(limite); window.PDFLib ? ok(window.PDFLib) : falha(new Error('biblioteca de PDF indisponível')); };
+    s.onerror = () => { clearTimeout(limite); s.remove(); falha(new Error('sem conexão com o servidor da biblioteca de PDF')); };
     document.head.appendChild(s);
   }).catch((e) => { _pdfLib = null; throw e; });
   return _pdfLib;
 }
-// Página em pé vai para A4 em pé e deitada para A4 deitado; respeita a rotação (/Rotate) e não amplia o que já cabe.
-async function pdfAjustadoParaImpressao(blob) {
-  try {
-    const { PDFDocument, degrees } = await carregarPdfLib();
-    const origem = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
-    if (origem.isEncrypted) return blob; // o pdf-lib não decifra: sai como veio
-    const destino = await PDFDocument.create();
-    for (const pagina of origem.getPages()) {
-      const caixa = pagina.getCropBox();
-      const embutida = await destino.embedPage(pagina, {
-        left: caixa.x, bottom: caixa.y, right: caixa.x + caixa.width, top: caixa.y + caixa.height,
-      });
-      const giro = ((Math.round((pagina.getRotation().angle || 0) / 90) * 90) % 360 + 360) % 360;
-      const deitadaPeloGiro = giro === 90 || giro === 270;
-      const larguraVista = deitadaPeloGiro ? embutida.height : embutida.width;
-      const alturaVista = deitadaPeloGiro ? embutida.width : embutida.height;
-      const [folhaL, folhaA] = larguraVista > alturaVista ? [FOLHA_A4_PT[1], FOLHA_A4_PT[0]] : FOLHA_A4_PT;
-      const escala = Math.min(1,
-        (folhaL - 2 * MARGEM_IMPRESSAO_PT) / larguraVista,
-        (folhaA - 2 * MARGEM_IMPRESSAO_PT) / alturaVista);
-      const L = embutida.width * escala, A = embutida.height * escala;
-      const vistaL = larguraVista * escala, vistaA = alturaVista * escala;
-      // Centralizada na largura e encostada na margem de cima, como sai uma folha impressa normalmente
-      const x = (folhaL - vistaL) / 2;
-      const y = folhaA - MARGEM_IMPRESSAO_PT - vistaA;
-      // O /Rotate gira no sentido horário; o drawPage gira no anti-horário em volta do ponto (x, y)
-      const origemDesenho = { 0: [x, y], 90: [x, y + L], 180: [x + L, y + A], 270: [x + A, y] }[giro];
-      destino.addPage([folhaL, folhaA]).drawPage(embutida, {
-        x: origemDesenho[0], y: origemDesenho[1], width: L, height: A, rotate: degrees(-giro),
-      });
-    }
-    return new Blob([await destino.save()], { type: 'application/pdf' });
-  } catch (e) {
-    console.warn('Não foi possível ajustar o PDF à folha A4; imprimindo o original.', e);
-    return blob;
+// Acrescenta as páginas de `origem` em folhas A4 no fim de `destino`: página em pé vai para A4 em pé e deitada para A4
+// deitado; respeita a rotação (/Rotate) e não amplia o que já cabe. As folhas só entram depois de todas as páginas
+// embutidas: se uma falhar, o documento inteiro fica de fora (e vai separado), sem deixar meio documento no PDF.
+async function acrescentarEmA4(destino, origem, degrees) {
+  const folhas = [];
+  for (const pagina of origem.getPages()) {
+    const caixa = pagina.getCropBox();
+    const embutida = await destino.embedPage(pagina, {
+      left: caixa.x, bottom: caixa.y, right: caixa.x + caixa.width, top: caixa.y + caixa.height,
+    });
+    const giro = ((Math.round((pagina.getRotation().angle || 0) / 90) * 90) % 360 + 360) % 360;
+    const deitadaPeloGiro = giro === 90 || giro === 270;
+    const larguraVista = deitadaPeloGiro ? embutida.height : embutida.width;
+    const alturaVista = deitadaPeloGiro ? embutida.width : embutida.height;
+    const [folhaL, folhaA] = larguraVista > alturaVista ? [FOLHA_A4_PT[1], FOLHA_A4_PT[0]] : FOLHA_A4_PT;
+    const escala = Math.min(1,
+      (folhaL - 2 * MARGEM_IMPRESSAO_PT) / larguraVista,
+      (folhaA - 2 * MARGEM_IMPRESSAO_PT) / alturaVista);
+    const L = embutida.width * escala, A = embutida.height * escala;
+    const vistaL = larguraVista * escala, vistaA = alturaVista * escala;
+    // Centralizada na largura e encostada na margem de cima, como sai uma folha impressa normalmente
+    const x = (folhaL - vistaL) / 2;
+    const y = folhaA - MARGEM_IMPRESSAO_PT - vistaA;
+    // O /Rotate gira no sentido horário; o drawPage gira no anti-horário em volta do ponto (x, y)
+    const origemDesenho = { 0: [x, y], 90: [x, y + L], 180: [x + L, y + A], 270: [x + A, y] }[giro];
+    folhas.push(() => destino.addPage([folhaL, folhaA]).drawPage(embutida, {
+      x: origemDesenho[0], y: origemDesenho[1], width: L, height: A, rotate: degrees(-giro),
+    }));
   }
+  folhas.forEach((acrescentar) => acrescentar());
+}
+// Junta os documentos (na ordem da lista) num PDF só, para irem num único trabalho de impressão. O Chrome do quiosque
+// ignora um pedido de impressão que chega enquanto o anterior ainda está sendo preparado, e o primeiro do dia demora
+// (Chrome recém-aberto, impressora acordando): no AG-000130 (25/11/2026), a ordem de carregamento e a amostragem, os
+// dois primeiros de 14 enviados um a um, não saíram. Devolve também os documentos que não deu para juntar.
+async function juntarParaImpressao(baixados) {
+  const { PDFDocument, degrees } = await carregarPdfLib();
+  const destino = await PDFDocument.create();
+  const juntados = [], avulsos = [];
+  for (const item of baixados) {
+    try {
+      const origem = await PDFDocument.load(await item.blob.arrayBuffer(), { ignoreEncryption: true });
+      if (origem.isEncrypted) throw new Error('PDF protegido: o pdf-lib não decifra');
+      if (item.documento.emA4) { // a folha de aditivos já nasce em A4 com margem: vai como está
+        for (const pagina of await destino.copyPages(origem, origem.getPageIndices())) destino.addPage(pagina);
+      } else {
+        await acrescentarEmA4(destino, origem, degrees);
+      }
+      juntados.push(item);
+    } catch (e) {
+      console.warn(`${rotuloDocumento(item.documento)} vai separado do PDF junto.`, e);
+      avulsos.push(item);
+    }
+  }
+  const pdf = juntados.length ? new Blob([await destino.save()], { type: 'application/pdf' }) : null;
+  return { pdf, juntados, avulsos };
+}
+function rotuloDocumento(documento) {
+  return documento?.rotulo || documento?.nomeArquivo || 'documento';
 }
 
+// O PDF fica na página depois de mandado: tirar antes de o Chrome terminar de preparar a impressão cancela o trabalho,
+// e a primeira do dia pode demorar bem mais que as outras
+const TEMPO_PDF_NA_PAGINA_MS = 180000;
+const ESPERA_ANTES_DE_IMPRIMIR_MS = 3000; // o visualizador de PDF do Chrome termina de abrir depois do load do iframe
+const ESPACO_ENTRE_AVULSOS_MS = 5000;
 function imprimirPdfNaEstacao(blob, rotulo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
@@ -1486,7 +1516,7 @@ function imprimirPdfNaEstacao(blob, rotulo) {
     const removerDepois = () => setTimeout(() => {
       frame.remove();
       URL.revokeObjectURL(url);
-    }, 15000);
+    }, TEMPO_PDF_NA_PAGINA_MS);
     const encerrar = (erro) => {
       if (encerrado) return;
       encerrado = true;
@@ -1517,7 +1547,7 @@ function imprimirPdfNaEstacao(blob, rotulo) {
       } catch (e) {
         encerrar(e);
       }
-    }, 1500);
+    }, ESPERA_ANTES_DE_IMPRIMIR_MS);
     frame.onerror = () => encerrar(new Error('o PDF não abriu para impressão'));
     limite = setTimeout(() => encerrar(new Error('tempo esgotado ao abrir o PDF')), 25000);
     frame.src = url;
@@ -1525,16 +1555,14 @@ function imprimirPdfNaEstacao(blob, rotulo) {
   });
 }
 
-async function carregarEImprimirDocumento(documento) {
+async function baixarPdfDocumento(documento) {
   let ultimoErro;
   for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
     try {
       const blob = documento.blob || await window._fb.carregarDocumento(documento.storagePath);
       if (blob.type && blob.type !== 'application/pdf') throw new Error('content-type inválido');
       if (!(await blob.slice(0, 5).text()).startsWith('%PDF-')) throw new Error('arquivo PDF inválido');
-      // A folha de aditivos já nasce em A4 com margem: vai como está
-      await imprimirPdfNaEstacao(documento.emA4 ? blob : await pdfAjustadoParaImpressao(blob), documento.rotulo);
-      return;
+      return blob;
     } catch (e) {
       ultimoErro = e;
       if (tentativa < 3) await aguardar(2000);
@@ -1543,8 +1571,9 @@ async function carregarEImprimirDocumento(documento) {
   throw ultimoErro;
 }
 
-// Envia à impressora da estação a ordem, a amostragem e cada DANFE com os laudos dela. Na primeira vez pula o que
-// já saiu (quiosque recarregado); com novamente = true (botão Imprimir novamente) reenvia tudo.
+// Envia à impressora da estação a ordem, a amostragem, a retirada de aditivos e cada DANFE com os laudos e o boleto
+// dela, num PDF só (um trabalho de impressão). Na primeira vez pula o que já saiu (quiosque recarregado); com
+// novamente = true (botão Imprimir novamente) reenvia tudo.
 async function imprimirDocumentos(registro, { novamente = false } = {}) {
   const protocolo = String(registro?.protocolo || '');
   if (!protocolo || _impressoesProtocolosEmAndamento.has(protocolo)) return;
@@ -1570,21 +1599,46 @@ async function imprimirDocumentos(registro, { novamente = false } = {}) {
       mostrar(todos.length ? 'Documentos já enviados para a impressora.' + avisos : avisos.trim());
       return;
     }
-    for (let indice = 0; indice < pendentes.length; indice += 1) {
-      const documento = pendentes[indice];
-      mostrar(`Enviando documento ${indice + 1} de ${pendentes.length} para a impressora…`);
+    mostrar(`Preparando ${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} para a impressora…`);
+    const baixados = [];
+    for (const documento of pendentes) {
       try {
-        await carregarEImprimirDocumento(documento);
-        registrarDocumentoImpresso(protocolo, documento);
+        baixados.push({ documento, blob: await baixarPdfDocumento(documento) });
       } catch (e) {
-        console.error(`Falha ao imprimir ${documento.rotulo || documento.storagePath}`, e);
-        falhas.push(documento.rotulo || documento.nomeArquivo || 'documento');
+        console.error(`Falha ao baixar ${rotuloDocumento(documento)}`, e);
+        falhas.push(rotuloDocumento(documento));
       }
-      await aguardar(1000);
+    }
+    let avulsos = baixados, enviados = 0;
+    try {
+      const junto = await juntarParaImpressao(baixados);
+      if (junto.pdf) {
+        mostrar('Enviando os documentos para a impressora…');
+        await imprimirPdfNaEstacao(junto.pdf, `Documentos ${protocolo}`);
+        junto.juntados.forEach(({ documento }) => registrarDocumentoImpresso(protocolo, documento));
+        enviados += junto.juntados.length;
+      }
+      avulsos = junto.avulsos;
+    } catch (e) {
+      // Sem a biblioteca de PDF, ou o PDF junto não abriu: vai um por um, como veio
+      console.warn('Não foi possível mandar os documentos num PDF só; enviando um por um.', e);
+    }
+    for (let indice = 0; indice < avulsos.length; indice += 1) {
+      const { documento, blob } = avulsos[indice];
+      if (avulsos.length > 1) mostrar(`Enviando documento ${indice + 1} de ${avulsos.length} para a impressora…`);
+      try {
+        await imprimirPdfNaEstacao(blob, documento.rotulo);
+        registrarDocumentoImpresso(protocolo, documento);
+        enviados += 1;
+      } catch (e) {
+        console.error(`Falha ao imprimir ${rotuloDocumento(documento)}`, e);
+        falhas.push(rotuloDocumento(documento));
+      }
+      if (indice < avulsos.length - 1) await aguardar(ESPACO_ENTRE_AVULSOS_MS);
     }
     mostrar((falhas.length
       ? `Não foi possível imprimir: ${[...new Set(falhas)].join(', ')}. Toque em Imprimir novamente.`
-      : `${pendentes.length} documento${pendentes.length === 1 ? '' : 's'} enviado${pendentes.length === 1 ? '' : 's'} para a impressora.`)
+      : `${enviados} documento${enviados === 1 ? '' : 's'} enviado${enviados === 1 ? '' : 's'} para a impressora.`)
       + avisos);
   } finally {
     _impressoesProtocolosEmAndamento.delete(protocolo);
