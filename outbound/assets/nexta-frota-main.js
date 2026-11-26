@@ -589,6 +589,8 @@ function fmtAuditAction(action, details={}) {
       return `🔑 Senha redefinida pelo admin${details.target ? ` — usuário ${details.target}` : ""}`;
     case "admin_unlock":
       return `🔓 Lançamento desbloqueado — ${details.carrier || ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}`;
+    case "admin_edit_status":
+      return `✏️ Disponibilidade editada — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""}${details.date ? ` (${fmtDateStr(details.date)})` : ""}${details.depois ? `: ${getSt(details.depois.status).label}${details.depois.time ? ` ${fmtTimeValue(details.depois.time)}` : ""}` : ""}${details.antes && details.antes.status ? ` (antes: ${getSt(details.antes.status).label})` : " (antes: não preenchido)"}`;
     case "hodometro_correcao_lote":
       return `✏️ Hodômetro corrigido em lote — ${details.plate || ""}${details.carrier ? ` · ${details.carrier}` : ""} (${details.qtd || 0} lançamento(s))`;
     case "admin_unlock_plate":
@@ -3864,7 +3866,9 @@ async function renderToday(body){
       // Only show drivers if availability was actually filled, and only if driver is active
       const motDToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaDiurno)||p.motoristaDiurno||''):'';
       const motNToday=v?driverAtivoNome(carrier, p.operacao, (rec&&rec.motoristaNoturno)||p.motoristaNoturno||''):'';
-      const unlockPlateBtn=(v&&podeDesbloquear)?`<button class="btn-unlock-plate" onclick="adminUnlockPlate('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Desbloquear apenas esta placa">🔓</button>`:''
+      const unlockPlateBtn=((v&&podeDesbloquear)?`<button class="btn-unlock-plate" onclick="adminUnlockPlate('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Desbloquear apenas esta placa">🔓</button>`:'')
+        // Editar a disponibilidade direto (admin e interno) — pedido da Amanda 26/11/2026.
+        +(podeDesbloquear?`<button class="btn-unlock-plate" onclick="abrirEdicaoDisponibilidade('${attr(jsArg(carrier))}','${attr(jsArg(p.placa))}','${attr(jsArg(ds))}')" title="Editar a disponibilidade desta placa">✏️</button>`:'')
       return `<tr>
         <td style="font-weight:500;font-family:'DM Mono',monospace">${esc(p.placa)}</td>
         <td style="font-size:12px">${esc(p.operacao)}</td>
@@ -5360,6 +5364,110 @@ async function adminUnlockPlate(carrier, plate, ds){
     showToast("Erro ao desbloquear placa.", false);
   }
 }
+// ═══════════════════════════════════════════════════════════
+// EDITAR DISPONIBILIDADE (admin e interno) — pedido da Amanda 26/11/2026
+// ═══════════════════════════════════════════════════════════
+// Botão ✏️ no Painel de Disponibilidade: muda status, horário e motoristas
+// de UMA placa num dia, sem apagar (o 🔓 apaga e a transportadora refaz).
+// Hodômetro e foto são da transportadora e ficam como estão. Não mexe no
+// bloqueio do dia. Grava no mesmo lugar que a transportadora + auditoria.
+let _editDisp = null; // { carrier, plate, ds, antes }
+async function abrirEdicaoDisponibilidade(carrier, plate, ds){
+  const u = USERS_DB[S.user];
+  if(!u || !(u.role==='admin'||u.role==='operacional')){ showToast('Sem permissão para editar disponibilidade.', false); return; }
+  document.getElementById('edit-disp-modal')?.remove();
+  try{
+    const [allP, allDrivers, statusMap] = await Promise.all([
+      dbGetPlates(), dbGetDrivers().catch(()=>({})),
+      dbLoadStatusBulk([{carrier, plate, dateStr: ds}])
+    ]);
+    const p = (allP[carrier]||[]).find(x=>x.placa===plate) || { placa: plate, operacao: '' };
+    const rec = statusMap[`${carrier}||${plate}||${ds}`] || null;
+    _editDisp = { carrier, plate, ds, antes: rec };
+    const cur = rec ? rec.status : '';
+    const curTime = rec ? (rec.time||'') : '';
+    const motD = (rec&&rec.motoristaDiurno) || p.motoristaDiurno || '';
+    const motN = (rec&&rec.motoristaNoturno) || p.motoristaNoturno || '';
+    const drv = (allDrivers[carrier]||[]).filter(d=>d.ativo!==false && (!p.operacao || d.operacao===p.operacao));
+    const drvOpts = (turno, salvo) => {
+      const nomes = drv.filter(d=>d.turno===turno).map(d=>d.nome);
+      if(salvo && !nomes.includes(salvo)) nomes.unshift(salvo); // mantém o que já estava gravado
+      return `<option value="">— Sem motorista —</option>` + nomes.map(n=>optHtml(n, n===salvo)).join('');
+    };
+    const stOpts = `<option value=""${!cur?' selected':''} disabled>— Status —</option>` + STATUS_OPTS.map(s=>`<option value="${attr(s.val)}"${s.val===cur?' selected':''}>${esc(s.label)}</option>`).join('');
+    const campo = 'width:100%;box-sizing:border-box;font-size:13px;padding:7px 9px;border-radius:6px;background:var(--dark);border:1px solid var(--border2);color:var(--text);font-family:inherit';
+    const modal = document.createElement('div');
+    modal.id = 'edit-disp-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem';
+    modal.onclick = e => { if(e.target===modal) modal.remove(); };
+    modal.innerHTML = `<div class="modal-card" style="background:var(--mid);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:440px">
+      <p style="font-size:15px;font-weight:600;color:var(--lime);margin-bottom:.35rem">✏️ Editar disponibilidade — ${esc(plate)}</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:1rem">${esc(carrier)}${p.operacao?` · ${esc(p.operacao)}`:''} · ${fmtDateStr(ds)}</p>
+      <div style="display:grid;gap:10px">
+        <label style="font-size:12px;color:var(--dim)">Status<select id="ed-st" style="${campo};margin-top:4px" onchange="_editDispStatusMudou()">${stOpts}</select></label>
+        <label style="font-size:12px;color:var(--dim)" id="ed-time-wrap">Horário<select id="ed-time" style="${campo};margin-top:4px"></select></label>
+        <label style="font-size:12px;color:var(--dim)">☀ Motorista diurno<select id="ed-motd" style="${campo};margin-top:4px">${drvOpts('Diurno', motD)}</select></label>
+        <label style="font-size:12px;color:var(--dim)">🌙 Motorista noturno<select id="ed-motn" style="${campo};margin-top:4px">${drvOpts('Noturno', motN)}</select></label>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">Hodômetro e foto continuam os lançados pela transportadora. A alteração fica registrada no Log de Auditoria com o seu nome.</p>
+      <div style="display:flex;gap:10px;margin-top:1rem;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('edit-disp-modal').remove()">Cancelar</button>
+        <button class="btn btn-lime" id="ed-salvar" onclick="salvarEdicaoDisponibilidade()">💾 Salvar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    _editDispStatusMudou(curTime);
+  } catch(e){
+    console.error('[editDisp] falha ao abrir:', e);
+    showToast('Não consegui carregar a disponibilidade dessa placa.', false);
+  }
+}
+function _editDispStatusMudou(horarioInicial){
+  const st = document.getElementById('ed-st')?.value || '';
+  const sel = document.getElementById('ed-time');
+  const wrap = document.getElementById('ed-time-wrap');
+  if(!sel || !wrap) return;
+  const anterior = typeof horarioInicial === 'string' ? horarioInicial : sel.value;
+  if(!st || statusSemHorario(st)){ wrap.style.display='none'; sel.innerHTML=`<option value="">N/A</option>`; return; }
+  wrap.style.display='';
+  const manut = st==='manutencao';
+  sel.innerHTML = buildTimeOpts((anterior==='sem_previsao' && !manut) ? '' : anterior, manut);
+}
+async function salvarEdicaoDisponibilidade(){
+  const ctx = _editDisp;
+  if(!ctx) return;
+  const status = document.getElementById('ed-st').value;
+  const time = statusSemHorario(status) ? '' : (document.getElementById('ed-time').value || '');
+  const motD = document.getElementById('ed-motd').value || '';
+  const motN = document.getElementById('ed-motn').value || '';
+  if(!status){ showToast('Escolha o status.', false); return; }
+  if(!statusSemHorario(status) && !time){ showToast('Escolha o horário.', false); return; }
+  const btn = document.getElementById('ed-salvar');
+  if(btn){ btn.disabled = true; btn.textContent = 'Salvando...'; }
+  const a = ctx.antes;
+  try{
+    await dbSaveStatus(ctx.carrier, ctx.plate, ctx.ds, status, time, motD, motN,
+      a && a.hodometro!==undefined ? a.hodometro : null,
+      a && a.hodometroFotoUrl!==undefined ? a.hodometroFotoUrl : null);
+    cacheLimparTudo();
+    const resumo = r => r ? { status: r.status||'', time: r.time||'', motoristaDiurno: r.motoristaDiurno||'', motoristaNoturno: r.motoristaNoturno||'' } : null;
+    await dbAddAudit('admin_edit_status', { carrier: ctx.carrier, plate: ctx.plate, date: ctx.ds,
+      antes: resumo(a), depois: { status, time, motoristaDiurno: motD, motoristaNoturno: motN } });
+    const quem = USERS_DB[S.user]?.name || 'Admin';
+    await dbAddNotif(`${quem} editou a disponibilidade da placa ${ctx.plate} de ${ctx.carrier} — ${fmtDateStr(ctx.ds)}`);
+    document.getElementById('edit-disp-modal')?.remove();
+    _editDisp = null;
+    showToast(`Disponibilidade da placa ${ctx.plate} atualizada!`);
+    await renderTabBody();
+  } catch(e){
+    console.error('[editDisp] falha ao salvar:', e);
+    showToast('Erro ao salvar: ' + (e.code || e.message || e), false);
+    if(btn){ btn.disabled = false; btn.textContent = '💾 Salvar'; }
+  }
+}
+window.abrirEdicaoDisponibilidade = abrirEdicaoDisponibilidade;
+window.salvarEdicaoDisponibilidade = salvarEdicaoDisponibilidade;
+window._editDispStatusMudou = _editDispStatusMudou;
 // ═══════════════════════════════════════════════════════════
 // CORREÇÃO DE HODÔMETRO EM LOTE (admin)
 // ═══════════════════════════════════════════════════════════
