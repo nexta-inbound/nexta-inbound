@@ -7088,10 +7088,24 @@ function normalizarViagensArray(viagensRaw) {
   return (Array.isArray(viagensRaw) ? viagensRaw : Object.values(viagensRaw || {})).map(normalizarUnidadeFornecedor);
 }
 
-// De-para restrito a unidade BE8 Alto Araguaia (Usina Florida).
+// De-paras de unidade: BE8 Alto Araguaia (Usina Florida) e Raizen Piracicaba (abaixo).
 function normalizarUnidadeFornecedor(item) {
   if (!item || typeof item !== 'object') return item;
   const chave = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
+  // Raizen Piracicaba (CNPJ 08.070.508/0121-84): o MIS manda pedidos como "RAIZEN" e como
+  // "RZ ARARAQUARA", mas rota/tabela de frete/share estao so em RZ ARARAQUARA (cod. SAP
+  // 1000115, o certo na Herrlog - Amanda 26/11/2026). Sem isso a viagem "RAIZEN (PIRACICABA)"
+  // aparece "sem tabela" para todas as transportadoras. So cadencia/viagem: o cadastro de
+  // Fornecedores (tem codSap) fica como esta, senao viram dois RZ ARARAQUARA/PIRACICABA
+  // (1000115 e 1014162) e o find() poderia pegar o codigo errado.
+  if (chave(item.origem) === 'RAIZEN' && !item.codSap) {
+    const campoR = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
+    const cnpjR = String(item.cnpjOrigem || item.cnpj || '').replace(/\D/g, '');
+    if (chave(item[campoR]) === 'PIRACICABA' && (!cnpjR || cnpjR === '08070508012184')) {
+      return { ...item, origem: 'RZ ARARAQUARA', [campoR]: 'PIRACICABA' };
+    }
+    return item;
+  }
   if (chave(item.origem) !== 'BE8') return item;
   const campo = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
   // Arquivos antigos usam hifen, travessao e espacos diferentes para a mesma unidade.
