@@ -434,6 +434,11 @@ button.resumo-comp:focus-visible { outline: 3px solid var(--accent); outline-off
 .toast { background: var(--navy); color: var(--navy-ink); padding: 14px 20px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 16px; }
 .toast-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
 
+/* ── LEITOR EM DUAS TELAS ── dois quiosques no mesmo computador: o leitor de código de barras escreve na janela ativa
+   do Windows. Na leitura dos lacres com esta janela inativa, a faixa avisa e, tocada, devolve o leitor ao campo */
+.aviso-leitor { position: fixed; top: 0; left: 0; right: 0; z-index: 160; display: block; width: 100%; padding: 22px 24px; border: 0; border-bottom: 3px solid var(--accent2); background: var(--accent2-dim); color: var(--accent2); box-shadow: var(--shadow-lg); font-size: 21px; font-weight: 500; line-height: 1.35; text-align: center; cursor: pointer; touch-action: manipulation; }
+.aviso-leitor strong { font-weight: 700; }
+
 /* ── TECLADO NA TELA (monitor touch no Windows) ── preso embaixo. Com ele aberto, a página ganha embaixo a altura dele
    (--teclado-h) para poder rolar, e o scroll-padding faz o campo em uso parar acima dele */
 .teclado { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--panel-soft); border-top: 1px solid var(--border-dk); box-shadow: 0 -8px 24px rgba(16, 40, 58, .14); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
@@ -805,6 +810,8 @@ html.teclado-aberto:has(.tela.ativa.lacres) { scroll-padding-bottom: calc(var(--
   </div>
 </div>
 <div class="teclado hidden" id="teclado" role="group" aria-label="Teclado na tela"></div>
+<!-- Dois quiosques no mesmo computador: o leitor escreve na janela ativa do Windows (ver LEITOR EM DUAS TELAS) -->
+<button class="aviso-leitor hidden" id="aviso-leitor" type="button" onclick="trazerLeitorParaEstaTela()"><strong>O leitor não está nesta tela.</strong> Toque aqui antes de ler os códigos.</button>
 <div id="toastContainer"></div>
 
 <script>
@@ -3618,6 +3625,67 @@ if (TECLADO_MODO) {
   document.addEventListener('focusout', () => setTimeout(sincronizarTeclado, 0));
   window.addEventListener('resize', () => { if (TEC.el) ajustarAlturaTeclado(); });
   setInterval(sincronizarTeclado, 300); // campo redesenhado ou escondido com o foco nele não avisa (sem focusout)
+}
+
+/* ── LEITOR EM DUAS TELAS ── Dois quiosques no mesmo computador, um em cada monitor (Chrome com perfil próprio: atalhos
+   "Tela 1" e "Tela 2" do Configurar-Atalho-Autoatendimento.ps1). O leitor de código de barras "digita" na janela ativa
+   do Windows, que é a da última tela tocada, não necessariamente a do lado dele. Os lacres de um motorista iriam para o
+   carregamento do outro sem aviso, porque só números, tamanho e repetição são conferidos.
+   - Na leitura dos lacres e na correção de lacre, com esta janela inativa, a faixa no topo avisa. Tocada, ela devolve o
+     foco ao campo.
+   - Com um leitor por tela, cada um mandando uma letra antes do código (?leitor=A numa tela, ?leitor=B na outra): nos
+     campos do leitor, a letra desta tela não entra, e o código com a letra de outro leitor é ignorado inteiro, até o
+     Enter. Código sem letra (leitor sem prefixo, teclado na tela) continua valendo */
+const LEITOR_DESTA_TELA = (() => {
+  const p = (new URLSearchParams(location.search).get('leitor') || '').trim().toUpperCase();
+  return /^[A-Z]$/.test(p) ? p : '';
+})();
+function campoDoLeitor(el) {
+  return el?.tagName === 'INPUT' && (el.id === 'correcao-lacre-valor' || !!el.closest('#lista-lacres'));
+}
+let _campoDoLeitor = null; // último campo do leitor com foco: a faixa devolve o foco a ele
+document.addEventListener('focusin', (ev) => { if (campoDoLeitor(ev.target)) _campoDoLeitor = ev.target; });
+// Campo à espera do leitor na tela atual; null fora da leitura dos lacres e da correção de lacre
+function campoEsperandoLeitor() {
+  if (Q.tela === 'lacres' && !document.getElementById('lacres-leitura').classList.contains('hidden')) {
+    const ultimo = _campoDoLeitor; // a tabela redesenhada troca os campos: aí vale o próximo vazio
+    if (ultimo?.isConnected && !ultimo.disabled && ultimo.closest('#lista-lacres')) return ultimo;
+    return proximoLacreVazio() || camposNaOrdemDeLeitura()[0] || null;
+  }
+  const correcao = document.getElementById('correcao-lacre-valor');
+  if (Q.tela === 'processamento' && !document.getElementById('correcao-lacre').classList.contains('hidden') && !correcao.disabled) return correcao;
+  return null;
+}
+function atualizarAvisoLeitor() {
+  document.getElementById('aviso-leitor').classList.toggle('hidden', document.hasFocus() || !campoEsperandoLeitor());
+}
+function trazerLeitorParaEstaTela() {
+  campoEsperandoLeitor()?.focus();
+  atualizarAvisoLeitor();
+}
+window.addEventListener('focus', atualizarAvisoLeitor);
+window.addEventListener('blur', () => setTimeout(atualizarAvisoLeitor, 0)); // o foco no PDF da impressão não conta
+setInterval(atualizarAvisoLeitor, 500); // a tela muda sem mudar o foco
+// Código do outro leitor: as teclas são descartadas até o Enter, ou até 400 ms sem tecla (leitor sem Enter no fim)
+const _leituraDeOutraTela = { ate: 0 };
+if (LEITOR_DESTA_TELA) {
+  document.addEventListener('keydown', (ev) => {
+    if (!campoDoLeitor(ev.target)) return;
+    const agora = Date.now();
+    if (agora < _leituraDeOutraTela.ate) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation(); // nem o Enter chega ao campo (enterNoLacre, enviarCorrecaoLacre)
+      if (ev.key !== 'Enter') { _leituraDeOutraTela.ate = agora + 400; return; }
+      _leituraDeOutraTela.ate = 0;
+      toast('Código lido no leitor da outra tela: não foi usado aqui.', 'error');
+      return;
+    }
+    if (ev.ctrlKey || ev.altKey || ev.metaKey || !/^[a-z]$/i.test(ev.key)) return;
+    ev.preventDefault(); // a letra não entra no campo (lacre e envelope são só números)
+    if (ev.key.toUpperCase() === LEITOR_DESTA_TELA) return;
+    ev.stopImmediatePropagation();
+    _leituraDeOutraTela.ate = agora + 400;
+  }, true);
 }
 
 atualizarRelogio();
