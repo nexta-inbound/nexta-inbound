@@ -314,7 +314,7 @@
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   // Só caminhos deste site (ex.: /inbound/), nunca um endereço externo
-  const destinoSeguro = valor => (valor && /^\/(?!\/)[\w\-./]*$/.test(valor) ? valor : '');
+  const destinoSeguro = valor => (valor && /^\/(?!\/)[\w\-./]*(?:#[\w-]+)?$/.test(valor) ? valor : '');
   const voltar = destinoSeguro(params.get('voltar'));
   // ?entrar abre o login mesmo com LOGIN_OBRIGATORIO desligado (piloto); ?voltar=/sistema/ vem de um sistema
   const pedirLogin = LOGIN_OBRIGATORIO || params.has('entrar') || Boolean(voltar);

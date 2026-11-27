@@ -43,15 +43,12 @@ Cada terça fica guardada separada, para comparar e validar a cadência ideal.</
 <div class="table-scroll"><table id="logmin-tabela" class="logmin-tabela"></table></div>`;
   main.appendChild(painel);
 
-  // ---- troca de aba (dia.js cuida das outras; aqui so' a nossa) ----
   let carregado = false;
-  botao.onclick = () => {
-    document.body.dataset.aba = 'logminimo';
-    barra.querySelectorAll('[data-aba-alvo]').forEach(b => b.setAttribute('aria-selected', String(b === botao)));
-    scrollTo({top: 0});
-    if (!carregado) { carregado = true; carregarIndice(); }
-  };
-  barra.querySelectorAll('[data-aba-alvo]').forEach(b => { if (b !== botao) b.addEventListener('click', () => botao.setAttribute('aria-selected', 'false')); });
+  window.addEventListener('simulador:aba', event => {
+    if (event.detail !== 'logminimo' || carregado) return;
+    carregado = true;
+    carregarIndice();
+  });
 
   let dados = null;
   async function carregarIndice() {

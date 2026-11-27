@@ -21,7 +21,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'a79421d549';
+const VERSAO_SITE = 'adaf461bb9';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -223,6 +223,7 @@ async function aoMudarSessao(user) {
       },
     };
     for (const name of ['motor.js', 'sugestao.js', 'app.js', 'editor.js', 'automatico.js', 'cenarios.js', 'compartilhado.js', 'dia.js', 'aberturas.js', 'usuarios.js', 'duvidas.js', 'log_minimo.js']) await script(name);
+    window.dispatchEvent(new Event('simulador:pronto'));
     await concluirEntrada();
     el('auto-status').textContent = `Fontes de ${data.date}. A tela atualiza sozinha quando sai uma carga nova.`;
     const sync = el('sync-status');

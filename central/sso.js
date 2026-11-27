@@ -15,8 +15,9 @@ import { SISTEMAS } from './config.js';
 // Falha que a página do sistema mostra para a pessoa (sem acesso, desativado, servidor fora...)
 export class ErroAcesso extends Error {}
 
-// ?voltar só aceita caminho (a tela inicial recusa endereço externo e ?query); ?inativo faz o login avisar o motivo
-const enderecoLogin = (inativo = false) => `/?voltar=${encodeURIComponent(location.pathname)}${inativo ? '&inativo' : ''}`;
+// A tela inicial valida o caminho e o fragmento usado pelas abas do simulador.
+const destinoAtual = () => location.pathname + (location.pathname === '/simulador_estoque/' ? location.hash : '');
+const enderecoLogin = (inativo = false) => `/?voltar=${encodeURIComponent(destinoAtual())}${inativo ? '&inativo' : ''}`;
 let estaSaindo = false;
 let cadastroCentral = null;
 let sistemaAtual = '';
@@ -119,5 +120,5 @@ export const gerenciaUsuarios = () =>
 
 // A troca de senha é na tela inicial; depois ela devolve a pessoa para cá
 export function irParaTrocarSenha() {
-  location.assign(`/?senha&voltar=${encodeURIComponent(location.pathname)}`);
+  location.assign(`/?senha&voltar=${encodeURIComponent(destinoAtual())}`);
 }

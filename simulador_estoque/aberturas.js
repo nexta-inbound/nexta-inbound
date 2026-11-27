@@ -287,17 +287,13 @@
     document.body.dataset.aba = 'aberturas';
   }
   // dia.js controla a troca de abas; aqui so' carrega quando a aba Aberturas aparece.
-  let carregouUmaVez = false;
-  const aoMostrar = () => { if (document.body.dataset.aba === 'aberturas') { carregouUmaVez = true; carregar(); } };
-  botaoAba?.addEventListener('click', aoMostrar);
+  window.addEventListener('simulador:aba', event => {
+    if (event.detail === 'aberturas') carregar();
+  });
   // Atualiza sozinha a cada 1 min enquanto a aba esta' aberta (usuaria, 2026-10-21: "delays de um usuario pro
   // outro"): o que uma base salva aparece pros outros sem F5. Nao recarrega se houver alteracao nao salva.
   setInterval(() => {
     if (document.body.dataset.aba === 'aberturas' && !document.hidden && !pendentes.size && !carregando) carregar();
   }, 60000);
-  // Perfil 'base' sempre entra na aba Aberturas (e' o que ele preenche). Ve as outras abas, inclusive a
-  // "Simulacao de estoques", so' como consulta (usuaria, 2026-10-27; antes ficava escondida): campos e
-  // "Salvar na equipe" travados por cloud.canEdit (so' administrador/regional), em compartilhado.js.
-  if (perfil.perfil === 'base' && document.body.dataset.aba !== 'aberturas') botaoAba?.click();
-  if (document.body.dataset.aba === 'aberturas' && !carregouUmaVez) aoMostrar();
+  if (window.SIM_AUTH?.soAberturas) carregar();
 })();

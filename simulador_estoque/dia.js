@@ -441,19 +441,33 @@
     botaoTelao.onclick = () => location.assign(rotaAlertas.href);
     fechar.before(botaoTelao);
   }
-  const botoesAba = [...document.querySelectorAll('#abas-bar [data-aba-alvo]')];
-  function trocarAba(nome) {
+  const barraAbas = $('abas-bar');
+  const botoesAba = () => barraAbas.querySelectorAll('[data-aba-alvo]');
+  function trocarAba(nome, registrar = true) {
+    if (registrar && location.hash !== '#' + nome) history.pushState(null, '', '#' + nome);
     document.body.dataset.aba = nome;
-    botoesAba.forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
+    botoesAba().forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
     fecharPopup();
     if (nome === 'alertas') render();
     else if (nome === 'cenario') renderCenario();
     else if (nome === 'historico') renderHistorico();
+    window.dispatchEvent(new CustomEvent('simulador:aba', {detail: nome}));
   }
-  botoesAba.forEach(b => b.onclick = () => { trocarAba(b.dataset.abaAlvo); scrollTo({top: 0}); });
-  $('abas-bar').hidden = false;
-  // Sempre abre na "Simulacao de estoques" (usuaria, 2026-10-28: "quero que ja venha padrao na aba Simulacao de
-  // estoques"); nao lembra mais a ultima aba. O perfil 'base' continua abrindo em Aberturas (aberturas.js).
-  try { localStorage.removeItem('simulador.aba'); } catch {}
-  trocarAba('simulacao');
+  barraAbas.addEventListener('click', event => {
+    const aba = event.target.closest('[data-aba-alvo]');
+    if (!aba || aba.hidden || aba.dataset.abaAlvo === 'usuarios') return;
+    trocarAba(aba.dataset.abaAlvo);
+    scrollTo({top: 0});
+  });
+  function abrirAbaDoEndereco() {
+    const nome = location.hash.slice(1);
+    const disponivel = nome !== 'usuarios' && [...botoesAba()].some(b => !b.hidden && b.dataset.abaAlvo === nome);
+    const padrao = window.SIM_AUTH?.profile?.perfil === 'base' ? 'aberturas' : 'simulacao';
+    trocarAba(disponivel ? nome : padrao, false);
+  }
+  window.addEventListener('hashchange', abrirAbaDoEndereco);
+  window.addEventListener('simulador:pronto', () => {
+    abrirAbaDoEndereco();
+    barraAbas.hidden = false;
+  }, {once: true});
 })();
