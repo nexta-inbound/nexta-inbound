@@ -264,7 +264,7 @@ body.modo-telao #semana-status{font-variant-numeric:tabular-nums}
 body.modo-telao #dia-fechar{justify-self:end;background:transparent}
 body.modo-telao #semana-status{font-size:clamp(18px,1.5vw,29px);text-align:center;color:var(--dim);margin:0 0 20px}
 body.modo-telao .semana-barra{height:clamp(28px,1.85vw,36px)}
-body.modo-telao .semana-barra span{font-size:clamp(13px,.85vw,17px)}
+body.modo-telao .semana-barra span{font-size:clamp(17px,1.25vw,24px)}
 @media(max-width:760px){
   body.modo-telao #dia-view .section-title{grid-template-columns:1fr;justify-items:center}
   body.modo-telao #sync-status{grid-column:auto}
