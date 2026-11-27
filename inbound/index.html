@@ -4332,11 +4332,13 @@
       <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--accent2-dim);border:1px solid var(--accent2);vertical-align:-2px;margin-right:5px"></span>2 a 4 dias</span>
       <span>sem cor: 5 dias ou mais</span>
     </div>
+    <div style="overflow-x:auto">
     <table>
       <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. na recusa</th>
         <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Depois</th><th>Histórico da viagem</th></tr></thead>
       <tbody id="hoEventosBody"></tbody>
     </table>
+    </div>
   </div>
 </div>
 
@@ -21845,8 +21847,8 @@ async function renderHistoricoOfertas(forcar) {
       + `<td><span class="badge badge-danger">RECUSADA</span></td><td>${_hoBadgeStatus(l.statusAtual)}</td>`
       + `<td>${ant}</td><td>${esc(l.depois)}</td>`
       // Histórico completo da viagem (igual à janela da viagem); a recusa desta linha fica em destaque
-      + `<td><div style="max-height:92px;overflow-y:auto;min-width:340px;font-size:11px;line-height:1.5">${(l.hist || []).map((x, i) =>
-          `<div style="white-space:nowrap${i === l.idxHist ? ';font-weight:700;color:var(--danger)' : ''}">${esc(_hoHistTexto(x))}</div>`).join('')}</div></td></tr>`;
+      + `<td><div style="min-width:260px;font-size:11px;line-height:1.4">${(l.hist || []).map((x, i) =>
+          `<div style="white-space:normal;overflow-wrap:anywhere;padding:1px 0${i === l.idxHist ? ';font-weight:700;color:var(--danger)' : ''}">${esc(_hoHistTexto(x))}</div>`).join('')}</div></td></tr>`;
   }).join('') || '<tr><td colspan="12" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
 }
 
