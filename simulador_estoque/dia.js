@@ -6,6 +6,8 @@
 (() => {
   const cloud = window.SIM_CLOUD;
   const view = $('dia-view'), abrir = $('ver-dia'), fechar = $('dia-fechar');
+  const podeVerTelao = window.SIM_AUTH?.podeVerTelao === true;
+  const telao = podeVerTelao && /\/alertas(?:\/index\.html|\/)?$/.test(location.pathname);
 
   // Janela e regras (mesmas de antes, so' que em hoje + 5 dias, nao 14):
   // critico = fechamento negativo ou abaixo do lastro em algum dia; atencao = sem critico, mas algum dia
@@ -290,6 +292,11 @@
   addEventListener('scroll', fecharPopup, true);
 
   tabela.addEventListener('click', event => {
+    if (telao) {
+      const celula = event.target.closest('[data-celula]');
+      if (celula) mostrarPopup(celula);
+      return;
+    }
     const botao = event.target.closest('[data-abrir]'); if (!botao) return;
     fecharPopup();
     const [base, produto] = botao.dataset.abrir.split('|');
@@ -404,8 +411,6 @@
   rankingView.dataset.aba = 'cenario';
   const filhoDeMain = el => { while (el && el.parentElement !== main) el = el.parentElement; return el; };
   const marcar = (seletor, abas) => { const el = filhoDeMain(document.querySelector(seletor)); if (el) el.dataset.aba = abas; };
-  const podeVerTelao = window.SIM_AUTH?.podeVerTelao === true;
-  const rotaTelao = /\/alertas(?:\/index\.html|\/)?$/.test(location.pathname);
   const raiz = new URL('./', document.baseURI);
   const rotaAlertas = new URL('alertas/', raiz);
   view.dataset.aba = 'alertas'; historicoView.dataset.aba = 'historico';
@@ -418,27 +423,26 @@
   marcar('#alerts', 'nenhuma');
   for (const filho of main.children) if (!filho.dataset.aba) filho.dataset.aba = 'simulacao';
 
-  const botaoTelao = document.createElement('button');
-  function modoTelao(ativo) {
-    if (!podeVerTelao) return;
-    document.body.classList.toggle('modo-telao', ativo);
-    botaoTelao.setAttribute('aria-pressed', String(ativo));
-    botaoTelao.textContent = ativo ? 'Sair do modo telão' : 'Modo telão';
-    history.replaceState(history.state, '', ativo ? rotaAlertas : raiz);
+  document.body.classList.toggle('modo-telao', telao);
+  abrir.hidden = true;
+  fechar.hidden = !telao;
+  if (telao) {
+    fechar.textContent = 'Voltar ao simulador';
+    fechar.onclick = () => location.assign(raiz.href);
+    document.body.dataset.aba = 'alertas';
+    render();
+    return;
   }
+
   if (podeVerTelao) {
-    // Fixa a base antes da troca de endereço para manter manuais e demais links relativos.
-    const base = document.querySelector('base') || document.head.appendChild(document.createElement('base'));
-    base.href = raiz.href;
+    const botaoTelao = document.createElement('button');
     botaoTelao.type = 'button';
     botaoTelao.textContent = 'Modo telão';
-    botaoTelao.setAttribute('aria-pressed', 'false');
-    botaoTelao.onclick = () => modoTelao(!document.body.classList.contains('modo-telao'));
+    botaoTelao.onclick = () => location.assign(rotaAlertas.href);
     fechar.before(botaoTelao);
   }
   const botoesAba = [...document.querySelectorAll('#abas-bar [data-aba-alvo]')];
   function trocarAba(nome) {
-    if (nome !== 'alertas' && document.body.classList.contains('modo-telao')) modoTelao(false);
     document.body.dataset.aba = nome;
     botoesAba.forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
     fecharPopup();
@@ -448,10 +452,8 @@
   }
   botoesAba.forEach(b => b.onclick = () => { trocarAba(b.dataset.abaAlvo); scrollTo({top: 0}); });
   $('abas-bar').hidden = false;
-  abrir.hidden = true; fechar.hidden = true;
   // Sempre abre na "Simulacao de estoques" (usuaria, 2026-10-28: "quero que ja venha padrao na aba Simulacao de
   // estoques"); nao lembra mais a ultima aba. O perfil 'base' continua abrindo em Aberturas (aberturas.js).
   try { localStorage.removeItem('simulador.aba'); } catch {}
-  trocarAba(rotaTelao && podeVerTelao ? 'alertas' : 'simulacao');
-  if (rotaTelao && podeVerTelao) modoTelao(true);
+  trocarAba('simulacao');
 })();
