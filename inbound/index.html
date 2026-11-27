@@ -2935,13 +2935,13 @@
     <div class="table-toolbar">
       <div>
         <span class="table-title">O que está cadenciado no portal</span>
-        <div class="section-sub">Resumo por responsável, destino, produto e data de descarga</div>
+        <div class="section-sub">Resumo por regional, destino, produto e data de descarga</div>
       </div>
       <span class="badge badge-accent" id="cadIndicadorSemana">Semana ativa</span>
     </div>
     <div class="cad-indicador-filtros">
       <div class="cad-filter-field">
-        <span class="cad-filter-label">Área</span>
+        <span class="cad-filter-label">Regional</span>
         <div id="ms-cadArea"></div>
       </div>
       <div class="cad-filter-field">
@@ -2989,7 +2989,7 @@
       <table id="cadIndicadorTable">
         <thead>
           <tr>
-            <th>Área</th>
+            <th>Regional</th>
             <th>Destino</th>
             <th>Produto</th>
             <th>Descarga</th>
@@ -4327,7 +4327,7 @@
     <div class="table-toolbar"><span class="table-title">Recusas</span><span class="section-sub" id="hoContagem"></span></div>
     <!-- Legenda das cores das linhas (19/11/2026: a linha âmbar parecia "marrom" sem explicação) -->
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--text-dim);padding:0 14px 10px">
-      <span>Antecedência até a descarga:</span>
+      <span>Antecedência até o carregamento (o programado na hora da recusa):</span>
       <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--danger-dim);border:1px solid var(--danger);vertical-align:-2px;margin-right:5px"></span>menos de 2 dias (em cima da hora)</span>
       <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--accent2-dim);border:1px solid var(--accent2);vertical-align:-2px;margin-right:5px"></span>2 a 4 dias</span>
       <span>sem cor: 5 dias ou mais</span>
@@ -7085,35 +7085,7 @@ function marcarEAgendar(v) {
 // viagens chega do Firebase como objeto chaveado por idViagem (storage, ver regras);
 // em memoria sempre fica como array (todo o resto do app consome assim).
 function normalizarViagensArray(viagensRaw) {
-  return (Array.isArray(viagensRaw) ? viagensRaw : Object.values(viagensRaw || {})).map(normalizarUnidadeFornecedor);
-}
-
-// De-paras de unidade: BE8 Alto Araguaia (Usina Florida) e Raizen Piracicaba (abaixo).
-function normalizarUnidadeFornecedor(item) {
-  if (!item || typeof item !== 'object') return item;
-  const chave = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
-  // Raizen Piracicaba (CNPJ 08.070.508/0121-84): o MIS manda pedidos como "RAIZEN" e como
-  // "RZ ARARAQUARA", mas rota/tabela de frete/share estao so em RZ ARARAQUARA (cod. SAP
-  // 1000115, o certo na Herrlog - Amanda 26/11/2026). Sem isso a viagem "RAIZEN (PIRACICABA)"
-  // aparece "sem tabela" para todas as transportadoras. So cadencia/viagem: o cadastro de
-  // Fornecedores (tem codSap) fica como esta, senao viram dois RZ ARARAQUARA/PIRACICABA
-  // (1000115 e 1014162) e o find() poderia pegar o codigo errado.
-  if (chave(item.origem) === 'RAIZEN' && !item.codSap) {
-    const campoR = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
-    const cnpjR = String(item.cnpjOrigem || item.cnpj || '').replace(/\D/g, '');
-    if (chave(item[campoR]) === 'PIRACICABA' && (!cnpjR || cnpjR === '08070508012184')) {
-      return { ...item, origem: 'RZ ARARAQUARA', [campoR]: 'PIRACICABA' };
-    }
-    return item;
-  }
-  if (chave(item.origem) !== 'BE8') return item;
-  const campo = Object.prototype.hasOwnProperty.call(item, 'baseAtendimento') ? 'baseAtendimento' : 'base';
-  // Arquivos antigos usam hifen, travessao e espacos diferentes para a mesma unidade.
-  const baseChave = chave(item[campo]).replace(/[^A-Z0-9]/g, '');
-  if (!['ALTOARAGUAIA', 'BE8ALTOARAGUAIA', 'ALTOARAGUAIAUSINAFLORIDA'].includes(baseChave)) return item;
-  const cnpj = String(item.cnpjOrigem || item.cnpj || '').replace(/\D/g, '');
-  if (cnpj && cnpj !== '63228664000122') return item;
-  return { ...item, origem: 'BE8', [campo]: 'ALTO ARAGUAIA - USINA FLORIDA' };
+  return Array.isArray(viagensRaw) ? viagensRaw : Object.values(viagensRaw || {});
 }
 
 // ── PERSISTÊNCIA ──
@@ -7369,9 +7341,6 @@ function agruparCadencias(arr) {
 }
 
 function valorOrigemFiltro(item) {
-  // O filtro agrupa os aliases mesmo em viagens com CNPJ historico divergente.
-  // A copia serve apenas ao rotulo; dados fiscais e cadastro da viagem ficam intactos.
-  item = normalizarUnidadeFornecedor({ ...item, cnpjOrigem: '', cnpj: '' });
   return (item.origem || '') + (item.base ? ` (${item.base})` : '');
 }
 
@@ -7402,20 +7371,9 @@ function baseDestinoDaCadencia(item) {
     || null;
 }
 
-function responsavelCadencia(item) {
-  const baseDestino = baseDestinoDaCadencia(item);
-  const regional = normalizarParaComparacao(baseDestino?.regional || valorRegionalFiltro(item));
-  const uf = normalizarParaComparacao(baseDestino?.estado || '');
-  if (regional === 'CENTRO OESTE' || ['DF', 'GO', 'MT', 'MS'].includes(uf)) {
-    return { nome: 'CO', regiao: 'Laura' };
-  }
-  if (regional === 'MINAS' || ['MG', 'RJ'].includes(uf)) {
-    return { nome: 'MG + RJ', regiao: 'Bryan' };
-  }
-  if (regional === 'SAO PAULO' || regional === 'SÃO PAULO' || uf === 'SP') {
-    return { nome: 'SP', regiao: 'Julio' };
-  }
-  return { nome: 'Outros', regiao: baseDestino?.regional || baseDestino?.estado || 'Sem regional' };
+// Painel cadenciado agrupa pela regional do cadastro de Bases (sem regra fixa por UF/pessoa).
+function regionalCadencia(item) {
+  return valorRegionalFiltro(item) || 'Sem Regional';
 }
 
 function ordenarDataDmy(a, b) {
@@ -7448,14 +7406,13 @@ function estadoFiltrosPainelCadenciado() {
 }
 
 function atualizarOpcoesFiltrosPainelCadenciado() {
-  msCadArea?.setOptions(valoresUnicosOrdenados(cadencias, c => responsavelCadencia(c).nome));
+  msCadArea?.setOptions(valoresUnicosOrdenados(cadencias, regionalCadencia));
   msCadDestino?.setOptions(valoresUnicosOrdenados(cadencias, c => c.destino));
   msCadProduto?.setOptions(valoresUnicosOrdenados(cadencias, c => c.produto));
 }
 
 function passaFiltrosPainelCadenciado(c, filtros) {
-  const area = responsavelCadencia(c).nome;
-  if (filtros.areas.size && !filtros.areas.has(area)) return false;
+  if (filtros.areas.size && !filtros.areas.has(regionalCadencia(c))) return false;
   if (filtros.destinos.size && !filtros.destinos.has(c.destino)) return false;
   if (filtros.produtos.size && !filtros.produtos.has(c.produto)) return false;
 
@@ -7487,7 +7444,7 @@ function resumoCadenciadoPortal() {
   atualizarOpcoesFiltrosPainelCadenciado();
   const filtros = estadoFiltrosPainelCadenciado();
   const cadenciasFiltradas = cadencias.filter(c => passaFiltrosPainelCadenciado(c, filtros));
-  const porResp = new Map();
+  const porRegional = new Map();
   const porDetalhe = new Map();
   const porData = new Map();
   const destinos = new Set();
@@ -7497,11 +7454,10 @@ function resumoCadenciadoPortal() {
   cadenciasFiltradas.forEach(c => {
     const volume = Number(c.volume) || 0;
     const baseDestino = baseDestinoDaCadencia(c);
-    const resp = responsavelCadencia(c);
     const destino = c.destino || 'Sem destino';
     const produto = c.produto || 'Sem produto';
     const dtDesc = c.dtDesc || '-';
-    const regional = baseDestino?.regional || valorRegionalFiltro(c) || resp.regiao;
+    const regional = baseDestino?.regional || 'Sem Regional';
     const ufDestino = baseDestino?.estado || '';
     const cidadeDestino = baseDestino?.cidade || '';
 
@@ -7513,24 +7469,22 @@ function resumoCadenciadoPortal() {
     dataItem.volume += volume;
     dataItem.linhas += 1;
 
-    if (!porResp.has(resp.nome)) {
-      porResp.set(resp.nome, { responsavel: resp.nome, regiao: resp.regiao, volume: 0, linhas: 0, destinos: new Set(), produtos: new Set() });
+    if (!porRegional.has(regional)) {
+      porRegional.set(regional, { regional, volume: 0, linhas: 0, destinos: new Set(), produtos: new Set() });
     }
-    const r = porResp.get(resp.nome);
+    const r = porRegional.get(regional);
     r.volume += volume;
     r.linhas += 1;
     r.destinos.add(destino);
     r.produtos.add(produto);
 
-    const key = [resp.nome, destino, produto, dtDesc].join('|');
+    const key = [regional, destino, produto, dtDesc].join('|');
     if (!porDetalhe.has(key)) {
       porDetalhe.set(key, {
-        responsavel: resp.nome,
-        regiao: resp.regiao,
+        regional,
         destino,
         produto,
         dtDesc,
-        regional,
         ufDestino,
         cidadeDestino,
         volume: 0,
@@ -7542,9 +7496,9 @@ function resumoCadenciadoPortal() {
     d.linhas += 1;
   });
 
-  const resp = [...porResp.values()].sort((a, b) => b.volume - a.volume || a.responsavel.localeCompare(b.responsavel));
+  const regionais = [...porRegional.values()].sort((a, b) => b.volume - a.volume || a.regional.localeCompare(b.regional));
   const detalhe = [...porDetalhe.values()].sort((a, b) =>
-    a.responsavel.localeCompare(b.responsavel)
+    a.regional.localeCompare(b.regional)
     || a.destino.localeCompare(b.destino)
     || a.produto.localeCompare(b.produto)
     || ordenarDataDmy(a.dtDesc, b.dtDesc)
@@ -7556,7 +7510,7 @@ function resumoCadenciadoPortal() {
     linhasTotal: cadencias.length,
     destinos: destinos.size,
     produtos: produtos.size,
-    resp,
+    regionais,
     detalhe,
     grafico,
   };
@@ -7601,12 +7555,11 @@ function renderPainelCadenciado() {
     `;
   }).join('');
 
-  grid.innerHTML = resumo.resp.map(r => `
+  grid.innerHTML = resumo.regionais.map(r => `
     <div class="cad-resp-card">
       <div class="cad-resp-top">
         <div style="min-width:0">
-          <div class="cad-resp-nome">${esc(r.responsavel)}</div>
-          <div class="cad-resp-regiao" title="${esc(r.regiao)}">${esc(r.regiao)}</div>
+          <div class="cad-resp-nome">${esc(r.regional)}</div>
         </div>
         <span class="badge badge-accent">${r.linhas} linha${r.linhas !== 1 ? 's' : ''}</span>
       </div>
@@ -7617,13 +7570,10 @@ function renderPainelCadenciado() {
 
   tbody.innerHTML = resumo.detalhe.map(d => `
     <tr>
-      <td>
-        <div class="cad-cell-main">${esc(d.responsavel)}</div>
-        <div class="cad-cell-sub">${esc(d.regiao)}</div>
-      </td>
+      <td><div class="cad-cell-main">${esc(d.regional)}</div></td>
       <td>
         <div class="cad-cell-main">${esc(d.destino)}</div>
-        <div class="cad-cell-sub">${esc([d.cidadeDestino, d.ufDestino, d.regional].filter(Boolean).join(' · '))}</div>
+        <div class="cad-cell-sub">${esc([d.cidadeDestino, d.ufDestino].filter(Boolean).join(' · '))}</div>
       </td>
       <td>${prodTag(d.produto)}</td>
       <td><span class="cad-date-pill">${esc(fmtShort(d.dtDesc))}</span></td>
@@ -7763,6 +7713,7 @@ function renderPreview() {
       <td class="cell-truncate" title="${esc(g.origem + (g.base ? ' (' + g.base + ')' : '') + (g.cnpjOrigem ? ' · ' + g.cnpjOrigem : ''))}">
         ${esc(g.origem)}${g.base ? `<span style="color:var(--text-muted)"> (${esc(g.base)})</span>` : ''}
         ${g.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(g.cnpjOrigem)}</span>` : ''}
+        ${seloCadastroFornecedor(g)}
       </td>
       <td class="cell-truncate" title="${esc(g.destino + (g.cnpjDestino ? ' · ' + g.cnpjDestino : ''))}">
         ${esc(g.destino)}
@@ -9136,6 +9087,7 @@ function renderViagensTable() {
         <td class="cell-truncate" data-label="Origem" title="${esc(origemDisplay + (v.cnpjOrigem ? ' · ' + v.cnpjOrigem : ''))}">
           ${esc(v.origem)}${v.base ? `<span style="color:var(--text-muted)"> (${esc(v.base)})</span>` : ''}
           ${v.cnpjOrigem ? `<br><span style="color:var(--text-dim);font-family:monospace;font-size:10px">${esc(v.cnpjOrigem)}</span>` : ''}
+          ${seloCadastroFornecedor(v)}
         </td>
         <td class="cell-truncate" data-label="Destino" title="${esc(v.destino + (v.cnpjDestino ? ' · ' + v.cnpjDestino : ''))}">
           ${renderSeletorDestino(v, realIdx)}
@@ -10007,9 +9959,9 @@ async function carregarFornecedoresFirebase() {
   try {
     const raw = await window._fb.carregarFornecedores();
     if (raw !== null && raw !== undefined) {
-      fornecedores = (Array.isArray(raw) ? raw : Object.values(raw)).map(normalizarUnidadeFornecedor);
+      fornecedores = Array.isArray(raw) ? raw : Object.values(raw);
     } else {
-      fornecedores = FORNECEDORES_SEED.map(normalizarUnidadeFornecedor);
+      fornecedores = FORNECEDORES_SEED.map(f => ({ ...f }));
       await window._fb.salvarFornecedores(fornecedores);
     }
   } catch (e) { console.error('Erro ao carregar fornecedores:', e); }
@@ -18036,6 +17988,33 @@ function buscarFornecedorDaViagem(v) {
     || null;
 }
 
+// Origem da viagem/cadência fora do cadastro de Fornecedores — só aviso, não trava nada. Mesmo
+// critério exato de buscarFornecedorDaViagem: sem Origem+Base cadastrada ele cai na primeira
+// unidade com o mesmo nome (outra cidade/UF, leadtime, janela e tabela de frete). A correção é
+// cadastrar a unidade na aba Fornecedores — não há de-para no código. Retorno Vazio fica de fora
+// (lá v.origem é a Base de saída). Lista vazia = cadastro ainda não carregou: não acusa nada.
+function problemaCadastroFornecedor(v) {
+  if (!v?.origem || v.produto === PRODUTO_RETORNO_VAZIO || !fornecedores.length) return null;
+  if (!fornecedores.some(f => f.origem === v.origem)) {
+    return { rotulo: 'Fornecedor sem cadastro',
+      msg: `Fornecedor "${v.origem}" não está cadastrado na aba Fornecedores — sem ele não há cidade/UF da origem, leadtime nem tabela de frete para esta viagem.` };
+  }
+  if (v.base && !fornecedores.some(f => f.origem === v.origem && f.baseAtendimento === v.base)) {
+    return { rotulo: 'Base sem cadastro',
+      msg: `"${v.origem}" está cadastrado, mas sem a base de atendimento "${v.base}" — o portal está usando outra unidade desse fornecedor (cidade/UF, leadtime e tabela de frete podem estar errados). Cadastre a unidade na aba Fornecedores.` };
+  }
+  return null;
+}
+
+function seloCadastroFornecedor(v) {
+  if (isTransportador()) return '';
+  const p = problemaCadastroFornecedor(v);
+  if (!p) return '';
+  const abre = podeVerAba(6);
+  return `<br><span class="badge" style="color:var(--danger);background:var(--danger-dim);margin-top:3px;font-size:9px;padding:2px 7px;display:inline-block${abre ? ';cursor:pointer' : ''}"
+    title="${esc(p.msg + (abre ? ' Clique para abrir a aba Fornecedores.' : ''))}"${abre ? ' onclick="switchTab(6)"' : ''}>⚠ ${p.rotulo}</span>`;
+}
+
 // Usado por reconciliarViagensComCadencias() ao criar uma viagem nova a partir da
 // cadência: recua a data de carregamento, dia a dia, até cair num dia que o fornecedor
 // da origem efetivamente carrega (Fornecedores > Janela de Carregamento) — ex.: origem
@@ -18528,11 +18507,11 @@ function seguirValidacaoCadastroImportacao(linhasArquivo, file) {
     document.getElementById('fileInput').value = '';
     return;
   }
-  const { validas, invalidas, corrigidas } = validarCadastroImportacao(linhasArquivo);
+  const { validas, invalidas, corrigidas, avisos } = validarCadastroImportacao(linhasArquivo);
   if (invalidas.length > 0) {
-    abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas);
-  } else if (corrigidas.length > 0) {
-    abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file);
+    abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas, avisos);
+  } else if (corrigidas.length > 0 || avisos.length > 0) {
+    abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file, avisos);
   } else {
     abrirPopupModoImportacaoCadencia(linhasArquivo, file);
   }
@@ -18838,13 +18817,15 @@ function normalizarParaComparacao(s) {
 //    pelo CNPJ e avisa o usuário (evita que "BETIM" entre como destino diferente de
 //    "BETIM - NEXTA RBZ" só porque o CNPJ foi preenchido certo e o nome não).
 // 4) Destino bate, mas o CNPJ Destino é de outra base -> corrige o CNPJ para o do cadastro e avisa.
+// 5) Origem existe, mas sem a Base de Atendimento da linha -> importa e avisa (avisos); a viagem
+//    fica com o selo "Base sem cadastro" em Gerir Viagens até a unidade ser cadastrada em Fornecedores.
 function validarCadastroImportacao(linhasArquivo) {
   const validas = [];
   const invalidas = [];
   const corrigidas = [];
+  const avisos = [];
 
   linhasArquivo.forEach(c => {
-    Object.assign(c, normalizarUnidadeFornecedor(c));
     const erros = [];
 
     if (c.origem && !fornecedores.find(f => f.origem === c.origem)) {
@@ -18863,6 +18844,23 @@ function validarCadastroImportacao(linhasArquivo) {
         } else {
           erros.push({ campo: 'Origem (fornecedor)', valor: c.origem });
         }
+      }
+    }
+
+    // 5) Fornecedor existe, mas não com esta Base de Atendimento. Não trava a linha: corrigido o
+    //    cadastro depois, as viagens já criadas passam a casar sozinhas (buscarFornecedorDaViagem
+    //    resolve na hora). Até lá o portal usa outra unidade com o mesmo nome — cidade/UF, leadtime
+    //    e tabela de frete de outro lugar. Mesma base com outra formatação é corrigida em silêncio.
+    if (c.origem && c.base && !erros.length
+        && !fornecedores.some(f => f.origem === c.origem && f.baseAtendimento === c.base)) {
+      const fBase = fornecedores.find(f => f.origem === c.origem
+        && normalizarParaComparacao(f.baseAtendimento) === normalizarParaComparacao(c.base));
+      if (fBase) {
+        c.base = fBase.baseAtendimento;
+      } else {
+        const fCnpj = c.cnpjOrigem && fornecedores.find(f => f.cnpj && soDigitos(f.cnpj) === soDigitos(c.cnpjOrigem));
+        avisos.push({ linha: c, origem: c.origem, base: c.base,
+          cnpjCadastro: fCnpj ? `${fCnpj.origem}${fCnpj.baseAtendimento ? ` (${fCnpj.baseAtendimento})` : ''}` : '' });
       }
     }
 
@@ -18895,7 +18893,18 @@ function validarCadastroImportacao(linhasArquivo) {
     else validas.push(c);
   });
 
-  return { validas, invalidas, corrigidas };
+  return { validas, invalidas, corrigidas, avisos };
+}
+
+// Bloco dos popups de importação para o caso 5 (fornecedor sem a base de atendimento da planilha).
+function htmlAvisosBaseFornecedor(avisos) {
+  if (!avisos.length) return '';
+  const unidades = [...new Map(avisos.map(a => [`${a.origem}||${a.base}`, a])).values()];
+  return `
+      <div style="font-size:11px;color:var(--accent2);margin-bottom:6px">⚠ ${avisos.length} linha(s) com fornecedor cadastrado, mas sem a base de atendimento da planilha. Elas entram na importação, mas ficam com alerta em Gerir Viagens e o portal usa outra unidade do fornecedor (cidade/UF, leadtime e tabela de frete) até a unidade ser cadastrada na aba Fornecedores:</div>
+      <ul style="font-size:11px;margin:0 0 12px 18px;padding:0">${unidades.map(a =>
+        `<li><strong>${esc(a.origem)} (${esc(a.base)})</strong>${a.cnpjCadastro ? ` — o CNPJ da planilha está cadastrado como ${esc(a.cnpjCadastro)}` : ''}</li>`
+      ).join('')}</ul>`;
 }
 
 // Fecha o popup no clique fora da caixa — só quando o clique também COMEÇOU fora. Com o
@@ -18913,7 +18922,7 @@ function fecharAoClicarFora(overlay, fechar) {
 
 // Mostra as linhas cuja Origem/Destino não bate com o cadastro de Fornecedores/Bases
 // antes de qualquer dado entrar na planilha — evita subir cadência com fornecedor/base "fantasma".
-function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas = []) {
+function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas = [], avisos = []) {
   const fornecedoresFaltantes = [...new Set(
     invalidas.flatMap(iv => iv.erros.filter(e => e.campo.startsWith('Origem')).map(e => e.valor))
   )];
@@ -18943,6 +18952,7 @@ function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas 
       </div>
       ${fornecedoresFaltantes.length ? `<div style="font-size:11px;margin-bottom:6px"><strong>Fornecedores (Origem) sem cadastro:</strong> ${fornecedoresFaltantes.map(esc).join(', ')}</div>` : ''}
       ${basesFaltantes.length ? `<div style="font-size:11px;margin-bottom:10px"><strong>Bases (Destino) sem cadastro:</strong> ${basesFaltantes.map(esc).join(', ')}</div>` : ''}
+      ${htmlAvisosBaseFornecedor(avisos)}
       ${corrigidas.length ? `
       <div style="font-size:11px;color:var(--accent);margin-bottom:6px">✓ ${corrigidas.length} ajuste(s) automático(s) em linha(s) válida(s) (nome ou CNPJ da planilha não batia com o cadastro; corrigido para o cadastro):</div>
       <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;max-height:130px">
@@ -18977,7 +18987,7 @@ function abrirPopupErrosCadastroImportacao(validas, invalidas, file, corrigidas 
         </table>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        ${fornecedoresFaltantes.length ? `<button class="btn btn-secondary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); switchTab(6);">🏭 Ir para Fornecedores</button>` : ''}
+        ${(fornecedoresFaltantes.length || avisos.length) ? `<button class="btn btn-secondary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); switchTab(6);">🏭 Ir para Fornecedores</button>` : ''}
         ${basesFaltantes.length ? `<button class="btn btn-secondary btn-sm" onclick="document.getElementById('popupErrosCadastroOverlay').remove(); switchTab(5);">📍 Ir para Bases</button>` : ''}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -19002,7 +19012,7 @@ function fecharPopupErrosCadastroImportacao() {
 
 // Quando o nome digitado não bate com o cadastro mas o CNPJ identifica com certeza o fornecedor/base,
 // o texto já foi corrigido em validarCadastroImportacao — aqui só avisamos o que foi ajustado antes de seguir.
-function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file) {
+function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file, avisos = []) {
   const linhasHtml = corrigidas.map(cor => `
     <tr>
       <td style="white-space:nowrap">${cor.linha._linha}</td>
@@ -19016,11 +19026,14 @@ function abrirPopupCorrecoesCadastroImportacao(validas, corrigidas, file) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;display:flex;align-items:center;justify-content:center';
   overlay.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:600px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
-      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent)">✓ ${corrigidas.length} ajuste(s) automático(s) pelo cadastro</div>
+      ${corrigidas.length ? `
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent)">✓ ${corrigidas.length} ajuste(s) automático(s) pelo cadastro</div>` : `
+      <div style="font-family:var(--font-cond);font-size:18px;font-weight:700;margin-bottom:4px;color:var(--accent2)">⚠ Fornecedor sem a base de atendimento no cadastro</div>`}
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-        Em "${esc(file.name)}" — alguns valores da planilha não batiam com o cadastro: nome que não existia, mas o CNPJ identificou exatamente qual fornecedor/base é, ou nome de base certo com o CNPJ de outra base. Os valores foram corrigidos para o cadastro antes de importar:
+        Em "${esc(file.name)}"${corrigidas.length ? ` — alguns valores da planilha não batiam com o cadastro: nome que não existia, mas o CNPJ identificou exatamente qual fornecedor/base é, ou nome de base certo com o CNPJ de outra base. Os valores foram corrigidos para o cadastro antes de importar:` : ':'}
       </div>
-      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
+      ${htmlAvisosBaseFornecedor(avisos)}
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px;${corrigidas.length ? '' : 'display:none'}">
         <table style="width:100%;font-size:11px;border-collapse:collapse">
           <thead style="position:sticky;top:0;background:var(--panel)">
             <tr>
@@ -19090,7 +19103,6 @@ function fecharPopupModoImportacaoCadencia() {
 }
 
 function aplicarImportacaoCadencias(linhasArquivo, file, substituirTudo) {
-  linhasArquivo = linhasArquivo.map(normalizarUnidadeFornecedor);
   let novas = 0, atualizadas = 0;
   if (substituirTudo) {
     cadencias = linhasArquivo;
@@ -19366,7 +19378,6 @@ function configurarListenerSemana(key, aoCarregar) {
   }
 
   const aplicarViagemLocal = (id, dados) => {
-    dados = normalizarUnidadeFornecedor(dados);
     const idx = viagens.findIndex(v => v.idViagem === id);
     if (idx >= 0) viagens[idx] = dados; else viagens.push(dados);
   };
@@ -19609,7 +19620,7 @@ function _pararCadenciaSeSemanaVazia(semana) {
 function _aplicarViagemCarregada(id, semana, registro) {
   _garantirCadenciaDaSemana(semana);
   const idx = viagensMultiSemana.findIndex(v => v.idViagem === id);
-  const registroComOrigem = { ...normalizarUnidadeFornecedor(registro), _semanaOrigem: semana };
+  const registroComOrigem = { ...registro, _semanaOrigem: semana };
   if (idx >= 0) viagensMultiSemana[idx] = registroComOrigem; else viagensMultiSemana.push(registroComOrigem);
   _idsCarregados.add(id);
 }
@@ -21509,7 +21520,9 @@ function renderPerformanceKpis(lista) {
 
 // ── ⑫ HISTÓRICO DE OFERTAS (pedido da usuaria, 2026-11-18) ──
 // Lê o campo `historico` (registrarHistoricoOferta) das viagens de todas as semanas de novembro em diante e
-// lista cada evento. Antecedência = dias entre o evento e a DESCARGA programada (dtDescProg): recusa ou
+// lista cada evento. Antecedência = dias entre o evento e o CARREGAMENTO programado QUE VALIA NA HORA do
+// evento (27/11/2026, caso NXT-007751: recusa em 24/11 com carregamento 25/11 aparecia "6 dias" porque a
+// conta usava a descarga de hoje, 30/11, depois de reprogramada — ver _hoCarregNaData): recusa ou
 // cancelamento com menos de 2 dias = vermelho; 2 a 4 dias = amarelo. "Depois" = pra quem a mesma viagem foi
 // reofertada, ou (cancelada) a viagem nova com a mesma cadência de origem, mesmo destino e produto.
 const HO_DESDE = '2026-10-01';  // de outubro em diante (usuaria, 2026-11-18)
@@ -21522,6 +21535,30 @@ function _hoDataBR(s) {
   return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null;
 }
 function _hoLista(x) { return Array.isArray(x) ? x.filter(Boolean) : Object.values(x || {}).filter(Boolean); }
+// Data de carregamento "anterior" de um evento do historicoProgramacao que mudou o carregamento programado:
+// 'DD/MM/AAAA', null (antes estava vazio) ou undefined (o evento não mexeu no carregamento programado).
+function _hoAnteriorCarreg(evento) {
+  const s = String(evento || '');
+  const data = t => (/(\d{2}\/\d{2}\/\d{4})/.exec(t) || [])[1] || null;
+  let m = /^Data de Carregamento (?:ajustada|confirmada no agendamento): (.+?) →/.exec(s);
+  if (m) return data(m[1]);
+  m = /^Carregamento antecipado para .*\(era ([^)]+)\)/.exec(s);
+  if (m) return data(m[1]);
+  m = /^Data Desejada ajustada — Carregamento: (.+?) →/.exec(s);
+  if (m && /Data Programação acompanhou|aplicado também na Data Programação/.test(s)) return data(m[1]);
+  return undefined;
+}
+// Carregamento programado que valia no instante `quando`: o valor atual, a menos que tenha mudado depois —
+// aí vale o "anterior" da 1ª mudança feita depois desse instante.
+function _hoCarregNaData(v, quando) {
+  const atual = v.dtCarregProg || v.dtCarreg || '';
+  const depois = _hoLista(v.historicoProgramacao)
+    .map(h => ({ t: new Date(h.data), anterior: _hoAnteriorCarreg(h.evento) }))
+    .filter(x => x.anterior !== undefined && !isNaN(x.t) && x.t > quando)
+    .sort((a, b) => a.t - b.t);
+  if (!depois.length) return atual;
+  return depois[0].anterior || v.dtCarreg || atual;
+}
 // Uma linha do histórico de ofertas da viagem, igual à janela da viagem (coluna "Histórico da viagem", 23/11/2026)
 function _hoHistTexto(x) {
   const d = new Date(x.data);
@@ -21635,13 +21672,13 @@ function _hoMontarLinhas() {
   const linhas = [];
   for (const { semana, v } of todas) {
     const hist = _hoLista(v.historico).filter(h => h.evento).sort((a, b) => String(a.data).localeCompare(String(b.data)));
-    const descarga = _hoDataBR(v.dtDescProg || v.dtDesc);
     hist.forEach((h, idx) => {
       const quando = new Date(h.data);
       let antecedencia = null;
-      if (descarga && !isNaN(quando)) {
+      const carreg = isNaN(quando) ? null : _hoDataBR(_hoCarregNaData(v, quando));
+      if (carreg) {
         const dia = new Date(quando.getFullYear(), quando.getMonth(), quando.getDate(), 12);
-        antecedencia = Math.round((descarga - dia) / 86400000);
+        antecedencia = Math.round((carreg - dia) / 86400000);
       }
       let depois = '';
       if (HO_NEGATIVOS.has(h.evento)) {
@@ -21814,7 +21851,7 @@ function exportarHistoricoOfertas() {
     'Produto': l.produto, 'Volume (m³)': l.volume, 'Carregamento prog.': l.carregamento, 'Descarga prog.': l.descarga,
     'Transportadora': l.transportador, 'Quem recusou': l.quemTipo === 'Interno' ? 'Interno' : l.quemTipo,
     'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual,
-    'Antecedência até a descarga (dias)': l.antecedencia,
+    'Antecedência até o carregamento (dias)': l.antecedencia,
     'Em cima da hora (< 2 dias)': l.nivel === 'critico' ? 'Sim' : '', 'Depois': l.depois,
     // Um evento por linha dentro da célula (no Excel: Quebrar Texto Automaticamente pra ver em linhas)
     'Histórico da viagem': (l.hist || []).map(_hoHistTexto).join('\n'),
@@ -21877,7 +21914,7 @@ window.addEventListener('DOMContentLoaded', () => {
   msCOrigem  = new MultiSelect('ms-cOrigem',  'Origem',   renderPreview, null, true);
   msCDestino = new MultiSelect('ms-cDestino', 'Destino',  renderPreview, null, true);
   msCRegional = new MultiSelect('ms-cRegional', 'Regional', renderPreview, null, true);
-  msCadArea = new MultiSelect('ms-cadArea', 'CO / SP / MG + RJ', renderPainelCadenciado, null, true);
+  msCadArea = new MultiSelect('ms-cadArea', 'Regional', renderPainelCadenciado, null, true);
   msCadDestino = new MultiSelect('ms-cadDestino', 'Destino', renderPainelCadenciado, null, true);
   msCadProduto = new MultiSelect('ms-cadProduto', 'Produto', renderPainelCadenciado, null, true);
   msMonProduto = new MultiSelect('ms-monProduto', 'Produto', renderMonitoramento, null, true);
