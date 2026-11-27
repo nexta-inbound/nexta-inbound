@@ -235,17 +235,18 @@
 
   function render() {
     statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
-    const cenario = campoVenda.value || CENARIO;
+    const cenario = telao ? 'Disp MIS' : (campoVenda.value || CENARIO);
     let itens = calcular(cenario);
-    const regiao = campoRegiao.value, busca = campoBusca.value.trim().toLowerCase();
+    const regiao = telao ? '' : campoRegiao.value;
+    const busca = telao ? '' : campoBusca.value.trim().toLowerCase();
     // Fora dos Alertas: sem VMD na janela e sem capacidade de tanque estabelecida (venda no bico, 2026-10-14).
     itens = itens.filter(it => !it.semVmd && it.registro.capacidadeFisica !== 0 && (!regiao || cloud.regionOf(it.registro.base) === regiao) && (!busca || it.cidade.toLowerCase().includes(busca)));
     const celulas = matriz(itens);
-    const filtroSituacao = campoSituacao.value;
+    const filtroSituacao = telao ? '' : campoSituacao.value;
     const passaSituacao = c => !filtroSituacao || (filtroSituacao === 'critico' ? c.pior.situacao.startsWith('critico') : c.pior.situacao === filtroSituacao);
     const cidades = [...new Set(itens.map(it => it.cidade))].filter(cid => [...celulas.entries()].some(([k, c]) => k.startsWith(cid + '|') && passaSituacao(c)));
     const colunas = colunasDe(itens);
-    if (!cidades.length) { statusEl.textContent = 'Nenhuma cidade encontrada com os filtros atuais.'; return; }
+    if (!cidades.length) { statusEl.textContent = telao ? 'Nenhuma cidade disponível para exibição.' : 'Nenhuma cidade encontrada com os filtros atuais.'; return; }
 
     const piorDaCidade = cid => Math.min(...colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(Boolean).map(c => SITUACOES[c.pior.situacao].peso));
     cidades.sort((a, b) => piorDaCidade(a) - piorDaCidade(b) || a.localeCompare(b, 'pt-BR'));
@@ -253,7 +254,8 @@
     const visiveis = cidades.flatMap(cid => colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(c => c && passaSituacao(c)));
     const resumo = visiveis.reduce((acc, c) => ({...acc, [c.pior.situacao]: (acc[c.pior.situacao] || 0) + 1}), {});
     const amostra = itens[0];
-    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas: ${ROTULO_VENDA[cenario] || cenario}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `
+    const rotuloVenda = telao ? '' : `vendas: ${ROTULO_VENDA[cenario] || cenario}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `;
+    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · ${rotuloVenda}`
       + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
       + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
     barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
@@ -427,6 +429,9 @@
   abrir.hidden = true;
   fechar.hidden = !telao;
   if (telao) {
+    const fonteVendas = view.querySelector('.section-title p');
+    fonteVendas.textContent = 'Fonte de vendas: Disponibilidade MIS';
+    fonteVendas.classList.add('telao-fonte-vendas');
     fechar.textContent = 'Voltar ao simulador';
     fechar.onclick = () => location.assign(raiz.href);
     document.body.dataset.aba = 'alertas';

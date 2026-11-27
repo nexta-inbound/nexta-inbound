@@ -247,6 +247,8 @@ body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]),
 body[data-aba="logminimo"] main>:not([data-aba~="logminimo"]){display:none!important}
 body:not([data-aba="logminimo"]) #log-minimo-view{display:none}
 body.modo-telao #dia-view{max-width:none}
+body.modo-telao #dia-view .dia-filtros{display:none!important}
+.telao-fonte-vendas{font-size:18px;font-weight:700;color:var(--text);margin:4px 0 0}
 body.modo-telao #abas-bar,
 body.modo-telao #abrir-duvidas,
 body.modo-telao #abrir-manual,
