@@ -246,6 +246,7 @@ body[data-aba="aberturas"] main>:not([data-aba~="aberturas"]),
 body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]),
 body[data-aba="logminimo"] main>:not([data-aba~="logminimo"]){display:none!important}
 body:not([data-aba="logminimo"]) #log-minimo-view{display:none}
+body.modo-telao #dia-view{max-width:none}
 /* Ranking + quadro por produto lado a lado */
 .ranking-corpo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
 @media(max-width:1000px){.ranking-corpo{grid-template-columns:1fr}}

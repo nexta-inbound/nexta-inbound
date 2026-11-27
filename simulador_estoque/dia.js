@@ -404,6 +404,10 @@
   rankingView.dataset.aba = 'cenario';
   const filhoDeMain = el => { while (el && el.parentElement !== main) el = el.parentElement; return el; };
   const marcar = (seletor, abas) => { const el = filhoDeMain(document.querySelector(seletor)); if (el) el.dataset.aba = abas; };
+  const podeVerTelao = window.SIM_AUTH?.podeVerTelao === true;
+  const rotaTelao = /\/alertas(?:\/index\.html|\/)?$/.test(location.pathname);
+  const raiz = new URL('./', document.baseURI);
+  const rotaAlertas = new URL('alertas/', raiz);
   view.dataset.aba = 'alertas'; historicoView.dataset.aba = 'historico';
   marcar('main > .title', 'simulacao');
   marcar('section.filters', 'simulacao cenario');
@@ -414,8 +418,27 @@
   marcar('#alerts', 'nenhuma');
   for (const filho of main.children) if (!filho.dataset.aba) filho.dataset.aba = 'simulacao';
 
+  const botaoTelao = document.createElement('button');
+  function modoTelao(ativo) {
+    if (!podeVerTelao) return;
+    document.body.classList.toggle('modo-telao', ativo);
+    botaoTelao.setAttribute('aria-pressed', String(ativo));
+    botaoTelao.textContent = ativo ? 'Sair do modo telão' : 'Modo telão';
+    history.replaceState(history.state, '', ativo ? rotaAlertas : raiz);
+  }
+  if (podeVerTelao) {
+    // Fixa a base antes da troca de endereço para manter manuais e demais links relativos.
+    const base = document.querySelector('base') || document.head.appendChild(document.createElement('base'));
+    base.href = raiz.href;
+    botaoTelao.type = 'button';
+    botaoTelao.textContent = 'Modo telão';
+    botaoTelao.setAttribute('aria-pressed', 'false');
+    botaoTelao.onclick = () => modoTelao(!document.body.classList.contains('modo-telao'));
+    fechar.before(botaoTelao);
+  }
   const botoesAba = [...document.querySelectorAll('#abas-bar [data-aba-alvo]')];
   function trocarAba(nome) {
+    if (nome !== 'alertas' && document.body.classList.contains('modo-telao')) modoTelao(false);
     document.body.dataset.aba = nome;
     botoesAba.forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
     fecharPopup();
@@ -429,5 +452,6 @@
   // Sempre abre na "Simulacao de estoques" (usuaria, 2026-10-28: "quero que ja venha padrao na aba Simulacao de
   // estoques"); nao lembra mais a ultima aba. O perfil 'base' continua abrindo em Aberturas (aberturas.js).
   try { localStorage.removeItem('simulador.aba'); } catch {}
-  trocarAba('simulacao');
+  trocarAba(rotaTelao && podeVerTelao ? 'alertas' : 'simulacao');
+  if (rotaTelao && podeVerTelao) modoTelao(true);
 })();

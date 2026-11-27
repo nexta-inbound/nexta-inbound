@@ -4,6 +4,11 @@ import { ref, get, set, update, push, runTransaction, serverTimestamp, onValue }
 import { entrarPeloCentral, sairDeTudo, irParaLogin, irParaTrocarSenha, gerenciaUsuarios } from '/central/sso.js';
 
 const el = id => document.getElementById(id);
+const contasTelao = new Set([
+  'amanda.borges@nexta.com.br',
+  'matheus.sanches@nexta.com.br',
+  'eric.fumo@nexta.com.br',
+]);
 let started = false;
 let generation = 0;
 function status(text) { el('login-status').textContent = text; }
@@ -16,7 +21,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = '978c3a50ff';
+const VERSAO_SITE = '9c974429b9';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -61,6 +66,10 @@ async function aoMudarSessao(user) {
     // Marca da antiga validade de senha (validade_senhas.py, desligado em 2026-11-03): as regras do banco ainda
     // negam os dados a quem ficou com ela.
     if (profile.acessoBloqueado === true) throw new Error('Seu acesso ao Nextoques está bloqueado. Fale com o administrador.');
+    const podeVerTelao = contasTelao.has(user.email?.toLowerCase());
+    if (/\/alertas(?:\/index\.html|\/)?$/.test(location.pathname) && !podeVerTelao) {
+      throw new Error('Sua conta não tem acesso ao Telão de alertas. Abra o simulador pelo menu inicial.');
+    }
     // Aba Aberturas (2026-10-16): as bases preenchem a abertura do dia no portal, no lugar da planilha.
     // Layout (cidades > terminais > produtos) vem de cadastros/aberturas, gerado da planilha por
     // gerar_layout_aberturas.py. Valores em aberturas/<dia>/<empDep>/<produtoHex>; cada alteracao vira
@@ -145,7 +154,7 @@ async function aoMudarSessao(user) {
       throw new Error('A carga de estoque está incompleta ou não há dados para a sua região.');
     if (version !== generation || auth.currentUser?.uid !== user.uid) return;
     window.ESTOQUE_DATA = data;
-    window.SIM_AUTH = {uid: user.uid, email: user.email, profile};
+    window.SIM_AUTH = {uid: user.uid, email: user.email, profile, podeVerTelao};
     window.SIM_CLOUD = {
       // Edita qualquer base: administrador e regional; perfil 'leitura' (Thiago/Thales) só consulta.
       canEdit(base) { return profile.admin === true || profile.perfil === 'regional'; },
