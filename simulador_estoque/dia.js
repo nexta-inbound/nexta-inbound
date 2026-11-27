@@ -234,7 +234,8 @@
   campoTransito.onchange = () => renderCenario();
 
   function render() {
-    statusEl.textContent = 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
+    const hoje = telao ? new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo', dateStyle: 'short'}).format(new Date()) : '';
+    statusEl.textContent = hoje || 'Calculando…'; barra.innerHTML = ''; tabela.innerHTML = ''; fecharPopup();
     const cenario = telao ? 'Disp MIS' : (campoVenda.value || CENARIO);
     let itens = calcular(cenario);
     const regiao = telao ? '' : campoRegiao.value;
@@ -246,19 +247,20 @@
     const passaSituacao = c => !filtroSituacao || (filtroSituacao === 'critico' ? c.pior.situacao.startsWith('critico') : c.pior.situacao === filtroSituacao);
     const cidades = [...new Set(itens.map(it => it.cidade))].filter(cid => [...celulas.entries()].some(([k, c]) => k.startsWith(cid + '|') && passaSituacao(c)));
     const colunas = colunasDe(itens);
-    if (!cidades.length) { statusEl.textContent = telao ? 'Nenhuma cidade disponível para exibição.' : 'Nenhuma cidade encontrada com os filtros atuais.'; return; }
+    if (!cidades.length) { statusEl.textContent = telao ? `${hoje} · Nenhuma cidade disponível.` : 'Nenhuma cidade encontrada com os filtros atuais.'; return; }
 
     const piorDaCidade = cid => Math.min(...colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(Boolean).map(c => SITUACOES[c.pior.situacao].peso));
     cidades.sort((a, b) => piorDaCidade(a) - piorDaCidade(b) || a.localeCompare(b, 'pt-BR'));
 
     const visiveis = cidades.flatMap(cid => colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(c => c && passaSituacao(c)));
     const resumo = visiveis.reduce((acc, c) => ({...acc, [c.pior.situacao]: (acc[c.pior.situacao] || 0) + 1}), {});
-    const amostra = itens[0];
-    const periodo = `${dataCurta(amostra.inicio)} a ${dataCurta(amostra.fim)}`;
-    const rotuloVenda = ROTULO_VENDA[cenario] || cenario;
-    statusEl.textContent = telao ? periodo : `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas: ${rotuloVenda}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `
-      + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
-      + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
+    if (!telao) {
+      const amostra = itens[0];
+      const rotuloVenda = ROTULO_VENDA[cenario] || cenario;
+      statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas: ${rotuloVenda}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `
+        + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
+        + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
+    }
     barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
       `<span class="${s}" style="flex:${resumo[s]}" title="${SITUACOES[s].rotulo}">${resumo[s]}</span>`).join('');
 
@@ -430,9 +432,10 @@
   abrir.hidden = true;
   fechar.hidden = !telao;
   if (telao) {
-    const fonteVendas = view.querySelector('.section-title p');
+    const fonteVendas = view.querySelector('.section-title h2');
     fonteVendas.textContent = 'Saída · Disponibilidade MIS';
     fonteVendas.classList.add('telao-fonte-vendas');
+    view.querySelector('.section-title p').remove();
     fechar.before($('sync-status'));
     fechar.textContent = 'Voltar ao simulador';
     fechar.onclick = () => location.assign(raiz.href);
