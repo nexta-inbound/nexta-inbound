@@ -444,7 +444,7 @@
   const barraAbas = $('abas-bar');
   const botoesAba = () => barraAbas.querySelectorAll('[data-aba-alvo]');
   function trocarAba(nome, registrar = true) {
-    if (registrar && location.hash !== '#' + nome) history.pushState(null, '', '#' + nome);
+    if (registrar && location.hash !== '#' + nome) window.history.pushState(null, '', '#' + nome);
     document.body.dataset.aba = nome;
     botoesAba().forEach(b => b.setAttribute('aria-selected', String(b.dataset.abaAlvo === nome)));
     fecharPopup();

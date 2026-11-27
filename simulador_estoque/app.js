@@ -333,7 +333,7 @@ function premises(){$('name').value=state.name;$('clamp').checked=state.clamp;$(
 function semCapacidade(){return record?.capacidadeFisica===0;}
 // Modo combinado (2026-11-09: abertura do historico vinha "—"): o record sintetico nao tem chave no historico,
 // entao soma o historico de cada registro real por tras da soma (mesma ideia da venda passada).
-function history(i){const dia=D.history?.[day(i)];const regs=record?._registrosCombinados;
+function estoqueHistoricoDoDia(i){const dia=D.history?.[day(i)];const regs=record?._registrosCombinados;
  if(!regs)return dia?.[record.base+'|'+record.product];
  const hs=regs.map(r=>dia?.[r.base+'|'+r.product]).filter(Boolean);if(!hs.length)return undefined;
  const s=k=>somaOuNula(hs.map(h=>h[k]));return{opening:s('opening'),received:s('received'),planned:s('planned'),sale:s('sale')};}
@@ -518,17 +518,17 @@ function semPlacaDia(i){
 function fobAposCorte(i){return somaOuNula(viagensDoDia(i,'fob').filter(v=>v.aposCorte&&v.grupo!=='programado').map(v=>v.volume||0));}
 function linhaViagemHtml(v){const prog=v.grupo==='programado',quando=v.chegadaReal?'chegou '+new Date(v.chegadaReal).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):v.eta?'ETA '+new Date(v.eta).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
  return `<div style="color:${prog?'#F97316':v.aposCorte?COR_FOB_D1:'#60A5FA'}"><dt>${prog?'Não programado (sem placa) · ':''}${v.modal==='cif'?'CIF · ':''}Viagem ${esc(v.idViagem||'s/ id')}</dt><dd>Origem: ${esc(v.fornecedor||'—')} → Destino: ${esc(v.destino||'—')}<br>${[v.transportador,v.placa].filter(Boolean).map(esc).join(' · ')}${v.transportador||v.placa?' · ':''}${fmt(v.volume)} m³${v.status?' · '+esc(v.status):''}${v.status==='Em Andamento'&&v.kmRestante!=null?' · '+fmt(v.kmRestante)+' km restantes':''}${quando?' · '+quando:''}${v.aposCorte?` · <strong style="color:${COR_FOB_D1}">ETA após 15h → considerado no dia seguinte</strong>`:''}${v.dataProgramacao?' · programação '+esc(v.dataProgramacao):''}</dd></div>`;}
-function vendaRealPassado(i){return history(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
+function vendaRealPassado(i){return estoqueHistoricoDoDia(i)?.sale??somaOuNula(registrosReais().map(r=>r.bi?.days?.[day(i)]?.billing));}
 function valorPassado(k,i,result){
- if(k==='opening')return history(i)?.opening??null;
+ if(k==='opening')return estoqueHistoricoDoDia(i)?.opening??null;
  // Lastro e abertura menos lastro tambem no passado (usuaria, 2026-10-27): o lastro e' o da politica (o mesmo de hoje).
  if(k==='lastro')return result[0]?.lastro??null;
- if(k==='openingNet'){const ab=history(i)?.opening;return ab==null?null:ab-(result[0]?.lastro||0);}
+ if(k==='openingNet'){const ab=estoqueHistoricoDoDia(i)?.opening;return ab==null?null:ab-(result[0]?.lastro||0);}
  // Igual ao BI nos dias passados (usuaria, 2026-10-27): saida = venda real (vendas_projecao) e entrada = recebimento
  // realizado do SAP (recebimentos_projecao) — o BI nao usa viagem no passado (finalizada quase nunca tem chegada).
- if(k==='outgoing')return vendaRealPassado(i)??history(i)?.sale??null;
+ if(k==='outgoing')return vendaRealPassado(i)??estoqueHistoricoDoDia(i)?.sale??null;
  if(k==='incoming'){const sap=recebidoPassado(i);if(sap!=null)return sap;const f=transitoPassado(i,'fob'),c=transitoPassado(i,'cif');return f==null&&c==null?null:(f||0)+(c||0);}
- if(k==='close'){const prox=i+1===0?result[0]?.opening:history(i+1)?.opening;return prox??null;}
+ if(k==='close'){const prox=i+1===0?result[0]?.opening:estoqueHistoricoDoDia(i+1)?.opening;return prox??null;}
  return null;
 }
 function status(v){return E.stockBand(v,state);}
@@ -590,7 +590,7 @@ function render(rebuild=false){const result=E.calculate(state,n),original=E.calc
   const controlCell=k===entradaKeys[0]?`<th rowspan="${entradaKeys.length}" class="row-controls" id="entrada-controls-cell"></th>`
    :k===saidaKeys[0]?`<th rowspan="${saidaKeys.length+(mostrarInfoGrade&&saidaKeys[0]==='sale'?INFO_VENDAS:0)}" class="row-controls" id="scenario-controls-cell"></th>`:'';
   const rotulo=(k==='fob'?'Trânsito FOB · programado (com placa)':k==='planned'?'Cadência sugerida':l)+horaFonte({fob:'transito',cif:'transito',pump:'cadencia',sale:fonteDaVenda()}[k]);
-  html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Venda real do dia (faturamento), igual ao BI':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:k==='sale'?(vendaRealPassado(i)??history(i)?.sale):history(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
+  html+=`<tr class="${sign>0?'entry':'exit'}">${controlCell}<th class="row-label">${sign>0?'+':'−'} ${rotulo}</th>`+offsets.map(i=>i<0?`<td class="history${i===0?' today':''}"${['fob','cif'].includes(k)?` data-transito="${k}" data-day="${i}"`:''} title="${k==='sale'?'Venda real do dia (faturamento), igual ao BI':['fob','cif'].includes(k)?'':'Informação histórica da fonte'}">${fmt(['fob','cif'].includes(k)?transitoPassado(i,k):k==='planned'?null:k==='sale'?(vendaRealPassado(i)??estoqueHistoricoDoDia(i)?.sale):estoqueHistoricoDoDia(i)?.[k])}</td>`:`<td class="${i===0?'today':''}"><input type="number" step="any" min="0" data-row="${k}" data-day="${i}" aria-label="${l} ${label(i)}" value="${Math.round(state.movements[k][i])}" title="${esc(sourceNote(k,i))}"></td>`).join('')+'</tr>';
   if(k==='sale'){
    html+=infoRow('VMD reprojetada',i=>record.bi?.days[day(i)]?.vmd,true,'vmd');
    html+=infoRow('LE vigente (sem reprojeção)',i=>record.bi?.days?.[day(i)]?.le??record.bi?.semana?.porDia?.[day(i)]?.le,true,'le');
@@ -685,7 +685,7 @@ const movSeries=[
 // Entradas viram blocos empilhados sobre a abertura (igual ao grafico do BI); as demais series seguem em linha.
 const ENTRADAS_BLOCO=['received','pump','progRoad','progRoadMis','planned','fob','cif'];
 const valorMov=(k,i)=>(movSeries.find(m=>m[0]===k)[3](i))||0;
-const aberturaGrafico=(result,i)=>i<0?history(i)?.opening:result[i]?.opening;
+const aberturaGrafico=(result,i)=>i<0?estoqueHistoricoDoDia(i)?.opening:result[i]?.opening;
 const topoPilha=(result,i)=>Math.max(aberturaGrafico(result,i)??0,0)+ENTRADAS_BLOCO.reduce((s,k)=>s+Math.max(valorMov(k,i),0),0);
 let chartContext=null;
 // Os 5 dias passados e as linhas de referencia (VMD, LE, Pedidos, Disp. MIS, Real) abrem RECOLHIDOS, igual ao
@@ -808,7 +808,7 @@ function popupGrafico(i){
  const {result,offsets}=chartContext||{};if(!result)return'';
  const futuro=i>=0;
  const linhas=[];
- linhas.push(['Abertura',futuro?result[i]?.opening:history(i)?.opening]);
+ linhas.push(['Abertura',futuro?result[i]?.opening:estoqueHistoricoDoDia(i)?.opening]);
  // Passado: fechamento = abertura do dia seguinte e totais iguais aos da tabela (usuaria, 2026-10-27).
  linhas.push(['Fechamento',futuro?result[i]?.close:valorPassado('close',i,result)]);
  if(!futuro)linhas.push(['Total de entradas (realizado)',valorPassado('incoming',i,result)]);
