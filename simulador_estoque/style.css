@@ -247,8 +247,18 @@ body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]),
 body[data-aba="logminimo"] main>:not([data-aba~="logminimo"]){display:none!important}
 body:not([data-aba="logminimo"]) #log-minimo-view{display:none}
 body.modo-telao #dia-view{max-width:none}
-body.modo-telao #dia-view .dia-filtros{display:none!important}
-.telao-fonte-vendas{font-size:18px;font-weight:700;color:var(--text);margin:4px 0 0}
+body.modo-telao #dia-view .dia-filtros,
+body.modo-telao .matriz-legenda span,
+body.modo-telao .matriz-legenda-nota,
+body.modo-telao>header,
+body.modo-telao #account-bar{display:none!important}
+.telao-fonte-vendas{font:700 clamp(26px,2.8vw,54px)/1.1 'Barlow Condensed',sans-serif;color:#EEFE7A;margin:4px 0 0}
+body.modo-telao #dia-view .section-title>div{margin-right:auto}
+body.modo-telao #sync-status{font-size:clamp(16px,1.3vw,25px);letter-spacing:0;text-align:center}
+body.modo-telao #semana-status{font-size:clamp(16px,1.3vw,25px)}
+body.modo-telao .matriz-legenda b{font-size:clamp(14px,1.1vw,21px)}
+body.modo-telao .matriz-risco :is(th,td){height:clamp(40px,3.2vh,70px);font-size:clamp(14px,1.3vw,25px)}
+body.modo-telao .matriz-risco td button{min-height:clamp(36px,2.9vh,64px);font-size:inherit}
 body.modo-telao #abas-bar,
 body.modo-telao #abrir-duvidas,
 body.modo-telao #abrir-manual,

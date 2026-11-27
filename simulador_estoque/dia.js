@@ -254,8 +254,9 @@
     const visiveis = cidades.flatMap(cid => colunas.map(([p]) => celulas.get(`${cid}|${p}`)).filter(c => c && passaSituacao(c)));
     const resumo = visiveis.reduce((acc, c) => ({...acc, [c.pior.situacao]: (acc[c.pior.situacao] || 0) + 1}), {});
     const amostra = itens[0];
-    const rotuloVenda = telao ? '' : `vendas: ${ROTULO_VENDA[cenario] || cenario}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `;
-    statusEl.textContent = `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · ${rotuloVenda}`
+    const periodo = `${dataCurta(amostra.inicio)} a ${dataCurta(amostra.fim)}`;
+    const rotuloVenda = ROTULO_VENDA[cenario] || cenario;
+    statusEl.textContent = telao ? periodo : `Hoje (${dataCurta(amostra.inicio)}) até ${dataCurta(amostra.fim)} · vendas: ${rotuloVenda}${cenario === 'Real' ? ' (de amanhã em diante, VMD reprojetada)' : ''} · `
       + `${cidades.length} cidade(s), ${visiveis.length} combinação(ões) cidade × produto: `
       + Object.keys(SITUACOES).map(s => `${resumo[s] || 0} ${SITUACOES[s].rotulo.toLowerCase()}`).join(' · ') + '.';
     barra.innerHTML = Object.keys(SITUACOES).filter(s => resumo[s]).map(s =>
@@ -430,11 +431,13 @@
   fechar.hidden = !telao;
   if (telao) {
     const fonteVendas = view.querySelector('.section-title p');
-    fonteVendas.textContent = 'Fonte de vendas: Disponibilidade MIS';
+    fonteVendas.textContent = 'Saída · Disponibilidade MIS';
     fonteVendas.classList.add('telao-fonte-vendas');
+    fechar.before($('sync-status'));
     fechar.textContent = 'Voltar ao simulador';
     fechar.onclick = () => location.assign(raiz.href);
     document.body.dataset.aba = 'alertas';
+    window.addEventListener('simulador:fontes-atualizadas', render);
     render();
     return;
   }

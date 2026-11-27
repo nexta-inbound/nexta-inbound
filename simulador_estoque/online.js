@@ -21,7 +21,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'fee6d2a77e';
+const VERSAO_SITE = 'd23ae54817';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -227,11 +227,18 @@ async function aoMudarSessao(user) {
     await concluirEntrada();
     el('auto-status').textContent = `Fontes de ${data.date}. A tela atualiza sozinha quando sai uma carga nova.`;
     const sync = el('sync-status');
+    const telao = document.body.classList.contains('modo-telao');
     const textoSync = () => {
       if (!sync || !data.bi?.extractedAt) return;
       const quando = new Date(data.bi.extractedAt), hm = d => d.toLocaleString('pt-BR', {hour: '2-digit', minute: '2-digit'});
-      sync.textContent = 'Sincronizado ' + quando.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})
-        + (transitoEm ? ` · trânsito ${hm(transitoEm)}` : '');
+      const dataHora = {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'};
+      if (telao) {
+        const horario = data => data.toLocaleString('pt-BR', {...dataHora, timeZone: 'America/Sao_Paulo'});
+        sync.textContent = `Fontes ${horario(quando)} · Trânsito ${transitoEm ? horario(transitoEm) : '—'}`;
+      } else {
+        sync.textContent = 'Sincronizado ' + quando.toLocaleString('pt-BR', dataHora)
+          + (transitoEm ? ` · trânsito ${hm(transitoEm)}` : '');
+      }
       sync.title = 'Dados das fontes lidos em ' + quando.toLocaleString('pt-BR')
         + (transitoEm ? `\nTrânsito FOB/CIF atualizado em tempo real às ${transitoEm.toLocaleTimeString('pt-BR')}` : '');
     };
@@ -245,6 +252,7 @@ async function aoMudarSessao(user) {
     const refazer = () => {
       if (digitando()) { refazerPendente = true; return; }
       refazerPendente = false;
+      if (telao) window.dispatchEvent(new Event('simulador:fontes-atualizadas'));
       try { window.select?.(); } catch (e) { console.warn('Falha ao atualizar o trânsito na tela', e); }
     };
     document.addEventListener('focusout', () => setTimeout(() => { if (refazerPendente) refazer(); }, 300));
