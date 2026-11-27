@@ -246,26 +246,33 @@ body[data-aba="aberturas"] main>:not([data-aba~="aberturas"]),
 body[data-aba="usuarios"] main>:not([data-aba~="usuarios"]),
 body[data-aba="logminimo"] main>:not([data-aba~="logminimo"]){display:none!important}
 body:not([data-aba="logminimo"]) #log-minimo-view{display:none}
-body.modo-telao #dia-view{max-width:none}
+body.modo-telao #dia-view{max-width:none;padding:clamp(16px,1.6vw,32px)}
 body.modo-telao #dia-view .dia-filtros,
 body.modo-telao .matriz-legenda span,
 body.modo-telao .matriz-legenda-nota,
 body.modo-telao>header,
 body.modo-telao #account-bar{display:none!important}
-.telao-fonte-vendas{font:700 clamp(26px,2.8vw,54px)/1.1 'Barlow Condensed',sans-serif;color:#EEFE7A;margin:4px 0 0}
-body.modo-telao #dia-view .section-title{display:grid;grid-template-columns:1fr auto 1fr;gap:8px 16px;text-align:center}
+.telao-fonte-vendas{font:700 clamp(32px,3.4vw,66px)/1 'Barlow Condensed',sans-serif;color:#EEFE7A;margin:0}
+.telao-rotulo-saida{display:block;font:700 clamp(14px,1vw,19px)/1.4 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+body.modo-telao #dia-view .section-title{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;text-align:center}
 body.modo-telao #dia-view .section-title>div{grid-column:1/-1}
-body.modo-telao #sync-status{font-size:clamp(16px,1.3vw,25px);letter-spacing:0;text-align:center}
-body.modo-telao #sync-status{grid-column:2}
-body.modo-telao #dia-fechar{justify-self:end}
-body.modo-telao #semana-status{font-size:clamp(16px,1.3vw,25px);text-align:center}
+body.modo-telao #sync-status{grid-column:2;display:flex;justify-content:center;flex-wrap:wrap;gap:8px 28px;padding:8px 22px;border-radius:10px;background:#142219;color:var(--text);letter-spacing:0;font-size:clamp(16px,1.2vw,24px);text-align:center}
+body.modo-telao #sync-status>span{display:flex;align-items:baseline;flex-wrap:wrap;justify-content:center;gap:4px 10px}
+body.modo-telao #sync-status small{color:var(--dim);font-size:.8em}
+body.modo-telao #sync-status strong,
+body.modo-telao #semana-status{font-variant-numeric:tabular-nums}
+body.modo-telao #dia-fechar{justify-self:end;background:transparent}
+body.modo-telao #semana-status{font-size:clamp(16px,1.2vw,24px);text-align:center;color:var(--dim);margin:0 0 20px}
 @media(max-width:760px){
   body.modo-telao #dia-view .section-title{grid-template-columns:1fr;justify-items:center}
   body.modo-telao #sync-status{grid-column:auto}
   body.modo-telao #dia-fechar{justify-self:center}
 }
 body.modo-telao .matriz-legenda b{font-size:clamp(14px,1.1vw,21px)}
+body.modo-telao .matriz-risco{width:100%;border-spacing:6px}
 body.modo-telao .matriz-risco :is(th,td){height:clamp(40px,3.2vh,70px);font-size:clamp(14px,1.3vw,25px)}
+body.modo-telao .matriz-risco thead th{border-radius:6px}
+body.modo-telao .matriz-risco tbody tr:not(.regiao-linha) th{padding-inline:12px}
 body.modo-telao .matriz-risco td button{min-height:clamp(36px,2.9vh,64px);font-size:inherit}
 body.modo-telao #abas-bar,
 body.modo-telao #abrir-duvidas,

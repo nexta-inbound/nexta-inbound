@@ -433,7 +433,11 @@
   fechar.hidden = !telao;
   if (telao) {
     const fonteVendas = view.querySelector('.section-title h2');
-    fonteVendas.textContent = 'Saída · Disponibilidade MIS';
+    const rotuloSaida = document.createElement('span');
+    rotuloSaida.className = 'telao-rotulo-saida';
+    rotuloSaida.textContent = 'Saída';
+    fonteVendas.textContent = 'Disponibilidade MIS';
+    fonteVendas.prepend(rotuloSaida);
     fonteVendas.classList.add('telao-fonte-vendas');
     view.querySelector('.section-title p').remove();
     fechar.before($('sync-status'));

@@ -21,7 +21,7 @@ function errorText(error) {
 }
 // Versao dos arquivos do site (2026-10-19): preparar_site.py troca 'dev' por um codigo que muda a cada
 // alteracao; o ?v=<codigo> obriga o navegador a baixar o arquivo novo (antes ficava com o antigo em cache).
-const VERSAO_SITE = 'b61321bd31';
+const VERSAO_SITE = '4af46fd948';
 function script(name) {
   return new Promise((resolve, reject) => {
     const tag = document.createElement('script');
@@ -234,7 +234,16 @@ async function aoMudarSessao(user) {
       const dataHora = {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'};
       if (telao) {
         const horario = data => data.toLocaleString('pt-BR', {...dataHora, timeZone: 'America/Sao_Paulo'});
-        sync.textContent = `Fontes ${horario(quando)} · Trânsito ${transitoEm ? horario(transitoEm) : '—'}`;
+        const horarios = [['Fontes', horario(quando)], ['Trânsito', transitoEm ? horario(transitoEm) : '—']];
+        sync.replaceChildren(...horarios.map(([fonte, valor]) => {
+          const item = document.createElement('span');
+          const rotulo = document.createElement('small');
+          const hora = document.createElement('strong');
+          rotulo.textContent = fonte;
+          hora.textContent = valor;
+          item.append(rotulo, hora);
+          return item;
+        }));
       } else {
         sync.textContent = 'Sincronizado ' + quando.toLocaleString('pt-BR', dataHora)
           + (transitoEm ? ` · trânsito ${hm(transitoEm)}` : '');
