@@ -4333,7 +4333,7 @@
       <span>sem cor: 5 dias ou mais</span>
     </div>
     <table>
-      <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. prog.</th><th>Descarga prog.</th>
+      <thead><tr><th>Data/hora da recusa</th><th>Viagem</th><th>Destino</th><th>Produto</th><th>Carreg. na recusa</th>
         <th>Transportadora</th><th>Quem recusou</th><th>Status na recusa</th><th>Status hoje</th><th>Antecedência</th><th>Depois</th><th>Histórico da viagem</th></tr></thead>
       <tbody id="hoEventosBody"></tbody>
     </table>
@@ -21675,7 +21675,8 @@ function _hoMontarLinhas() {
     hist.forEach((h, idx) => {
       const quando = new Date(h.data);
       let antecedencia = null;
-      const carreg = isNaN(quando) ? null : _hoDataBR(_hoCarregNaData(v, quando));
+      const carregNaHora = isNaN(quando) ? '' : _hoCarregNaData(v, quando);
+      const carreg = carregNaHora ? _hoDataBR(carregNaHora) : null;
       if (carreg) {
         const dia = new Date(quando.getFullYear(), quando.getMonth(), quando.getDate(), 12);
         antecedencia = Math.round((carreg - dia) / 86400000);
@@ -21710,7 +21711,9 @@ function _hoMontarLinhas() {
       linhas.push({
         quemTipo: quem.tipo, quemNome: quem.nome,
         data: h.data || '', semana, idViagem: v.idViagem, destino: v.destino || '', produto: v.produto || '',
-        volume: v.volume || '', carregamento: v.dtCarregProg || v.dtCarreg || '', descarga: v.dtDescProg || v.dtDesc || '',
+        // Carregamento que valia na hora do evento (27/11/2026: a usuária quer ver o 25/11 da recusa da
+        // NXT-007751, não a programação de hoje 27/11 → 30/11; coluna de descarga saiu)
+        volume: v.volume || '', carregamento: carregNaHora,
         evento: h.evento, transportador: h.transportador || '', usuario: h.usuario || '', motivo: h.motivo || '',
         statusAtual: v.status || '', antecedencia, depois, hist, idxHist: idx,
         nivel: negativo && antecedencia !== null ? (antecedencia < 2 ? 'critico' : antecedencia <= 4 ? 'alerta' : '') : '',
@@ -21830,7 +21833,7 @@ async function renderHistoricoOfertas(forcar) {
   document.getElementById('hoEventosBody').innerHTML = linhas.slice(0, LIMITE).map(l => {
     const ant = l.antecedencia === null ? '—' : `${l.antecedencia} dia(s)`;
     return `<tr class="${l.nivel ? 'ho-' + l.nivel : ''}"><td>${esc(_hoFmtData(l.data))}</td><td>${esc(l.idViagem)}</td><td>${esc(l.destino)}</td>`
-      + `<td>${esc(l.produto)}</td><td>${esc(l.carregamento)}</td><td>${esc(l.descarga)}</td>`
+      + `<td>${esc(l.produto)}</td><td>${esc(l.carregamento)}</td>`
       + `<td>${esc(l.transportador)}</td><td>${l.quemTipo === 'Transportadora' ? '<span class="badge badge-warn">Transportadora</span> ' + esc(l.quemNome)
           : l.quemTipo === HO_QUEM_PRAZO ? '<span class="badge badge-danger">⏳ Prazo de aceite vencido</span>'
           : l.quemTipo === 'Interno' ? '<span class="badge badge-accent">Interno</span> ' + esc(l.quemNome) : '<span class="badge">Não identificado</span> ' + esc(l.quemNome)}</td>`
@@ -21839,7 +21842,7 @@ async function renderHistoricoOfertas(forcar) {
       // Histórico completo da viagem (igual à janela da viagem); a recusa desta linha fica em destaque
       + `<td><div style="max-height:92px;overflow-y:auto;min-width:340px;font-size:11px;line-height:1.5">${(l.hist || []).map((x, i) =>
           `<div style="white-space:nowrap${i === l.idxHist ? ';font-weight:700;color:var(--danger)' : ''}">${esc(_hoHistTexto(x))}</div>`).join('')}</div></td></tr>`;
-  }).join('') || '<tr><td colspan="13" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
+  }).join('') || '<tr><td colspan="12" style="text-align:center;opacity:.7">Nenhuma recusa com esses filtros.</td></tr>';
 }
 
 function exportarHistoricoOfertas() {
@@ -21848,7 +21851,7 @@ function exportarHistoricoOfertas() {
   if (!linhas.length) { alert('Nada para exportar com os filtros atuais.'); return; }
   const eventos = linhas.map(l => ({
     'Data/hora da recusa': _hoFmtData(l.data), 'Semana': l.semana.replace('_', ' a '), 'Viagem': l.idViagem, 'Destino': l.destino,
-    'Produto': l.produto, 'Volume (m³)': l.volume, 'Carregamento prog.': l.carregamento, 'Descarga prog.': l.descarga,
+    'Produto': l.produto, 'Volume (m³)': l.volume, 'Carregamento na hora da recusa': l.carregamento,
     'Transportadora': l.transportador, 'Quem recusou': l.quemTipo === 'Interno' ? 'Interno' : l.quemTipo,
     'Nome de quem recusou': l.quemNome, 'Status na recusa': 'RECUSADA', 'Status hoje': l.statusAtual,
     'Antecedência até o carregamento (dias)': l.antecedencia,
