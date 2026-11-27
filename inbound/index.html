@@ -4288,7 +4288,7 @@
   <div class="filter-bar">
     <div class="filter-row">
       <select class="filter-input" id="hoMes" onchange="renderHistoricoOfertas()" style="width:170px" title="Mês em que a recusa aconteceu"><option value="">Todos os meses</option></select>
-      <select class="filter-input" id="hoSemana" onchange="renderHistoricoOfertas()" style="width:190px"><option value="">Todas as semanas</option></select>
+      <div id="ms-hoSemana" title="Pode marcar mais de uma semana"></div>
       <select class="filter-input" id="hoProduto" onchange="renderHistoricoOfertas()" style="width:170px"><option value="">Todos os produtos</option></select>
       <input type="text" class="filter-input" id="hoTransp" placeholder="🚚 Transportadora..." style="width:170px" oninput="renderHistoricoOfertas()">
       <input type="text" class="filter-input" id="hoBusca" placeholder="🔎 Viagem, destino ou produto..." style="width:210px" oninput="renderHistoricoOfertas()">
@@ -6382,7 +6382,7 @@ class MultiSelect {
 }
 
 // ── MULTISELECT INSTANCES (initialized after DOM ready) ──
-let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEProgramador;
+let msVProduto, msVUf, msVOrigem, msVDestino, msVRegional, msVProgramador, msEProgramador, msHoSemana;
 let msMonProduto, msMonUf, msMonOrigem, msMonDestino, msMonRegional;
 let msCProduto, msCModal, msCUf, msCOrigem, msCDestino, msCRegional;
 let msCadArea, msCadDestino, msCadProduto;
@@ -21728,14 +21728,15 @@ const _hoMesDe = l => { const d = new Date(l.data); return isNaN(d) ? '' : `${d.
 const _HO_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function _hoFiltrar() {
-  const semana = document.getElementById('hoSemana').value;
+  // Semanas marcadas (várias, 27/11/2026): o filtro mostra "24/11/2026 a 30/11/2026"; aqui volta pra chave da semana
+  const semanasSel = new Set((msHoSemana ? msHoSemana.getSelected() : []).map(r => _ho.rotuloSemana?.get(r)).filter(Boolean));
   const mes = document.getElementById('hoMes').value;
   const produto = document.getElementById('hoProduto').value;
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const transp = norm(document.getElementById('hoTransp').value);
   const busca = document.getElementById('hoBusca').value.trim().toLowerCase();
   // Todos os eventos que passam nos filtros (as ofertas entram só pra calcular o % de recusa da transportadora)
-  return _ho.linhas.filter(l => (!semana || l.semana === semana)
+  return _ho.linhas.filter(l => (!semanasSel.size || semanasSel.has(l.semana))
     && (!mes || _hoMesDe(l) === mes)
     && (!produto || l.produto === produto)
     && (!transp || norm(l.transportador).includes(transp))
@@ -21797,13 +21798,12 @@ async function renderHistoricoOfertas(forcar) {
   selMes.value = meses.includes(mesAtual) ? mesAtual : '';
   // Semana "conversa" com o mês (27/11/2026, pedido da usuária): com um mês escolhido, só aparecem as semanas
   // que caem dentro dele (início ou fim no mês: 27/10-02/11 entra em novembro); a semana marcada que não é do
-  // mês volta pra "Todas as semanas".
-  const sel = document.getElementById('hoSemana'), atual = sel.value;
+  // mês sai da seleção sozinha (setOptions). Dá pra marcar várias semanas (27/11/2026).
   const mesSel = selMes.value;
   const semanas = [..._ho.semanas.keys()].sort().reverse()
     .filter(k => !mesSel || k.split('_').some(d => d.slice(0, 7) === mesSel));
-  sel.replaceChildren(new Option('Todas as semanas', ''), ...semanas.map(k => new Option(k.split('_').map(d => d.split('-').reverse().join('/')).join(' a '), k)));
-  sel.value = semanas.includes(atual) ? atual : '';
+  _ho.rotuloSemana = new Map(semanas.map(k => [k.split('_').map(d => d.split('-').reverse().join('/')).join(' a '), k]));
+  msHoSemana?.setOptions([..._ho.rotuloSemana.keys()]);
   const selProd = document.getElementById('hoProduto'), prodAtual = selProd.value;
   const produtos = [...new Set(recusasTodas.map(l => l.produto).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   selProd.replaceChildren(new Option('Todos os produtos', ''), ...produtos.map(p => new Option(p, p)));
@@ -21909,6 +21909,8 @@ window.addEventListener('DOMContentLoaded', () => {
   msVRegional = new MultiSelect('ms-vRegional', 'Regional', renderViagensTable, null, true);
   msVProgramador = new MultiSelect('ms-vProgramador', 'Programador', renderViagensTable, null, true);
   msEProgramador = new MultiSelect('ms-eProgramador', 'Programador', renderExport, null, true);
+  // Recusas: semanas (várias) — o filtro de mês limita a lista (ver renderHistoricoOfertas)
+  msHoSemana = new MultiSelect('ms-hoSemana', 'Todas as semanas', () => renderHistoricoOfertas(), null, true);
   document.addEventListener('click', e => {
     const painel = document.getElementById('painelMenuSelecao');
     const btn = document.getElementById('btnMenuSelecao');
