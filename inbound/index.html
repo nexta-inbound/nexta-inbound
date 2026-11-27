@@ -21789,16 +21789,21 @@ async function renderHistoricoOfertas(forcar) {
     status.textContent = 'Não foi possível carregar o histórico: ' + (e?.message || e);
     return;
   }
-  const sel = document.getElementById('hoSemana'), atual = sel.value;
-  const semanas = [..._ho.semanas.keys()].sort().reverse();
-  sel.replaceChildren(new Option('Todas as semanas', ''), ...semanas.map(k => new Option(k.split('_').map(d => d.split('-').reverse().join('/')).join(' a '), k)));
-  sel.value = semanas.includes(atual) ? atual : '';
   // Mês e produto: opções tiradas das recusas carregadas (mantém a escolha se ainda existir)
   const recusasTodas = _ho.linhas.filter(l => l.evento === 'Recusado');
   const selMes = document.getElementById('hoMes'), mesAtual = selMes.value;
   const meses = [...new Set(recusasTodas.map(_hoMesDe).filter(Boolean))].sort().reverse();
   selMes.replaceChildren(new Option('Todos os meses', ''), ...meses.map(m => new Option(`${_HO_MESES[+m.slice(5) - 1]}/${m.slice(0, 4)}`, m)));
   selMes.value = meses.includes(mesAtual) ? mesAtual : '';
+  // Semana "conversa" com o mês (27/11/2026, pedido da usuária): com um mês escolhido, só aparecem as semanas
+  // que caem dentro dele (início ou fim no mês: 27/10-02/11 entra em novembro); a semana marcada que não é do
+  // mês volta pra "Todas as semanas".
+  const sel = document.getElementById('hoSemana'), atual = sel.value;
+  const mesSel = selMes.value;
+  const semanas = [..._ho.semanas.keys()].sort().reverse()
+    .filter(k => !mesSel || k.split('_').some(d => d.slice(0, 7) === mesSel));
+  sel.replaceChildren(new Option('Todas as semanas', ''), ...semanas.map(k => new Option(k.split('_').map(d => d.split('-').reverse().join('/')).join(' a '), k)));
+  sel.value = semanas.includes(atual) ? atual : '';
   const selProd = document.getElementById('hoProduto'), prodAtual = selProd.value;
   const produtos = [...new Set(recusasTodas.map(l => l.produto).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   selProd.replaceChildren(new Option('Todos os produtos', ''), ...produtos.map(p => new Option(p, p)));
