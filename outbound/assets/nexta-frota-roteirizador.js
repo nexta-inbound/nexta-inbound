@@ -734,7 +734,11 @@ function xlsxMapCliente(r, i) {
     restricaoHorario:  xlsxStr(r, 'Restrição Horário', 'Restricao', 'Restrição'),
     tiposCaminhao:     tiposStr ? tiposStr.split(';').map(t => t.trim()).filter(Boolean) : [],
     observacoes:       xlsxStr(r, 'Observações', 'Observacoes', 'Obs'),
-    identidadePetronas: ['sim','s','true','1','yes'].includes((xlsxStr(r, 'Identidade Petronas', 'IdentidadePetronas') || '').toLowerCase()),
+    ...(() => {
+      const lst = _identsParsePlanilha(xlsxStr(r, 'Identificações aceitas', 'Identificacoes aceitas', 'Identificações Aceitas'));
+      const idPet = ['sim','s','true','1','yes'].includes((xlsxStr(r, 'Identidade Petronas', 'IdentidadePetronas') || '').toLowerCase());
+      return lst ? { identsAceitas: lst, identidadePetronas: _identsExigePetronas(lst) } : { identidadePetronas: idPet };
+    })(),
   };
 }
 function xlsxMapPlaca(r, i) {
@@ -796,7 +800,12 @@ function xlsxMapPlaca(r, i) {
     velMediaVazio:     xlsxNum(r, 55, 'Vel Vazio (km/h)',     'VelVazio'),
     compartimentos:   comps,
     capacidade:       comps.reduce((s, c) => s + c.cap, 0),
-    identidadePetronas: ['sim','s','true','1','yes'].includes((xlsxStr(r, 'Identidade Petronas', 'IdentidadePetronas') || '').toLowerCase()),
+    ...(() => {
+      const idPl = _identNormalizar(xlsxStr(r, 'Identificação', 'Identificacao', 'IDENTIFICAÇÃO'));
+      const idPet = ['sim','s','true','1','yes'].includes((xlsxStr(r, 'Identidade Petronas', 'IdentidadePetronas') || '').toLowerCase());
+      if (idPl) return { identificacao: idPl, identidadePetronas: /petronas/i.test(idPl) };
+      return { identificacao: idPet ? 'Petronas' : 'Branco', identidadePetronas: idPet };
+    })(),
     disponibilidade:  'Disponível', // status sempre vem do Painel de Disponibilidade, não da planilha
     contrato:         xlsxStr(r, 'Contrato') || 'Dedicado',
     motoristaDiurno:  xlsxStr(r, 'Motorista Diurno', 'MotoristaDiurno', 'Motorista Diurno ', 'motorista diurno', 'Motorista'),
@@ -894,6 +903,12 @@ async function carregarDadosFixos() {
         let id = 200;
         veiculos = Object.values(fsVei).map(v => ({ ...v, id: v.id ?? id++ }));
         renderVeiculos();
+        // Identificação vem do Painel de Disponibilidade (cadastrada lá uma vez só)
+        if (typeof window._identSincronizarDoPainel === 'function') {
+          window._identSincronizarDoPainel({ fresco: true })
+            .then(r => { if (r?.atualizados) { renderVeiculos(); spSetStatus('ok', `✓ Identificação de ${r.atualizados} veículo(s) trazida do Painel`); } })
+            .catch(e => console.warn('[identificação ← painel]', e));
+        }
       }
       if (terminaisCad.length || clientes.length || veiculos.length) {
         spSetStatus('ok', '✓ Cadastros carregados da nuvem');
@@ -1048,6 +1063,7 @@ function exportarDadosPainel() {
       'Tipos Caminhão': (c.tiposCaminhao || []).join(';'),
       'Observações': c.observacoes || '',
       'Identidade Petronas': c.identidadePetronas ? 'Sim' : 'Não',
+      'Identificações aceitas': identsAceitasDe(c).length ? identsAceitasDe(c).join(' / ') : 'Todas',
     }));
     const rowsPlaca = (veiculos || []).map(v => {
       const row = {
@@ -1067,6 +1083,7 @@ function exportarDadosPainel() {
         'Vel Carregado (km/h)': v.velMediaCarregado ?? 45,
         'Vel Vazio (km/h)': v.velMediaVazio ?? 55,
         'Tempo Refeicao (min)': v.tempoPerdidoMin ?? 0,
+        'Identificação': identificacaoVeiculo(v),
         'Identidade Petronas': v.identidadePetronas ? 'Sim' : 'Não',
       };
       const comps = v.compartimentos || [];
@@ -2899,7 +2916,7 @@ function chegadaInsercaoAbsMin(viagem, det, insertIdx, viagensVeiculo, idxViagem
 function contarCandidatosItem(item) {
   return veiculos
     .filter(v => !item.tiposCaminhao.length || item.tiposCaminhao.includes(v.tipo))
-    .filter(v => !item.pedido.identidadePetronas || !!v.identidadePetronas)
+    .filter(v => veicAtendeIdent(item.pedido, v))
     .filter(v => veiculoAtendeTerminal(v, item.terminal) && veiculoAtendeDestino(v, item.pedido)).length;
 }
 function optsTerminais(valorSel) {
@@ -3219,7 +3236,7 @@ function abrirFormCliente(id) {
     document.getElementById('cl-descarga').value = c.tempoDescargaMediaMin || 45;
     document.getElementById('cl-restricao').value= c.restricaoHorario || '';
     document.getElementById('cl-obs').value      = c.observacoes || '';
-    document.getElementById('cl-identidade-petronas').checked = !!c.identidadePetronas;
+    _identsMarcarChecks('cl-idents', identsAceitasDe(c));
     { const el = document.getElementById('cl-operacao-sob-demanda'); if (el) el.checked = !!c.operacaoSobDemanda; }
     document.getElementById('cl-segmento').value = c.segmento || '';
     document.getElementById('cl-operacao').value = c.operacao || '';
@@ -3240,7 +3257,7 @@ function abrirFormCliente(id) {
       const e = document.getElementById(fid); if (e) e.value = '';
     });
     document.getElementById('cl-descarga').value = 45;
-    document.getElementById('cl-identidade-petronas').checked = false;
+    _identsMarcarChecks('cl-idents', []);
     { const el = document.getElementById('cl-operacao-sob-demanda'); if (el) el.checked = false; }
     document.getElementById('cl-segmento').value = '';
     document.getElementById('cl-operacao').value = '';
@@ -3298,7 +3315,8 @@ async function salvarCliente() {
     restricaoHorario: document.getElementById('cl-restricao').value.trim(),
     observacoes:     document.getElementById('cl-obs').value.trim(),
     tiposCaminhao:   lerTiposSelecionados('cl-tipos-btns'),
-    identidadePetronas: document.getElementById('cl-identidade-petronas').checked,
+    identsAceitas:   _identsLerChecks('cl-idents'),
+    identidadePetronas: _identsExigePetronas(_identsLerChecks('cl-idents')),
     operacaoSobDemanda: !!document.getElementById('cl-operacao-sob-demanda')?.checked,
     segmento:        document.getElementById('cl-segmento').value,
     operacao:        document.getElementById('cl-operacao').value,
@@ -3319,6 +3337,14 @@ async function salvarCliente() {
     clientes.push(novo);
     _persistirCadastroManual('clientes', novo);
   }
+  // Pedidos já carregados deste cliente passam a seguir a nova regra na hora
+  try {
+    (pedidos || []).forEach(p => {
+      if ((dados.codigoSAP && p.codigoSAP === dados.codigoSAP) || (p.cliente || '').trim().toUpperCase() === nome.toUpperCase()) {
+        p.identsAceitas = [...dados.identsAceitas]; p.identidadePetronas = dados.identidadePetronas;
+      }
+    });
+  } catch (e) {}
   editandoClienteId = null;
   cancelarFormCliente();
   _mesclarClientesDuplicadosSilencioso();
@@ -3833,7 +3859,7 @@ function renderClientes() {
             ${c.bandeira ? `<span class="tag" style="font-size:9px;background:rgba(139,92,246,0.12);color:#6D28D9;">🚩 ${c.bandeira}</span>` : ''}
             ${c.tipoContrato ? `<span class="tag" style="font-size:9px;background:rgba(8,145,178,0.12);color:#0E7490;">📄 ${c.tipoContrato}</span>` : ''}
             ${c.cadastroIncompleto ? `<span style="font-size:9px;font-weight:700;color:#92400E;background:#FEF3C7;border:1px solid #F59E0B;padding:2px 8px;border-radius:99px;">⚠️ Cadastro incompleto</span>` : ''}
-            ${c.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ ID Petronas</span>` : ''}
+            ${identsAceitasTagHtml(c)}
             ${c.operacaoSobDemanda ? `<span class="tag" style="font-size:9px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;" title="Pedidos deste cliente vão só para placas da operação sob demanda">🚚 Operação sob demanda</span>` : ''}
             <span class="tag tag-lime" style="font-size:9px;">Descarga média: ${(c.tempoDescargaMediaMin||45).toFixed(0)} min</span>
             ${_kmOrigemHtml(c)}
@@ -4286,7 +4312,7 @@ function preencherPedidoDeCliente(clienteId) {
   document.getElementById('p-lat').value      = c.lat;
   document.getElementById('p-lon').value      = c.lon;
   document.getElementById('p-restricao').value = c.restricaoHorario || '';
-  document.getElementById('p-identidade-petronas').checked = !!c.identidadePetronas;
+  _identsMarcarChecks('p-idents', identsAceitasDe(c));
   renderTipoBtns('p-tipos-btns', c.tiposCaminhao || []);
 }
 function carregarExemplosClientes() {
@@ -4358,7 +4384,7 @@ function abrirFormPedido(id) {
     const _dlPts = _dlEdit.split('/');
     document.getElementById('p-data-entrega').value = _dlPts.length === 3
       ? `${_dlPts[2]}-${_dlPts[1].padStart(2,'0')}-${_dlPts[0].padStart(2,'0')}` : '';
-    document.getElementById('p-identidade-petronas').checked = !!p.identidadePetronas;
+    _identsMarcarChecks('p-idents', identsAceitasDe(p));
     document.getElementById('p-terminal').innerHTML = optsTerminais(p.terminal || '');
     renderTipoBtns('p-tipos-btns', p.tiposCaminhao || []);
     p.produtos.forEach(pr => addProdutoForm(pr.produto, pr.volume, pr.ordemSAP || ''));
@@ -4366,7 +4392,7 @@ function abrirFormPedido(id) {
   } else {
     document.getElementById('form-pedido-title').textContent = 'Novo pedido';
     ['p-sap','p-cliente','p-cidade','p-lat','p-lon','p-restricao','p-data-entrega','p-turno'].forEach(fid => { const e=document.getElementById(fid); if(e) e.value=''; });
-    document.getElementById('p-identidade-petronas').checked = false;
+    _identsMarcarChecks('p-idents', []);
     document.getElementById('p-terminal').innerHTML = optsTerminais('');
     if (document.getElementById('p-tipos-btns')) renderTipoBtns('p-tipos-btns', []);
     addProdutoForm();
@@ -4926,7 +4952,8 @@ async function salvarPedido() {
     restricao:     document.getElementById('p-restricao').value || null,
     turnoEntrega:  document.getElementById('p-turno')?.value.trim() || '',
     tiposCaminhao: lerTiposSelecionados('p-tipos-btns'),
-    identidadePetronas: document.getElementById('p-identidade-petronas').checked,
+    identsAceitas: _identsLerChecks('p-idents'),
+    identidadePetronas: _identsExigePetronas(_identsLerChecks('p-idents')),
     dataEntregaLogistica: (() => {
       const v = document.getElementById('p-data-entrega').value; // YYYY-MM-DD
       if (!v) return '';
@@ -5259,7 +5286,7 @@ function renderPedidos() {
               : `<span class="tag tag-blue" style="font-size:9px;">📅 ${p.dataEntregaLogistica}</span>`) : ''}
             ${p.restricao ? `<span class="tag tag-yellow">${p.restricao}</span>` : ''}
             ${p.turnoEntrega ? `<span class="tag" title="Turno de entrega informado no pedido" style="font-size:9px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;">${iconeTurnoEntrega(p.turnoEntrega)} Turno: ${p.turnoEntrega}</span>` : ''}
-            ${p.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ ID Petronas</span>` : ''}
+            ${identsAceitasTagHtml(p)}
             ${pernoiteTag}
             ${p._alertasProduto?.length ? `<span class="tag" onclick="_confProdDiagnostico(${p.id})" title="Clique pra ver o histórico de compras do cliente · ${p._alertasProduto.map(a => a.texto).join(' · ').replace(/"/g, '&quot;')}" style="font-size:9px;background:#FEF2F2;color:#B91C1C;border-color:#FCA5A5;font-weight:700;cursor:pointer;">⚠️ Produto fora do padrão do cliente</span>` : ''}
             ${tiposHtml}
@@ -5953,7 +5980,7 @@ function _pmapaVeiculosCompativeis(pedidosSel, terminaisNomes) {
     if (listaTerminais.some(t => t && !veiculoAtendeTerminal(v, t))) return false;
     return pedidosSel.every(p =>
       (!p.tiposCaminhao?.length || p.tiposCaminhao.includes(v.tipo)) &&
-      (!p.identidadePetronas || !!v.identidadePetronas) &&
+      veicAtendeIdent(p, v) &&
       veiculoAtendeDestino(v, p)
     );
   });
@@ -6105,6 +6132,10 @@ function _pmapaListaVeiculosHtml(veicsOk, selecionados, terminalNome, histPorPla
         <input type="radio" name="pmapa-veic-radio" ${v.id === _pmapaVeicEscolhido ? 'checked' : ''} style="margin-top:2px;">
         <div style="min-width:0;flex:1;">
           <div style="font-size:12px;font-weight:700;color:#111827;"><span style="color:${s.cor};">●</span> ${esc(v.placa)} <span style="font-weight:500;color:#4B5563;">· ${esc(v.tipo || '')} · ${esc(v.capacidade)}m³</span></div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:2px 0 1px;">
+            ${identTagHtml(v, 9.5)}
+            <span style="font-size:10.5px;font-weight:600;color:#374151;">🚛 ${esc(v.transportadora || 'Transportadora não informada')}</span>
+          </div>
           <div style="font-size:10.5px;font-weight:700;color:${s.cor};">${esc(s.titulo)}</div>
           <div style="font-size:10.5px;color:#4B5563;line-height:1.35;">${esc(s.detalhe)}</div>
           ${s.extra ? `<div style="font-size:10px;color:#6B7280;line-height:1.3;margin-top:1px;">${esc(s.extra)}</div>` : ''}
@@ -6389,6 +6420,7 @@ function confirmarQuebraPedido() {
     restricao:            p.restricao,
     tiposCaminhao:        [...(p.tiposCaminhao || [])],
     identidadePetronas:   p.identidadePetronas,
+    identsAceitas:        Array.isArray(p.identsAceitas) ? [...p.identsAceitas] : undefined,
     dataEntregaLogistica: p.dataEntregaLogistica,
     produtos:             prodsPt2,
     _quebraGrupo:         grupo,
@@ -6549,6 +6581,7 @@ function xlsxMapPedidosLiberadosRows(rows) {
         restricao: cliCad?.restricaoHorario ?? null,
         tiposCaminhao: cliCad?.tiposCaminhao ?? [],
         identidadePetronas: cliCad?.identidadePetronas ?? false,
+        identsAceitas: cliCad ? identsAceitasDe(cliCad) : [],
         dataEntregaLogistica: dataEntrega,
         turnoEntrega: '',
         produtos: [],
@@ -6823,7 +6856,7 @@ function limparFormVeiculo() {
   document.getElementById('v-jornada-inicio').value = '06:00';
   document.getElementById('v-jornada-fim').value = '18:00';
   document.getElementById('v-tempo-perdido').value = '01:00';
-  document.getElementById('v-identidade-petronas').checked = false;
+  _identPreencherSelect(document.getElementById('v-identificacao'), 'Branco');
   document.getElementById('v-disponibilidade').value = 'Disponível';
   document.getElementById('v-contrato').value = 'Dedicado';
   document.getElementById('v-motorista-diurno').value = '';
@@ -6855,7 +6888,7 @@ function abrirFormVeiculo(id=null) {
     document.getElementById('v-jornada-fim').value = v.jornadaFim || '18:00';
     const _tp = v.tempoPerdidoMin || 0;
     document.getElementById('v-tempo-perdido').value = `${String(Math.floor(_tp/60)).padStart(2,'0')}:${String(_tp%60).padStart(2,'0')}`;
-    document.getElementById('v-identidade-petronas').checked = !!v.identidadePetronas;
+    _identPreencherSelect(document.getElementById('v-identificacao'), identificacaoVeiculo(v));
     document.getElementById('v-disponibilidade').value = v.disponibilidade || 'Disponível';
     document.getElementById('v-contrato').value = v.contrato || 'Dedicado';
     document.getElementById('v-motorista-diurno').value = v.motoristaDiurno || '';
@@ -6928,7 +6961,10 @@ function salvarVeiculo() {
     velMediaVazio,
     compartimentos: comps,
     capacidade: comps.reduce((s,c) => s+c.cap, 0),
-    identidadePetronas: document.getElementById('v-identidade-petronas').checked,
+    identificacao:    document.getElementById('v-identificacao').value || 'Branco',
+    // Credencial "ID Petronas" acompanha a identificação: qualquer Petronas
+    // (Verde, Preto ou Plotado) atende posto que exige ID Petronas.
+    identidadePetronas: /petronas/i.test(document.getElementById('v-identificacao').value || ''),
     disponibilidade:  document.getElementById('v-disponibilidade').value || 'Disponível',
     contrato:         document.getElementById('v-contrato').value || 'Dedicado',
     motoristaDiurno:  document.getElementById('v-motorista-diurno').value.trim(),
@@ -7196,7 +7232,7 @@ function renderPainelJornadaVeiculos() {
     (!filtroTransp || v.transportadora === filtroTransp) &&
     (!filtroContrato || (v.contrato || 'Dedicado') === filtroContrato) &&
     (!filtroTipo || v.tipo === filtroTipo) &&
-    (!filtroIdent || (filtroIdent === 'sim' ? !!v.identidadePetronas : !v.identidadePetronas)) &&
+    (!filtroIdent || (filtroIdent === 'sim' ? !!v.identidadePetronas : filtroIdent === 'nao' ? !v.identidadePetronas : identificacaoVeiculo(v) === filtroIdent)) &&
     (!filtroOp || cidadeBaseVeiculo(v) === filtroOp)
   );
   const tipoOpts = [...new Set(todosDisponiveis.map(v => v.tipo).filter(Boolean))].sort();
@@ -7225,6 +7261,7 @@ function renderPainelJornadaVeiculos() {
         <option value="">Identificação: todas</option>
         <option value="sim" ${filtroIdent==='sim'?'selected':''}>Com ID Petronas</option>
         <option value="nao" ${filtroIdent==='nao'?'selected':''}>Sem ID Petronas</option>
+        ${IDENTS_VEICULO.map(o => `<option value="${o}" ${filtroIdent===o?'selected':''}>${o}</option>`).join('')}
       </select>
     </div>`;
   if (!disponiveis.length) {
@@ -7319,7 +7356,7 @@ function exportarJornadaVeiculosXLSX() {
     (!filtroTransp || v.transportadora === filtroTransp) &&
     (!filtroContrato || (v.contrato || 'Dedicado') === filtroContrato) &&
     (!filtroTipo || v.tipo === filtroTipo) &&
-    (!filtroIdent || (filtroIdent === 'sim' ? !!v.identidadePetronas : !v.identidadePetronas)) &&
+    (!filtroIdent || (filtroIdent === 'sim' ? !!v.identidadePetronas : filtroIdent === 'nao' ? !v.identidadePetronas : identificacaoVeiculo(v) === filtroIdent)) &&
     (!filtroOp || cidadeBaseVeiculo(v) === filtroOp)
   );
   if (!disponiveis.length) { showToast('Nenhum veículo para exportar com os filtros selecionados.', false); return; }
@@ -7338,6 +7375,7 @@ function exportarJornadaVeiculosXLSX() {
       'Operação': cidadeBaseVeiculo(v) || '',
       'Tipo': v.tipo || '',
       'Contrato': v.contrato || 'Dedicado',
+      'Identificação': identificacaoVeiculo(v),
       'ID Petronas': v.identidadePetronas ? 'Sim' : 'Não',
       'Jornada Total (h)': +(totalMin / 60).toFixed(1),
       'Jornada Usada (h)': +(usadoMin / 60).toFixed(1),
@@ -7499,7 +7537,7 @@ function _renderVeiculosInterno() {
             ${(v.contrato||'Dedicado') === 'Spot'
               ? `<span class="tag" style="font-size:9px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;">Spot</span>`
               : `<span class="tag" style="font-size:9px;background:#EEF3FF;color:#1E40AF;border:1px solid #93C5FD;">Dedicado</span>`}
-            ${v.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ ID Petronas</span>` : ''}
+            ${identTagHtml(v)}
             ${v.terminal ? termTag(v.terminal) : `<span class="tag tag-gray">${baseVeiculoLabel(v)}</span>`}
             <span style="font-size:12px;color:#4A6535;">${v.capacidade.toFixed(1)} m³/viagem</span>
             <span class="tag tag-blue" style="font-size:9px;">${v.jornadaInicio||'06:00'}-${v.jornadaFim||'18:00'} (${Math.round((v.jornadaMin||duracaoJornadaMin(v.jornadaInicio||'06:00', v.jornadaFim||'18:00'))/60)}h)</span>
@@ -7916,9 +7954,9 @@ async function otimizar(modo = 'padrao', dataCarregamento = null) {
         //    mas NÃO é obrigatório (só desempate): se o único candidato com
         //    compartimento certo não tiver a credencial, ele ainda é usado,
         //    só perde a prioridade para quem tem quando os dois servem.
-        if (pedido.identidadePetronas) {
-          const aCred = a.identidadePetronas ? 1 : 0;
-          const bCred = b.identidadePetronas ? 1 : 0;
+        if (_identsRestringe(pedido)) {
+          const aCred = veicAtendeIdent(pedido, a) ? 1 : 0;
+          const bCred = veicAtendeIdent(pedido, b) ? 1 : 0;
           if (bCred !== aCred) return bCred - aCred;
         }
         // 1. Dedicado antes de Spot
@@ -8053,7 +8091,7 @@ async function otimizar(modo = 'padrao', dataCarregamento = null) {
         const placaFr = _padroesAtivo ? _padroesPlacaFracao(_padroesAtivo, pedido, v.placa) : 0;
         const opc = {
           v, vi, t, rank, afin, desvioMin, sozinhoMin,
-          camada: ((pedido.identidadePetronas && !v.identidadePetronas) ? 2 : 0) + ((v.contrato || 'Dedicado') === 'Spot' ? 1 : 0),
+          camada: (!veicAtendeIdent(pedido, v) ? 2 : 0) + ((v.contrato || 'Dedicado') === 'Spot' ? 1 : 0),
           score: (t.custoProdutivo || 0) - 40 * afin - 15 * placaFr - (mesmoPedido ? 60 : 0),
         };
         const contramao = !mesmoPedido && afin < 0.2 && sozinhoMin > 0 && desvioMin >= ENCAIXE_RAZAO_CONTRAMAO * sozinhoMin;
@@ -8293,8 +8331,8 @@ async function otimizar(modo = 'padrao', dataCarregamento = null) {
   const fila = [...pedidos]
     .filter(p => !pedidosLocadosIds.has(p.id) && p.produtos?.length && totalVolPedido(p) > 0.001)
     .sort((a, b) => {
-      if (b.identidadePetronas !== a.identidadePetronas)
-        return (b.identidadePetronas ? 1 : 0) - (a.identidadePetronas ? 1 : 0);
+      { const rA = _identsRestringe(a) ? 1 : 0, rB = _identsRestringe(b) ? 1 : 0;
+        if (rB !== rA) return rB - rA; }
       // Dentro do mesmo terminal: noturnas primeiro (evita big truck ser alocado em diurno)
       const termA = a.terminal || '', termB = b.terminal || '';
       if (termA === termB) {
@@ -8756,7 +8794,7 @@ async function otimizar(modo = 'padrao', dataCarregamento = null) {
           const ociosoOk = dedicOciosos.find(vO =>
             veiculoAtendeTerminal(vO, pedido.terminal) &&
             (!pedido.tiposCaminhao?.length || pedido.tiposCaminhao.includes(vO.tipo)) &&
-            (!pedido.identidadePetronas || vO.identidadePetronas)
+            veicAtendeIdent(pedido, vO)
           );
           if (!ociosoOk) continue;
           _sugestoesSplitDedicado.push({
@@ -9778,7 +9816,7 @@ function dropNaCard(event, veiculoDestId) {
     const motivos = [];
     if (!veiculoAtendeTerminal(v, pedido.terminal)) motivos.push(`veículo não atende o terminal "${pedido.terminal || '-'}"`);
     if (pedido.tiposCaminhao?.length && !pedido.tiposCaminhao.includes(v.tipo)) motivos.push(`tipo de veículo incompatível (pedido exige ${pedido.tiposCaminhao.join('/')}, veículo é ${v.tipo})`);
-    if (pedido.identidadePetronas && !v.identidadePetronas) motivos.push('veículo sem credencial ID Petronas exigida pelo pedido');
+    if (!veicAtendeIdent(pedido, v)) motivos.push(`cliente não aceita veículo ${identificacaoVeiculo(v)} (aceita: ${identsAceitasDe(pedido).join(', ')})`);
     const compOk = itensCabemNosCompartimentos(pend, v);
     if (!compOk) motivos.push('compartimentação não bate exatamente com os volumes do pedido (vai sobrar espaço não utilizável no(s) compartimento(s))');
     let forcar = false;
@@ -10792,6 +10830,323 @@ async function _atualizarPedagiosGlobalReal(rotasRaw, meuToken) {
   if (!box) return; // usuário saiu da tela de resultado
   box.innerHTML = todosOsPedagios.size > 0 ? _htmlAlertaPedagiosGlobal(todosOsPedagios, custoPedagiosTotalGlobal, true) : '';
 }
+
+// ── Identificação visual do veículo ─────────────────────────────────────
+// Branco · Verde Petronas · Preto Petronas · Plotado Petronas.
+// Cadastros antigos só tinham o booleano identidadePetronas: viram
+// "Petronas" (sem cor) até alguém reeditar a placa e escolher a cor.
+const IDENTS_VEICULO = ['Branco', 'Verde Petronas', 'Preto Petronas', 'Plotado Petronas'];
+function _identNormalizar(txt) {
+  const t = String(txt || '').trim();
+  if (!t) return '';
+  const n = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (/branc/.test(n)) return 'Branco';
+  if (/verde/.test(n)) return 'Verde Petronas';
+  if (/pret/.test(n)) return 'Preto Petronas';
+  if (/plot/.test(n)) return 'Plotado Petronas';
+  if (/petronas/.test(n)) return 'Petronas';
+  return t;
+}
+function identificacaoVeiculo(v) {
+  if (!v) return '';
+  const n = _identNormalizar(v.identificacao);
+  if (n) return n;
+  return v.identidadePetronas ? 'Petronas' : 'Branco';
+}
+function _identPreencherSelect(sel, atual) {
+  if (!sel) return;
+  let h = IDENTS_VEICULO.map(o => `<option value="${o}"${o === atual ? ' selected' : ''}>${o}</option>`).join('');
+  if (atual && !IDENTS_VEICULO.includes(atual))
+    h = `<option value="${atual}" selected>${atual} (antigo — escolha a cor)</option>` + h;
+  sel.innerHTML = h;
+}
+function identTagHtml(v, tam = 9) {
+  const id = identificacaoVeiculo(v);
+  if (!id) return '';
+  const est = {
+    'Branco':           'background:#F8FAFC;color:#334155;border:1px solid #CBD5E1;',
+    'Verde Petronas':   'background:#00A19C;color:#fff;border:1px solid #00877F;',
+    'Preto Petronas':   'background:#111827;color:#fff;border:1px solid #000;',
+    'Plotado Petronas': 'background:repeating-linear-gradient(135deg,#00A19C 0 5px,#0E7C77 5px 10px);color:#fff;border:1px solid #00877F;',
+    'Petronas':         'background:#FEF9C3;color:#854D0E;border:1px solid #FDE047;',
+  }[id] || 'background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;';
+  const tit = id === 'Petronas' ? 'Cadastro antigo — edite o veículo e escolha Verde, Preto ou Plotado' : 'Identificação do veículo';
+  return `<span class="tag" style="font-size:${tam}px;${est}" title="${tit}">${id === 'Branco' ? '◻' : '⬡'} ${id}</span>`;
+}
+window.identificacaoVeiculo = identificacaoVeiculo;
+
+// ── Identificação aceita pelo cliente ───────────────────────────────────
+// Cada cliente marca quais identificações de veículo aceita na entrega
+// (Branco / Verde / Preto / Plotado Petronas). Nenhuma marcada = qualquer.
+// Cadastro antigo (só o booleano "Exige ID Petronas") vale como
+// "Verde + Preto + Plotado Petronas" até ser reeditado.
+const IDENTS_PETRONAS = ['Verde Petronas', 'Preto Petronas', 'Plotado Petronas'];
+function identsAceitasDe(o) {
+  if (!o) return [];
+  if (Array.isArray(o.identsAceitas)) return o.identsAceitas.filter(x => IDENTS_VEICULO.includes(x));
+  return o.identidadePetronas ? [...IDENTS_PETRONAS] : [];
+}
+function _identsRestringe(o) { const l = identsAceitasDe(o); return l.length > 0 && l.length < IDENTS_VEICULO.length; }
+function _identsExigePetronas(lista) { return lista.length > 0 && !lista.includes('Branco'); }
+function veicAtendeIdent(pedidoOuCliente, v) {
+  const aceitas = identsAceitasDe(pedidoOuCliente);
+  if (!aceitas.length || aceitas.length >= IDENTS_VEICULO.length) return true;
+  const idV = identificacaoVeiculo(v);
+  // Veículo com cadastro antigo "Petronas" (sem cor): serve se o cliente aceita alguma Petronas
+  if (idV === 'Petronas') return aceitas.some(x => IDENTS_PETRONAS.includes(x));
+  return aceitas.includes(idV);
+}
+function _identsLerChecks(contId) {
+  const c = document.getElementById(contId); if (!c) return [];
+  return [...c.querySelectorAll('input[data-ident]')].filter(i => i.checked).map(i => i.dataset.ident);
+}
+function _identsMarcarChecks(contId, lista) {
+  const c = document.getElementById(contId); if (!c) return;
+  c.querySelectorAll('input[data-ident]').forEach(i => { i.checked = (lista || []).includes(i.dataset.ident); });
+}
+function _identsCurto(id) { return id === 'Branco' ? 'Branco' : id.replace(' Petronas', ''); }
+function identsAceitasTagHtml(o, prefixo = 'Aceita') {
+  if (!_identsRestringe(o)) return '';
+  const l = identsAceitasDe(o);
+  const leg = !Array.isArray(o.identsAceitas);
+  const txt = l.length === 3 && _identsExigePetronas(l) ? 'só Petronas' : l.map(_identsCurto).join(' · ');
+  return `<span class="tag tag-yellow" style="font-size:9px;" title="${leg ? 'Cadastro antigo (Exige ID Petronas) — edite o cliente para escolher as identificações' : 'Identificações de veículo aceitas na entrega: ' + l.join(', ')}">⬡ ${prefixo}: ${txt}</span>`;
+}
+function _identsParsePlanilha(txt) {
+  const t = String(txt || '').trim(); if (!t) return null;
+  const n = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (/^(todas|qualquer)/.test(n)) return [];
+  const l = [];
+  if (/branc/.test(n)) l.push('Branco');
+  if (/verde/.test(n)) l.push('Verde Petronas');
+  if (/pret/.test(n)) l.push('Preto Petronas');
+  if (/plot/.test(n)) l.push('Plotado Petronas');
+  return l;
+}
+window.veicAtendeIdent = veicAtendeIdent;
+
+// ── Sugestão de identificações aceitas a partir do Histórico ────────────
+// Lê todas as programações vigentes da pasta do Histórico, vê qual
+// identificação (pelo cadastro ATUAL de cada placa) já entregou em cada
+// cliente e propõe marcar essas. Só mexe em cliente que ainda não teve as
+// identificações escolhidas. Mostra a prévia e só grava o que ficar marcado.
+let _identSug = [];
+function _identSugNorm(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
+function _identSugModal(html) {
+  let m = document.getElementById('ident-sug-modal');
+  if (!m) {
+    m = document.createElement('div'); m.id = 'ident-sug-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem;';
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:980px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);">${html}</div>`;
+  return m;
+}
+async function sugerirIdentsClientesPeloHistorico() {
+  if (!dirHandleHistorico) { alert('Selecione a pasta do Histórico primeiro (aba Histórico) — é de lá que vem quem entregou em cada cliente.'); return; }
+  if (!await _histGarantirPermissao()) { alert('Permissão negada. Selecione a pasta novamente.'); return; }
+  _identSugModal(`<div style="padding:24px;font-size:13px;">⏳ Lendo as programações do Histórico…</div>`);
+  // placa → identificação (cadastro atual)
+  const identPlaca = new Map();
+  (veiculos || []).forEach(v => { const id = identificacaoVeiculo(v); if (IDENTS_VEICULO.includes(id)) identPlaca.set(String(v.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), id); });
+  // índice de clientes
+  const porSapNome = new Map(), porSap = new Map(), porNome = new Map();
+  (clientes || []).forEach(c => {
+    const sap = String(c.codigoSAP || '').trim(), nm = _identSugNorm(c.nome);
+    if (sap) { porSapNome.set(sap + '|' + nm, c); if (!porSap.has(sap)) porSap.set(sap, []); porSap.get(sap).push(c); }
+    if (nm && !porNome.has(nm)) porNome.set(nm, c);
+  });
+  const achar = ped => {
+    const sap = String(ped?.codigoSAP || '').trim(), nm = _identSugNorm(ped?.cliente);
+    return (sap && porSapNome.get(sap + '|' + nm)) || (sap && porSap.get(sap)?.length === 1 && porSap.get(sap)[0]) || porNome.get(nm) || null;
+  };
+  const obs = new Map(); // cliente.id → {c, cont:{ident:n}, total, ultima}
+  let arquivos = 0, semIdent = new Set();
+  try {
+    for await (const [name, handle] of dirHandleHistorico.entries()) {
+      if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
+      let data; try { data = JSON.parse(await (await handle.getFile()).text()); } catch (e) { continue; }
+      if (!data?.resultado || data.substituidoPor) continue;
+      arquivos++;
+      (data.veiculos || []).forEach(v => {
+        const np = String(v.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const id = identPlaca.get(np);
+        (data.resultado[v.id] || []).forEach(vi => (vi?.paradas || []).forEach(pa => {
+          const c = achar(pa.pedido); if (!c) return;
+          if (!id) { semIdent.add(v.placa); return; }
+          if (!obs.has(c.id)) obs.set(c.id, { c, cont: {}, total: 0, ultima: '' });
+          const o = obs.get(c.id); o.cont[id] = (o.cont[id] || 0) + 1; o.total++;
+          const d = String(data.data || data.savedAt || '').slice(0, 10); if (d > o.ultima) o.ultima = d;
+        }));
+      });
+    }
+  } catch (e) { console.error('[sugestão identificações]', e); _identSugModal(`<div style="padding:24px;">Erro lendo o Histórico: ${e.message}</div>`); return; }
+  _identSug = [];
+  let jaDefinidos = 0;
+  obs.forEach(o => {
+    if (Array.isArray(o.c.identsAceitas)) { jaDefinidos++; return; }
+    const vistos = IDENTS_VEICULO.filter(x => o.cont[x]);
+    let prop = [...vistos], nota = '';
+    if (o.c.identidadePetronas) { // regra antiga "Exige ID Petronas" continua valendo
+      if (prop.includes('Branco')) nota = `Branco entregou ${o.cont.Branco}× mesmo com "Exige ID Petronas" — mantive só Petronas`;
+      prop = prop.filter(x => x !== 'Branco');
+      if (!prop.length) prop = [...IDENTS_PETRONAS];
+    }
+    if (prop.length === IDENTS_VEICULO.length) prop = []; // todas = sem restrição
+    _identSug.push({ c: o.c, cont: o.cont, total: o.total, ultima: o.ultima, prop, nota, marcado: o.total >= 2 });
+  });
+  _identSug.sort((a, b) => b.total - a.total);
+  const semHist = (clientes || []).filter(c => !obs.has(c.id) && !Array.isArray(c.identsAceitas)).length;
+  _identSugRender({ arquivos, jaDefinidos, semHist, semIdent: [...semIdent] });
+}
+function _identSugRender(info) {
+  const chip = id => identTagHtml({ identificacao: id }, 9.5);
+  const linhas = _identSug.map((x, i) => `
+    <tr style="border-top:1px solid #E5E7EB;">
+      <td style="padding:6px 8px;text-align:center;"><input type="checkbox" ${x.marcado ? 'checked' : ''} onchange="_identSug[${i}].marcado=this.checked"></td>
+      <td style="padding:6px 8px;font-size:12px;"><b>${x.c.nome}</b><div style="font-size:10.5px;color:#6B7280;">${x.c.codigoSAP ? 'SAP ' + x.c.codigoSAP + ' · ' : ''}${x.c.cidade || ''}${x.c.identidadePetronas ? ' · hoje: Exige ID Petronas' : ''}</div></td>
+      <td style="padding:6px 8px;font-size:11.5px;white-space:nowrap;">${IDENTS_VEICULO.filter(k => x.cont[k]).map(k => `${_identsCurto(k)} <b>${x.cont[k]}</b>`).join(' · ')}<div style="font-size:10px;color:#9CA3AF;">${x.total} entrega(s)${x.ultima ? ' · última ' + x.ultima.split('-').reverse().join('/') : ''}</div></td>
+      <td style="padding:6px 8px;">${x.prop.length ? x.prop.map(chip).join(' ') : '<span style="font-size:11px;color:#374151;">Todas (sem restrição)</span>'}${x.nota ? `<div style="font-size:10px;color:#B45309;margin-top:2px;">${x.nota}</div>` : ''}</td>
+    </tr>`).join('');
+  _identSugModal(`
+    <div style="padding:16px 20px 8px;border-bottom:1px solid #E5E7EB;">
+      <div style="font-size:16px;font-weight:800;">⬡ Identificações aceitas — sugestão pelo Histórico</div>
+      <div style="font-size:12px;color:#4B5563;margin-top:4px;line-height:1.45;">
+        ${info.arquivos} programação(ões) lidas. Para cada cliente, marquei as identificações de veículo que já entregaram lá (pela identificação <b>atual</b> de cada placa).
+        Confira e desmarque o que não quiser gravar — clientes com só 1 entrega vêm desmarcados.
+        ${info.jaDefinidos ? `<br>${info.jaDefinidos} cliente(s) já têm as identificações escolhidas e não entram aqui.` : ''}
+        ${info.semHist ? `<br>${info.semHist} cliente(s) sem entrega no Histórico ficam como estão.` : ''}
+        ${info.semIdent.length ? `<br><span style="color:#B45309;">${info.semIdent.length} placa(s) do Histórico sem identificação no cadastro (ou ainda "Petronas" sem cor) foram ignoradas: ${info.semIdent.slice(0, 12).join(', ')}${info.semIdent.length > 12 ? '…' : ''}</span>` : ''}
+      </div>
+    </div>
+    <div style="overflow:auto;flex:1;padding:0 12px;">
+      ${_identSug.length ? `<table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="font-size:10.5px;color:#6B7280;text-align:left;position:sticky;top:0;background:#fff;">
+          <th style="padding:8px;width:34px;"><input type="checkbox" checked onchange="_identSug.forEach(x=>x.marcado=this.checked);document.querySelectorAll('#ident-sug-modal tbody input').forEach(c=>c.checked=this.checked)"></th>
+          <th style="padding:8px;">Cliente</th><th style="padding:8px;">Já entregaram</th><th style="padding:8px;">Vai ficar marcado</th></tr></thead>
+        <tbody>${linhas}</tbody></table>` : `<div style="padding:24px;font-size:13px;color:#4B5563;">Nenhum cliente para sugerir.</div>`}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #E5E7EB;">
+      <button class="btn btn-sm" onclick="document.getElementById('ident-sug-modal').remove()">Cancelar</button>
+      ${_identSug.length ? `<button class="btn btn-green btn-sm" onclick="aplicarSugestaoIdents(this)">Gravar marcados</button>` : ''}
+    </div>`);
+}
+async function aplicarSugestaoIdents(btn) {
+  const sel = _identSug.filter(x => x.marcado);
+  if (!sel.length) { alert('Nenhum cliente marcado.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Gravando…'; }
+  const alteracoes = {};
+  sel.forEach(x => {
+    const campos = { identsAceitas: [...x.prop], identidadePetronas: _identsExigePetronas(x.prop) };
+    Object.assign(x.c, campos);
+    const chave = _chavePersistCadastro('clientes', x.c);
+    if (chave) alteracoes[chave] = { campos, item: { ...x.c } };
+    (pedidos || []).forEach(p => {
+      if ((x.c.codigoSAP && p.codigoSAP === x.c.codigoSAP && _identSugNorm(p.cliente) === _identSugNorm(x.c.nome)) || _identSugNorm(p.cliente) === _identSugNorm(x.c.nome)) Object.assign(p, campos);
+    });
+  });
+  try {
+    if (typeof window.dbAtualizarCadastroLote === 'function') await window.dbAtualizarCadastroLote('clientes', alteracoes);
+    document.getElementById('ident-sug-modal')?.remove();
+    renderClientes();
+    if (typeof spSetStatus === 'function') spSetStatus('ok', `✓ Identificações gravadas em ${sel.length} cliente(s)`);
+    alert(`Identificações gravadas em ${sel.length} cliente(s).`);
+  } catch (e) {
+    console.error('[sugestão identificações] gravar', e);
+    alert('Não consegui gravar: ' + (e.message || e));
+    if (btn) { btn.disabled = false; btn.textContent = 'Gravar marcados'; }
+  }
+}
+window.sugerirIdentsClientesPeloHistorico = sugerirIdentsClientesPeloHistorico;
+window.aplicarSugestaoIdents = aplicarSugestaoIdents;
+
+window.identsAceitasDe = identsAceitasDe;
+
+window.identTagHtml = identTagHtml;
+
+
+// ── Mesmo pedido em duas cargas ─────────────────────────────────────────
+// Um pedido (nº de Ordem SAP) não pode ser carregado em dois caminhões
+// (nem em duas viagens do mesmo caminhão): precisa ser desmembrado no SAP
+// antes. Aqui só detecta e avisa — não bloqueia nem mexe na roteirização.
+function _pedidosEmVariasCargas(rotasRaw) {
+  const porChave = new Map();
+  (rotasRaw || []).forEach(({ v, viagens }) => (viagens || []).forEach((vi, viIdx) => {
+    if (!vi || vi._vazio) return;
+    const cargaId = `${v.id}#${viIdx}`;
+    (vi.paradas || []).forEach(pa => {
+      const ped = pa.pedido || {};
+      let itens = [];
+      try { itens = _herrItensDaParada(pa); } catch (_) { itens = []; }
+      if (!itens.length) itens = (pa.itens || []).map(it => ({ ordem: String(it.ordemSAP || ''), produto: it.produto || '', volume: Number(it.volume) || 0 }));
+      const temOrdens = (ped.ordens || []).length > 0 || (ped.produtos || []).some(pr => pr.ordemSAP);
+      itens.forEach(it => {
+        let chave = it.ordem ? `o:${it.ordem}` : '';
+        // Sem nº de ordem: só dá pra agrupar pelo próprio pedido, e só quando
+        // ele não tem ordens (com várias ordens não dá pra saber qual é qual).
+        if (!chave && !temOrdens && ped.id != null) chave = `p:${ped.id}`;
+        if (!chave) return;
+        if (!porChave.has(chave)) porChave.set(chave, { ordem: it.ordem || '', cliente: ped.cliente || '—', cargas: new Map() });
+        const g = porChave.get(chave);
+        if (!g.cargas.has(cargaId)) g.cargas.set(cargaId, { placa: v.placa, transportadora: v.transportadora || '', petId: vi.petId || '', viagemN: viIdx + 1, produtos: [] });
+        g.cargas.get(cargaId).produtos.push({ produto: it.produto, volume: it.volume });
+      });
+    });
+  }));
+  return [...porChave.values()]
+    .filter(g => g.cargas.size > 1)
+    .map(g => ({ ...g, cargas: [...g.cargas.values()] }));
+}
+function _pedDupProdCurto(prod) {
+  return String(prod || '').replace(/^\d+\s*-\s*/, '').replace(/^PETRONAS\s+/i, '');
+}
+function _pedDupCargaTxt(c) {
+  const quem = `${c.placa}${c.petId ? ' · ' + c.petId : ` · viagem ${c.viagemN}`}`;
+  const prods = c.produtos.map(p => `${_pedDupProdCurto(p.produto)} ${(+p.volume || 0).toFixed(1)} m³`).join(' + ');
+  return `${quem} (${prods})`;
+}
+function _pedDupAlertaHtml(dups) {
+  if (!dups.length) return '';
+  const itens = dups.map(d =>
+    `<li><strong>Pedido ${d.ordem || '(sem nº)'}</strong> — ${d.cliente}: ${d.cargas.map(_pedDupCargaTxt).join(' <b>e</b> ')}</li>`).join('');
+  return `<div class="alert alert-warn" style="border-left:4px solid #DC2626;">
+    <strong>⚠ Mesmo pedido em ${dups.some(d => d.cargas.length > 2) ? 'mais de uma' : 'duas'} cargas (${dups.length} pedido${dups.length > 1 ? 's' : ''}):</strong>
+    não podemos carregar o mesmo pedido em dois caminhões. <b>Desmembre o pedido no SAP</b> antes de enviar, ou junte os produtos numa carga só.
+    <ul style="margin:6px 0 0 16px;font-size:11.5px;">${itens}</ul>
+  </div>`;
+}
+function _pedDupPopup(dups) {
+  const assin = dups.map(d => `${d.ordem || d.cliente}=${d.cargas.map(c => c.placa + '#' + c.viagemN).sort().join(',')}`).sort().join('|');
+  if (!assin) { window._pedDupAssin = ''; return; }
+  if (window._pedDupAssin === assin) return; // mesma situação já avisada — não repete a cada re-render
+  window._pedDupAssin = assin;
+  document.getElementById('modal-pedido-dup')?.remove();
+  const linhas = dups.map(d => `
+    <div style="border:1px solid #FECACA;background:#FEF2F2;border-radius:8px;padding:9px 11px;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:800;color:#991B1B;">Pedido ${d.ordem || '(sem nº)'} <span style="font-weight:600;color:#7F1D1D;">· ${d.cliente}</span></div>
+      ${d.cargas.map(c => `<div style="font-size:12px;color:#374151;margin-top:3px;">🚛 ${_pedDupCargaTxt(c)}</div>`).join('')}
+    </div>`).join('');
+  const m = document.createElement('div');
+  m.id = 'modal-pedido-dup';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10000;padding:1rem;';
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.35);border-top:6px solid #DC2626;">
+    <div style="padding:16px 18px 6px;">
+      <div style="font-size:17px;font-weight:800;color:#B91C1C;">⚠ Atenção: pedido em duas cargas</div>
+      <div style="font-size:12.5px;color:#374151;margin:6px 0 12px;line-height:1.45;">
+        ${dups.length > 1 ? 'Estes pedidos foram roteirizados' : 'Este pedido foi roteirizado'} em mais de um caminhão/viagem.
+        Não podemos carregar o mesmo pedido em dois caminhões — <b>é preciso desmembrar o pedido no SAP</b>
+        (um nº de ordem para cada carga) ou juntar tudo numa carga só.
+      </div>
+      ${linhas}
+    </div>
+    <div style="display:flex;justify-content:flex-end;padding:8px 18px 16px;">
+      <button type="button" class="btn btn-primary" style="background:#DC2626;border-color:#DC2626;" onclick="document.getElementById('modal-pedido-dup').remove()">Entendi</button>
+    </div>
+  </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
 function renderResultado(resultado, controleTempo={}) {
   // Garante que toda viagem real tenha petId (cobre ajustes manuais pós-otimização)
   // Recria o contador a partir do histórico ANTES de atribuir IDs — evita repetições
@@ -10897,6 +11252,13 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
       .map(x => `${x.v.placa}: +${(x.excesso/60).toFixed(1)} h`);
     html += `<div class="alert alert-warn">⚠ Jornada excedida: ${linhas.join(', ')}. O pedido foi alocado mas a jornada do veículo foi ultrapassada.</div>`;
   }
+  // Mesmo pedido (nº de ordem) em mais de uma carga — visão global, sem filtros da tela
+  {
+    let dupsPed = [];
+    try { dupsPed = _pedidosEmVariasCargas(rotasRaw); } catch (e) { console.warn('[pedido em 2 cargas]', e); }
+    html += _pedDupAlertaHtml(dupsPed);
+    setTimeout(() => _pedDupPopup(dupsPed), 0);
+  }
   if (totalQuebras > 0) html += `<div class="alert alert-warn">⚠ ${totalQuebras} item(ns) de pedido divididos por limitação de capacidade.</div>`;
   else html += `<div class="alert alert-success">✓ Todos os itens alocados sem quebras de pedido.</div>`;
   // ── Alerta global: pedido roteirizado num veículo sem a credencial ID
@@ -10906,15 +11268,15 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
   // contador "⚠ N restrições" no cabeçalho de cada veículo.
   const semCredencialPetronas = [];
   rotasRaw.forEach(({ v, viagens }) => (viagens || []).forEach(vi => (vi.paradas || []).forEach(pa => {
-    if (pa.pedido?.identidadePetronas && !v.identidadePetronas) {
-      semCredencialPetronas.push({ cliente: pa.pedido.cliente, placa: v.placa });
+    if (pa.pedido && !veicAtendeIdent(pa.pedido, v)) {
+      semCredencialPetronas.push({ cliente: pa.pedido.cliente, placa: `${v.placa} (${identificacaoVeiculo(v)})` });
     }
   })));
   if (semCredencialPetronas.length) {
     const itensPet = semCredencialPetronas
       .map(x => `${x.cliente} → ${x.placa}`)
       .join(', ');
-    html += `<div class="alert alert-warn">⚠ <b>Sem credencial ID Petronas</b> — roteirizado mesmo assim pra atender o cliente e priorizar a compartimentação correta: ${itensPet}. Confirme se o veículo pode acessar o terminal antes de despachar.</div>`;
+    html += `<div class="alert alert-warn">⚠ <b>Identificação do veículo não aceita pelo cliente</b> — roteirizado mesmo assim pra atender o cliente e priorizar a compartimentação correta: ${itensPet}. Confirme se o veículo pode acessar o terminal antes de despachar.</div>`;
   }
   // Avisos devem usar visão global (sem filtros da tela), para evitar falso
   // "sem alocação" ao filtrar cidade/cliente/terminal.
@@ -11153,7 +11515,7 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
               ${v.transportadora ? `<span class="tag tag-lime" style="font-size:9px;">${v.transportadora}</span>` : ''}
               <span class="tag tag-gray">${v.tipo} · ${(v.capacidade||0).toFixed(0)} m³</span>
               ${contratoTag}
-              ${v.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ ID Petronas</span>` : ''}
+              ${identTagHtml(v)}
               <span class="tag tag-blue" style="font-size:9px;">Jornada: ${v.jornadaInicio||'06:00'}–${v.jornadaFim||'18:00'}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
@@ -11245,8 +11607,8 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
           _rv = _chegada + _espVis + (p.tempoDescargaMin || 0) + (p.deslocVazioMin || 0);
           const viols = [];
           // Identidade Petronas
-          if (p.pedido?.identidadePetronas && !v.identidadePetronas)
-            viols.push({ tipo: 'petronas', label: 'Exige ID Petronas — veículo não possui' });
+          if (p.pedido && !veicAtendeIdent(p.pedido, v))
+            viols.push({ tipo: 'petronas', label: `Cliente aceita ${identsAceitasDe(p.pedido).map(_identsCurto).join('/')} — veículo é ${identificacaoVeiculo(v)}` });
           // Tipo de veículo
           if (p.pedido?.tiposCaminhao?.length && !p.pedido.tiposCaminhao.includes(v.tipo))
             viols.push({ tipo: 'veiculo', label: `Exige ${p.pedido.tiposCaminhao.join('/')} — veículo é ${v.tipo}` });
@@ -11280,7 +11642,7 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
             ${(v.contrato||'Dedicado') === 'Spot'
               ? `<span class="tag" style="font-size:9px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;">Spot</span>`
               : `<span class="tag" style="font-size:9px;background:#EEF3FF;color:#1E40AF;border:1px solid #93C5FD;">Dedicado</span>`}
-            ${v.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ ID Petronas</span>` : ''}
+            ${identTagHtml(v)}
             <span class="tag tag-blue" style="font-size:9px;">Jornada: ${v.jornadaInicio||'06:00'}–${v.jornadaFim||'18:00'}</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
@@ -11457,7 +11819,7 @@ function _renderResultadoInterno(resultado, controleTempo={}) {
                 ${temQuebra ? '<span class="tag tag-red">quebra</span>' : ''}
                 ${p.pedido.restricao ? `<span class="tag tag-yellow">${p.pedido.restricao}</span>` : ''}
                 ${p.pedido.turnoEntrega ? `<span class="tag" title="Turno de entrega informado no pedido" style="font-size:9px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;">${iconeTurnoEntrega(p.pedido.turnoEntrega)} Turno: ${p.pedido.turnoEntrega}</span>` : ''}
-                ${p.pedido.identidadePetronas ? `<span class="tag tag-yellow" style="font-size:9px;">⬡ Exige ID Petronas</span>` : ''}
+                ${identsAceitasTagHtml(p.pedido)}
                 ${tiposStop}
                 <span class="pill" style="color:var(--pet-green);border-color:#C4E87A;margin-left:2px;">Vol. alocado: ${p.volumeTotal.toFixed(1)} m³</span>
                 ${(paradasComViolacao.get(p)||[]).map(viol => `<span class="tag tag-red" style="font-size:9px;cursor:help;" title="${viol.label}">⚠ ${viol.tipo==='petronas'?'ID Petronas':viol.tipo==='veiculo'?'Tipo veíc.':'Horário'}</span>`).join('')}

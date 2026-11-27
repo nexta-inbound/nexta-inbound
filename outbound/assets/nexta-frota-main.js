@@ -1131,7 +1131,28 @@ let CARRIERS = ["Transac Transportes","Transportes Cavalinho","JD Cocenzo Transp
 window.CARRIERS = CARRIERS; // disponível desde já para outros módulos (ex: Roteirizador)
 let OPERACOES = ["Paulínia","São Caetano do Sul","Ribeirão Preto","Duque de Caxias","Brasília","Cubatão","Uberaba"];
 const TIPOS_VEIC = ["Truck","Bi-Truck","Cavalo Mecânico"];
-const IDENTS     = ["Petronas","Branco"];
+const IDENTS     = ["Branco","Verde Petronas","Preto Petronas","Plotado Petronas"];
+// Identificação visual do veículo. "Petronas" (sem cor) é o valor antigo,
+// de antes da separação por cor — continua valendo até alguém reeditar a placa.
+function identEhPetronas(id){ return /petronas/i.test(String(id||'')); }
+function identBadgeHtml(id){
+  const v=String(id||'').trim();
+  if(!v) return '<span class="badge b-gray">—</span>';
+  const est={
+    'Branco':'background:#F8FAFC;color:#334155;border:1px solid #CBD5E1',
+    'Verde Petronas':'background:#00A19C;color:#fff;border:1px solid #00877F',
+    'Preto Petronas':'background:#111827;color:#fff;border:1px solid #000',
+    'Plotado Petronas':'background:repeating-linear-gradient(135deg,#00A19C 0 6px,#0E7C77 6px 12px);color:#fff;border:1px solid #00877F',
+  }[v];
+  if(est) return `<span class="badge" style="${est}">${esc(v)}</span>`;
+  return `<span class="badge ${identEhPetronas(v)?'b-teal':'b-gray'}" title="${identEhPetronas(v)?'Valor antigo — edite a placa e escolha Verde, Preto ou Plotado':''}">${esc(v)}</span>`;
+}
+function identOptsHtml(atual){
+  let h=IDENTS.map(o=>optHtml(o, o===atual)).join('');
+  if(atual && !IDENTS.includes(atual)) h=`<option value="${attr(atual)}" selected>${esc(atual)} (antigo — escolha a cor)</option>`+h;
+  return h;
+}
+window.identBadgeHtml=identBadgeHtml;
 const CONTRATOS  = ["Dedicado","Spot"];
 // ── Escala da placa ─────────────────────────────────────────────────────────
 // "Diária": a transportadora preenche a disponibilidade todo dia (como sempre).
@@ -2481,7 +2502,7 @@ const MANUAL_OPERACIONAL_HTML = `
       <tr><td>PLACA</td><td>Identificação do veículo</td></tr>
       <tr><td>OPERAÇÃO</td><td>Unidade operacional</td></tr>
       <tr><td>TIPO</td><td>Truck, Bi-Truck ou Cavalo Mecânico</td></tr>
-      <tr><td>IDENTIFICAÇÃO</td><td>Petronas ou Branco</td></tr>
+      <tr><td>IDENTIFICAÇÃO</td><td>Branco, Verde Petronas, Preto Petronas ou Plotado Petronas</td></tr>
       <tr><td>CONTRATO</td><td>Dedicado ou Spot</td></tr>
       <tr><td>STATUS</td><td>Status informado pelo transportador</td></tr>
       <tr><td>HODÔMETRO</td><td>Quilometragem registrada no dia</td></tr>
@@ -3873,7 +3894,7 @@ async function renderToday(body){
         <td style="font-weight:500;font-family:'DM Mono',monospace">${esc(p.placa)}</td>
         <td style="font-size:12px">${esc(p.operacao)}</td>
         <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
-        <td><span class="badge ${p.identificacao==="Petronas"?"b-teal":"b-gray"}">${esc(p.identificacao)}</span></td>
+        <td>${identBadgeHtml(p.identificacao)}</td>
         <td><span class="badge ${p.contrato==="Dedicado"?"b-ded":"b-spot"}">${esc(p.contrato)}</span></td>
         <td><span class="cap-tag">${esc(p.capacidade)}m³</span></td>
         <td>${v?`<span class="badge ${st.badge}">${esc(st.label)}</span>`:`<span class="badge b-blank">Não preenchido</span>`}</td>
@@ -4019,6 +4040,55 @@ window.alternarOfertasSob = alternarOfertasSob;
 // Roteirizador continuaria saindo do terminal antigo). Grava direto no
 // Firestore (vale pra todos os computadores) e atualiza a memória do
 // Roteirizador aberto. "Qualquer" (vazio) não mexe no cadastro.
+// ── Identificação: Painel de Disponibilidade → cadastro do Roteirizador ──
+// A identificação (Branco / Verde / Preto / Plotado Petronas) é cadastrada
+// UMA vez, no Painel. Esta rotina copia para o cadastro de veículos do
+// Roteirizador (config/roteirizador_veiculos) toda placa que estiver
+// diferente — 2 leituras e, só se houver diferença, 1 gravação. Roda
+// sozinha ao abrir o Roteirizador e depois de salvar/cadastrar uma placa.
+let _identSyncEmCurso = null;
+async function _identSincronizarDoPainel(opts = {}) {
+  if (_identSyncEmCurso) return _identSyncEmCurso;
+  _identSyncEmCurso = (async () => {
+    if (opts.fresco) cacheInvalidate('plates');
+    const plates = await dbGetPlates();
+    cacheInvalidate('cadastro||veiculos');
+    const cad = await dbGetCadastro('veiculos');
+    const porPlaca = new Map(); // placa → [{carrier, ident}]
+    Object.entries(plates || {}).forEach(([carrier, lista]) => (lista || []).forEach(p => {
+      const id = String(p?.identificacao || '').trim();
+      if (!IDENTS.includes(id)) return; // só as 4 opções novas — "Petronas" antigo/vazio não sobrescreve nada
+      const np = _normPlaca(p.placa);
+      if (!porPlaca.has(np)) porPlaca.set(np, []);
+      porPlaca.get(np).push({ carrier, id });
+    }));
+    const alteracoes = {}, mudadas = [];
+    Object.entries(cad || {}).forEach(([chave, item]) => {
+      const cands = porPlaca.get(_normPlaca(item?.placa));
+      if (!cands?.length) return;
+      const nc = _normCarrier(item.transportadora);
+      const id = (cands.find(c => _normCarrier(c.carrier) === nc) || cands[0]).id;
+      const pet = identEhPetronas(id);
+      if (item.identificacao === id && !!item.identidadePetronas === pet) return;
+      alteracoes[chave] = { campos: { identificacao: id, identidadePetronas: pet }, item: { ...item, identificacao: id, identidadePetronas: pet } };
+      mudadas.push({ placa: item.placa, id, pet });
+    });
+    if (mudadas.length) await dbAtualizarCadastroLote('veiculos', alteracoes);
+    // Roteirizador aberto nesta aba: atualiza a memória também
+    try {
+      const vs = window.veiculos;
+      if (Array.isArray(vs) && mudadas.length) {
+        const m = new Map(mudadas.map(x => [_normPlaca(x.placa), x]));
+        vs.forEach(v => { const x = m.get(_normPlaca(v.placa)); if (x) { v.identificacao = x.id; v.identidadePetronas = x.pet; } });
+        if (document.getElementById('tab-veiculos')?.classList.contains('active') && typeof window._renderVeiculosInterno === 'function') window._renderVeiculosInterno();
+      }
+    } catch (e) {}
+    if (mudadas.length) console.info(`[identificação] ${mudadas.length} veículo(s) do Roteirizador atualizados a partir do Painel`);
+    return { atualizados: mudadas.length, placas: mudadas.map(x => x.placa) };
+  })();
+  try { return await _identSyncEmCurso; } finally { _identSyncEmCurso = null; }
+}
+window._identSincronizarDoPainel = _identSincronizarDoPainel;
 async function _aplicarBaseOfertaNoCadastro(carrier, plate, baseCidade) {
   if (!baseCidade) return null;
   const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s*[-\/]\s*[A-Z]{2}$/, '').replace(/[^A-Z0-9]+/g, ' ').trim();
@@ -4270,7 +4340,7 @@ async function renderExport(body){
   const carrierOptsExp=[["",'Todas']].concat(CARRIERS.map(c=>[c,c])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.carrier===v?'selected':''}>${esc(l)}</option>`).join('');
   const opOptsExp=[["",'Todas']].concat(OPERACOES.map(o=>[o,o])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.operacao===v?'selected':''}>${esc(l)}</option>`).join('');
   const tipoOptsExp=[["",'Todos']].concat(TIPOS_VEIC.map(t=>[t,t])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.tipo===v?'selected':''}>${esc(l)}</option>`).join('');
-  const identOptsExp=[["",'Todas']].concat(IDENTS.map(i=>[i,i])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.identificacao===v?'selected':''}>${esc(l)}</option>`).join('');
+  const identOptsExp=[["",'Todas'],["__petronas",'Petronas (todas as cores)']].concat(IDENTS.map(i=>[i,i])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.identificacao===v?'selected':''}>${esc(l)}</option>`).join('');
   const ctOptsExp=[["",'Todos']].concat(CONTRATOS.map(c=>[c,c])).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.contrato===v?'selected':''}>${esc(l)}</option>`).join('');
   const stOptsExp=[["",'Todos']].concat(STATUS_OPTS.map(s=>[s.val,s.label])).concat([["nao_preenchido","Não preenchido"]]).map(([v,l])=>`<option value="${attr(v)}" ${S.expFiltro.status===v?'selected':''}>${esc(l)}</option>`).join('');
   const filtroAtivo = Object.values(S.expFiltro).some(Boolean);
@@ -4516,7 +4586,7 @@ async function buildRows(dates, onProgress){
   const passaFiltroPlaca = p =>
     (!f.operacao || p.operacao === f.operacao) &&
     (!f.tipo || p.tipo === f.tipo) &&
-    (!f.identificacao || p.identificacao === f.identificacao) &&
+    (!f.identificacao || p.identificacao === f.identificacao || (f.identificacao==="__petronas" && identEhPetronas(p.identificacao))) &&
     (!f.contrato || p.contrato === f.contrato);
   // Collect all active plates across all carriers (respeitando o filtro)
   const allActivePlates = [];
@@ -4962,7 +5032,7 @@ function resumoFiltroExport(){
     f.carrier && `Transportadora: ${f.carrier}`,
     f.operacao && `Operação: ${f.operacao}`,
     f.tipo && `Tipo: ${f.tipo}`,
-    f.identificacao && `Identificação: ${f.identificacao}`,
+    f.identificacao && `Identificação: ${f.identificacao==="__petronas"?"Petronas (todas)":f.identificacao}`,
     f.contrato && `Contrato: ${f.contrato}`,
     stLabel && `Status: ${stLabel}`,
   ].filter(Boolean);
@@ -5021,7 +5091,7 @@ async function renderRegister(body){
   const carrierOpts=CARRIERS.map(c=>optHtml(c)).join("");
   const opOpts=OPERACOES.map(o=>optHtml(o)).join("");
   const tvOpts=TIPOS_VEIC.map(o=>optHtml(o)).join("");
-  const idOpts=IDENTS.map(o=>optHtml(o)).join("");
+  const idOpts=identOptsHtml("");
   const ctOpts=CONTRATOS.map(o=>optHtml(o)).join("");
   let listHTML="";
   for(const carrier of CARRIERS){
@@ -5039,7 +5109,7 @@ async function renderRegister(body){
         <td style="font-family:'DM Mono',monospace;font-weight:500">${esc(p.placa)}</td>
         <td style="font-size:12px">${esc(p.operacao)}</td>
         <td><span class="badge b-lime">${esc(p.tipo)}</span></td>
-        <td><span class="badge ${p.identificacao==="Petronas"?"b-teal":"b-gray"}">${esc(p.identificacao)}</span></td>
+        <td>${identBadgeHtml(p.identificacao)}</td>
         <td><span class="badge ${p.contrato==="Dedicado"?"b-ded":"b-spot"}">${esc(p.contrato)}</span>${ehSobDemanda(p)?`<div style="margin-top:4px"><span class="badge b-blue" style="font-size:10px" title="Fora da disponibilidade diária — a operação oferta a placa. Bases: ${attr((p.basesCarregamento||[]).join(', ')||p.operacao||'—')}">Sob demanda</span></div>`:''}</td>
         <td><span class="cap-tag">${esc(p.capacidade)}m³</span></td>
         <td>${statusBadge}</td>
@@ -5148,6 +5218,7 @@ async function addPlate(){
     const campoCap=document.getElementById("r-cap"); if(campoCap) campoCap.value="";
     if(msg?.isConnected){ msg.textContent=`Placa ${placa} cadastrada!`;msg.style.color="var(--green)"; setTimeout(()=>{msg.textContent="";},3000); }
     showToast(`Placa ${placa} cadastrada!`);
+    _identSincronizarDoPainel().catch(e=>console.warn('[identificação → roteirizador]', e));
     if(btn?.isConnected){ btn.disabled=false;btn.textContent="+ Cadastrar placa"; }
     await renderTabBody();
   } catch(e) {
@@ -6244,7 +6315,7 @@ async function openEditModal(carrier, idx){
   _editPending = { carrier, idx, placa: p.placa };
   const opOpts=OPERACOES.map(o=>optHtml(o, o===p.operacao)).join('');
   const tvOpts=TIPOS_VEIC.map(o=>optHtml(o, o===p.tipo)).join('');
-  const idOpts=IDENTS.map(o=>optHtml(o, o===p.identificacao)).join('');
+  const idOpts=identOptsHtml(p.identificacao);
   const ctOpts=CONTRATOS.map(o=>optHtml(o, o===p.contrato)).join('');
   // Load drivers for this carrier + operation
   const allDrivers = await dbGetDrivers();
@@ -6336,7 +6407,9 @@ async function saveEdit(){
     const modal=document.getElementById('edit-modal');
     if(modal) modal.remove();
     _editPending={};
-    showToast('Placa atualizada com sucesso!');
+    let _notaId='';
+    try { const r=await _identSincronizarDoPainel(); if(r?.atualizados) _notaId=' Identificação levada para o Roteirizador.'; } catch(e){ console.warn('[identificação → roteirizador]', e); }
+    showToast('Placa atualizada com sucesso!'+_notaId);
     await renderTabBody();
   } catch(e) {
     // Antes, uma falha aqui (permissão do Firestore, rede, etc.) parava a
